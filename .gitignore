@@ -1,0 +1,58 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# ── Go ───────────────────────────────────────────────────────────────────────
+backend/bin/
+backend/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# ── Flutter ──────────────────────────────────────────────────────────────────
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.pub-cache/
+mobile/.pub/
+mobile/build/
+mobile/ios/Pods/
+mobile/*.g.dart
+mobile/*.freezed.dart
+
+# ── React / Node ─────────────────────────────────────────────────────────────
+admin/node_modules/
+admin/dist/
+admin/.vite/
+admin/coverage/
+
+# ── C# ───────────────────────────────────────────────────────────────────────
+shell/bin/
+shell/obj/
+shell/*.user
+shell/.vs/
+shell/**/*.suo
+*.nupkg
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ──────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Docs build ───────────────────────────────────────────────────────────────
+docs/build/
