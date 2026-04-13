@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/1448-project/backend/internal/config"
+	"github.com/pastbishepsov/1448/backend/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )

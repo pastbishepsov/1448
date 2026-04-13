@@ -1,4 +1,4 @@
-module github.com/1448-project/backend
+module github.com/pastbishepsov/1448/backend
 
 go 1.22
 

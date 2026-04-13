@@ -1,9 +1,9 @@
 package router
 
 import (
-	"github.com/1448-project/backend/internal/api/handlers"
-	"github.com/1448-project/backend/internal/api/middleware"
-	"github.com/1448-project/backend/internal/config"
+	"github.com/pastbishepsov/1448/backend/internal/api/handlers"
+	"github.com/pastbishepsov/1448/backend/internal/api/middleware"
+	"github.com/pastbishepsov/1448/backend/internal/config"
 	"github.com/gin-gonic/gin"
 )
 
