@@ -5,7 +5,7 @@ WORKDIR /app
 
 RUN apk --no-cache add git
 
-COPY go.mod go.sum ./
+COPY go.mod go.sum* ./
 RUN go mod download
 
 COPY . .
@@ -26,13 +26,13 @@ EXPOSE 8080
 ENTRYPOINT ["./entrypoint.sh"]
 
 # ── Development (hot reload) ─────────────────────────────────────────────────
-FROM golang:1.22-alpine AS development
+FROM golang:1.25-alpine AS development
 
 WORKDIR /app
 
-RUN go install github.com/air-verse/air@latest
+RUN go install github.com/air-verse/air@v1.65.3
 
-COPY go.mod go.sum ./
+COPY go.mod go.sum* ./
 RUN go mod download
 
 EXPOSE 8080

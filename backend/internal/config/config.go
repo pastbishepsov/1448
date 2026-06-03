@@ -11,6 +11,10 @@ type Config struct {
 	Redis    RedisConfig
 	JWT      JWTConfig
 	Twilio   TwilioConfig
+
+	// Плоские поля для удобного доступа (используются в router/middleware)
+	Env       string
+	JWTSecret string
 }
 
 type ServerConfig struct {
@@ -89,6 +93,10 @@ func Load() (*Config, error) {
 	if cfg.DB.Host == "" {
 		return nil, fmt.Errorf("DB_HOST не задан")
 	}
+
+	// Зеркалим в плоские поля
+	cfg.Env = cfg.Server.Env
+	cfg.JWTSecret = cfg.JWT.Secret
 
 	return cfg, nil
 }
