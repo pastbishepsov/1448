@@ -87,8 +87,8 @@ func main() {
 		me.PATCH("", stub("UpdateProfile"))
 		me.GET("/cases", handleGetMyCases)         // ← настоящий
 		me.POST("/cases/:id/open", handleOpenCase) // ← настоящий
-		me.GET("/talents", stub("GetTalents"))
-		me.POST("/talents/invest", stub("InvestSP"))
+		me.GET("/talents", handleGetMyTalents)        // ← настоящий
+		me.POST("/talents/invest", handleInvestTalent) // ← настоящий
 		me.GET("/achievements", stub("GetAchievements"))
 		me.GET("/sessions", handleGetMySessions)     // ← настоящий
 		me.POST("/sessions/start", handleStartSession) // ← настоящий
