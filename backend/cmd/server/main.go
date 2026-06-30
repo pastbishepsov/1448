@@ -16,12 +16,14 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
+	"github.com/pastbishepsov/1448/backend/internal/websocket"
 )
 
 var (
 	db        *gorm.DB
 	jwtSecret []byte
 	accessTTL time.Duration
+	hub       *websocket.Hub
 )
 
 // @title           14:48 API
@@ -53,8 +55,13 @@ func main() {
 	}
 	log.Println("Подключение к PostgreSQL установлено")
 
+	// ── WebSocket Hub (PC Shell) ────────────────────────────────────────────
+	hub = websocket.NewHub()
+	go hub.Run()
+
 	// ── Роуты ───────────────────────────────────────────────────────────────
 	r := gin.Default()
+	r.Use(corsMiddleware()) // разрешаем запросы из браузера (веб-приложение)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -78,8 +85,8 @@ func main() {
 		me.Use(authMiddleware()) // всё под /me требует JWT
 		me.GET("", handleGetMe)   // ← настоящий
 		me.PATCH("", stub("UpdateProfile"))
-		me.GET("/cases", stub("GetCases"))
-		me.POST("/cases/:id/open", stub("OpenCase"))
+		me.GET("/cases", handleGetMyCases)         // ← настоящий
+		me.POST("/cases/:id/open", handleOpenCase) // ← настоящий
 		me.GET("/talents", stub("GetTalents"))
 		me.POST("/talents/invest", stub("InvestSP"))
 		me.GET("/achievements", stub("GetAchievements"))
@@ -93,7 +100,7 @@ func main() {
 		clubs.GET("/:id/computers", stub("GetComputers"))
 		clubs.POST("/:id/bookings", stub("CreateBooking"))
 
-		v1.GET("/ws/shell", stub("WebSocketShell"))
+		v1.GET("/ws/shell", handleShellWS) // ← настоящий
 	}
 
 	port := getenv("SERVER_PORT", "8080")
@@ -157,6 +164,9 @@ func handleRegister(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+
+	// Приветственный кейс новичку.
+	_ = grantCase(db, user.ID, nil, models.CaseTierLight, models.CaseSourceAdminGrant)
 
 	writeAuth(c, http.StatusCreated, &user)
 }
@@ -250,6 +260,34 @@ func authMiddleware() gin.HandlerFunc {
 	}
 }
 
+// handleShellWS — апгрейд соединения PC Shell до WebSocket.
+// dev: токен ПК пока не проверяем (TODO: аутентификация по MAC + токену).
+func handleShellWS(c *gin.Context) {
+	computerID := c.Query("computer_id")
+	if computerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "missing_computer_id", "message": "Параметр computer_id обязателен"})
+		return
+	}
+
+	clubID := ""
+	var computer models.Computer
+	if err := db.First(&computer, "id = ?", computerID).Error; err == nil {
+		clubID = computer.ClubID.String()
+	}
+
+	if err := hub.ServeShell(c.Writer, c.Request, computerID, clubID); err != nil {
+		log.Printf("WS upgrade error: %v", err)
+	}
+}
+
+// notifyShell — best-effort команда на ПК (если он подключён).
+func notifyShell(computerID string, t websocket.MessageType, payload any) {
+	if hub == nil {
+		return
+	}
+	_ = hub.Send(computerID, t, payload)
+}
+
 // handleGetMe — профиль текущего игрока по токену.
 func handleGetMe(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -272,6 +310,20 @@ func stub(name string) gin.HandlerFunc {
 			"handler": name,
 			"message": "TODO: реализовать " + name,
 		})
+	}
+}
+
+// corsMiddleware — разрешает запросы из браузера (dev: любой источник).
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
 	}
 }
 

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>14:48 — PC Shell эмулятор</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0f1115; color:#e6e6e6; margin:0; padding:24px; }
+  h1 { font-size:18px; margin:0 0 16px; }
+  .row { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  input { background:#1b1f27; border:1px solid #333; color:#e6e6e6; padding:8px 10px; border-radius:6px; width:380px; }
+  button { background:#3b82f6; border:0; color:#fff; padding:8px 14px; border-radius:6px; cursor:pointer; }
+  button.secondary { background:#374151; }
+  button:disabled { opacity:.5; cursor:default; }
+  #status { font-weight:600; }
+  #log { background:#000; border:1px solid #222; border-radius:8px; padding:12px; height:340px; overflow:auto;
+         font-family:ui-monospace,Consolas,monospace; font-size:13px; white-space:pre-wrap; }
+  .in  { color:#4ade80; }   /* от сервера */
+  .out { color:#60a5fa; }   /* от ПК */
+  .sys { color:#9ca3af; }
+  .err { color:#f87171; }
+</style>
+</head>
+<body>
+  <h1>14:48 — эмулятор PC Shell</h1>
+
+  <div class="row">
+    <label>Адрес:</label>
+    <input id="host" value="ws://localhost:8080/api/v1/ws/shell">
+  </div>
+  <div class="row">
+    <label>computer_id:</label>
+    <input id="cid" value="00000000-0000-0000-0000-0000000000a1">
+  </div>
+  <div class="row">
+    <button id="connect">Подключить</button>
+    <button id="disconnect" class="secondary" disabled>Отключить</button>
+    <button id="tick" class="secondary" disabled>Отправить tick</button>
+    <button id="call" class="secondary" disabled>Вызвать админа</button>
+    <button id="clear" class="secondary">Очистить</button>
+  </div>
+  <div class="row">Статус: <span id="status" class="sys">не подключён</span></div>
+
+  <div id="log"></div>
+
+<script>
+  let ws = null;
+  const $ = (id) => document.getElementById(id);
+  const logEl = $('log');
+
+  function log(text, cls) {
+    const t = new Date().toLocaleTimeString();
+    const line = document.createElement('div');
+    line.className = cls || 'sys';
+    line.textContent = `[${t}] ${text}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setConnected(on) {
+    $('status').textContent = on ? 'подключён' : 'не подключён';
+    $('status').className = on ? 'in' : 'sys';
+    $('connect').disabled = on;
+    $('disconnect').disabled = !on;
+    $('tick').disabled = !on;
+    $('call').disabled = !on;
+  }
+
+  $('connect').onclick = () => {
+    const url = $('host').value + '?computer_id=' + encodeURIComponent($('cid').value);
+    log('Подключаюсь: ' + url);
+    ws = new WebSocket(url);
+    ws.onopen = () => { setConnected(true); log('✅ соединение открыто', 'in'); };
+    ws.onmessage = (e) => log('⬅ от сервера: ' + e.data, 'in');
+    ws.onclose = () => { setConnected(false); log('соединение закрыто'); };
+    ws.onerror = () => log('ошибка соединения (сервер запущен? верный адрес?)', 'err');
+  };
+
+  $('disconnect').onclick = () => ws && ws.close();
+  $('clear').onclick = () => logEl.innerHTML = '';
+
+  function send(type) {
+    if (!ws || ws.readyState !== 1) return;
+    const msg = JSON.stringify({ type });
+    ws.send(msg);
+    log('➡ от ПК: ' + msg, 'out');
+  }
+  $('tick').onclick = () => send('session_tick');
+  $('call').onclick = () => send('admin_call');
+</script>
+</body>
+</html>

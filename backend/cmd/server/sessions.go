@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
+	"github.com/pastbishepsov/1448/backend/internal/websocket"
 )
 
 // Параметры начисления. Простые на старте — позже вынесем в конфиг/Admin Panel.
@@ -109,6 +110,12 @@ func handleStartSession(c *gin.Context) {
 		return
 	}
 
+	// Команда на ПК в реальном времени (если Shell подключён).
+	notifyShell(computer.ID.String(), websocket.MsgSessionStart, gin.H{
+		"session_id": session.ID,
+		"started_at": session.StartedAt,
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"session_id": session.ID,
 		"started_at": session.StartedAt,
@@ -178,6 +185,20 @@ func handleEndSession(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+
+	// Кейс за каждый новый уровень.
+	if levelsGained > 0 {
+		for i := 0; i < levelsGained; i++ {
+			_ = grantCase(db, user.ID, &session.ClubID, tierForLevel(user.Level), models.CaseSourceLevelUp)
+		}
+	}
+
+	// Команда на ПК: завершить и заблокировать (если Shell подключён).
+	notifyShell(session.ComputerID.String(), websocket.MsgSessionEnd, gin.H{
+		"session_id":   session.ID,
+		"xp_earned":    xpGained,
+		"coins_earned": coinsGained,
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"session_id":    session.ID,

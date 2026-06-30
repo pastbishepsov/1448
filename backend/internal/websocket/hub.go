@@ -2,30 +2,40 @@ package websocket
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
 	"sync"
+
 	"github.com/gorilla/websocket"
 )
 
-// MessageType — типы событий между сервером и PC Shell
+// MessageType — типы событий между сервером и PC Shell.
 type MessageType string
 
 const (
-	MsgSessionStart  MessageType = "session_start"   // сервер → shell: начало сессии
-	MsgSessionTick   MessageType = "session_tick"    // shell → сервер: heartbeat
-	MsgSessionEnd    MessageType = "session_end"     // сервер → shell: завершить и заблокировать
-	MsgXPUpdate      MessageType = "xp_update"       // сервер → shell: новый XP
-	MsgAdminCall     MessageType = "admin_call"      // shell → сервер: кнопка вызова
-	MsgForceUnlock   MessageType = "force_unlock"    // сервер → shell: принудительная разблокировка
+	MsgSessionStart MessageType = "session_start" // сервер → shell: началась сессия
+	MsgSessionTick  MessageType = "session_tick"  // shell → сервер: heartbeat
+	MsgSessionEnd   MessageType = "session_end"   // сервер → shell: завершить
+	MsgXPUpdate     MessageType = "xp_update"      // сервер → shell: новый XP
+	MsgAdminCall    MessageType = "admin_call"     // shell → сервер: кнопка вызова
+	MsgForceUnlock  MessageType = "force_unlock"   // сервер → shell: разблокировать
 )
 
-// Message — стандартная обёртка для всех WS-сообщений
+// Message — стандартная обёртка для всех WS-сообщений.
 type Message struct {
 	Type    MessageType     `json:"type"`
 	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
-// Client — одно подключение PC Shell
+// upgrader — HTTP→WebSocket. В dev разрешаем любые источники.
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin:     func(r *http.Request) bool { return true },
+}
+
+// Client — одно подключение PC Shell.
 type Client struct {
 	ComputerID string
 	ClubID     string
@@ -35,9 +45,7 @@ type Client struct {
 }
 
 func (c *Client) writePump() {
-	defer func() {
-		c.conn.Close()
-	}()
+	defer c.conn.Close()
 	for msg := range c.send {
 		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			log.Printf("WS write error (computer=%s): %v", c.ComputerID, err)
@@ -65,7 +73,7 @@ func (c *Client) readPump() {
 	}
 }
 
-// Hub — менеджер всех подключённых PC Shell
+// Hub — менеджер всех подключённых PC Shell.
 type Hub struct {
 	clients    map[string]*Client // computerID → client
 	register   chan *Client
@@ -102,7 +110,35 @@ func (h *Hub) Run() {
 	}
 }
 
-// Send — отправить сообщение конкретному компьютеру
+// ServeShell — апгрейд соединения до WebSocket и регистрация PC Shell в хабе.
+func (h *Hub) ServeShell(w http.ResponseWriter, r *http.Request, computerID, clubID string) error {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return err
+	}
+	client := &Client{
+		ComputerID: computerID,
+		ClubID:     clubID,
+		conn:       conn,
+		send:       make(chan []byte, 32),
+		hub:        h,
+	}
+	h.register <- client
+	go client.writePump()
+	go client.readPump()
+	return nil
+}
+
+// IsConnected — подключён ли указанный компьютер.
+func (h *Hub) IsConnected(computerID string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	_, ok := h.clients[computerID]
+	return ok
+}
+
+// Send — отправить сообщение конкретному компьютеру.
+// Возвращает ошибку, если ПК не подключён (для server→shell это «best-effort»).
 func (h *Hub) Send(computerID string, msgType MessageType, payload any) error {
 	h.mu.RLock()
 	client, ok := h.clients[computerID]
@@ -117,23 +153,23 @@ func (h *Hub) Send(computerID string, msgType MessageType, payload any) error {
 		return err
 	}
 	msg, _ := json.Marshal(Message{Type: msgType, Payload: payloadBytes})
-	client.send <- msg
-	return nil
+
+	select {
+	case client.send <- msg:
+		return nil
+	default:
+		return fmt.Errorf("очередь отправки переполнена (computer=%s)", computerID)
+	}
 }
 
-// handleMessage — обработка входящих сообщений от Shell
+// handleMessage — обработка входящих сообщений от Shell.
 func (h *Hub) handleMessage(c *Client, msg Message) {
 	switch msg.Type {
 	case MsgSessionTick:
-		// Обновить last_seen в Redis для данного компьютера
 		log.Printf("Heartbeat от computer=%s", c.ComputerID)
 	case MsgAdminCall:
-		// Уведомить Admin Panel что игрок вызвал администратора
 		log.Printf("Вызов администратора от computer=%s", c.ComputerID)
 	default:
 		log.Printf("Неизвестный тип сообщения: %s от computer=%s", msg.Type, c.ComputerID)
 	}
 }
-
-// fmt нужен для Errorf — добавь импорт в реальном коде
-var fmt = struct{ Errorf func(string, ...any) error }{}

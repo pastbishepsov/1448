@@ -33,6 +33,9 @@
 | POST | `/api/v1/me/sessions/start` | начать сессию за ПК | JWT |
 | POST | `/api/v1/me/sessions/end` | завершить сессию, начислить XP/coins | JWT |
 | GET  | `/api/v1/me/sessions` | история сессий игрока | JWT |
+| GET  | `/api/v1/ws/shell?computer_id=` | WebSocket-канал для PC Shell (real-time) | computer_id |
+| GET  | `/api/v1/me/cases` | список кейсов игрока | JWT |
+| POST | `/api/v1/me/cases/:id/open` | открыть кейс (дроп через crypto/rand) | JWT |
 
 **XP-движок** (ядро игры) работает целиком на сервере:
 - начисление XP и coins за минуты игры;
@@ -41,13 +44,24 @@
 
 Аутентификация: JWT HS256, `sub = user_id`, время жизни access-токена 15 мин (`JWT_ACCESS_TTL`).
 
+**Real-time / WebSocket** (мост к PC Shell):
+- ПК подключается к `/api/v1/ws/shell?computer_id=...`;
+- сервер шлёт команды: `session_start`, `session_end` (далее — `force_unlock`, `xp_update`);
+- ПК шлёт: `session_tick` (heartbeat), `admin_call`;
+- проверить без десктопа можно через `tools/shell-emulator.html` (открыть в браузере).
+
+**Кейсы** (гача-экономика):
+- выдаются за регистрацию (Light) и за каждый новый уровень (тир растёт с уровнем);
+- открытие считает дроп через `crypto/rand` **только на сервере** — coins или бустер кэшбека;
+- экономика проверена симуляцией на 500k открытий/тир: `tools/case_economy_sim.py`.
+
 ---
 
 ## Что в заглушках (возвращают 501)
 
 Маршруты определены в `backend/cmd/server/main.go`, но логики пока нет:
-`/auth/otp/*`, `/auth/refresh`, `/auth/logout`, `PATCH /me`, `/me/cases*`, `/me/talents*`,
-`/me/achievements`, `/clubs*`, `/ws/shell`.
+`/auth/otp/*`, `/auth/refresh`, `/auth/logout`, `PATCH /me`, `/me/talents*`,
+`/me/achievements`, `/clubs*`.
 
 ---
 
@@ -141,7 +155,7 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 │   │   ├── config/          загрузка .env
 │   │   ├── models/          User, Session, Case, Computer, Club (+ формула XP, логика дропа кейсов)
 │   │   ├── api/             router/handlers/middleware (router пока не подключён, см. подводные камни)
-│   │   └── websocket/       Hub для PC Shell (готов, но не подключён к эндпоинту)
+│   │   └── websocket/       Hub для PC Shell — подключён к /ws/shell
 │   ├── migrations/          7 SQL-миграций (все таблицы)
 │   └── seed_dev.sql         демо-клуб + компьютеры
 ├── mobile/                  Flutter (скелет: тема, i18n EN/PL/RU, навигация)
@@ -175,12 +189,18 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 
 Ближайшие шаги, по одному за раз:
 
-1. **WebSocket-контракт для PC Shell** — сервер шлёт ПК команды (старт/стоп/блокировка),
-   ПК шлёт «тики». Это мост к десктоп-приложению. Hub уже есть в `internal/websocket/`.
-2. `PATCH /me` — смена ника/аватара (+ почистить пустые объекты связей в выдаче сессий).
-3. Открытие кейсов: подключить готовую серверную логику дропа к эндпоинту.
-4. Таланты (3 ветки: Strength / Agility / Intellect), клубы, бронь.
+1. `PATCH /me` — смена ника/аватара (+ почистить пустые объекты связей в выдаче сессий).
+2. Таланты (3 ветки: Strength / Agility / Intellect) — инвестиция очков навыков, эффекты.
+3. Клубы и бронь: `GET /clubs`, бронирование.
+4. Аутентификация PC Shell по MAC + токену (сейчас в dev — без проверки).
 5. Консолидация роутов на единый `internal/api/router`.
+6. PC Shell (C#/.NET) — десктоп-клиент на готовый WebSocket-контракт.
+
+Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,
+WebSocket-канал PC Shell, система кейсов (экономика проверена симуляцией).
+
+**Юнит-тесты логики:** `cd backend && go test ./...` — проверяют XP-движок и тиры кейсов
+(`cmd/server/cases_test.go`).
 
 Параллельно (трек Б, бесплатно): валидация рынка — показать прототип владельцам клубов Варшавы.
 
