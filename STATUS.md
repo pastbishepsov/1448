@@ -40,6 +40,7 @@
 | GET  | `/api/v1/me/talents` | дерево талантов + текущие эффекты | JWT |
 | POST | `/api/v1/me/talents/invest` | вложить очко навыка в талант | JWT |
 | GET  | `/api/v1/me/achievements` | достижения: получено / доступно | JWT |
+| GET  | `/api/v1/leaderboard` | топ игроков по опыту + твоё место | JWT |
 
 **XP-движок** (ядро игры) работает целиком на сервере:
 - начисление XP и coins за минуты игры;
@@ -219,8 +220,8 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 
 Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,
 WebSocket-канал PC Shell, кейсы (+ бонус за сессию с роллом тира), таланты
-(эффекты xp_boost, case_hunter, luck_grade), достижения, `PATCH /me`
-(логика проверена тестами/симуляцией).
+(эффекты xp_boost, case_hunter, luck_grade), достижения, `PATCH /me`,
+лидерборд (логика проверена тестами/симуляцией).
 
 **Юнит-тесты логики:** `cd backend && go test ./...` — проверяют XP-движок и тиры кейсов
 (`cmd/server/cases_test.go`).

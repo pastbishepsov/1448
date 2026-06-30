@@ -94,6 +94,9 @@ func main() {
 		me.POST("/sessions/start", handleStartSession) // ← настоящий
 		me.POST("/sessions/end", handleEndSession)     // ← настоящий
 
+		// Лидерборд (за JWT)
+		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
+
 		clubs := v1.Group("/clubs")
 		clubs.GET("", stub("GetClubs"))
 		clubs.GET("/:id", stub("GetClub"))
