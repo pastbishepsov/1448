@@ -89,7 +89,7 @@ func main() {
 		me.POST("/cases/:id/open", handleOpenCase) // ← настоящий
 		me.GET("/talents", handleGetMyTalents)        // ← настоящий
 		me.POST("/talents/invest", handleInvestTalent) // ← настоящий
-		me.GET("/achievements", stub("GetAchievements"))
+		me.GET("/achievements", handleGetMyAchievements) // ← настоящий
 		me.GET("/sessions", handleGetMySessions)     // ← настоящий
 		me.POST("/sessions/start", handleStartSession) // ← настоящий
 		me.POST("/sessions/end", handleEndSession)     // ← настоящий
@@ -165,8 +165,8 @@ func handleRegister(c *gin.Context) {
 		return
 	}
 
-	// Приветственный кейс новичку.
-	_ = grantCase(db, user.ID, nil, models.CaseTierLight, models.CaseSourceAdminGrant)
+	// Достижение «Добро пожаловать»: +5 очков навыка и Light-кейс.
+	checkAchievements(user.ID, 0, 1)
 
 	writeAuth(c, http.StatusCreated, &user)
 }

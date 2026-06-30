@@ -38,6 +38,7 @@
 | POST | `/api/v1/me/cases/:id/open` | открыть кейс (дроп через crypto/rand) | JWT |
 | GET  | `/api/v1/me/talents` | дерево талантов + текущие эффекты | JWT |
 | POST | `/api/v1/me/talents/invest` | вложить очко навыка в талант | JWT |
+| GET  | `/api/v1/me/achievements` | достижения: получено / доступно | JWT |
 
 **XP-движок** (ядро игры) работает целиком на сервере:
 - начисление XP и coins за минуты игры;
@@ -65,13 +66,19 @@
 - остальные эффекты (`case_hunter`, `cashback_master` и т.д.) подключатся по мере появления
   их механик (случайный дроп кейсов, кэшбек при оплате).
 
+**Достижения** (`achievements`, сидятся миграцией 005):
+- движок проверяет условия после сессии и при регистрации, выдаёт награды
+  (очки навыков + кейс), запоминает в `user_achievements`;
+- сейчас вычисляются `hours_played` (1/10/100 ч) и `login_count` (первый вход);
+- `deposit_count`, `phone_verified`, стрики — ждут своих механик;
+- логика условий (`conditionMet`) покрыта тестом и проверена симуляцией.
+
 ---
 
 ## Что в заглушках (возвращают 501)
 
 Маршруты определены в `backend/cmd/server/main.go`, но логики пока нет:
-`/auth/otp/*`, `/auth/refresh`, `/auth/logout`, `PATCH /me`,
-`/me/achievements`, `/clubs*`.
+`/auth/otp/*`, `/auth/refresh`, `/auth/logout`, `PATCH /me`, `/clubs*`.
 
 ---
 
@@ -207,7 +214,8 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 6. PC Shell (C#/.NET) — десктоп-клиент на готовый WebSocket-контракт.
 
 Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,
-WebSocket-канал PC Shell, система кейсов и таланты (логика проверена тестами/симуляцией).
+WebSocket-канал PC Shell, кейсы, таланты (+ эффект xp_boost), достижения
+(логика проверена тестами/симуляцией).
 
 **Юнит-тесты логики:** `cd backend && go test ./...` — проверяют XP-движок и тиры кейсов
 (`cmd/server/cases_test.go`).

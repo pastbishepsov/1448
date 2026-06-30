@@ -202,6 +202,9 @@ func handleEndSession(c *gin.Context) {
 		}
 	}
 
+	// Достижения за наигранные часы (Light/Medium/Heavy кейсы + очки навыков).
+	checkAchievements(session.UserID, userHoursPlayed(userID), 1)
+
 	// Команда на ПК: завершить и заблокировать (если Shell подключён).
 	notifyShell(session.ComputerID.String(), websocket.MsgSessionEnd, gin.H{
 		"session_id":   session.ID,
