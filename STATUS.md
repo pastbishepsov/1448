@@ -30,6 +30,7 @@
 | POST | `/api/v1/auth/register` | регистрация (bcrypt + выдача JWT) | — |
 | POST | `/api/v1/auth/login` | вход по нику/email + пароль | — |
 | GET  | `/api/v1/me` | профиль текущего игрока | JWT |
+| PATCH | `/api/v1/me` | смена ника / аватара | JWT |
 | POST | `/api/v1/me/sessions/start` | начать сессию за ПК | JWT |
 | POST | `/api/v1/me/sessions/end` | завершить сессию, начислить XP/coins | JWT |
 | GET  | `/api/v1/me/sessions` | история сессий игрока | JWT |
@@ -78,7 +79,7 @@
 ## Что в заглушках (возвращают 501)
 
 Маршруты определены в `backend/cmd/server/main.go`, но логики пока нет:
-`/auth/otp/*`, `/auth/refresh`, `/auth/logout`, `PATCH /me`, `/clubs*`.
+`/auth/otp/*`, `/auth/refresh`, `/auth/logout`, `/clubs*`.
 
 ---
 
@@ -206,16 +207,16 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 
 Ближайшие шаги, по одному за раз:
 
-1. `PATCH /me` — смена ника/аватара (+ почистить пустые объекты связей в выдаче сессий).
+1. Клубы и бронь: `GET /clubs`, `GET /clubs/:id/computers`, бронирование.
 2. Остальные эффекты талантов (нужны механики: случайный дроп кейсов, кэшбек при оплате).
-3. Клубы и бронь: `GET /clubs`, бронирование.
+3. OTP-вход по SMS (Twilio) и refresh/logout токенов.
 4. Аутентификация PC Shell по MAC + токену (сейчас в dev — без проверки).
 5. Консолидация роутов на единый `internal/api/router`.
 6. PC Shell (C#/.NET) — десктоп-клиент на готовый WebSocket-контракт.
 
 Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,
-WebSocket-канал PC Shell, кейсы, таланты (+ эффект xp_boost), достижения
-(логика проверена тестами/симуляцией).
+WebSocket-канал PC Shell, кейсы, таланты (+ эффект xp_boost), достижения,
+`PATCH /me` (логика проверена тестами/симуляцией).
 
 **Юнит-тесты логики:** `cd backend && go test ./...` — проверяют XP-движок и тиры кейсов
 (`cmd/server/cases_test.go`).

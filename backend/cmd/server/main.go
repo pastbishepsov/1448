@@ -83,8 +83,8 @@ func main() {
 
 		me := v1.Group("/me")
 		me.Use(authMiddleware()) // всё под /me требует JWT
-		me.GET("", handleGetMe)   // ← настоящий
-		me.PATCH("", stub("UpdateProfile"))
+		me.GET("", handleGetMe)     // ← настоящий
+		me.PATCH("", handlePatchMe) // ← настоящий
 		me.GET("/cases", handleGetMyCases)         // ← настоящий
 		me.POST("/cases/:id/open", handleOpenCase) // ← настоящий
 		me.GET("/talents", handleGetMyTalents)        // ← настоящий

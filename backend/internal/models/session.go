@@ -35,6 +35,6 @@ type Session struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Связи
-	User     User     `json:"user,omitempty" gorm:"foreignKey:UserID"`
-	Computer Computer `json:"computer,omitempty" gorm:"foreignKey:ComputerID"`
+	User     *User     `json:"user,omitempty" gorm:"foreignKey:UserID"`
+	Computer *Computer `json:"computer,omitempty" gorm:"foreignKey:ComputerID"`
 }
