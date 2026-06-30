@@ -25,6 +25,20 @@ func canInvestTalent(userLevel, skillpoints, currentLevel, maxLevel, minUserLeve
 	}
 }
 
+// talentEffect — суммарный эффект таланта у игрока (уровень × effect_per_level).
+// Возвращает 0, если талант не вложен или не найден.
+func talentEffect(userID, talentID string) float64 {
+	var st models.SkillTalent
+	if err := db.Where("user_id = ? AND talent_id = ?", userID, talentID).First(&st).Error; err != nil {
+		return 0
+	}
+	var def models.TalentDefinition
+	if err := db.First(&def, "id = ?", talentID).Error; err != nil {
+		return 0
+	}
+	return float64(st.CurrentLevel) * def.EffectPerLevel
+}
+
 // GET /me/talents — дерево талантов с текущими уровнями и эффектами игрока.
 func handleGetMyTalents(c *gin.Context) {
 	userID := c.GetString("user_id")

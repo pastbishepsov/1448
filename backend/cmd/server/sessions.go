@@ -45,6 +45,14 @@ func applyXP(u *models.User, gained int64) int {
 	return u.Level - startLevel
 }
 
+// boostedXP — базовый опыт с учётом таланта (effect — доля прибавки, напр. 0.30 = +30%).
+func boostedXP(baseXP int64, effect float64) int64 {
+	if effect <= 0 {
+		return baseXP
+	}
+	return int64(math.Round(float64(baseXP) * (1 + effect)))
+}
+
 // POST /me/sessions/start — начать игровую сессию за компьютером.
 func handleStartSession(c *gin.Context) {
 	userID, err := uuid.Parse(c.GetString("user_id"))
@@ -152,7 +160,8 @@ func handleEndSession(c *gin.Context) {
 		}
 	}
 
-	xpGained := int64(minutes) * xpPerMinute
+	// Талант xp_boost (Agility) увеличивает опыт за сессию.
+	xpGained := boostedXP(int64(minutes)*xpPerMinute, talentEffect(userID, "xp_boost"))
 	coinsGained := int64(minutes) * coinsPerMinute
 
 	var user models.User
