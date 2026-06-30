@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"math/big"
 	"net/http"
 	"time"
 
@@ -12,9 +14,26 @@ import (
 )
 
 const (
-	caseTTLDays        = 30   // кейс сгорает через месяц бездействия
-	maxPaymentIncrease = 50.0 // потолок кэшбек-бонуса, % (тюнинг-параметр)
+	caseTTLDays           = 30   // кейс сгорает через месяц бездействия
+	maxPaymentIncrease    = 50.0 // потолок кэшбек-бонуса, % (тюнинг-параметр)
+	baseSessionCaseChance = 0.20 // базовый шанс выпадения кейса за сессию (тюнинг)
+	maxSessionCaseChance  = 0.85 // потолок шанса с учётом талантов
 )
+
+// chance — произошло ли событие с вероятностью p. crypto/rand, только на сервере.
+func chance(p float64) bool {
+	if p <= 0 {
+		return false
+	}
+	if p >= 1 {
+		return true
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(10000))
+	if err != nil {
+		return false
+	}
+	return float64(n.Int64()) < p*10000
+}
 
 // grantCase — выдать кейс игроку. db может быть обычным или транзакционным.
 func grantCase(db *gorm.DB, userID uuid.UUID, clubID *uuid.UUID, tier models.CaseTier, source models.CaseSource) error {

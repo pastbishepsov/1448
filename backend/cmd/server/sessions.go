@@ -202,6 +202,18 @@ func handleEndSession(c *gin.Context) {
 		}
 	}
 
+	// Бонусный кейс за сессию. Шанс усиливает талант case_hunter (Strength).
+	bonusCase := false
+	dropChance := baseSessionCaseChance + talentEffect(userID, "case_hunter")
+	if dropChance > maxSessionCaseChance {
+		dropChance = maxSessionCaseChance
+	}
+	if chance(dropChance) {
+		if grantCase(db, user.ID, &session.ClubID, models.CaseTierLight, models.CaseSourceDailyVisit) == nil {
+			bonusCase = true
+		}
+	}
+
 	// Достижения за наигранные часы (Light/Medium/Heavy кейсы + очки навыков).
 	checkAchievements(session.UserID, userHoursPlayed(userID), 1)
 
@@ -218,6 +230,7 @@ func handleEndSession(c *gin.Context) {
 		"xp_earned":     xpGained,
 		"coins_earned":  coinsGained,
 		"levels_gained": levelsGained,
+		"bonus_case":    bonusCase,
 		"user": gin.H{
 			"level":                 user.Level,
 			"xp_current":            user.XPCurrent,
