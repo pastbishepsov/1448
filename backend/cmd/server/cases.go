@@ -35,6 +35,55 @@ func chance(p float64) bool {
 	return float64(n.Int64()) < p*10000
 }
 
+// cryptoIntn — случайное целое в [0, n). crypto/rand.
+func cryptoIntn(n int64) int64 {
+	if n <= 0 {
+		return 0
+	}
+	v, err := rand.Int(rand.Reader, big.NewInt(n))
+	if err != nil {
+		return 0
+	}
+	return v.Int64()
+}
+
+// Базовые веса тиров для бонусного кейса (сумма 10000): Light доминирует.
+var bonusTierWeights = []struct {
+	tier   models.CaseTier
+	weight float64
+	rare   bool // Heavy+ — на них действует talent luck_grade
+}{
+	{models.CaseTierLight, 6900, false},
+	{models.CaseTierMedium, 2000, false},
+	{models.CaseTierHeavy, 800, true},
+	{models.CaseTierTitan, 250, true},
+	{models.CaseTierGods, 50, true},
+}
+
+// rollCaseTier — взвешенный выбор тира бонусного кейса.
+// luckBoost (talent luck_grade) множит веса Heavy+ на (1 + luckBoost).
+func rollCaseTier(luckBoost float64) models.CaseTier {
+	total := 0.0
+	weighted := make([]float64, len(bonusTierWeights))
+	for i, w := range bonusTierWeights {
+		ww := w.weight
+		if w.rare && luckBoost > 0 {
+			ww *= 1 + luckBoost
+		}
+		weighted[i] = ww
+		total += ww
+	}
+	r := float64(cryptoIntn(int64(total)))
+	acc := 0.0
+	for i, w := range bonusTierWeights {
+		acc += weighted[i]
+		if r < acc {
+			return w.tier
+		}
+	}
+	return models.CaseTierLight
+}
+
 // grantCase — выдать кейс игроку. db может быть обычным или транзакционным.
 func grantCase(db *gorm.DB, userID uuid.UUID, clubID *uuid.UUID, tier models.CaseTier, source models.CaseSource) error {
 	c := models.Case{

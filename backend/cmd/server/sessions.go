@@ -202,14 +202,16 @@ func handleEndSession(c *gin.Context) {
 		}
 	}
 
-	// Бонусный кейс за сессию. Шанс усиливает талант case_hunter (Strength).
+	// Бонусный кейс за сессию. Шанс усиливает case_hunter, тир — luck_grade.
 	bonusCase := false
+	var bonusCaseTier models.CaseTier
 	dropChance := baseSessionCaseChance + talentEffect(userID, "case_hunter")
 	if dropChance > maxSessionCaseChance {
 		dropChance = maxSessionCaseChance
 	}
 	if chance(dropChance) {
-		if grantCase(db, user.ID, &session.ClubID, models.CaseTierLight, models.CaseSourceDailyVisit) == nil {
+		bonusCaseTier = rollCaseTier(talentEffect(userID, "luck_grade"))
+		if grantCase(db, user.ID, &session.ClubID, bonusCaseTier, models.CaseSourceDailyVisit) == nil {
 			bonusCase = true
 		}
 	}
@@ -229,8 +231,9 @@ func handleEndSession(c *gin.Context) {
 		"minutes":       minutes,
 		"xp_earned":     xpGained,
 		"coins_earned":  coinsGained,
-		"levels_gained": levelsGained,
-		"bonus_case":    bonusCase,
+		"levels_gained":   levelsGained,
+		"bonus_case":      bonusCase,
+		"bonus_case_tier": bonusCaseTier,
 		"user": gin.H{
 			"level":                 user.Level,
 			"xp_current":            user.XPCurrent,
