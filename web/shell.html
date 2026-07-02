@@ -165,6 +165,16 @@
   .avapick{display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin:14px 0}
   .avapick button{font-size:26px; padding:8px 0; background:var(--card); border:1px solid var(--line); border-radius:12px; cursor:pointer}
   .avapick button.on{border-color:var(--acc); background:rgba(124,92,255,.18)}
+
+  /* ═══ LOCK (как в клубе: без сессии ПК заблокирован) ═══ */
+  .lockscreen{position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center;
+              flex-direction:column; gap:10px; background:radial-gradient(900px 500px at 50% 30%, #131a2b 0%, rgba(5,7,11,.98) 60%);
+              backdrop-filter:blur(6px)}
+  .lockscreen.show{display:flex}
+  .lock-clock{font-size:88px; font-weight:900; letter-spacing:2px; font-variant-numeric:tabular-nums; line-height:1}
+  .lock-sub{color:var(--dim); font-size:15px; margin-bottom:16px}
+  .lock-card{display:flex; flex-direction:column; gap:10px; width:340px; text-align:center}
+  .lock-user{color:var(--dim); font-size:14px; margin-top:14px}
 </style>
 </head>
 <body>
@@ -269,6 +279,17 @@
     </div>
     <div class="muted" id="eoExtra"></div>
     <button class="btn" style="margin-top:18px" onclick="closeOverlay('endOverlay')">Ок</button>
+  </div>
+</div>
+
+<div id="lockOverlay" class="lockscreen">
+  <div class="logo" style="font-size:34px">14<b>:</b>48</div>
+  <div class="lock-clock" id="lockClock">--:--</div>
+  <div class="lock-sub">ПК заблокирован — начни сессию, чтобы играть</div>
+  <div class="lock-card">
+    <button class="btn" onclick="startSession()">▶ Начать сессию</button>
+    <div class="lock-user" id="lockUser"></div>
+    <button class="btn ghost" onclick="logout()">Сменить аккаунт</button>
   </div>
 </div>
 
@@ -396,6 +417,7 @@ async function submitAuth(){
 function logout(){
   clearTokens(); me = null; activeSession = null;
   if (timerIv) clearInterval(timerIv);
+  document.getElementById('lockOverlay').classList.remove('show');
   document.getElementById('shellView').classList.add('hidden');
   document.getElementById('authView').classList.remove('hidden');
 }
@@ -420,7 +442,7 @@ async function loadAll(){
     sessions = ss.sessions || [];
     activeSession = sessions.find(s => !s.ended_at) || null;
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
-    renderTop(); renderSession(); renderSide();
+    renderTop(); renderSession(); renderSide(); renderLock();
     document.getElementById('casesBub').classList.toggle('hidden', !(cs.unopened > 0));
     document.getElementById('casesBub').textContent = cs.unopened;
   }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
@@ -585,6 +607,24 @@ function showLevelUp(level){
   document.getElementById('lvlOverlay').classList.add('show');
 }
 
+/* ═══════════════ LOCK-ЭКРАН ═══════════════ */
+function renderLock(){
+  const inShell = !document.getElementById('shellView').classList.contains('hidden');
+  const lock = document.getElementById('lockOverlay');
+  lock.classList.toggle('show', inShell && !activeSession);
+  if (me) document.getElementById('lockUser').textContent = 'Вошёл как ' + me.nickname + ' · LVL ' + me.level;
+}
+
+// Поллинг: если сессию завершили извне (админ/сервер) — экран блокируется сам.
+setInterval(async () => {
+  if (!activeSession || document.getElementById('shellView').classList.contains('hidden')) return;
+  try{
+    const ss = await api('/me/sessions');
+    const still = (ss.sessions||[]).find(s => s.id === activeSession.id && !s.ended_at);
+    if (!still){ toast('⏹ Сессия завершена'); await loadAll(); }
+  }catch(e){ /* тихо: сеть/токен обработает api() */ }
+}, 10000);
+
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
@@ -737,7 +777,9 @@ function toast(msg){
 function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
 setInterval(() => {
   const d = new Date();
-  document.getElementById('clock').textContent = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const t = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  document.getElementById('clock').textContent = t;
+  document.getElementById('lockClock').textContent = t;
 }, 1000);
 
 /* ═══════════════ СТАРТ ═══════════════ */

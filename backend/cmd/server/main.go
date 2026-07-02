@@ -93,15 +93,17 @@ func main() {
 		me.GET("/sessions", handleGetMySessions)     // ← настоящий
 		me.POST("/sessions/start", handleStartSession) // ← настоящий
 		me.POST("/sessions/end", handleEndSession)     // ← настоящий
+		me.GET("/bookings", handleGetMyBookings)          // ← настоящий
+		me.DELETE("/bookings/:id", handleCancelBooking)   // ← настоящий
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
 
 		clubs := v1.Group("/clubs")
-		clubs.GET("", stub("GetClubs"))
-		clubs.GET("/:id", stub("GetClub"))
-		clubs.GET("/:id/computers", stub("GetComputers"))
-		clubs.POST("/:id/bookings", stub("CreateBooking"))
+		clubs.GET("", handleGetClubs)                    // ← настоящий
+		clubs.GET("/:id", handleGetClub)                 // ← настоящий
+		clubs.GET("/:id/computers", handleGetClubComputers) // ← настоящий
+		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
 		v1.GET("/ws/shell", handleShellWS) // ← настоящий
 	}

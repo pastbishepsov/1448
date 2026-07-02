@@ -42,6 +42,12 @@
 | POST | `/api/v1/me/talents/invest` | вложить очко навыка в талант | JWT |
 | GET  | `/api/v1/me/achievements` | достижения: получено / доступно | JWT |
 | GET  | `/api/v1/leaderboard` | топ игроков по опыту + твоё место | JWT |
+| GET  | `/api/v1/clubs` | клубы + счётчики ПК (всего/свободно) | — |
+| GET  | `/api/v1/clubs/:id` | карточка клуба | — |
+| GET  | `/api/v1/clubs/:id/computers` | ПК клуба со статусами | — |
+| POST | `/api/v1/clubs/:id/bookings` | бронь ПК (без пересечений) | JWT |
+| GET  | `/api/v1/me/bookings` | мои брони | JWT |
+| DELETE | `/api/v1/me/bookings/:id` | отмена будущей брони | JWT |
 
 **XP-движок** (ядро игры) работает целиком на сервере:
 - начисление XP и coins за минуты игры;
@@ -113,7 +119,7 @@ Refresh stateless (без хранилища) → отзыв конкретно�
 ## Что в заглушках (возвращают 501)
 
 Маршруты определены в `backend/cmd/server/main.go`, но логики пока нет:
-`/auth/otp/*`, `/auth/logout`, `/clubs*`.
+`/auth/otp/*`, `/auth/logout`.
 
 ---
 
@@ -245,8 +251,11 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 2. ✅ **Спринт 2 — shell-agent** (`backend/cmd/agent`): запуск программ с ПК по
    allowlist, WS (heartbeat, admin_call), интеграция с гостевым экраном.
    Блокировка экрана по концу сессии перенесена в спринт 3.
-3. **Спринт 3 — клубы и бронь + Admin MVP**: `GET /clubs*`, бронирование (миграция 007
-   уже есть), админка (React): гости, статусы ПК real-time, сессии.
+3. 🔶 **Спринт 3 — клубы/бронь + lock + Admin MVP**:
+   ✅ 3а: lock-экран гостевого ПК (без сессии — блокировка, авто-лок при завершении
+   извне, поллинг 10с); клубы (`GET /clubs*`) и бронь (создание с проверкой
+   пересечений — `bookingOverlaps` + тест, отмена, список).
+   ⬜ 3б: Admin MVP — гости, статусы ПК real-time, управление сессиями, брони.
 4. **Спринт 4 — экономика вглубь**: double_drop, депозиты + coin_mint/cashback_master,
    сгорание кейсов (`expires_at`), daily-квесты.
 5. **Спринт 5 — продакшн-минимум**: logout (Redis blacklist), rate limiting, один роутер,
