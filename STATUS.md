@@ -56,6 +56,8 @@
 | POST | `/api/v1/admin/sessions/:id/end` | форс-завершение (честное начисление) | admin |
 | GET  | `/api/v1/admin/bookings` | ближайшие брони | admin |
 | POST | `/api/v1/admin/bookings/:id/cancel` | отмена брони | admin |
+| POST | `/api/v1/admin/users/:id/deposit` | пополнение баланса гостю | admin |
+| GET  | `/api/v1/me/deposits` | история пополнений | JWT |
 
 Роли: `users.role` (player/admin/owner, миграция 008) → JWT-claim `role` →
 `adminMiddleware`. Повысить аккаунт:
@@ -117,10 +119,21 @@ Refresh stateless (без хранилища) → отзыв конкретно�
 - 9 талантов сидятся миграцией 006 (`talent_definitions`);
 - игрок вкладывает очки навыков (`POST /me/talents/invest`) — проверка лимитов в `canInvestTalent`;
 - эффект таланта возвращается как сырое число (`effect_now = уровень × effect_per_level`);
-- **применяются** (3 из 9): `xp_boost` (Agility) — опыт за сессию; `case_hunter` (Strength) —
-  шанс бонусного кейса; `luck_grade` (Strength) — шанс Heavy+ тира бонусного кейса;
-- остальные (`cashback_master`, `coin_mint`, `double_drop` и т.д.) — по мере появления
-  их механик (кэшбек при оплате, депозиты, двойной дроп).
+- **применяются** (6 из 9): `xp_boost` (Agility) — опыт за сессию; `case_hunter` (Strength) —
+  шанс бонусного кейса; `luck_grade` (Strength) — тир бонусного кейса;
+  `double_drop` (Strength) — шанс второго бонусного кейса; `coin_mint` (Intellect) —
+  бонусные монеты к депозиту; `cashback_master` (Intellect) — скидка на тариф сессии;
+- ждут механик: `night_mode` (ночной тариф), `booking_priority` (бронь), `investor` (TTL монет).
+
+**Экономика денег** (спринт 4):
+- **депозиты**: админ оформляет пополнение (`POST /admin/users/:id/deposit`,
+  cash/card/blik) — курс 1 zł = 10 монет, бонус `coin_mint`, кейс за депозит от 20 zł,
+  ачивка `first_deposit`; история — `GET /me/deposits` (миграция 009, `deposits`);
+- **скидка на тариф**: `effective_rate_pln` при старте сессии = базовый тариф минус
+  (кэшбек игрока + `cashback_master`), потолок 30% (`effectiveRate`, тест);
+- **первый визит дня**: +50 XP фиксировано при первой завершённой сессии дня;
+- **сгорание кейсов**: `expires_at` уже ставился при выдаче; сгоревшие не считаются
+  в unopened и показываются в UI с таймером «сгорит через N дн».
 
 **Достижения** (`achievements`, сидятся миграцией 005):
 - движок проверяет условия после сессии и при регистрации, выдаёт награды
@@ -272,8 +285,9 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
    пересечений — `bookingOverlaps` + тест, отмена, список).
    ✅ 3б: Admin MVP — роль admin (миграция 008, role в JWT), `/admin/*`,
    `web/admin.html`: гости (бан), ПК (Shell online), форс-завершение сессий, брони.
-4. **Спринт 4 — экономика вглубь**: double_drop, депозиты + coin_mint/cashback_master,
-   сгорание кейсов (`expires_at`), daily-квесты.
+4. ✅ **Спринт 4 — экономика вглубь**: double_drop, депозиты (миграция 009) +
+   coin_mint, скидка cashback_master, сгорание кейсов в UI/счётчике, +50 XP за
+   первый визит дня. Полноценные daily/weekly-квесты — в бэклог.
 5. **Спринт 5 — продакшн-минимум**: logout (Redis blacklist), rate limiting, один роутер,
    CI (GitHub Actions), каталог приложений из админки.
 6. **Спринт 6 — пилот**: OTP (Twilio), Stripe+BLIK, деплой на VPS.

@@ -12,10 +12,17 @@ import (
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
+// playerStats — статистика игрока для проверки условий достижений.
+type playerStats struct {
+	HoursPlayed  int
+	LoginCount   int
+	DepositCount int
+}
+
 // conditionMet — выполнено ли условие достижения при данной статистике игрока.
 // Чистая функция (тестируется в achievements_test.go).
-// Поддержаны типы: hours_played, login_count. Остальные — по мере появления механик.
-func conditionMet(condType, condValueJSON string, hoursPlayed, loginCount int) bool {
+// Поддержаны типы: hours_played, login_count, deposit_count. Остальные — по мере появления механик.
+func conditionMet(condType, condValueJSON string, s playerStats) bool {
 	var cv struct {
 		Min *int `json:"min"`
 	}
@@ -26,9 +33,11 @@ func conditionMet(condType, condValueJSON string, hoursPlayed, loginCount int) b
 	}
 	switch condType {
 	case "hours_played":
-		return hoursPlayed >= min
+		return s.HoursPlayed >= min
 	case "login_count":
-		return loginCount >= min
+		return s.LoginCount >= min
+	case "deposit_count":
+		return s.DepositCount >= min
 	default:
 		return false
 	}
@@ -45,7 +54,7 @@ func userHoursPlayed(userID string) int {
 }
 
 // checkAchievements — выдать новые lifetime-достижения и их награды (best-effort).
-func checkAchievements(userID uuid.UUID, hoursPlayed, loginCount int) {
+func checkAchievements(userID uuid.UUID, stats playerStats) {
 	var earned []models.UserAchievement
 	db.Where("user_id = ?", userID).Find(&earned)
 	have := map[string]bool{}
@@ -60,7 +69,7 @@ func checkAchievements(userID uuid.UUID, hoursPlayed, loginCount int) {
 		if have[a.ID] {
 			continue
 		}
-		if !conditionMet(a.ConditionType, a.ConditionValue, hoursPlayed, loginCount) {
+		if !conditionMet(a.ConditionType, a.ConditionValue, stats) {
 			continue
 		}
 		tier := a.RewardCaseTier

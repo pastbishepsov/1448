@@ -122,9 +122,11 @@ func handleGetMyCases(c *gin.Context) {
 		Order("created_at DESC").
 		Find(&cases)
 
+	// Неоткрытые считаем без сгоревших (expires_at в прошлом).
+	now := time.Now()
 	unopened := 0
 	for _, x := range cases {
-		if x.OpenedAt == nil {
+		if x.OpenedAt == nil && x.ExpiresAt.After(now) {
 			unopened++
 		}
 	}

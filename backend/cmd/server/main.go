@@ -95,6 +95,7 @@ func main() {
 		me.POST("/sessions/end", handleEndSession)     // ← настоящий
 		me.GET("/bookings", handleGetMyBookings)          // ← настоящий
 		me.DELETE("/bookings/:id", handleCancelBooking)   // ← настоящий
+		me.GET("/deposits", handleGetMyDeposits)          // ← настоящий
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
@@ -114,6 +115,7 @@ func main() {
 		adm.GET("/users", handleAdminUsers)
 		adm.POST("/users/:id/ban", handleAdminBan)
 		adm.POST("/users/:id/unban", handleAdminUnban)
+		adm.POST("/users/:id/deposit", handleAdminDeposit)
 		adm.GET("/computers", handleAdminComputers)
 		adm.GET("/sessions/active", handleAdminActiveSessions)
 		adm.POST("/sessions/:id/end", handleAdminEndSession)
@@ -185,7 +187,7 @@ func handleRegister(c *gin.Context) {
 	}
 
 	// Достижение «Добро пожаловать»: +5 очков навыка и Light-кейс.
-	checkAchievements(user.ID, 0, 1)
+	checkAchievements(user.ID, playerStats{LoginCount: 1})
 
 	writeAuth(c, http.StatusCreated, &user)
 }

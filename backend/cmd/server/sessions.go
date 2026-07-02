@@ -95,6 +95,15 @@ func handleStartSession(c *gin.Context) {
 		return
 	}
 
+	// Скидка на тариф: кэшбек игрока (бустеры кейсов) + талант cashback_master.
+	var user models.User
+	_ = db.First(&user, "id = ?", userID).Error
+	discountPct := user.PaymentIncreasePct + talentEffect(userID.String(), "cashback_master")*100
+	if discountPct > maxDiscountPct {
+		discountPct = maxDiscountPct
+	}
+	rate := effectiveRate(club.BaseRatePLN, discountPct)
+
 	session := models.Session{
 		UserID:           userID,
 		ComputerID:       computer.ID,
@@ -102,7 +111,7 @@ func handleStartSession(c *gin.Context) {
 		Status:           models.SessionStatusActive,
 		StartedAt:        time.Now(),
 		BaseRatePLN:      club.BaseRatePLN,
-		EffectiveRatePLN: club.BaseRatePLN,
+		EffectiveRatePLN: rate,
 	}
 
 	err = db.Transaction(func(tx *gorm.DB) error {
@@ -125,11 +134,13 @@ func handleStartSession(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusCreated, gin.H{
-		"session_id": session.ID,
-		"started_at": session.StartedAt,
-		"computer":   computer.Name,
-		"club":       club.Name,
-		"rate_pln":   club.BaseRatePLN,
+		"session_id":         session.ID,
+		"started_at":         session.StartedAt,
+		"computer":           computer.Name,
+		"club":               club.Name,
+		"rate_pln":           club.BaseRatePLN,
+		"effective_rate_pln": rate,
+		"discount_pct":       discountPct,
 	})
 }
 
@@ -157,14 +168,16 @@ func handleEndSession(c *gin.Context) {
 
 // finishResult — итог завершения сессии (общий для игрока и админа).
 type finishResult struct {
-	Session       *models.Session
-	Minutes       int
-	XPGained      int64
-	CoinsGained   int64
-	LevelsGained  int
-	BonusCase     bool
-	BonusCaseTier models.CaseTier
-	User          models.User
+	Session        *models.Session
+	Minutes        int
+	XPGained       int64
+	CoinsGained    int64
+	DailyBonusXP   int64
+	LevelsGained   int
+	BonusCase      bool
+	BonusCaseTier  models.CaseTier
+	BonusCaseTier2 models.CaseTier
+	User           models.User
 }
 
 func finishResponse(r *finishResult) gin.H {
@@ -173,9 +186,11 @@ func finishResponse(r *finishResult) gin.H {
 		"minutes":       r.Minutes,
 		"xp_earned":     r.XPGained,
 		"coins_earned":  r.CoinsGained,
+		"daily_bonus_xp": r.DailyBonusXP,
 		"levels_gained":   r.LevelsGained,
 		"bonus_case":      r.BonusCase,
 		"bonus_case_tier": r.BonusCaseTier,
+		"bonus_case_tier_2": r.BonusCaseTier2,
 		"user": gin.H{
 			"level":                 r.User.Level,
 			"xp_current":            r.User.XPCurrent,
@@ -209,6 +224,19 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 	// Талант xp_boost (Agility) увеличивает опыт за сессию.
 	xpGained := boostedXP(int64(minutes)*xpPerMinute, talentEffect(userID, "xp_boost"))
 	coinsGained := int64(minutes) * coinsPerMinute
+
+	// Первый визит за день: +50 XP (фиксировано, без модификаторов — ТЗ 4.1).
+	dailyBonusXP := int64(0)
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	var todayCount int64
+	db.Model(&models.Session{}).
+		Where("user_id = ? AND status = ? AND ended_at >= ? AND id <> ?",
+			userID, models.SessionStatusCompleted, startOfDay, session.ID).
+		Count(&todayCount)
+	if todayCount == 0 {
+		dailyBonusXP = 50
+		xpGained += dailyBonusXP
+	}
 
 	var user models.User
 	if err := db.First(&user, "id = ?", userID).Error; err != nil {
@@ -260,8 +288,21 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 		}
 	}
 
-	// Достижения за наигранные часы (Light/Medium/Heavy кейсы + очки навыков).
-	checkAchievements(session.UserID, userHoursPlayed(userID), 1)
+	// Талант double_drop (Strength): шанс второго бонусного кейса (тир роллится заново).
+	var bonusCaseTier2 models.CaseTier
+	if bonusCase && chance(talentEffect(userID, "double_drop")) {
+		bonusCaseTier2 = rollCaseTier(talentEffect(userID, "luck_grade"))
+		if grantCase(db, user.ID, &session.ClubID, bonusCaseTier2, models.CaseSourceDailyVisit) != nil {
+			bonusCaseTier2 = ""
+		}
+	}
+
+	// Достижения: часы, входы, депозиты.
+	checkAchievements(session.UserID, playerStats{
+		HoursPlayed:  userHoursPlayed(userID),
+		LoginCount:   1,
+		DepositCount: userDepositCount(userID),
+	})
 
 	// Команда на ПК: завершить и заблокировать (если Shell подключён).
 	notifyShell(session.ComputerID.String(), websocket.MsgSessionEnd, gin.H{
@@ -273,8 +314,9 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 	return &finishResult{
 		Session: session, Minutes: minutes,
 		XPGained: xpGained, CoinsGained: coinsGained,
+		DailyBonusXP: dailyBonusXP,
 		LevelsGained: levelsGained,
-		BonusCase:    bonusCase, BonusCaseTier: bonusCaseTier,
+		BonusCase:    bonusCase, BonusCaseTier: bonusCaseTier, BonusCaseTier2: bonusCaseTier2,
 		User: user,
 	}, nil
 }

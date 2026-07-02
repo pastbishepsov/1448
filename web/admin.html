@@ -237,10 +237,11 @@ async function renderUsers(){
     <td>${u.role}</td>
     <td><span class="st ${u.status}">${u.status}</span></td>
     <td class="muted">${fmtTime(u.last_active_at)}</td>
-    <td>${u.role === 'player'
+    <td style="white-space:nowrap">${u.role === 'player'
         ? (u.status === 'banned'
           ? `<button class="btn ghost mini" onclick="unban('${u.id}','${esc(u.nickname)}')">Разбанить</button>`
-          : `<button class="btn danger mini" onclick="ban('${u.id}','${esc(u.nickname)}')">Бан</button>`)
+          : `<button class="btn mini" onclick="deposit('${u.id}','${esc(u.nickname)}')">💰 Депозит</button>
+             <button class="btn danger mini" onclick="ban('${u.id}','${esc(u.nickname)}')">Бан</button>`)
         : ''}</td>
   </tr>`).join('')}</table>`;
 }
@@ -280,6 +281,21 @@ async function unban(id, nick){
   try{ await api('/admin/users/'+id+'/unban', {method:'POST', body:'{}'}); toast('✓ '+nick+' разбанен'); renderUsers(); }
   catch(e){ toast('⚠ ' + e.message); }
 }
+async function deposit(id, nick){
+  const raw = prompt('Пополнение для «'+nick+'» — сумма в злотых (курс: 1 zł = 10 монет):', '50');
+  if (raw === null) return;
+  const amount = parseFloat(String(raw).replace(',', '.'));
+  if (!amount || amount <= 0){ toast('⚠ Нужна сумма больше нуля'); return; }
+  try{
+    const d = await api('/admin/users/'+id+'/deposit', {method:'POST',
+      body:JSON.stringify({amount_pln: amount, method: 'cash'})});
+    toast('💰 '+nick+': +'+d.coins_granted+' монет'
+      + (d.bonus_coins > 0 ? ' (+'+d.bonus_coins+' бонус таланта)' : '')
+      + (d.case_granted ? ' + кейс за депозит 🎁' : ''));
+    renderUsers();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 async function cancelBooking(id){
   if (!confirm('Отменить бронь?')) return;
   try{ await api('/admin/bookings/'+id+'/cancel', {method:'POST', body:'{}'}); toast('📅 Бронь отменена'); renderBookings(); }

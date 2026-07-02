@@ -593,8 +593,10 @@ async function endSession(devMinutes){
     document.getElementById('eoXP').textContent = '+' + fmt(d.xp_earned) + ' XP';
     document.getElementById('eoCoins').textContent = '+' + fmt(d.coins_earned);
     let extra = [];
+    if (d.daily_bonus_xp > 0) extra.push('☀ первый визит дня: +' + d.daily_bonus_xp + ' XP');
     if (d.levels_gained > 0) extra.push('уровней получено: ' + d.levels_gained);
     if (d.bonus_case) extra.push('🎁 бонусный кейс: ' + (d.bonus_case_tier||''));
+    if (d.bonus_case_tier_2) extra.push('🎁🎁 двойной дроп: ' + d.bonus_case_tier_2);
     document.getElementById('eoExtra').textContent = extra.join(' · ');
     document.getElementById('endOverlay').classList.add('show');
     if (d.levels_gained > 0) setTimeout(()=>showLevelUp(d.user.level), 400);
@@ -640,11 +642,19 @@ function renderSide(){
     el.innerHTML = cases.map(c => {
       const t = TIER[c.tier] || TIER.light;
       const opened = !!c.opened_at;
-      return `<div class="card case-i ${opened?'opened':''}" ${opened?'':`onclick="openCase('${c.id}','${c.tier}')"`}>
-        <div class="box" style="background:${t.c}22; border:1px solid ${t.c}">${t.em}</div>
+      const expired = !opened && c.expires_at && new Date(c.expires_at) < new Date();
+      const daysLeft = c.expires_at ? Math.ceil((new Date(c.expires_at) - Date.now()) / 86400000) : null;
+      let sub;
+      if (opened) sub = 'открыт: ' + (c.drop_type==='coins' ? '+'+fmt(c.drop_amount)+' 🪙' : '+'+c.drop_amount+'% кэшбек');
+      else if (expired) sub = '🔥 сгорел';
+      else sub = 'источник: ' + c.source + (daysLeft !== null
+        ? ` · <span style="color:${daysLeft <= 3 ? 'var(--red)' : 'var(--dim)'}">сгорит через ${daysLeft} дн</span>` : '');
+      const dead = opened || expired;
+      return `<div class="card case-i ${dead?'opened':''}" ${dead?'':`onclick="openCase('${c.id}','${c.tier}')"`}>
+        <div class="box" style="background:${t.c}22; border:1px solid ${t.c}">${expired?'🔥':t.em}</div>
         <div><div class="t" style="color:${t.c}">${c.tier}</div>
-        <div class="muted" style="font-size:11.5px">${opened ? 'открыт: '+(c.drop_type==='coins' ? '+'+fmt(c.drop_amount)+' 🪙' : '+'+c.drop_amount+'% кэшбек') : 'источник: '+c.source}</div></div>
-        ${opened?'':'<div class="open-hint">ОТКРЫТЬ ▸</div>'}
+        <div class="muted" style="font-size:11.5px">${sub}</div></div>
+        ${dead?'':'<div class="open-hint">ОТКРЫТЬ ▸</div>'}
       </div>`;
     }).join('');
   }
