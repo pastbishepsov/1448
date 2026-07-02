@@ -103,6 +103,15 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — go vet/test/build + синт
 - запуск: открыть файл в браузере; киоск-режим:
   `msedge --kiosk "file:///<путь>/web/shell.html" --edge-kiosk-type=fullscreen`.
 
+**Дизайн-язык «14:48 Aurora»** (гостевой экран, редизайн по референсам reactbits/
+glass3d/cta.gallery/designspells): тёмная база + новый акцент-фуксия `--acc3`,
+фирменный aurora-фон (плывущие blob'ы), glassmorphism (backdrop-blur карточки),
+пульсирующее двоеточие в лого (мотив времени), premium-кнопки (shimmer+glow+magnet),
+3D-tilt игровых тайлов со spotlight, count-up чисел, star-border на Titan/God's
+кейсах, конфетти при дропе/левел-апе, click-spark, пружинные переходы вкладок.
+Всё ванильным CSS/JS (движок `FX`), офлайн. Перф-гард: `prefers-reduced-motion`,
+`hardwareConcurrency<=2` и FPS<32 → класс `perf-lite` (отключает blur/частицы/tilt).
+
 **Real-time / WebSocket** (мост к PC Shell):
 - ПК подключается к `/api/v1/ws/shell?computer_id=...`;
 - сервер шлёт команды: `session_start`, `session_end` (далее — `force_unlock`, `xp_update`);

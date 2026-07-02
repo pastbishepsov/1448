@@ -6,15 +6,47 @@
 <title>14:48 — Гостевой экран</title>
 <style>
   :root{
-    --bg:#07090e; --panel:#10141d; --card:#151a24; --card2:#1d2330; --line:#2a3140;
-    --txt:#e8ebf2; --dim:#8a93a6; --acc:#7c5cff; --acc2:#22d3ee;
+    --bg:#06070f; --panel:#0e1220; --card:#141a2b; --card2:#1b2236; --line:#28304a;
+    --txt:#eaedf6; --dim:#8b93ab; --acc:#7c5cff; --acc2:#22d3ee;
+    --acc3:#e879f9; /* НОВЫЙ фирменный акцент — фуксия (Aurora) */
     --gold:#fbbf24; --green:#34d399; --red:#f87171;
-    --t-light:#34d399; --t-medium:#38bdf8; --t-heavy:#a78bfa; --t-titan:#fb923c; --t-gods:#f87171;
+    --t-light:#34d399; --t-medium:#38bdf8; --t-heavy:#a78bfa; --t-titan:#fb923c; --t-gods:#fb7185;
+    /* glass */
+    --glass:rgba(20,26,43,.55); --glass-2:rgba(27,34,54,.5);
+    --glass-brd:rgba(255,255,255,.09); --glass-hi:rgba(255,255,255,.14);
+    --blur:14px;
+    /* фирменный aurora-градиент */
+    --aurora:linear-gradient(120deg,#7c5cff 0%,#e879f9 45%,#22d3ee 100%);
+    --aurora-soft:linear-gradient(120deg,rgba(124,92,255,.9),rgba(232,121,249,.85),rgba(34,211,238,.9));
+    /* тени и свечения */
+    --sh-1:0 8px 30px rgba(0,0,0,.35); --sh-2:0 18px 50px rgba(0,0,0,.5);
+    --glow:0 0 24px rgba(124,92,255,.45); --glow-2:0 0 30px rgba(232,121,249,.4);
+    /* easing */
+    --spring:cubic-bezier(.22,1,.36,1); --smooth:cubic-bezier(.4,0,.2,1);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{height:100%}
-  body{margin:0; background:radial-gradient(1200px 600px at 70% -10%, #131a2b 0%, var(--bg) 55%);
+  body{margin:0; background:var(--bg);
        color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden}
+  /* ═══ AURORA-ФОН (фирменный приём) ═══ */
+  .aurora-bg{position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; background:var(--bg)}
+  .aurora-bg .blob{position:absolute; border-radius:50%; filter:blur(70px); opacity:.5; mix-blend-mode:screen; will-change:transform}
+  .aurora-bg .b1{width:46vw; height:46vw; left:-8vw; top:-12vw; background:radial-gradient(circle,#7c5cff,transparent 65%); animation:drift1 26s var(--smooth) infinite alternate}
+  .aurora-bg .b2{width:42vw; height:42vw; right:-10vw; top:-6vw; background:radial-gradient(circle,#e879f9,transparent 65%); animation:drift2 32s var(--smooth) infinite alternate}
+  .aurora-bg .b3{width:50vw; height:50vw; left:18vw; bottom:-24vw; background:radial-gradient(circle,#22d3ee,transparent 65%); animation:drift3 30s var(--smooth) infinite alternate}
+  .aurora-bg .grain{position:absolute; inset:0; opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  @keyframes drift1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(8vw,10vh) scale(1.18)}}
+  @keyframes drift2{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-9vw,12vh) scale(1.12)}}
+  @keyframes drift3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(6vw,-8vh) scale(1.22)}}
+  #authView,#shellView,#lockOverlay{position:relative; z-index:1}
+  /* уважение к слабому железу / настройкам */
+  body.perf-lite .aurora-bg .blob{animation:none}
+  body.perf-lite .glass{backdrop-filter:none; background:var(--panel)}
+  @media (prefers-reduced-motion:reduce){
+    .aurora-bg .blob{animation:none}
+    *{animation-duration:.001ms!important; transition-duration:.05ms!important}
+  }
   button{font-family:inherit}
   h1,h2,h3{margin:0}
   .muted{color:var(--dim); font-size:13px}
@@ -175,9 +207,122 @@
   .lock-sub{color:var(--dim); font-size:15px; margin-bottom:16px}
   .lock-card{display:flex; flex-direction:column; gap:10px; width:340px; text-align:center}
   .lock-user{color:var(--dim); font-size:14px; margin-top:14px}
+
+  /* ═══════════ 14:48 AURORA — премиум-слой ═══════════ */
+
+  /* — glass-поверхности — */
+  .authcard,.card,.res,.lvlpill,.side,.sesscard,.modal,.iconbtn{
+    backdrop-filter:blur(var(--blur)) saturate(1.2); -webkit-backdrop-filter:blur(var(--blur)) saturate(1.2);}
+  .authcard{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2);
+    position:relative; overflow:hidden}
+  .authcard::before{content:""; position:absolute; inset:0 0 auto 0; height:1px;
+    background:linear-gradient(90deg,transparent,var(--glass-hi),transparent)}
+  .card{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-1);
+    transition:transform .25s var(--spring), border-color .25s var(--smooth), box-shadow .25s var(--smooth)}
+  .side{background:linear-gradient(180deg,rgba(14,18,32,.75),rgba(10,12,20,.85))}
+
+  /* — лого с пульсирующим двоеточием (мотив времени) — */
+  .logo,.tb-logo{background:var(--aurora); -webkit-background-clip:text; background-clip:text; color:transparent;
+    -webkit-text-fill-color:transparent}
+  .logo b,.tb-logo b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
+  @keyframes colonPulse{0%,100%{opacity:1; text-shadow:0 0 10px var(--acc3)}50%{opacity:.35; text-shadow:none}}
+
+  /* — premium-кнопки: shimmer + glow + magnet — */
+  .btn{position:relative; overflow:hidden; background:var(--aurora); background-size:200% 100%;
+    box-shadow:var(--glow); transition:transform .2s var(--spring), box-shadow .25s var(--smooth), background-position .6s var(--smooth); z-index:0}
+  .btn::after{content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; z-index:1;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent); transform:skewX(-18deg)}
+  .btn:hover{transform:translateY(-2px) scale(1.015); box-shadow:0 10px 30px rgba(124,92,255,.5), var(--glow-2); background-position:100% 0}
+  .btn:hover::after{animation:shimmer .9s var(--smooth)}
+  @keyframes shimmer{0%{left:-60%}100%{left:130%}}
+  .btn.ghost{background:var(--glass-2); box-shadow:none; border:1px solid var(--glass-brd)}
+  .btn.ghost:hover{border-color:var(--acc); box-shadow:var(--glow)}
+  .btn.danger{background:linear-gradient(135deg,#ef4444,#fb7185); box-shadow:0 0 22px rgba(248,113,113,.4)}
+  .btn.gold{background:linear-gradient(135deg,#f59e0b,var(--gold)); color:#1a1205; box-shadow:0 0 22px rgba(251,191,36,.4)}
+
+  /* — inputs — */
+  .input{background:rgba(8,11,20,.7); border:1px solid var(--glass-brd); transition:border-color .2s, box-shadow .2s}
+  .input:focus{border-color:var(--acc); box-shadow:0 0 0 3px rgba(124,92,255,.18)}
+
+  /* — таб-переключатель авторизации — */
+  .tabs{background:rgba(8,11,20,.6); border:1px solid var(--glass-brd)}
+  .tabs button{transition:color .2s}
+  .tabs button.on{background:var(--aurora); box-shadow:var(--glow)}
+
+  /* — верхние «ресурсы» (монеты/очки/таймер) — */
+  .res,.lvlpill{background:var(--glass-2); border:1px solid var(--glass-brd); transition:transform .2s var(--spring), box-shadow .2s}
+  .res:hover,.lvlpill:hover{transform:translateY(-1px); box-shadow:var(--glow)}
+  .topbar{background:rgba(9,11,18,.72); border-bottom:1px solid var(--glass-brd)}
+
+  /* — XP-бар: живой блеск — */
+  .xpbar{background:linear-gradient(90deg,var(--acc),var(--acc3),var(--acc2)); background-size:200% 100%;
+    animation:xpFlow 3s linear infinite; box-shadow:0 0 12px rgba(124,92,255,.6)}
+  @keyframes xpFlow{0%{background-position:0 0}100%{background-position:200% 0}}
+
+  /* — игровые тайлы: 3D-tilt + spotlight — */
+  .game{transform-style:preserve-3d; transition:transform .18s var(--smooth), box-shadow .25s var(--smooth), border-color .25s}
+  .game::after{content:""; position:absolute; inset:0; opacity:0; transition:opacity .25s; pointer-events:none;
+    background:radial-gradient(300px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.18), transparent 60%)}
+  .game:hover::after{opacity:1}
+  .game .tag{transition:transform .18s var(--smooth)}
+  .game:hover .tag{transform:translateZ(30px)}
+  .app{background:var(--glass); border:1px solid var(--glass-brd); transition:transform .2s var(--spring), border-color .2s, box-shadow .2s}
+  .app:hover{transform:translateY(-3px); box-shadow:var(--glow)}
+
+  /* — появление со stagger — */
+  .reveal{opacity:0; transform:translateY(14px)}
+  .reveal.in{opacity:1; transform:none; transition:opacity .5s var(--smooth), transform .5s var(--spring)}
+
+  /* — сайдбар: пружинная смена вкладок — */
+  .sidebody.swap{animation:tabSwap .4s var(--spring)}
+  @keyframes tabSwap{0%{opacity:0; transform:translateY(10px)}100%{opacity:1; transform:none}}
+  .sidetabs button{transition:color .2s}
+  .sidetabs button.on{color:var(--txt)}
+  .sidetabs button.on::after{content:""; position:absolute; left:20%; right:20%; bottom:-1px; height:2px; border-radius:2px; background:var(--aurora); box-shadow:var(--glow)}
+  .sidetabs button{position:relative}
+
+  /* — кейсы: star-border на премиальных тирах — */
+  .case-i{position:relative; transition:transform .2s var(--spring), border-color .2s, box-shadow .2s}
+  .case-i:hover{transform:translateY(-2px)}
+  .case-i.tier-titan,.case-i.tier-gods{border-color:transparent}
+  .case-i.tier-titan::before,.case-i.tier-gods::before{content:""; position:absolute; inset:-1px; border-radius:16px; padding:1px; z-index:-1;
+    background:conic-gradient(from var(--a,0deg),transparent,var(--acc3),var(--acc2),transparent);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude;
+    animation:spin 4s linear infinite}
+  @keyframes spin{to{--a:360deg}}
+  @property --a{syntax:'<angle>'; inherits:false; initial-value:0deg}
+
+  /* — count-up числа — */
+  .cnum{font-variant-numeric:tabular-nums}
+
+  /* — click-spark — */
+  .spark{position:fixed; width:6px; height:6px; border-radius:50%; background:var(--acc3); pointer-events:none; z-index:70;
+    box-shadow:0 0 8px var(--acc3); animation:sparkOut .5s var(--smooth) forwards}
+  @keyframes sparkOut{to{opacity:0; transform:translate(var(--dx),var(--dy)) scale(0)}}
+
+  /* — конфетти при открытии кейса — */
+  .confetti{position:fixed; width:9px; height:9px; z-index:60; pointer-events:none; will-change:transform,opacity;
+    animation:confFall var(--dur,1.4s) var(--smooth) forwards}
+  @keyframes confFall{0%{opacity:1; transform:translate(0,0) rotate(0)}100%{opacity:0; transform:translate(var(--cx),110vh) rotate(720deg)}}
+
+  /* — level-up: лучи — */
+  .lvl-rays{position:absolute; inset:-40%; z-index:-1; opacity:.4;
+    background:conic-gradient(from 0deg, transparent 0 10deg, rgba(251,191,36,.5) 12deg 14deg, transparent 16deg 30deg);
+    animation:spinSlow 8s linear infinite}
+  @keyframes spinSlow{to{transform:rotate(360deg)}}
+
+  .dropbox{box-shadow:0 0 40px rgba(124,92,255,.5)}
+  .modal{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2)}
+  .overlay{backdrop-filter:blur(10px)}
 </style>
 </head>
 <body>
+
+<!-- фирменный aurora-фон -->
+<div class="aurora-bg" id="auroraBg">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="grain"></div>
+</div>
 
 <!-- ═══════════ AUTH ═══════════ -->
 <div id="authView">
@@ -264,7 +409,8 @@
 </div>
 
 <div id="lvlOverlay" class="overlay" onclick="this.classList.remove('show')">
-  <div class="modal" style="border-color:var(--gold)">
+  <div class="modal" style="border-color:var(--gold); position:relative; overflow:hidden">
+    <div class="lvl-rays"></div>
     <div class="muted">НОВЫЙ УРОВЕНЬ</div>
     <div class="bignum" id="lvlNum">2</div>
     <div class="muted" id="lvlBonus">+1 очко навыка</div>
@@ -466,6 +612,7 @@ function logout(){
 function enterShell(){
   document.getElementById('authView').classList.add('hidden');
   document.getElementById('shellView').classList.remove('hidden');
+  FX.watchFPS();
   loadCatalog();
   loadClubs();
   pingAgent();
@@ -498,8 +645,8 @@ function renderTop(){
   document.getElementById('hNick').textContent = me.nickname;
   document.getElementById('hLvl').textContent = me.level;
   document.getElementById('ava').textContent = AVATARS[(me.avatar_id||1)-1] || '😎';
-  document.getElementById('coins').textContent = fmt(me.coins_balance);
-  document.getElementById('sp').textContent = me.skillpoints_available;
+  FX.countUp(document.getElementById('coins'), me.coins_balance);
+  FX.countUp(document.getElementById('sp'), me.skillpoints_available);
   document.getElementById('xpText').textContent = fmt(me.xp_current) + ' / ' + fmt(need) + ' XP';
   document.getElementById('xpLeft').textContent = 'до уровня: ' + fmt(Math.max(0, need - me.xp_current)) + ' XP';
   document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
@@ -519,6 +666,10 @@ function renderCatalog(){
     <div class="app" onclick="launch('apps',${i})"><div class="em">${a.em}</div><div class="n">${a.name}</div></div>`).join('');
   document.getElementById('sysGrid').innerHTML = CATALOG.system.map((a,i) => `
     <div class="app" onclick="launch('system',${i})"><div class="em">${a.em}</div><div class="n">${a.name}</div></div>`).join('');
+  // оживление: наклон тайлов + появление со stagger
+  const content = document.querySelector('.content');
+  FX.bindTilt(content);
+  FX.reveal(content, '.game, .app');
 }
 
 async function launch(cat, i){
@@ -669,6 +820,7 @@ async function endSession(devMinutes){
 function showLevelUp(level){
   document.getElementById('lvlNum').textContent = level;
   document.getElementById('lvlOverlay').classList.add('show');
+  FX.confetti(70);
 }
 
 /* ═══════════════ LOCK-ЭКРАН ═══════════════ */
@@ -695,6 +847,7 @@ function sideTab(t){
   ['cases','talents','top','ach','hist','book'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
   renderSide();
+  FX.swap(document.getElementById('sideBody'));
 }
 
 function renderSide(){
@@ -712,7 +865,7 @@ function renderSide(){
       else sub = 'источник: ' + c.source + (daysLeft !== null
         ? ` · <span style="color:${daysLeft <= 3 ? 'var(--red)' : 'var(--dim)'}">сгорит через ${daysLeft} дн</span>` : '');
       const dead = opened || expired;
-      return `<div class="card case-i ${dead?'opened':''}" ${dead?'':`onclick="openCase('${c.id}','${c.tier}')"`}>
+      return `<div class="card case-i tier-${c.tier} ${dead?'opened':''}" ${dead?'':`onclick="openCase('${c.id}','${c.tier}')"`}>
         <div class="box" style="background:${t.c}22; border:1px solid ${t.c}">${expired?'🔥':t.em}</div>
         <div><div class="t" style="color:${t.c}">${c.tier}</div>
         <div class="muted" style="font-size:11.5px">${sub}</div></div>
@@ -876,6 +1029,9 @@ async function openCase(id, tier){
         document.getElementById('coType').textContent = 'бустер кэшбека · кейс ' + d.tier;
       }
       document.getElementById('coResult').classList.remove('hidden');
+      // «сочный» момент: конфетти тем гуще, чем выше тир
+      const density = {light:24, medium:36, heavy:54, titan:80, gods:120}[d.tier] || 30;
+      FX.confetti(density);
     }, 1200);
   }catch(e){ ov.classList.remove('show'); toast('⚠ ' + e.message); }
 }
@@ -917,6 +1073,116 @@ setInterval(() => {
   document.getElementById('clock').textContent = t;
   document.getElementById('lockClock').textContent = t;
 }, 1000);
+
+/* ═══════════════ FX: ДВИЖОК АНИМАЦИЙ (14:48 Aurora) ═══════════════ */
+const FX = (() => {
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  let lite = reduced || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2);
+  if (lite) document.body.classList.add('perf-lite');
+
+  // авто-упрощение при низком FPS (замер первые ~2с после старта shell)
+  function watchFPS(){
+    if (lite) return;
+    let frames = 0, t0 = performance.now();
+    function tick(now){
+      frames++;
+      if (now - t0 >= 2000){
+        const fps = frames * 1000 / (now - t0);
+        if (fps < 32){ lite = true; document.body.classList.add('perf-lite'); }
+        return;
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // набегающие числа
+  function countUp(el, to){
+    if (!el) return;
+    to = Number(to) || 0;
+    const from = Number(el.dataset.v || 0);
+    if (lite || from === to){ el.textContent = to.toLocaleString('ru-RU'); el.dataset.v = to; return; }
+    const dur = 550, t0 = performance.now();
+    function step(now){
+      const p = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+      el.textContent = Math.round(from + (to - from) * e).toLocaleString('ru-RU');
+      if (p < 1) requestAnimationFrame(step); else el.dataset.v = to;
+    }
+    requestAnimationFrame(step);
+  }
+
+  // 3D-наклон + свет за курсором для тайлов
+  function bindTilt(root){
+    if (lite) return;
+    root.querySelectorAll('.game').forEach(el => {
+      el.addEventListener('pointermove', e => {
+        const r = el.getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+        el.style.transform = `perspective(700px) rotateY(${(px - .5) * 10}deg) rotateX(${(.5 - py) * 10}deg) translateY(-3px)`;
+        el.style.setProperty('--mx', px * 100 + '%');
+        el.style.setProperty('--my', py * 100 + '%');
+      });
+      el.addEventListener('pointerleave', () => { el.style.transform = ''; });
+    });
+  }
+
+  // появление со stagger
+  function reveal(root, sel){
+    const items = [...root.querySelectorAll(sel)];
+    items.forEach((el, i) => {
+      el.classList.add('reveal');
+      const delay = lite ? 0 : Math.min(i * 45, 400);
+      setTimeout(() => el.classList.add('in'), delay);
+    });
+  }
+
+  // искры по клику
+  function spark(x, y){
+    if (lite) return;
+    for (let i = 0; i < 8; i++){
+      const s = document.createElement('div');
+      s.className = 'spark';
+      const a = (Math.PI * 2 * i) / 8, d = 22 + Math.random() * 14;
+      s.style.left = x + 'px'; s.style.top = y + 'px';
+      s.style.setProperty('--dx', Math.cos(a) * d + 'px');
+      s.style.setProperty('--dy', Math.sin(a) * d + 'px');
+      document.body.appendChild(s);
+      setTimeout(() => s.remove(), 550);
+    }
+  }
+
+  // конфетти (открытие кейса / левел-ап)
+  function confetti(n){
+    if (lite){ return; }
+    const colors = ['#7c5cff', '#e879f9', '#22d3ee', '#fbbf24', '#34d399'];
+    for (let i = 0; i < n; i++){
+      const c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = (40 + Math.random() * 20) + 'vw';
+      c.style.top = '38vh';
+      c.style.background = colors[i % colors.length];
+      c.style.setProperty('--cx', (Math.random() * 60 - 30) + 'vw');
+      c.style.setProperty('--dur', (1.1 + Math.random() * 0.8) + 's');
+      if (Math.random() > .5) c.style.borderRadius = '50%';
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 2000);
+    }
+  }
+
+  // пружинная смена контента вкладки
+  function swap(el){
+    if (lite || !el) return;
+    el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
+  }
+
+  return { countUp, bindTilt, reveal, spark, confetti, swap, watchFPS, get lite(){ return lite; } };
+})();
+
+// глобальный click-spark на интерактивных элементах
+document.addEventListener('click', e => {
+  if (e.target.closest('.btn,.app,.game,.case-i,.iconbtn,.nav button,.sidetabs button')) FX.spark(e.clientX, e.clientY);
+});
 
 /* ═══════════════ СТАРТ ═══════════════ */
 (async function init(){
