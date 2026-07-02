@@ -129,6 +129,10 @@ func handleCreateBooking(c *gin.Context) {
 		return
 	}
 
+	// Талант priority_booking (Agility, LVL 20): бронь без предоплаты.
+	// Платежей пока нет, флаг информационный — админ видит его в бронях.
+	hasPriority := talentEffect(userID.String(), "priority_booking") > 0
+
 	booking := models.Booking{
 		UserID:      userID,
 		ComputerID:  pick.ID,
@@ -136,7 +140,7 @@ func handleCreateBooking(c *gin.Context) {
 		Status:      models.BookingStatusConfirmed,
 		StartTime:   start,
 		DurationMin: req.DurationMin,
-		Prepaid:     false,
+		Prepaid:     !hasPriority,
 		Notes:       req.Notes,
 	}
 	if err := db.Create(&booking).Error; err != nil {
@@ -148,6 +152,7 @@ func handleCreateBooking(c *gin.Context) {
 		"booking_id": booking.ID, "status": booking.Status,
 		"computer": pick.Name, "club": club.Name,
 		"start_time": booking.StartTime, "duration_min": booking.DurationMin,
+		"prepaid": booking.Prepaid,
 	})
 }
 

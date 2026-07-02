@@ -20,6 +20,21 @@ func TestDepositCoins(t *testing.T) {
 	}
 }
 
+func TestIsNightHour(t *testing.T) {
+	night := []int{22, 23, 0, 3, 7}
+	day := []int{8, 12, 18, 21}
+	for _, h := range night {
+		if !isNightHour(h) {
+			t.Errorf("%d:00 должен быть ночью", h)
+		}
+	}
+	for _, h := range day {
+		if isNightHour(h) {
+			t.Errorf("%d:00 должен быть днём", h)
+		}
+	}
+}
+
 func TestEffectiveRate(t *testing.T) {
 	// без скидки
 	if r := effectiveRate(23, 0); r != 23 {

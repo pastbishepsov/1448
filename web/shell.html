@@ -241,6 +241,7 @@
         <button id="st-top" onclick="sideTab('top')">Топ</button>
         <button id="st-ach" onclick="sideTab('ach')">Ачивки</button>
         <button id="st-hist" onclick="sideTab('hist')">История</button>
+        <button id="st-book" onclick="sideTab('book')">📅</button>
       </div>
       <div class="sidebody" id="sideBody"><!-- JS --></div>
     </div>
@@ -386,6 +387,7 @@ const BRANCH = {strength:'💪 Strength', agility:'🏃 Agility', intellect:'�
 
 /* ═══════════════ СОСТОЯНИЕ ═══════════════ */
 let me = null, cases = [], talents = null, achievements = null, leaderboard = null, sessions = [];
+let bookings = [], clubs = [];
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
 let authMode = 'login';
 
@@ -465,19 +467,22 @@ function enterShell(){
   document.getElementById('authView').classList.add('hidden');
   document.getElementById('shellView').classList.remove('hidden');
   loadCatalog();
+  loadClubs();
   pingAgent();
   loadAll();
 }
 
 async function loadAll(){
   try{
-    const [m, cs, tl, ac, lb, ss] = await Promise.all([
+    const [m, cs, tl, ac, lb, ss, bk] = await Promise.all([
       api('/me'), api('/me/cases'), api('/me/talents'),
       api('/me/achievements'), api('/leaderboard'), api('/me/sessions'),
+      api('/me/bookings'),
     ]);
     const prevLvl = me ? me.level : null;
     me = m.user || m; cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
     sessions = ss.sessions || [];
+    bookings = bk.bookings || [];
     activeSession = sessions.find(s => !s.ended_at) || null;
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
     renderTop(); renderSession(); renderSide(); renderLock();
@@ -668,7 +673,7 @@ setInterval(async () => {
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
-  ['cases','talents','top','ach','hist'].forEach(x =>
+  ['cases','talents','top','ach','hist','book'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
   renderSide();
 }
@@ -742,6 +747,38 @@ function renderSide(){
         <div class="rw">${a.reward_skillpoints ? '+'+a.reward_skillpoints+' ✦ ' : ''}${a.reward_case_tier ? '+ кейс '+a.reward_case_tier : ''}</div></div>
       </div>`).join('');
   }
+  if (curTab === 'book'){
+    const opts = clubs.map(c => `<option value="${c.id}">${esc(c.name)} · свободно ${c.computers_free}/${c.computers_total}</option>`).join('');
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const live = bookings.filter(b => (b.status==='pending'||b.status==='confirmed') && new Date(b.start_time) > new Date());
+    const past = bookings.filter(b => !live.includes(b));
+    const row = b => {
+      const d = new Date(b.start_time);
+      const dt = String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      const cancellable = (b.status==='pending'||b.status==='confirmed') && new Date(b.start_time) > new Date();
+      return `<div class="sess-item"><span><b>${dt}</b> · ${b.duration_min} мин</span>
+        <span class="muted">${esc(b.computer ? b.computer.name : '')}</span>
+        <span class="badge">${b.status}${b.prepaid===false?' · без предоплаты':''}</span>
+        ${cancellable ? `<button class="btn danger slim" style="padding:5px 9px; font-size:12px" onclick="cancelMyBooking('${b.id}')">✕</button>` : ''}
+      </div>`;
+    };
+    el.innerHTML = `
+      <div class="card">
+        <h3 style="margin-bottom:10px">Забронировать ПК</h3>
+        <select id="bkClub" class="input">${opts || '<option value="">Клубы не загрузились</option>'}</select>
+        <div style="display:flex; gap:8px">
+          <input id="bkDate" class="input" type="date" value="${tomorrow}">
+          <input id="bkTime" class="input" type="time" value="18:00">
+        </div>
+        <select id="bkDur" class="input">
+          <option value="60">1 час</option><option value="120" selected>2 часа</option>
+          <option value="180">3 часа</option><option value="300">5 часов</option>
+        </select>
+        <button class="btn" onclick="createBooking()">Забронировать</button>
+      </div>
+      ${live.length ? '<div class="card">' + live.map(row).join('') + '</div>' : '<div class="muted" style="text-align:center; margin:8px 0">Активных броней нет</div>'}
+      ${past.length ? '<div class="muted" style="margin:10px 2px 6px">Прошлые</div><div class="card" style="opacity:.55">' + past.slice(0,10).map(row).join('') + '</div>' : ''}`;
+  }
   if (curTab === 'hist'){
     if (!sessions.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">История сессий пуста</div>'; return; }
     el.innerHTML = '<div class="card">' + sessions.map(s => {
@@ -753,6 +790,38 @@ function renderSide(){
       </div>`;
     }).join('') + '</div>';
   }
+}
+
+async function loadClubs(){
+  try{
+    const r = await fetch(API + '/clubs');
+    if (r.ok){ const d = await r.json(); clubs = d.clubs || []; }
+  }catch(e){ /* вкладка брони покажет заглушку */ }
+}
+
+async function createBooking(){
+  const clubID = document.getElementById('bkClub').value;
+  if (!clubID){ toast('⚠ Клуб не выбран'); return; }
+  const date = document.getElementById('bkDate').value;
+  const time = document.getElementById('bkTime').value;
+  if (!date || !time){ toast('⚠ Укажи дату и время'); return; }
+  const start = new Date(date + 'T' + time);
+  try{
+    const d = await api('/clubs/' + clubID + '/bookings', {method:'POST', body:JSON.stringify({
+      start_time: start.toISOString(),
+      duration_min: parseInt(document.getElementById('bkDur').value),
+    })});
+    toast('📅 Бронь: ' + d.computer + ' · ' + time + (d.prepaid===false ? ' · без предоплаты ✨' : ''));
+    await loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+async function cancelMyBooking(id){
+  try{
+    await api('/me/bookings/' + id, {method:'DELETE'});
+    toast('✕ Бронь отменена');
+    await loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 async function invest(id){

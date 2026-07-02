@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
+	"github.com/pastbishepsov/1448/backend/internal/websocket"
 )
 
 const maxGrantXP int64 = 100000
@@ -100,6 +101,16 @@ func handleAdminGrant(c *gin.Context) {
 		if err == nil && levelsGained > 0 {
 			for i := 0; i < levelsGained; i++ {
 				_ = grantCase(db, user.ID, nil, tierForLevel(user.Level), models.CaseSourceLevelUp)
+			}
+		}
+		// Если игрок сейчас за ПК — послать xp_update на его Shell в реальном времени.
+		if err == nil {
+			var s models.Session
+			if db.Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).
+				First(&s).Error == nil {
+				notifyShell(s.ComputerID.String(), websocket.MsgXPUpdate, gin.H{
+					"granted": req.Amount, "xp_total": user.XPTotal, "level": user.Level,
+				})
 			}
 		}
 	case "case":

@@ -4,124 +4,64 @@
 
 > Превращаем «прокат железа» в живую RPG-игру с бесконечным циклом удержания клиента.
 
----
+Каждый конкурент (SmartShell, SENET, LANGAME) делает инструмент контроля.
+Мы делаем продолжение игры: XP за время за ПК, уровни, таланты, кейсы,
+достижения, кэшбек. Рынок: Варшава → ЕС.
 
-## Что это
-
-**14:48** — SaaS-платформа для компьютерных клубов, которая строится вокруг удержания клиента через игровые механики: XP, уровни, таланты, кейсы, достижения.
-
-Каждый конкурент (SmartShell, SENET, LANGAME) делает инструмент контроля. Мы делаем продолжение игры.
-
----
-
-## Архитектура — 4 компонента
-
-```
-14:48/
-├── backend/     # Go — REST API, WebSocket, бизнес-логика, PostgreSQL + Redis
-├── mobile/      # Flutter — iOS + Android приложение для игроков
-├── shell/       # C# / WinUI 3 — кастомный PC Shell для Windows
-└── admin/       # React — Admin Panel + Owner Stats (веб)
-```
+**Точка входа для разработчика — [STATUS.md](STATUS.md):** живое состояние
+проекта, все эндпоинты, запуск, подводные камни.
 
 ---
 
-## Быстрый старт (Docker)
+## Что уже работает
 
-### Требования
-- Docker Desktop
-- Git
+| Компонент | Состояние |
+|-----------|-----------|
+| `backend/` (Go + PostgreSQL) | ✅ ядро готово: auth (JWT + refresh с ротацией), XP-движок, кейсы, 6 работающих талантов, достижения, лидерборд, клубы и бронь, депозиты, админ-API, каталог приложений, rate limiting |
+| `web/shell.html` | ✅ гостевой экран: фулскрин-лаунчер (игры → приложения → система), lock-экран, кейсы, таланты, бронь — на живом API |
+| `web/admin.html` | ✅ админка: ПК real-time, сессии (форс-завершение), гости (бан, депозит, ручные начисления с журналом), брони, каталог |
+| `backend/cmd/agent/` | ✅ shell-agent: запуск программ на гостевом ПК по allowlist (локальный + каталог с сервера), WS-связь, lock_action |
+| `mobile/` (Flutter) | ⏸ скелет; отложен до после пилота |
+| `shell/` (C# / WinUI 3) | 📋 README; промышленная замена агенту — под пилот |
 
-### 1. Клонировать
+CI: GitHub Actions (`go vet` + тесты + сборка + проверка JS экранов).
+
+---
+
+## Быстрый старт
+
+Требования: Docker Desktop, Git.
+
 ```bash
-git clone https://github.com/YOUR_USERNAME/1448.git
-cd 1448
-```
+# 1. окружение (PostgreSQL + Redis + backend)
+docker compose up -d --build
 
-### 2. Настроить окружение
-```bash
-cp .env.example .env
-```
+# 2. миграции + демо-данные (один раз)
+for f in backend/migrations/*.sql; do
+  docker compose exec -T postgres psql -U 1448_user -d 1448_db < "$f"
+done
+docker compose exec -T postgres psql -U 1448_user -d 1448_db < backend/seed_dev.sql
 
-### 3. Инициализировать зависимости Go
-```bash
-cd backend && go mod tidy && cd ..
-```
-
-### 4. Запустить
-```bash
-docker compose up -d
-```
-
-| Сервис | URL |
-|--------|-----|
-| Go API | http://localhost:8080 |
-| pgAdmin | http://localhost:5050 |
-| Redis Commander | http://localhost:8081 |
-
-### 5. Применить миграции
-```bash
-docker compose exec backend ./migrate up
-```
-
-### 6. Проверка
-```bash
+# 3. проверка
 curl http://localhost:8080/health
-# {"status":"ok","version":"0.1.0"}
 ```
 
----
-
-## Разработка
-
-### Backend (Go)
-```bash
-cd backend && go mod download && go run cmd/server/main.go
-```
-
-### Mobile (Flutter)
-```bash
-cd mobile && flutter pub get && flutter run
-```
-
-### Admin Panel (React)
-```bash
-cd admin && npm install && npm run dev
-```
-
-### PC Shell (C#)
-Открыть `shell/1448Shell.sln` в Visual Studio 2022.
+Дальше:
+- **Гостевой экран** — открой `web/shell.html` в браузере, зарегистрируйся, начни сессию.
+- **Админка** — `web/admin.html` (аккаунту нужна роль: `UPDATE users SET role='admin' WHERE nickname='<ник>';`).
+- **Агент на ПК** — собрать `docker compose run --rm --no-deps -e GOOS=windows -e GOARCH=amd64 backend go build -o bin/shell-agent.exe ./cmd/agent`, настроить `agent.json` (см. `backend/cmd/agent/agent.example.json`).
+- **Тесты** — `docker compose run --rm --no-deps backend go test ./...`
 
 ---
 
-## Стек
+## Документы
 
-| Компонент | Технологии |
-|-----------|------------|
-| Backend | Go 1.22, Gin, GORM, PostgreSQL, Redis, WebSocket |
-| Mobile | Flutter 3.x, Dart, Dio, Riverpod |
-| PC Shell | C# .NET 8, WinUI 3, Windows App SDK |
-| Admin Panel | React 19, Vite, TypeScript, shadcn/ui |
-| Инфраструктура | Docker, GitHub Actions, PostgreSQL 16, Redis 7 |
+- [STATUS.md](STATUS.md) — живое состояние: эндпоинты, экономика, спринты. **Начни отсюда.**
+- [SETUP.md](SETUP.md) — детальная настройка окружения.
+- `docs/` — архитектура и API-заметки. Полное ТЗ — не в публичном репо (после NDA).
 
----
+## Жёсткие правила
 
-## Документация
-
-- `docs/ТЗ_14-48_v1.1.docx` — полное ТЗ на 32 страницы
-- `docs/api.md` — API Reference
-- `docs/architecture.md` — архитектура и схемы
-
----
-
-## Открытые позиции
-
-Проект ищет разработчиков на equity-основе:
-- Go Backend Developer
-- C# / WinUI 3 Developer
-- Flutter Developer
-- React Developer
-
----
-
-© 2025 Кочергин Е. А. Все права защищены.
+Рынок: только Польша → ЕС. Валюта PLN, платежи Stripe + BLIK. Карты Google
+Maps/OSM. Языки EN/PL/RU. Юрлицо Sp. z o.o., GDPR. Все расчёты XP/coins/дропов —
+только на сервере.

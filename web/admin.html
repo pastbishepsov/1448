@@ -259,13 +259,14 @@ async function renderBookings(){
   const d = await api('/admin/bookings');
   document.getElementById('content').innerHTML = d.count === 0
     ? '<div class="muted" style="padding:30px; text-align:center">Броней впереди нет</div>'
-    : `<table><tr><th>Когда</th><th>Гость</th><th>ПК</th><th>Клуб</th><th>Мин</th><th>Статус</th><th></th></tr>
+    : `<table><tr><th>Когда</th><th>Гость</th><th>ПК</th><th>Клуб</th><th>Мин</th><th>Предопл.</th><th>Статус</th><th></th></tr>
   ${d.bookings.map(b => `<tr>
     <td><b>${fmtTime(b.start_time)}</b></td>
     <td>${esc(b.nickname||'—')}</td>
     <td>${esc(b.computer||'—')}</td>
     <td>${esc(b.club||'—')}</td>
     <td>${b.duration_min}</td>
+    <td>${b.prepaid===false ? '✨ нет' : '💳 да'}</td>
     <td><span class="st ${b.status}">${b.status}</span></td>
     <td>${(b.status==='pending'||b.status==='confirmed')
         ? `<button class="btn danger mini" onclick="cancelBooking('${b.id}')">Отменить</button>` : ''}</td>

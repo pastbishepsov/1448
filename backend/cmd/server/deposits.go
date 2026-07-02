@@ -39,8 +39,13 @@ func depositCoins(amountPLN, mintEffect float64) (base, bonus int64) {
 	return base, bonus
 }
 
-// effectiveRate — тариф с учётом скидки (кэшбек игрока + талант cashback_master),
-// скидка ограничена maxDiscountPct. Чистая функция (тестируется отдельно).
+// isNightHour — ночное время клуба (22:00–07:59): действует талант night_mode.
+func isNightHour(hour int) bool {
+	return hour >= 22 || hour < 8
+}
+
+// effectiveRate — тариф с учётом скидки (кэшбек игрока + талант cashback_master,
+// ночью + night_mode), скидка ограничена maxDiscountPct. Чистая функция (тест).
 func effectiveRate(basePLN, discountPct float64) float64 {
 	if discountPct < 0 {
 		discountPct = 0

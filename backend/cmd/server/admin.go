@@ -186,6 +186,7 @@ func handleAdminBookings(c *gin.Context) {
 		row := gin.H{
 			"id": b.ID, "status": b.Status, "start_time": b.StartTime,
 			"duration_min": b.DurationMin, "nickname": nick[b.UserID.String()],
+			"prepaid": b.Prepaid,
 		}
 		if b.Computer != nil {
 			row["computer"] = b.Computer.Name

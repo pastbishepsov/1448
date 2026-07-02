@@ -95,10 +95,14 @@ func handleStartSession(c *gin.Context) {
 		return
 	}
 
-	// Скидка на тариф: кэшбек игрока (бустеры кейсов) + талант cashback_master.
+	// Скидка на тариф: кэшбек игрока (бустеры кейсов) + талант cashback_master;
+	// ночью (22:00–07:59) дополнительно действует талант night_mode.
 	var user models.User
 	_ = db.First(&user, "id = ?", userID).Error
 	discountPct := user.PaymentIncreasePct + talentEffect(userID.String(), "cashback_master")*100
+	if isNightHour(time.Now().Hour()) {
+		discountPct += talentEffect(userID.String(), "night_mode") * 100
+	}
 	if discountPct > maxDiscountPct {
 		discountPct = maxDiscountPct
 	}

@@ -291,6 +291,8 @@ func (a *agent) handleCommand(msg wsMessage) {
 	case "session_end":
 		log.Printf("Команда: session_end %s", string(msg.Payload))
 		a.applyLockAction()
+	case "xp_update":
+		log.Printf("Команда: xp_update %s", string(msg.Payload))
 	case "force_unlock":
 		log.Println("Команда: force_unlock")
 	default:
