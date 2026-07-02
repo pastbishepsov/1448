@@ -71,6 +71,20 @@ Refresh stateless (без хранилища) → отзыв конкретно�
 - ПК шлёт: `session_tick` (heartbeat), `admin_call`;
 - проверить без десктопа можно через `tools/shell-emulator.html` (открыть в браузере).
 
+**Shell-agent** (`backend/cmd/agent`, спринт 2 — демо-класс, не античит-класс):
+- локальный агент гостевого ПК: HTTP на `127.0.0.1:1448` для гостевого экрана —
+  `POST /launch {app_id}` запускает программы строго по allowlist из `agent.json`
+  (exe-пути, `steam://`-протоколы, `ms-settings:`), `POST /admin-call`, `GET /ping`;
+- WS-клиент к бэкенду: heartbeat `session_tick`, приём `session_start`/`session_end`
+  (блокировка экрана — спринт 3), автопереподключение;
+- конфиг: скопировать `agent.example.json` → `agent.json` рядом с exe, вписать
+  `computer_id` (UUID из таблицы `computers`);
+- сборка Windows-exe через Docker (из корня):
+  `docker compose run --rm --no-deps -e GOOS=windows -e GOARCH=amd64 backend go build -o bin/shell-agent.exe ./cmd/agent`
+  → `backend/bin/shell-agent.exe`;
+- гостевой экран сам находит агента (индикатор «🖥 ПК ●» в топбаре) и запускает
+  всё через него; без агента — fallback на протоколы браузера.
+
 **Кейсы** (гача-экономика):
 - выдаются за достижения (включая первый вход), за новый уровень и с шансом за каждую
   сессию (шанс — талант `case_hunter`; тир бонусного кейса роллится: чаще Light,
@@ -228,14 +242,15 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 Цель ближайших спринтов: «мой ПК — как в клубе». Mobile (Flutter) отложен до после пилота.
 
 1. ✅ **Спринт 1 — гостевой экран** (`web/shell.html`): лаунчер на живом API.
-2. **Спринт 2 — shell-agent.exe** (Go): запуск программ с ПК, WS-связь с бэкендом,
-   блокировка по концу сессии, вызов админа. Кросс-компиляция в Windows-exe через Docker.
+2. ✅ **Спринт 2 — shell-agent** (`backend/cmd/agent`): запуск программ с ПК по
+   allowlist, WS (heartbeat, admin_call), интеграция с гостевым экраном.
+   Блокировка экрана по концу сессии перенесена в спринт 3.
 3. **Спринт 3 — клубы и бронь + Admin MVP**: `GET /clubs*`, бронирование (миграция 007
    уже есть), админка (React): гости, статусы ПК real-time, сессии.
 4. **Спринт 4 — экономика вглубь**: double_drop, депозиты + coin_mint/cashback_master,
    сгорание кейсов (`expires_at`), daily-квесты.
 5. **Спринт 5 — продакшн-минимум**: logout (Redis blacklist), rate limiting, один роутер,
-   CI (GitHub Actions), каталог приложений из админки. Убрать `.env` из git.
+   CI (GitHub Actions), каталог приложений из админки.
 6. **Спринт 6 — пилот**: OTP (Twilio), Stripe+BLIK, деплой на VPS.
 
 Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,

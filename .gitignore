@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+backend/cmd/agent/agent.json
 
 # ── Go ───────────────────────────────────────────────────────────────────────
 backend/bin/

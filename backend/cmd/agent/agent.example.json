@@ -1,0 +1,22 @@
+{
+  "backend_ws": "ws://localhost:8080/api/v1/ws/shell",
+  "computer_id": "ВСТАВЬ-UUID-ПК-ИЗ-БАЗЫ",
+  "listen": "127.0.0.1:1448",
+  "apps": {
+    "cs2":      {"name": "Counter-Strike 2",  "target": "steam://rungameid/730"},
+    "dota2":    {"name": "Dota 2",            "target": "steam://rungameid/570"},
+    "gta5":     {"name": "GTA V",             "target": "steam://rungameid/271590"},
+    "valorant": {"name": "Valorant",          "target": "C:\\Riot Games\\Riot Client\\RiotClientServices.exe", "args": ["--launch-product=valorant", "--launch-patchline=live"]},
+    "lol":      {"name": "League of Legends", "target": "C:\\Riot Games\\Riot Client\\RiotClientServices.exe", "args": ["--launch-product=league_of_legends", "--launch-patchline=live"]},
+    "fortnite": {"name": "Fortnite",          "target": "com.epicgames.launcher://apps/Fortnite?action=launch&silent=true"},
+    "steam":    {"name": "Steam",             "target": "steam://open/main"},
+    "discord":  {"name": "Discord",           "target": "discord://"},
+    "browser":  {"name": "Браузер",           "target": "https://www.google.com"},
+    "spotify":  {"name": "Spotify",           "target": "spotify:"},
+    "youtube":  {"name": "YouTube",           "target": "https://www.youtube.com"},
+    "telegram": {"name": "Telegram",          "target": "https://web.telegram.org"},
+    "sound":    {"name": "Звук",              "target": "sndvol.exe"},
+    "display":  {"name": "Дисплей",           "target": "ms-settings:display"},
+    "nvidia":   {"name": "NVIDIA",            "target": "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\CEF\\NVIDIA app.exe"}
+  }
+}

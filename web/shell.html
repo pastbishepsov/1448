@@ -206,6 +206,7 @@
     <div class="res"><span class="ic">✦</span><span class="cyan-t" id="sp">0</span></div>
     <div class="res timerchip" id="timerChip"><span class="ic">⏱</span><span id="timer">00:00</span></div>
     <div class="clock" id="clock">--:--</div>
+    <div class="muted" id="agentDot" style="font-weight:700; white-space:nowrap">🖥 ПК ○</div>
     <button class="iconbtn" onclick="adminCall()">🛎 Админ</button>
     <button class="iconbtn" title="Выйти" onclick="logout()">⏻</button>
   </div>
@@ -294,27 +295,29 @@ const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁',
 /* Каталог гостевого экрана. Приоритет: игры → приложения → система.
    type:'proto' — запуск через протокол ОС (работает уже сейчас, если программа установлена),
    type:'url' — открыть в браузере, type:'agent' — запуск с ПК через shell-agent (спринт 2). */
+/* id — ключ allowlist агента (backend/cmd/agent/agent.json). Если агент запущен,
+   запуск идёт через него; иначе fallback: proto/url прямо из браузера. */
 const CATALOG = {
   games: [
-    {name:'Counter-Strike 2', sub:'Steam',      tag:'CS2',  g:['#f59e0b','#ef4444'], launch:{type:'proto', uri:'steam://rungameid/730'}},
-    {name:'Dota 2',           sub:'Steam',      tag:'DOTA', g:['#ef4444','#7c5cff'], launch:{type:'proto', uri:'steam://rungameid/570'}},
-    {name:'Valorant',         sub:'Riot Games', tag:'VAL',  g:['#fb7185','#be123c'], launch:{type:'agent'}},
-    {name:'Fortnite',         sub:'Epic Games', tag:'FN',   g:['#22d3ee','#6366f1'], launch:{type:'proto', uri:'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true'}},
-    {name:'League of Legends',sub:'Riot Games', tag:'LoL',  g:['#fbbf24','#0ea5e9'], launch:{type:'agent'}},
-    {name:'GTA V',            sub:'Rockstar',   tag:'GTA',  g:['#34d399','#0f766e'], launch:{type:'proto', uri:'steam://rungameid/271590'}},
+    {id:'cs2',      name:'Counter-Strike 2', sub:'Steam',      tag:'CS2',  g:['#f59e0b','#ef4444'], launch:{type:'proto', uri:'steam://rungameid/730'}},
+    {id:'dota2',    name:'Dota 2',           sub:'Steam',      tag:'DOTA', g:['#ef4444','#7c5cff'], launch:{type:'proto', uri:'steam://rungameid/570'}},
+    {id:'valorant', name:'Valorant',         sub:'Riot Games', tag:'VAL',  g:['#fb7185','#be123c'], launch:{type:'agent'}},
+    {id:'fortnite', name:'Fortnite',         sub:'Epic Games', tag:'FN',   g:['#22d3ee','#6366f1'], launch:{type:'proto', uri:'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true'}},
+    {id:'lol',      name:'League of Legends',sub:'Riot Games', tag:'LoL',  g:['#fbbf24','#0ea5e9'], launch:{type:'agent'}},
+    {id:'gta5',     name:'GTA V',            sub:'Rockstar',   tag:'GTA',  g:['#34d399','#0f766e'], launch:{type:'proto', uri:'steam://rungameid/271590'}},
   ],
   apps: [
-    {name:'Steam',    em:'🎮', launch:{type:'proto', uri:'steam://open/main'}},
-    {name:'Discord',  em:'💬', launch:{type:'proto', uri:'discord://'}},
-    {name:'Браузер',  em:'🌐', launch:{type:'url',   uri:'https://www.google.com'}},
-    {name:'Spotify',  em:'🎵', launch:{type:'proto', uri:'spotify:'}},
-    {name:'YouTube',  em:'▶️', launch:{type:'url',   uri:'https://www.youtube.com'}},
-    {name:'Telegram', em:'✈️', launch:{type:'url',   uri:'https://web.telegram.org'}},
+    {id:'steam',    name:'Steam',    em:'🎮', launch:{type:'proto', uri:'steam://open/main'}},
+    {id:'discord',  name:'Discord',  em:'💬', launch:{type:'proto', uri:'discord://'}},
+    {id:'browser',  name:'Браузер',  em:'🌐', launch:{type:'url',   uri:'https://www.google.com'}},
+    {id:'spotify',  name:'Spotify',  em:'🎵', launch:{type:'proto', uri:'spotify:'}},
+    {id:'youtube',  name:'YouTube',  em:'▶️', launch:{type:'url',   uri:'https://www.youtube.com'}},
+    {id:'telegram', name:'Telegram', em:'✈️', launch:{type:'url',   uri:'https://web.telegram.org'}},
   ],
   system: [
-    {name:'Звук',    em:'🔊', launch:{type:'agent'}},
-    {name:'Дисплей', em:'🖥️', launch:{type:'agent'}},
-    {name:'NVIDIA',  em:'🟢', launch:{type:'agent'}},
+    {id:'sound',   name:'Звук',    em:'🔊', launch:{type:'agent'}},
+    {id:'display', name:'Дисплей', em:'🖥️', launch:{type:'agent'}},
+    {id:'nvidia',  name:'NVIDIA',  em:'🟢', launch:{type:'agent'}},
   ],
 };
 
@@ -402,6 +405,7 @@ function enterShell(){
   document.getElementById('authView').classList.add('hidden');
   document.getElementById('shellView').classList.remove('hidden');
   renderCatalog();
+  pingAgent();
   loadAll();
 }
 
@@ -452,8 +456,18 @@ function renderCatalog(){
     <div class="app" onclick="launch('system',${i})"><div class="em">${a.em}</div><div class="n">${a.name}</div></div>`).join('');
 }
 
-function launch(cat, i){
+async function launch(cat, i){
   const item = CATALOG[cat][i];
+  // 1) через агента (запускает всё: exe, протоколы, настройки)
+  if (agentOnline && item.id){
+    try{
+      const r = await fetch(AGENT + '/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({app_id:item.id})});
+      if (r.ok){ toast('🚀 Запускаю ' + item.name + '…'); return; }
+      if (r.status !== 404){ const d = await r.json().catch(()=>({})); toast('⚠ ' + (d.message||'ошибка агента')); return; }
+      // 404 = нет в allowlist агента → пробуем fallback ниже
+    }catch(e){ agentOnline = false; renderAgentDot(); }
+  }
+  // 2) fallback без агента
   const l = item.launch;
   if (l.type === 'url'){ window.open(l.uri, '_blank'); return; }
   if (l.type === 'proto'){
@@ -463,10 +477,41 @@ function launch(cat, i){
     document.body.appendChild(f); setTimeout(()=>f.remove(), 3000);
     return;
   }
-  toast('🔧 ' + item.name + ': запуск с ПК подключается в спринте 2 (shell-agent)');
+  toast('🔧 ' + item.name + ': нужен shell-agent (backend/bin/shell-agent.exe)');
 }
 
-function adminCall(){ toast('🛎 Сигнал администратору уйдёт через shell-agent (спринт 2)'); }
+async function adminCall(){
+  if (agentOnline){
+    try{
+      const r = await fetch(AGENT + '/admin-call', {method:'POST'});
+      if (r.ok){ toast('🛎 Администратор вызван — уже идёт'); return; }
+      const d = await r.json().catch(()=>({}));
+      toast('⚠ ' + (d.message || 'агент без связи с сервером'));
+      return;
+    }catch(e){ agentOnline = false; renderAgentDot(); }
+  }
+  toast('🛎 Вызов админа работает через shell-agent — запусти backend/bin/shell-agent.exe');
+}
+
+/* ═══════════════ SHELL-AGENT ═══════════════ */
+const AGENT = 'http://127.0.0.1:1448';
+let agentOnline = false;
+
+function renderAgentDot(){
+  const el = document.getElementById('agentDot');
+  el.textContent = agentOnline ? '🖥 ПК ●' : '🖥 ПК ○';
+  el.style.color = agentOnline ? 'var(--green)' : 'var(--dim)';
+  el.title = agentOnline ? 'shell-agent запущен: программы запускаются с ПК' : 'shell-agent не найден: работают только протоколы браузера';
+}
+
+async function pingAgent(){
+  try{
+    const r = await fetch(AGENT + '/ping', {signal: AbortSignal.timeout(1500)});
+    agentOnline = r.ok;
+  }catch(e){ agentOnline = false; }
+  renderAgentDot();
+}
+setInterval(pingAgent, 30000);
 
 /* ═══════════════ СЕССИЯ ═══════════════ */
 function renderSession(){
