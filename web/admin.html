@@ -140,6 +140,9 @@ async function login(){
 }
 
 function logout(){
+  const r = tokens().r; // отзываем refresh на сервере (fire-and-forget)
+  if (r) fetch(API + '/auth/logout', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null;
   if (refreshIv) clearInterval(refreshIv);
   document.getElementById('appView').classList.add('hidden');

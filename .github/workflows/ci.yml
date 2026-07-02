@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Go — vet, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+      - name: go build (server + agent)
+        run: |
+          go build ./cmd/server
+          go build ./cmd/agent
+
+  web:
+    name: Web — синтаксис JS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Проверка shell.html и admin.html
+        run: |
+          python3 - <<'EOF'
+          import re, subprocess, sys
+          for f in ['web/shell.html', 'web/admin.html']:
+              html = open(f, encoding='utf-8').read()
+              m = re.search(r'<script>(.*)</script>', html, re.S)
+              if not m:
+                  print(f'{f}: <script> не найден'); sys.exit(1)
+              open('/tmp/x.js', 'w', encoding='utf-8').write(m.group(1))
+              if subprocess.run(['node', '--check', '/tmp/x.js']).returncode:
+                  print(f'{f}: ошибка синтаксиса'); sys.exit(1)
+              print(f'{f}: ok')
+          EOF

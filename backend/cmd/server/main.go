@@ -61,7 +61,8 @@ func main() {
 
 	// ── Роуты ───────────────────────────────────────────────────────────────
 	r := gin.Default()
-	r.Use(corsMiddleware()) // разрешаем запросы из браузера (веб-приложение)
+	r.Use(corsMiddleware())      // разрешаем запросы из браузера (веб-приложение)
+	r.Use(rateLimitMiddleware()) // ~10 rps с IP (ТЗ 10.1), кроме /health
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -79,7 +80,7 @@ func main() {
 		auth.POST("/otp/send", stub("SendOTP"))
 		auth.POST("/otp/verify", stub("VerifyOTP"))
 		auth.POST("/refresh", handleRefresh) // ← настоящий
-		auth.POST("/logout", stub("Logout"))
+		auth.POST("/logout", handleLogout)   // ← настоящий
 
 		me := v1.Group("/me")
 		me.Use(authMiddleware()) // всё под /me требует JWT

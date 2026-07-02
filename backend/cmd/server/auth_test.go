@@ -47,6 +47,23 @@ func TestTokens(t *testing.T) {
 		t.Errorf("role = %q, ожидался admin", r)
 	}
 
+	// jti есть и уникален между токенами (нужен для отзыва)
+	t1, _ := signToken("user-1", "player", tokenTypeRefresh, time.Hour)
+	t2, _ := signToken("user-1", "player", tokenTypeRefresh, time.Hour)
+	c1, _ := parseToken(t1)
+	c2, _ := parseToken(t2)
+	j1, j2 := claimString(c1, "jti"), claimString(c2, "jti")
+	if j1 == "" || j2 == "" {
+		t.Error("jti отсутствует в токене")
+	}
+	if j1 == j2 {
+		t.Error("jti двух токенов совпали — отзыв сломается")
+	}
+	// claimExpiry читает exp
+	if claimExpiry(c1).Before(time.Now().Add(50 * time.Minute)) {
+		t.Error("claimExpiry вернул слишком ранний срок")
+	}
+
 	// истёкший токен не проходит
 	expired, _ := signToken("user-1", "player", tokenTypeAccess, -time.Minute)
 	if _, err := parseToken(expired); err == nil {

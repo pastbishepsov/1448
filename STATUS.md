@@ -71,12 +71,18 @@
 - повышение уровня по формуле `XP(n) = 1000 · n^1.4`;
 - выдача очков навыков (skillpoints) за уровень.
 
-Аутентификация: JWT HS256, `sub = user_id`, claim `typ` разделяет токены.
+Аутентификация: JWT HS256, `sub = user_id`, claims `typ` (access/refresh),
+`role` (player/admin/owner), `jti` (для отзыва).
 Access — 15 мин (`JWT_ACCESS_TTL`), refresh — 30 дней (`JWT_REFRESH_TTL`).
-Login/register выдают пару; `/auth/refresh` ротирует её. Middleware пускает
-**только** `typ=access` — refresh-токеном защищённые роуты не открыть.
-Refresh stateless (без хранилища) → отзыв конкретного токена появится вместе
-с logout (blacklist в Redis). Логика: `cmd/server/auth.go` (+ `auth_test.go`).
+Login/register выдают пару; `/auth/refresh` **ротирует с отзывом** старого
+refresh (повторное использование невозможно); `/auth/logout` отзывает refresh.
+Отозванные jti — в таблице `revoked_tokens` (миграция 010; Postgres вместо
+Redis-blacklist: без новой инфраструктуры, переживает рестарты; Redis остаётся
+для кэша/OTP). Access-токены не отзываются — живут ≤15 мин (компромисс).
+Middleware пускает **только** `typ=access`. Логика: `cmd/server/auth.go` (+ тест).
+
+Rate limiting: ~10 rps с IP, burst 20, in-memory (`ratelimit.go`, тест), кроме `/health`.
+CI: GitHub Actions (`.github/workflows/ci.yml`) — go vet/test/build + синтаксис JS экранов.
 
 **Гостевой экран** (`web/shell.html`, спринт 1 трека «ПК как клуб»):
 - фулскрин-лаунчер: игры первым блоком (CS2, Dota 2, Valorant, Fortnite, LoL, GTA V),
@@ -147,7 +153,7 @@ Refresh stateless (без хранилища) → отзыв конкретно�
 ## Что в заглушках (возвращают 501)
 
 Маршруты определены в `backend/cmd/server/main.go`, но логики пока нет:
-`/auth/otp/*`, `/auth/logout`.
+`/auth/otp/*` (ждёт Twilio).
 
 ---
 
@@ -223,9 +229,8 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 - **`go.sum` обязателен.** Лежит в репо. Если пропадёт — сгенерировать:
   `docker compose run --rm --no-deps backend go mod tidy`.
 - **ТЗ не в публичном репо.** Файл с полным ТЗ намеренно не коммитится (отдаётся только после NDA).
-- **Два набора роутов.** Сейчас активны роуты из `cmd/server/main.go`. В `internal/api/router/router.go`
-  есть альтернативный (более полный) роутер, который **пока не подключён**. Будущая задача —
-  консолидировать всё на один роутер. Не путать.
+- ~~Два набора роутов~~ — решено в спринте 5: неиспользуемый `internal/api/*` удалён,
+  единственный роутер — в `cmd/server/main.go`.
 
 ---
 
@@ -288,8 +293,9 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 4. ✅ **Спринт 4 — экономика вглубь**: double_drop, депозиты (миграция 009) +
    coin_mint, скидка cashback_master, сгорание кейсов в UI/счётчике, +50 XP за
    первый визит дня. Полноценные daily/weekly-квесты — в бэклог.
-5. **Спринт 5 — продакшн-минимум**: logout (Redis blacklist), rate limiting, один роутер,
-   CI (GitHub Actions), каталог приложений из админки.
+5. ✅ **Спринт 5 — продакшн-минимум**: logout + отзыв/ротация refresh-токенов
+   (revoked_tokens, миграция 010), rate limiting 10 rps, один роутер (internal/api
+   удалён), CI на GitHub Actions. Каталог приложений из админки — в бэклог.
 6. **Спринт 6 — пилот**: OTP (Twilio), Stripe+BLIK, деплой на VPS.
 
 Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,

@@ -415,6 +415,9 @@ async function submitAuth(){
 }
 
 function logout(){
+  const r = tokens().r; // отзываем refresh на сервере (fire-and-forget)
+  if (r) fetch(API + '/auth/logout', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null; activeSession = null;
   if (timerIv) clearInterval(timerIv);
   document.getElementById('lockOverlay').classList.remove('show');
