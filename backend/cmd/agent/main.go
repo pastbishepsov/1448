@@ -45,14 +45,19 @@ type Config struct {
 	BackendWS  string              `json:"backend_ws"`  // ws://localhost:8080/api/v1/ws/shell
 	ComputerID string              `json:"computer_id"` // UUID ПК из таблицы computers
 	Listen     string              `json:"listen"`      // 127.0.0.1:1448
-	Apps       map[string]AppEntry `json:"apps"`
+	CatalogURL string              `json:"catalog_url"` // откуда тянуть каталог (пусто = не тянуть)
+	LockAction string              `json:"lock_action"` // none | lock_windows | kiosk
+	KioskURL   string              `json:"kiosk_url"`   // для lock_action=kiosk
+	Apps       map[string]AppEntry `json:"apps"`        // локальный allowlist (главнее каталога)
 }
 
 func defaultConfig() *Config {
 	return &Config{
-		BackendWS: "ws://localhost:8080/api/v1/ws/shell",
-		Listen:    "127.0.0.1:1448",
-		Apps:      map[string]AppEntry{},
+		BackendWS:  "ws://localhost:8080/api/v1/ws/shell",
+		Listen:     "127.0.0.1:1448",
+		CatalogURL: "http://localhost:8080/api/v1/catalog",
+		LockAction: "none",
+		Apps:       map[string]AppEntry{},
 	}
 }
 
@@ -109,9 +114,107 @@ type wsMessage struct {
 }
 
 type agent struct {
-	cfg  *Config
-	mu   sync.Mutex
-	conn *websocket.Conn // nil = связи нет
+	cfg    *Config
+	mu     sync.Mutex
+	conn   *websocket.Conn     // nil = связи нет
+	remote map[string]AppEntry // allowlist из каталога сервера
+}
+
+// ── Каталог с сервера (Admin Panel → все гостевые ПК) ──
+
+type catalogItem struct {
+	ID     string  `json:"id"`
+	Target *string `json:"target"`
+	Args   *string `json:"args"` // JSON-массив строк
+}
+
+type catalogResponse struct {
+	Games  []catalogItem `json:"games"`
+	Apps   []catalogItem `json:"apps"`
+	System []catalogItem `json:"system"`
+}
+
+// remoteAllowlist — чистая сборка allowlist из каталога (тестируется отдельно).
+func remoteAllowlist(items []catalogItem) map[string]AppEntry {
+	out := map[string]AppEntry{}
+	for _, it := range items {
+		if it.ID == "" || it.Target == nil || *it.Target == "" {
+			continue
+		}
+		e := AppEntry{Target: *it.Target}
+		if it.Args != nil && *it.Args != "" {
+			var args []string
+			if json.Unmarshal([]byte(*it.Args), &args) == nil {
+				e.Args = args
+			}
+		}
+		out[it.ID] = e
+	}
+	return out
+}
+
+func (a *agent) refreshCatalog() {
+	if a.cfg.CatalogURL == "" {
+		return
+	}
+	resp, err := http.Get(a.cfg.CatalogURL)
+	if err != nil {
+		log.Printf("Каталог: сервер недоступен (%v)", err)
+		return
+	}
+	defer resp.Body.Close()
+	var cr catalogResponse
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		log.Printf("Каталог: некорректный ответ (%v)", err)
+		return
+	}
+	items := append(append(cr.Games, cr.Apps...), cr.System...)
+	remote := remoteAllowlist(items)
+	a.mu.Lock()
+	a.remote = remote
+	a.mu.Unlock()
+	log.Printf("Каталог с сервера: %d приложений с запуском", len(remote))
+}
+
+func (a *agent) runCatalog() {
+	a.refreshCatalog()
+	t := time.NewTicker(5 * time.Minute)
+	defer t.Stop()
+	for range t.C {
+		a.refreshCatalog()
+	}
+}
+
+// lookupApp — локальный agent.json главнее, затем каталог сервера.
+func (a *agent) lookupApp(id string) (AppEntry, error) {
+	if app, err := resolveApp(a.cfg, id); err == nil {
+		return app, nil
+	}
+	a.mu.Lock()
+	app, ok := a.remote[id]
+	a.mu.Unlock()
+	if ok {
+		return app, nil
+	}
+	return AppEntry{}, fmt.Errorf("%w: %q", errUnknownApp, id)
+}
+
+// applyLockAction — реакция на конец сессии (настраивается в agent.json).
+func (a *agent) applyLockAction() {
+	switch a.cfg.LockAction {
+	case "lock_windows":
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("rundll32.exe", "user32.dll,LockWorkStation").Start()
+			log.Println("🔒 lock_action=lock_windows: экран Windows заблокирован")
+		}
+	case "kiosk":
+		if a.cfg.KioskURL != "" {
+			_ = startDetached(a.cfg.KioskURL, nil)
+			log.Println("🔒 lock_action=kiosk: гостевой экран поднят поверх")
+		}
+	default:
+		log.Println("lock_action=none: блокировку показывает сам гостевой экран")
+	}
 }
 
 func (a *agent) wsConnected() bool {
@@ -186,7 +289,8 @@ func (a *agent) handleCommand(msg wsMessage) {
 	case "session_start":
 		log.Printf("Команда: session_start %s", string(msg.Payload))
 	case "session_end":
-		log.Printf("Команда: session_end %s (блокировка экрана — спринт 3)", string(msg.Payload))
+		log.Printf("Команда: session_end %s", string(msg.Payload))
+		a.applyLockAction()
 	case "force_unlock":
 		log.Println("Команда: force_unlock")
 	default:
@@ -223,20 +327,31 @@ func main() {
 	if err != nil {
 		log.Printf("⚠ %v — использую дефолты (allowlist пуст!)", err)
 	}
-	a := &agent{cfg: cfg}
+	a := &agent{cfg: cfg, remote: map[string]AppEntry{}}
 	go a.runWS()
+	go a.runCatalog()
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/ping", cors(func(w http.ResponseWriter, r *http.Request) {
-		ids := make([]string, 0, len(cfg.Apps))
+		seen := map[string]bool{}
 		for id := range cfg.Apps {
+			seen[id] = true
+		}
+		a.mu.Lock()
+		for id := range a.remote {
+			seen[id] = true
+		}
+		a.mu.Unlock()
+		ids := make([]string, 0, len(seen))
+		for id := range seen {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status": "ok", "ws_connected": a.wsConnected(),
 			"computer_id": cfg.ComputerID, "apps": ids,
+			"lock_action": cfg.LockAction,
 		})
 	}))
 
@@ -252,7 +367,7 @@ func main() {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request", "message": "нужен app_id"})
 			return
 		}
-		app, err := resolveApp(cfg, req.AppID)
+		app, err := a.lookupApp(req.AppID)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"code": "unknown_app", "message": err.Error()})
 			return

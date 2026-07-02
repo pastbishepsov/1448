@@ -108,6 +108,7 @@ func main() {
 		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
 		v1.GET("/ws/shell", handleShellWS) // ← настоящий
+		v1.GET("/catalog", handleGetCatalog) // ← настоящий (гостевой экран + агент)
 
 		// Админка (role=admin/owner из users.role, миграция 008)
 		adm := v1.Group("/admin")
@@ -122,6 +123,10 @@ func main() {
 		adm.POST("/sessions/:id/end", handleAdminEndSession)
 		adm.GET("/bookings", handleAdminBookings)
 		adm.POST("/bookings/:id/cancel", handleAdminCancelBooking)
+		adm.GET("/catalog", handleAdminCatalog)
+		adm.POST("/catalog", handleAdminCatalogUpsert)
+		adm.POST("/catalog/:id/toggle", handleAdminCatalogToggle)
+		adm.DELETE("/catalog/:id", handleAdminCatalogDelete)
 	}
 
 	port := getenv("SERVER_PORT", "8080")

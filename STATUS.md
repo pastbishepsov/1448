@@ -58,6 +58,10 @@
 | POST | `/api/v1/admin/bookings/:id/cancel` | отмена брони | admin |
 | POST | `/api/v1/admin/users/:id/deposit` | пополнение баланса гостю | admin |
 | GET  | `/api/v1/me/deposits` | история пополнений | JWT |
+| GET  | `/api/v1/catalog` | каталог приложений (экран + агент) | — |
+| GET/POST | `/api/v1/admin/catalog` | каталог: список / upsert | admin |
+| POST | `/api/v1/admin/catalog/:id/toggle` | вкл/выкл приложение | admin |
+| DELETE | `/api/v1/admin/catalog/:id` | удалить приложение | admin |
 
 Роли: `users.role` (player/admin/owner, миграция 008) → JWT-claim `role` →
 `adminMiddleware`. Повысить аккаунт:
@@ -87,8 +91,11 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — go vet/test/build + синт
 **Гостевой экран** (`web/shell.html`, спринт 1 трека «ПК как клуб»):
 - фулскрин-лаунчер: игры первым блоком (CS2, Dota 2, Valorant, Fortnite, LoL, GTA V),
   ниже приложения (Steam, Discord, браузер, Spotify...) и система;
+- **каталог грузится с сервера** (`GET /catalog`, миграция 011 `catalog_apps`,
+  редактируется во вкладке «Каталог» админки: добавление, правка, вкл/выкл,
+  порядок); встроенный каталог остаётся запасным при недоступности API;
 - запуск: `steam://`/`discord://`-протоколы работают уже сейчас (если программа
-  установлена); остальное — через shell-agent (спринт 2);
+  установлена); exe-пути — через shell-agent (спринт 2);
 - живьём на API: XP-бар, сессия с таймером, кейсы (открытие с анимацией), таланты
   (вложение очков), ачивки, лидерборд, профиль (ник+аватар), refresh-токены;
 - запуск: открыть файл в браузере; киоск-режим:
@@ -104,8 +111,12 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — go vet/test/build + синт
 - локальный агент гостевого ПК: HTTP на `127.0.0.1:1448` для гостевого экрана —
   `POST /launch {app_id}` запускает программы строго по allowlist из `agent.json`
   (exe-пути, `steam://`-протоколы, `ms-settings:`), `POST /admin-call`, `GET /ping`;
-- WS-клиент к бэкенду: heartbeat `session_tick`, приём `session_start`/`session_end`
-  (блокировка экрана — спринт 3), автопереподключение;
+- WS-клиент к бэкенду: heartbeat `session_tick`, приём `session_start`/`session_end`,
+  автопереподключение;
+- **allowlist = локальный `agent.json` + каталог сервера** (`catalog_url`, обновление
+  каждые 5 мин; локальные записи главнее — для машинных путей);
+- **`lock_action`** при `session_end`: `none` (лочит сам гостевой экран) |
+  `lock_windows` (rundll32 LockWorkStation) | `kiosk` (поднять `kiosk_url` поверх);
 - конфиг: скопировать `agent.example.json` → `agent.json` рядом с exe, вписать
   `computer_id` (UUID из таблицы `computers`);
 - сборка Windows-exe через Docker (из корня):
@@ -295,7 +306,9 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
    первый визит дня. Полноценные daily/weekly-квесты — в бэклог.
 5. ✅ **Спринт 5 — продакшн-минимум**: logout + отзыв/ротация refresh-токенов
    (revoked_tokens, миграция 010), rate limiting 10 rps, один роутер (internal/api
-   удалён), CI на GitHub Actions. Каталог приложений из админки — в бэклог.
+   удалён), CI на GitHub Actions.
+   ✅ **Бэклог**: каталог приложений из админки (миграция 011) — сервер управляет
+   и гостевым экраном, и allowlist'ом агента; lock_action агента по session_end.
 6. **Спринт 6 — пилот**: OTP (Twilio), Stripe+BLIK, деплой на VPS.
 
 Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,

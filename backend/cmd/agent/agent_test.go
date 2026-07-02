@@ -26,6 +26,33 @@ func TestResolveApp(t *testing.T) {
 	}
 }
 
+func TestRemoteAllowlist(t *testing.T) {
+	target := "steam://rungameid/730"
+	empty := ""
+	args := `["--flag=1","--x"]`
+	badArgs := `не json`
+
+	items := []catalogItem{
+		{ID: "cs2", Target: &target, Args: &args},
+		{ID: "no_target", Target: nil},
+		{ID: "empty_target", Target: &empty},
+		{ID: "", Target: &target}, // без id — пропускаем
+		{ID: "bad_args", Target: &target, Args: &badArgs},
+	}
+	out := remoteAllowlist(items)
+
+	if len(out) != 2 {
+		t.Fatalf("в allowlist %d записей, ожидалось 2 (cs2, bad_args): %+v", len(out), out)
+	}
+	if out["cs2"].Target != target || len(out["cs2"].Args) != 2 {
+		t.Errorf("cs2 собран неверно: %+v", out["cs2"])
+	}
+	// битые args не валят запись — просто без аргументов
+	if len(out["bad_args"].Args) != 0 {
+		t.Errorf("битые args должны игнорироваться: %+v", out["bad_args"])
+	}
+}
+
 func TestLoadConfig(t *testing.T) {
 	dir := t.TempDir()
 

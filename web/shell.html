@@ -316,9 +316,11 @@ const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁',
 /* Каталог гостевого экрана. Приоритет: игры → приложения → система.
    type:'proto' — запуск через протокол ОС (работает уже сейчас, если программа установлена),
    type:'url' — открыть в браузере, type:'agent' — запуск с ПК через shell-agent (спринт 2). */
-/* id — ключ allowlist агента (backend/cmd/agent/agent.json). Если агент запущен,
-   запуск идёт через него; иначе fallback: proto/url прямо из браузера. */
-const CATALOG = {
+/* Каталог грузится с сервера (GET /catalog, редактируется в админке).
+   Встроенный ниже — запасной на случай недоступности API.
+   id — ключ allowlist агента; если агент запущен, запуск идёт через него,
+   иначе fallback: proto/url прямо из браузера. */
+const FALLBACK_CATALOG = {
   games: [
     {id:'cs2',      name:'Counter-Strike 2', sub:'Steam',      tag:'CS2',  g:['#f59e0b','#ef4444'], launch:{type:'proto', uri:'steam://rungameid/730'}},
     {id:'dota2',    name:'Dota 2',           sub:'Steam',      tag:'DOTA', g:['#ef4444','#7c5cff'], launch:{type:'proto', uri:'steam://rungameid/570'}},
@@ -341,6 +343,39 @@ const CATALOG = {
     {id:'nvidia',  name:'NVIDIA',  em:'🟢', launch:{type:'agent'}},
   ],
 };
+let CATALOG = FALLBACK_CATALOG;
+
+// target → способ запуска без агента: URL в браузер, протокол через iframe,
+// exe-путь (C:\...) — только агентом.
+function launchFromTarget(t){
+  if (!t) return {type:'agent'};
+  if (/^https?:\/\//i.test(t)) return {type:'url', uri:t};
+  if (/^[a-zA-Z]:[\\\/]/.test(t)) return {type:'agent'}; // путь на диске
+  if (t.includes('://') || /^[a-z][a-z0-9.+-]*:/i.test(t)) return {type:'proto', uri:t};
+  return {type:'agent'};
+}
+function mapCatalogRow(r){
+  return {
+    id: r.id, name: r.name, sub: r.subtitle || '', tag: r.tag || '',
+    g: [r.color_a || '#7c5cff', r.color_b || '#22d3ee'],
+    em: r.emoji || '🎮',
+    launch: launchFromTarget(r.target),
+  };
+}
+async function loadCatalog(){
+  try{
+    const r = await fetch(API + '/catalog');
+    if (r.ok){
+      const d = await r.json();
+      CATALOG = {
+        games:  (d.games ||[]).map(mapCatalogRow),
+        apps:   (d.apps  ||[]).map(mapCatalogRow),
+        system: (d.system||[]).map(mapCatalogRow),
+      };
+    }
+  }catch(e){ /* остаёмся на встроенном каталоге */ }
+  renderCatalog();
+}
 
 const TIER = {
   light:  {c:'var(--t-light)',  em:'🟢'}, medium: {c:'var(--t-medium)', em:'🔵'},
@@ -429,7 +464,7 @@ function logout(){
 function enterShell(){
   document.getElementById('authView').classList.add('hidden');
   document.getElementById('shellView').classList.remove('hidden');
-  renderCatalog();
+  loadCatalog();
   pingAgent();
   loadAll();
 }

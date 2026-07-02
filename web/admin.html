@@ -90,6 +90,7 @@
     <button id="t-sessions" onclick="tab('sessions')">⏱ Сессии</button>
     <button id="t-users" onclick="tab('users')">👥 Гости</button>
     <button id="t-bookings" onclick="tab('bookings')">📅 Брони</button>
+    <button id="t-catalog" onclick="tab('catalog')">🎮 Каталог</button>
   </div>
   <div class="content" id="content"></div>
 </div>
@@ -160,9 +161,9 @@ function enter(){
 
 function tab(t){
   curTab = t;
-  ['computers','sessions','users','bookings'].forEach(x =>
+  ['computers','sessions','users','bookings','catalog'].forEach(x =>
     document.getElementById('t-'+x).classList.toggle('on', x===t));
-  refresh();
+  if (t === 'catalog') renderCatalogTab(); else refresh();
 }
 
 /* ── рендер ── */
@@ -178,6 +179,7 @@ async function refresh(){
     if (curTab === 'sessions') await renderSessions();
     if (curTab === 'users') await renderUsers();
     if (curTab === 'bookings') await renderBookings();
+    // каталог не обновляем по таймеру — там форма редактирования
   }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
 }
 
@@ -264,6 +266,97 @@ async function renderBookings(){
     <td>${(b.status==='pending'||b.status==='confirmed')
         ? `<button class="btn danger mini" onclick="cancelBooking('${b.id}')">Отменить</button>` : ''}</td>
   </tr>`).join('')}</table>`;
+}
+
+/* ── каталог приложений ── */
+let catApps = [];
+async function renderCatalogTab(){
+  try{
+    const d = await api('/admin/catalog');
+    catApps = d.apps || [];
+  }catch(e){ toast('⚠ ' + e.message); return; }
+  const cat = {game:'🎮 игра', app:'🧩 приложение', system:'⚙️ система'};
+  document.getElementById('content').innerHTML = `
+  <div class="toolrow">
+    <button class="btn mini" onclick="editApp('')">+ Добавить</button>
+    <span class="muted">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
+  </div>
+  <div id="appFormWrap"></div>
+  <table><tr><th>#</th><th>id</th><th>Название</th><th>Категория</th><th>Запуск (target)</th><th>Вкл</th><th></th></tr>
+  ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}">
+    <td>${a.sort}</td>
+    <td><b>${esc(a.id)}</b></td>
+    <td>${a.tag?'['+esc(a.tag)+'] ':''}${a.emoji?esc(a.emoji)+' ':''}${esc(a.name)}</td>
+    <td>${cat[a.category]||a.category}</td>
+    <td class="muted" style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(a.target||'—')}</td>
+    <td>${a.enabled?'✅':'⬜'}</td>
+    <td style="white-space:nowrap">
+      <button class="btn ghost mini" onclick="editApp('${a.id}')">✎</button>
+      <button class="btn ghost mini" onclick="toggleApp('${a.id}')">${a.enabled?'Выкл':'Вкл'}</button>
+      <button class="btn danger mini" onclick="deleteApp('${a.id}')">✕</button>
+    </td>
+  </tr>`).join('')}</table>`;
+}
+
+function editApp(id){
+  const a = catApps.find(x => x.id === id) || {category:'game', sort:100};
+  const isNew = !a.id;
+  document.getElementById('appFormWrap').innerHTML = `
+  <div style="background:var(--panel); border:1px solid var(--acc); border-radius:14px; padding:16px; margin-bottom:14px">
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px">
+      <input id="f_id" class="input" placeholder="id (лат., напр. cs2)" value="${esc(a.id||'')}" ${isNew?'':'disabled'}>
+      <input id="f_name" class="input" placeholder="Название" value="${esc(a.name||'')}">
+      <select id="f_category" class="input">
+        <option value="game" ${a.category==='game'?'selected':''}>игра</option>
+        <option value="app" ${a.category==='app'?'selected':''}>приложение</option>
+        <option value="system" ${a.category==='system'?'selected':''}>система</option>
+      </select>
+      <input id="f_sort" class="input" placeholder="Порядок (меньше = выше)" value="${a.sort??100}">
+      <input id="f_subtitle" class="input" placeholder="Подпись (Steam / Riot...)" value="${esc(a.subtitle||'')}">
+      <input id="f_tag" class="input" placeholder="TAG на тайле (CS2)" value="${esc(a.tag||'')}">
+      <input id="f_emoji" class="input" placeholder="Эмодзи (для прил.)" value="${esc(a.emoji||'')}">
+      <input id="f_colors" class="input" placeholder="Цвета: #f59e0b,#ef4444" value="${esc((a.color_a||'')+(a.color_b?','+a.color_b:''))}">
+    </div>
+    <input id="f_target" class="input" style="margin-top:10px" placeholder="target: steam://rungameid/730 или C:\\путь\\игра.exe" value="${esc(a.target||'')}">
+    <input id="f_args" class="input" style="margin-top:10px" placeholder='args (JSON): ["--flag=1"]' value="${esc(a.args||'')}">
+    <div style="display:flex; gap:10px; margin-top:12px">
+      <button class="btn mini" onclick="saveApp()">Сохранить</button>
+      <button class="btn ghost mini" onclick="document.getElementById('appFormWrap').innerHTML=''">Отмена</button>
+    </div>
+  </div>`;
+}
+
+async function saveApp(){
+  const v = id => document.getElementById(id).value.trim();
+  const colors = v('f_colors').split(',').map(s=>s.trim()).filter(Boolean);
+  const body = {
+    id: v('f_id'), name: v('f_name'),
+    category: document.getElementById('f_category').value,
+    sort: parseInt(v('f_sort')) || 100,
+    subtitle: v('f_subtitle') || null, tag: v('f_tag') || null,
+    emoji: v('f_emoji') || null,
+    color_a: colors[0] || null, color_b: colors[1] || null,
+    target: v('f_target') || null, args: v('f_args') || null,
+  };
+  if (body.args){
+    try{ JSON.parse(body.args); }catch(e){ toast('⚠ args должен быть JSON-массивом строк'); return; }
+  }
+  try{
+    await api('/admin/catalog', {method:'POST', body:JSON.stringify(body)});
+    toast('✓ Сохранено: ' + body.id);
+    renderCatalogTab();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+async function toggleApp(id){
+  try{ const d = await api('/admin/catalog/'+id+'/toggle', {method:'POST', body:'{}'});
+    toast((d.enabled?'✅ Включено: ':'⬜ Выключено: ') + id); renderCatalogTab();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function deleteApp(id){
+  if (!confirm('Удалить «'+id+'» из каталога?')) return;
+  try{ await api('/admin/catalog/'+id, {method:'DELETE'}); toast('✕ Удалено: '+id); renderCatalogTab(); }
+  catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* ── действия ── */
