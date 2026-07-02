@@ -1,0 +1,23 @@
+<Window x:Class="Shell1448.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="14:48" WindowStyle="None" ResizeMode="NoResize"
+        WindowState="Maximized" Topmost="True" ShowInTaskbar="False"
+        Background="#07090E">
+  <Grid>
+    <wv2:WebView2 x:Name="Web"/>
+    <!-- Запасной lock от сервиса (fail-safe): поверх WebView -->
+    <Grid x:Name="HardLock" Visibility="Collapsed" Background="#F2070B11">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <TextBlock Text="14:48" FontSize="44" FontWeight="Bold" Foreground="White"
+                   HorizontalAlignment="Center"/>
+        <TextBlock x:Name="HardLockReason" Text="ПК заблокирован"
+                   FontSize="18" Foreground="#8A93A6" Margin="0,10,0,0"
+                   HorizontalAlignment="Center"/>
+        <TextBlock Text="Обратись к администратору клуба" FontSize="14"
+                   Foreground="#8A93A6" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>

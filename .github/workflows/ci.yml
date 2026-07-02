@@ -27,6 +27,21 @@ jobs:
           go build ./cmd/server
           go build ./cmd/agent
 
+  shell:
+    name: C# Shell — build + test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore shell/Shell1448.sln
+      - name: Build (Release)
+        run: dotnet build shell/Shell1448.sln -c Release --no-restore
+      - name: Test
+        run: dotnet test shell/Shell1448.Tests/Shell1448.Tests.csproj -c Release --no-build
+
   web:
     name: Web — синтаксис JS
     runs-on: ubuntu-latest

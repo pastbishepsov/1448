@@ -266,7 +266,7 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 │   └── seed_dev.sql         демо-клуб + компьютеры
 ├── mobile/                  Flutter (скелет: тема, i18n EN/PL/RU, навигация)
 ├── admin/                   React + Vite + shadcn/ui (скелет)
-├── shell/                   C# PC Shell (README, кода ещё нет)
+├── shell/                   C# PC Shell (.NET 8): Shared + Service + App(WPF) + Tests
 └── docs/                    api.md, architecture.md
 ```
 
@@ -319,7 +319,18 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
    на его Shell уходит `xp_update`.
    ✅ **Бэклог-финал**: бронь с гостевого экрана (вкладка «📅»: форма + список + отмена);
    night_mode (ночная скидка 22:00–07:59); priority_booking (без предоплаты);
-   README актуализирован. Осталось только требующее аккаунтов: спринт 6.
+   README актуализирован.
+   ✅ **Промышленный PC Shell** (`shell/`, C#/.NET 8, фаза 1): Windows-сервис
+   (WS к бэкенду, heartbeat, fail-safe lock при потере связи >2 мин) + WPF-киоск
+   (fullscreen WebView2 с `shell.html`, блокировка Win/Alt+Tab/Alt+F4, запуск игр
+   по каталогу, XP-оверлей, аварийный выход Ctrl+Alt+Shift+Q). Связь сервис↔киоск —
+   Named Pipe. `shell.html` сам определяет киоск (`window.chrome.webview`) и шлёт
+   запуск в C#. Тесты (ShellState/PipeProtocol/CatalogAllowlist) + CI на windows-runner.
+   Фаза 2 (Shell Launcher, нужен Windows Enterprise) и фаза 3 (античиты, образ ПК) —
+   в `shell/README.md`.
+
+**Осталось только требующее твоих аккаунтов/железа:** спринт 6 (OTP/Twilio,
+Stripe+BLIK, деплой на VPS), фазы 2–3 PC Shell (Windows Enterprise), валидация рынка.
 6. **Спринт 6 — пилот**: OTP (Twilio), Stripe+BLIK, деплой на VPS.
 
 Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,

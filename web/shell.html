@@ -523,6 +523,10 @@ function renderCatalog(){
 
 async function launch(cat, i){
   const item = CATALOG[cat][i];
+  // 0) нативный киоск (WebView2): запуск через C#-мост
+  if (NATIVE && item.id){
+    if (nativePost({cmd:'launch', id:item.id})){ toast('🚀 Запускаю ' + item.name + '…'); return; }
+  }
   // 1) через агента (запускает всё: exe, протоколы, настройки)
   if (agentOnline && item.id){
     try{
@@ -546,6 +550,7 @@ async function launch(cat, i){
 }
 
 async function adminCall(){
+  if (NATIVE && nativePost({cmd:'admin_call'})){ toast('🛎 Администратор вызван'); return; }
   if (agentOnline){
     try{
       const r = await fetch(AGENT + '/admin-call', {method:'POST'});
@@ -558,7 +563,21 @@ async function adminCall(){
   toast('🛎 Вызов админа работает через shell-agent — запусти backend/bin/shell-agent.exe');
 }
 
-/* ═══════════════ SHELL-AGENT ═══════════════ */
+/* ═══════════════ НАТИВНЫЙ КИОСК (WebView2) ═══════════════ */
+// Если страница открыта внутри Shell1448.App — запуск и вызов админа идут
+// через нативный мост, а не через HTTP-агент.
+const NATIVE = !!(window.chrome && window.chrome.webview);
+function nativePost(obj){ try{ window.chrome.webview.postMessage(obj); return true; }catch(e){ return false; } }
+if (NATIVE){
+  window.chrome.webview.addEventListener('message', e => {
+    const d = e.data || {};
+    if (d.evt === 'session_start' || d.evt === 'session_end') loadAll();
+    if (d.evt === 'xp_update') loadAll();
+    if (d.evt === 'launch_failed') toast('⚠ Не удалось запустить: ' + (d.id||''));
+  });
+}
+
+/* ═══════════════ SHELL-AGENT (HTTP, вне киоска) ═══════════════ */
 const AGENT = 'http://127.0.0.1:1448';
 let agentOnline = false;
 

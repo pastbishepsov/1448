@@ -1,0 +1,19 @@
+<Window x:Class="Shell1448.App.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False"
+        SizeToContent="WidthAndHeight" Left="24" Top="16" IsHitTestVisible="False">
+  <!-- XP-виджет поверх игр (ТЗ 6.1): уровень, XP, таймер сессии -->
+  <Border CornerRadius="12" Background="#DD10141D" BorderBrush="#7C5CFF" BorderThickness="1"
+          Padding="14,8">
+    <StackPanel Orientation="Horizontal">
+      <TextBlock x:Name="LvlText" Text="LVL 1" Foreground="#FBBF24"
+                 FontWeight="Bold" FontSize="15" Margin="0,0,12,0"/>
+      <TextBlock x:Name="XpText" Text="" Foreground="#22D3EE"
+                 FontWeight="Bold" FontSize="15" Margin="0,0,12,0"/>
+      <TextBlock x:Name="TimerText" Text="00:00" Foreground="#34D399"
+                 FontWeight="Bold" FontSize="15"/>
+    </StackPanel>
+  </Border>
+</Window>
