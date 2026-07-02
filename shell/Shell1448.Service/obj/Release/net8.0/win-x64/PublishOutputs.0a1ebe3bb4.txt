@@ -1,0 +1,4 @@
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.Service\bin\Release\net8.0\win-x64\publish\appsettings.json
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.Service\bin\Release\net8.0\win-x64\publish\Shell1448.Service.pdb
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.Service\bin\Release\net8.0\win-x64\publish\Shell1448.Shared.pdb
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.Service\bin\Release\net8.0\win-x64\publish\Shell1448.Service.exe

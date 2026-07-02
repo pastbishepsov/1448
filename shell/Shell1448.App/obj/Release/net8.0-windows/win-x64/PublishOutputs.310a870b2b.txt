@@ -1,0 +1,10 @@
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\Shell1448.pdb
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\runtimes\win-x64\native\WebView2Loader.dll
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\D3DCompiler_47_cor3.dll
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\PenImc_cor3.dll
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\PresentationNative_cor3.dll
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\vcruntime140_cor3.dll
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\wpfgfx_cor3.dll
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\WebView2Loader.dll
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\Shell1448.Shared.pdb
+C:\Users\pastbishe\Desktop\14 48\1448_project\1448\shell\Shell1448.App\bin\Release\net8.0-windows\win-x64\publish\Shell1448.exe

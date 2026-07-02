@@ -9,8 +9,8 @@
     <RootNamespace>Shell1448.App</RootNamespace>
     <AssemblyName>Shell1448</AssemblyName>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <!-- собирается ТОЛЬКО на Windows. single-file/self-contained — в команде publish
-         (см. shell/README.md): dotnet publish -c Release -r win-x64 --self-contained -->
+    <!-- Собирается ТОЛЬКО на Windows. Флаги single-file/self-contained
+         задаются в команде publish, см. shell/README.md -->
   </PropertyGroup>
 
   <ItemGroup>

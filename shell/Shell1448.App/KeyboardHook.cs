@@ -21,6 +21,7 @@ public sealed class KeyboardHook : IDisposable
     [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hhk);
     [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandleW(string? lpModuleName);
 
     private readonly HookProc _proc; // держим ссылку — иначе GC уберёт делегат
     private IntPtr _hook = IntPtr.Zero;
@@ -31,8 +32,9 @@ public sealed class KeyboardHook : IDisposable
     public void Install()
     {
         if (_hook != IntPtr.Zero) return;
-        _hook = SetWindowsHookExW(WH_KEYBOARD_LL, _proc,
-            Marshal.GetHINSTANCE(typeof(KeyboardHook).Module), 0);
+        // GetModuleHandle(null) = handle текущего процесса; работает в single-file
+        // (в отличие от Marshal.GetHINSTANCE, который там возвращает -1).
+        _hook = SetWindowsHookExW(WH_KEYBOARD_LL, _proc, GetModuleHandleW(null), 0);
     }
 
     public KeyboardHook() => _proc = Callback;
