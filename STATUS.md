@@ -58,6 +58,8 @@
 | POST | `/api/v1/admin/bookings/:id/cancel` | отмена брони | admin |
 | POST | `/api/v1/admin/users/:id/deposit` | пополнение баланса гостю | admin |
 | GET  | `/api/v1/me/deposits` | история пополнений | JWT |
+| POST | `/api/v1/admin/users/:id/grant` | ручное начисление XP/кейса (причина обязательна) | admin |
+| GET  | `/api/v1/admin/grants` | журнал ручных начислений | admin |
 | GET  | `/api/v1/catalog` | каталог приложений (экран + агент) | — |
 | GET/POST | `/api/v1/admin/catalog` | каталог: список / upsert | admin |
 | POST | `/api/v1/admin/catalog/:id/toggle` | вкл/выкл приложение | admin |
@@ -309,6 +311,9 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
    удалён), CI на GitHub Actions.
    ✅ **Бэклог**: каталог приложений из админки (миграция 011) — сервер управляет
    и гостевым экраном, и allowlist'ом агента; lock_action агента по session_end.
+   ✅ **Бэклог**: ручное начисление XP/кейса из админки (ТЗ 7.1) — миграция 012
+   `admin_grants`, причина обязательна, XP идёт через общий `applyXP` (с левел-апами
+   и кейсами за уровень), вкладка «📜 Журнал» в админке.
 6. **Спринт 6 — пилот**: OTP (Twilio), Stripe+BLIK, деплой на VPS.
 
 Сделано недавно: реальная авторизация, защищённый профиль, сессии + XP-движок,

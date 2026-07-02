@@ -118,6 +118,8 @@ func main() {
 		adm.POST("/users/:id/ban", handleAdminBan)
 		adm.POST("/users/:id/unban", handleAdminUnban)
 		adm.POST("/users/:id/deposit", handleAdminDeposit)
+		adm.POST("/users/:id/grant", handleAdminGrant)
+		adm.GET("/grants", handleAdminGrants)
 		adm.GET("/computers", handleAdminComputers)
 		adm.GET("/sessions/active", handleAdminActiveSessions)
 		adm.POST("/sessions/:id/end", handleAdminEndSession)
