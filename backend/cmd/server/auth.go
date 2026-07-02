@@ -22,13 +22,15 @@ const (
 )
 
 // signToken подписывает JWT заданного типа (access/refresh) и времени жизни.
-func signToken(userID, typ string, ttl time.Duration) (string, error) {
+// role едет в claims — по ней adminMiddleware пускает в /admin/*.
+func signToken(userID, role, typ string, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"sub": userID,
-		"typ": typ,
-		"iat": now.Unix(),
-		"exp": now.Add(ttl).Unix(),
+		"sub":  userID,
+		"role": role,
+		"typ":  typ,
+		"iat":  now.Unix(),
+		"exp":  now.Add(ttl).Unix(),
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
 }

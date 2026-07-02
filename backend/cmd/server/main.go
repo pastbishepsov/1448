@@ -106,6 +106,19 @@ func main() {
 		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
 		v1.GET("/ws/shell", handleShellWS) // ← настоящий
+
+		// Админка (role=admin/owner из users.role, миграция 008)
+		adm := v1.Group("/admin")
+		adm.Use(authMiddleware(), adminMiddleware())
+		adm.GET("/overview", handleAdminOverview)
+		adm.GET("/users", handleAdminUsers)
+		adm.POST("/users/:id/ban", handleAdminBan)
+		adm.POST("/users/:id/unban", handleAdminUnban)
+		adm.GET("/computers", handleAdminComputers)
+		adm.GET("/sessions/active", handleAdminActiveSessions)
+		adm.POST("/sessions/:id/end", handleAdminEndSession)
+		adm.GET("/bookings", handleAdminBookings)
+		adm.POST("/bookings/:id/cancel", handleAdminCancelBooking)
 	}
 
 	port := getenv("SERVER_PORT", "8080")
@@ -205,12 +218,12 @@ func handleLogin(c *gin.Context) {
 }
 
 func writeAuth(c *gin.Context, status int, user *models.User) {
-	access, err := signToken(user.ID.String(), tokenTypeAccess, accessTTL)
+	access, err := signToken(user.ID.String(), string(user.Role), tokenTypeAccess, accessTTL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "token_error", "message": "Не удалось создать токен"})
 		return
 	}
-	refresh, err := signToken(user.ID.String(), tokenTypeRefresh, refreshTTL)
+	refresh, err := signToken(user.ID.String(), string(user.Role), tokenTypeRefresh, refreshTTL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "token_error", "message": "Не удалось создать токен"})
 		return
@@ -259,6 +272,8 @@ func authMiddleware() gin.HandlerFunc {
 		}
 
 		c.Set("user_id", sub)
+		role, _ := claims["role"].(string)
+		c.Set("user_role", role)
 		c.Next()
 	}
 }

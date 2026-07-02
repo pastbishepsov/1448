@@ -16,6 +16,14 @@ const (
 	UserStatusSuspended UserStatus = "suspended"
 )
 
+type UserRole string
+
+const (
+	UserRolePlayer UserRole = "player"
+	UserRoleAdmin  UserRole = "admin"
+	UserRoleOwner  UserRole = "owner"
+)
+
 // User — аккаунт игрока
 type User struct {
 	ID           uuid.UUID  `json:"id"             gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
@@ -24,6 +32,7 @@ type User struct {
 	Email        *string    `json:"email,omitempty" gorm:"uniqueIndex;size:255"`
 	PasswordHash string     `json:"-"              gorm:"size:255;not null"`
 	Status       UserStatus `json:"status"         gorm:"type:user_status;default:active"`
+	Role         UserRole   `json:"role"           gorm:"type:user_role;default:player"`
 
 	Level                int     `json:"level"                  gorm:"default:1"`
 	XPCurrent            int64   `json:"xp_current"             gorm:"default:0"`

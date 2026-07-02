@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>14:48 — Админка</title>
+<style>
+  :root{
+    --bg:#07090e; --panel:#10141d; --card:#151a24; --card2:#1d2330; --line:#2a3140;
+    --txt:#e8ebf2; --dim:#8a93a6; --acc:#7c5cff; --acc2:#22d3ee;
+    --gold:#fbbf24; --green:#34d399; --red:#f87171; --orange:#fb923c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; min-height:100vh}
+  h1,h2,h3{margin:0}
+  .muted{color:var(--dim); font-size:13px}
+  .hidden{display:none!important}
+  button{font-family:inherit}
+  .logo{font-weight:800; letter-spacing:1px}
+  .logo b{color:var(--acc)}
+  .btn{border:0; border-radius:11px; padding:10px 16px; font-size:14px; font-weight:700;
+       background:linear-gradient(135deg,var(--acc),#9d7bff); color:#fff; cursor:pointer}
+  .btn:disabled{opacity:.5; cursor:default}
+  .btn.ghost{background:var(--card2); color:var(--txt)}
+  .btn.danger{background:linear-gradient(135deg,#ef4444,#f87171)}
+  .btn.mini{padding:6px 11px; font-size:12.5px; border-radius:9px}
+  .input{background:#0c1017; border:1px solid var(--line); color:var(--txt); padding:12px 14px; border-radius:11px; font-size:15px}
+  .input:focus{outline:none; border-color:var(--acc)}
+
+  /* login */
+  #loginView{min-height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:22px}
+  .logincard{width:380px; background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:30px; display:flex; flex-direction:column; gap:10px}
+  .err{color:var(--red); font-size:14px; min-height:18px}
+
+  /* app */
+  .topbar{display:flex; align-items:center; gap:14px; padding:14px 24px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap}
+  .chips{display:flex; gap:10px; margin-left:auto; flex-wrap:wrap}
+  .chip{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:7px 13px; font-weight:800; font-size:13px; white-space:nowrap}
+  .chip b{color:var(--acc2)}
+  .tabs{display:flex; gap:4px; padding:12px 24px 0}
+  .tabs button{background:transparent; border:0; color:var(--dim); padding:11px 18px; cursor:pointer; font-weight:700; font-size:14.5px;
+               border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--txt); border-bottom-color:var(--acc)}
+  .content{padding:18px 24px 40px}
+  table{width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden}
+  th,td{padding:11px 14px; text-align:left; font-size:14px; border-bottom:1px solid var(--line)}
+  th{color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.8px; background:var(--card)}
+  tr:last-child td{border-bottom:0}
+  .st{font-size:12px; padding:3px 10px; border-radius:9px; font-weight:800; white-space:nowrap}
+  .st.available{background:rgba(52,211,153,.15); color:var(--green)}
+  .st.in_session{background:rgba(124,92,255,.18); color:#b5a2ff}
+  .st.maintenance{background:rgba(251,146,60,.15); color:var(--orange)}
+  .st.reserved{background:rgba(34,211,238,.15); color:var(--acc2)}
+  .st.active{background:rgba(52,211,153,.15); color:var(--green)}
+  .st.banned{background:rgba(248,113,113,.18); color:var(--red)}
+  .st.suspended{background:rgba(251,146,60,.15); color:var(--orange)}
+  .st.confirmed{background:rgba(52,211,153,.15); color:var(--green)}
+  .st.pending{background:rgba(251,191,36,.15); color:var(--gold)}
+  .st.cancelled,.st.no_show{background:rgba(138,147,166,.15); color:var(--dim)}
+  .st.completed{background:rgba(34,211,238,.12); color:var(--acc2)}
+  .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px}
+  .toolrow{display:flex; gap:10px; margin-bottom:14px; align-items:center; flex-wrap:wrap}
+  .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:24px; background:#101622; border:1px solid var(--acc);
+         border-radius:13px; padding:13px 20px; opacity:0; transition:.3s; pointer-events:none; z-index:60; font-weight:600}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="loginView">
+  <div class="logo" style="font-size:38px">14<b>:</b>48 <span class="muted" style="font-size:16px">ADMIN</span></div>
+  <div class="logincard">
+    <input id="nick" class="input" placeholder="Никнейм администратора" autocomplete="off">
+    <input id="pass" class="input" type="password" placeholder="Пароль" onkeydown="if(event.key==='Enter')login()">
+    <div id="loginErr" class="err"></div>
+    <button class="btn" onclick="login()">Войти</button>
+    <div class="muted" style="text-align:center">только для персонала клуба</div>
+  </div>
+</div>
+
+<div id="appView" class="hidden">
+  <div class="topbar">
+    <div class="logo" style="font-size:20px">14<b>:</b>48 <span class="muted">ADMIN</span></div>
+    <div class="muted" id="who"></div>
+    <div class="chips" id="chips"></div>
+    <button class="btn ghost mini" onclick="logout()">⏻ Выйти</button>
+  </div>
+  <div class="tabs">
+    <button id="t-computers" class="on" onclick="tab('computers')">🖥 ПК</button>
+    <button id="t-sessions" onclick="tab('sessions')">⏱ Сессии</button>
+    <button id="t-users" onclick="tab('users')">👥 Гости</button>
+    <button id="t-bookings" onclick="tab('bookings')">📅 Брони</button>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
+let curTab = 'computers', refreshIv = null, me = null;
+
+/* ── auth (отдельные ключи от гостевого экрана) ── */
+function tokens(){ return {a: localStorage.getItem('1448a_access'), r: localStorage.getItem('1448a_refresh')}; }
+function setTokens(a, r){ localStorage.setItem('1448a_access', a); localStorage.setItem('1448a_refresh', r); }
+function clearTokens(){ localStorage.removeItem('1448a_access'); localStorage.removeItem('1448a_refresh'); }
+
+async function api(path, opts = {}, retry = true){
+  const {a} = tokens();
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: {'Content-Type':'application/json', ...(a ? {Authorization:'Bearer '+a} : {}), ...(opts.headers||{})},
+  });
+  if (res.status === 401 && retry && tokens().r){
+    const r = await fetch(API + '/auth/refresh', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({refresh_token: tokens().r})});
+    if (r.ok){ const d = await r.json(); setTokens(d.access_token, d.refresh_token); return api(path, opts, false); }
+    logout(); throw new Error('unauthorized');
+  }
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code});
+  return data;
+}
+
+async function login(){
+  const err = document.getElementById('loginErr');
+  err.textContent = '';
+  try{
+    const d = await api('/auth/login', {method:'POST', body:JSON.stringify({
+      login: document.getElementById('nick').value.trim(),
+      password: document.getElementById('pass').value})}, false);
+    if (d.user.role !== 'admin' && d.user.role !== 'owner'){
+      err.textContent = 'У этого аккаунта нет прав администратора';
+      return;
+    }
+    setTokens(d.access_token, d.refresh_token);
+    me = d.user;
+    enter();
+  }catch(e){ err.textContent = e.message || 'Ошибка'; }
+}
+
+function logout(){
+  clearTokens(); me = null;
+  if (refreshIv) clearInterval(refreshIv);
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('loginView').classList.remove('hidden');
+}
+
+function enter(){
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  document.getElementById('who').textContent = me.nickname + ' · ' + me.role;
+  refresh();
+  if (refreshIv) clearInterval(refreshIv);
+  refreshIv = setInterval(refresh, 7000);
+}
+
+function tab(t){
+  curTab = t;
+  ['computers','sessions','users','bookings'].forEach(x =>
+    document.getElementById('t-'+x).classList.toggle('on', x===t));
+  refresh();
+}
+
+/* ── рендер ── */
+async function refresh(){
+  try{
+    const ov = await api('/admin/overview');
+    document.getElementById('chips').innerHTML =
+      `<div class="chip">Гостей <b>${ov.users}</b></div>
+       <div class="chip">Сессий идёт <b>${ov.active_sessions}</b></div>
+       <div class="chip">ПК свободно <b>${ov.computers_free}/${ov.computers_total}</b></div>
+       <div class="chip">Броней впереди <b>${ov.upcoming_bookings}</b></div>`;
+    if (curTab === 'computers') await renderComputers();
+    if (curTab === 'sessions') await renderSessions();
+    if (curTab === 'users') await renderUsers();
+    if (curTab === 'bookings') await renderBookings();
+  }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
+}
+
+function fmtTime(iso){
+  const d = new Date(iso);
+  return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+' '+
+         String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function elapsed(iso){
+  const sec = Math.max(0, Math.floor((Date.now() - new Date(iso))/1000));
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60);
+  return (h?h+'ч ':'')+m+'м';
+}
+function esc(s){ const d = document.createElement('div'); d.textContent = s??''; return d.innerHTML; }
+
+async function renderComputers(){
+  const d = await api('/admin/computers');
+  document.getElementById('content').innerHTML = `
+  <table><tr><th>ПК</th><th>Клуб</th><th>Зона</th><th>Статус</th><th>Shell</th><th>Сейчас играет</th><th></th></tr>
+  ${d.computers.map(pc => `<tr>
+    <td><b>${esc(pc.name)}</b></td>
+    <td>${esc(pc.club)}</td>
+    <td>${esc(pc.zone||'—')}</td>
+    <td><span class="st ${pc.status}">${pc.status}</span></td>
+    <td>${pc.shell_online ? '<span class="dot" style="background:var(--green)"></span>online' : '<span class="dot" style="background:var(--line)"></span><span class="muted">offline</span>'}</td>
+    <td>${pc.session ? esc(pc.session.nickname)+' · '+elapsed(pc.session.started_at) : '<span class="muted">—</span>'}</td>
+    <td>${pc.session ? `<button class="btn danger mini" onclick="endSession('${pc.session.id}','${esc(pc.session.nickname)}')">Завершить</button>` : ''}</td>
+  </tr>`).join('')}</table>`;
+}
+
+async function renderSessions(){
+  const d = await api('/admin/sessions/active');
+  document.getElementById('content').innerHTML = d.count === 0
+    ? '<div class="muted" style="padding:30px; text-align:center">Активных сессий нет</div>'
+    : `<table><tr><th>Гость</th><th>ПК</th><th>Начало</th><th>Идёт</th><th></th></tr>
+  ${d.sessions.map(s => `<tr>
+    <td><b>${esc(s.nickname)}</b></td>
+    <td>${esc(s.computer||'—')}</td>
+    <td>${fmtTime(s.started_at)}</td>
+    <td>${elapsed(s.started_at)}</td>
+    <td><button class="btn danger mini" onclick="endSession('${s.id}','${esc(s.nickname)}')">Завершить</button></td>
+  </tr>`).join('')}</table>`;
+}
+
+let userQuery = '';
+async function renderUsers(){
+  const d = await api('/admin/users' + (userQuery ? '?q='+encodeURIComponent(userQuery) : ''));
+  document.getElementById('content').innerHTML = `
+  <div class="toolrow">
+    <input id="uq" class="input" placeholder="Поиск по нику…" value="${esc(userQuery)}"
+      onkeydown="if(event.key==='Enter'){userQuery=this.value.trim(); renderUsers();}">
+    <button class="btn ghost mini" onclick="userQuery=document.getElementById('uq').value.trim(); renderUsers()">Найти</button>
+  </div>
+  <table><tr><th>Ник</th><th>LVL</th><th>XP</th><th>Монеты</th><th>Роль</th><th>Статус</th><th>Был активен</th><th></th></tr>
+  ${d.users.map(u => `<tr>
+    <td><b>${esc(u.nickname)}</b></td>
+    <td>${u.level}</td>
+    <td>${(u.xp_total||0).toLocaleString('ru-RU')}</td>
+    <td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td>
+    <td>${u.role}</td>
+    <td><span class="st ${u.status}">${u.status}</span></td>
+    <td class="muted">${fmtTime(u.last_active_at)}</td>
+    <td>${u.role === 'player'
+        ? (u.status === 'banned'
+          ? `<button class="btn ghost mini" onclick="unban('${u.id}','${esc(u.nickname)}')">Разбанить</button>`
+          : `<button class="btn danger mini" onclick="ban('${u.id}','${esc(u.nickname)}')">Бан</button>`)
+        : ''}</td>
+  </tr>`).join('')}</table>`;
+}
+
+async function renderBookings(){
+  const d = await api('/admin/bookings');
+  document.getElementById('content').innerHTML = d.count === 0
+    ? '<div class="muted" style="padding:30px; text-align:center">Броней впереди нет</div>'
+    : `<table><tr><th>Когда</th><th>Гость</th><th>ПК</th><th>Клуб</th><th>Мин</th><th>Статус</th><th></th></tr>
+  ${d.bookings.map(b => `<tr>
+    <td><b>${fmtTime(b.start_time)}</b></td>
+    <td>${esc(b.nickname||'—')}</td>
+    <td>${esc(b.computer||'—')}</td>
+    <td>${esc(b.club||'—')}</td>
+    <td>${b.duration_min}</td>
+    <td><span class="st ${b.status}">${b.status}</span></td>
+    <td>${(b.status==='pending'||b.status==='confirmed')
+        ? `<button class="btn danger mini" onclick="cancelBooking('${b.id}')">Отменить</button>` : ''}</td>
+  </tr>`).join('')}</table>`;
+}
+
+/* ── действия ── */
+async function endSession(id, nick){
+  if (!confirm('Завершить сессию гостя «'+nick+'»? XP и монеты будут начислены за фактическое время.')) return;
+  try{
+    const d = await api('/admin/sessions/'+id+'/end', {method:'POST', body:'{}'});
+    toast('⏹ Сессия завершена: +'+d.xp_earned+' XP, +'+d.coins_earned+' монет ('+d.minutes+' мин)');
+    refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function ban(id, nick){
+  if (!confirm('Забанить «'+nick+'»?')) return;
+  try{ await api('/admin/users/'+id+'/ban', {method:'POST', body:'{}'}); toast('🚫 '+nick+' забанен'); renderUsers(); }
+  catch(e){ toast('⚠ ' + e.message); }
+}
+async function unban(id, nick){
+  try{ await api('/admin/users/'+id+'/unban', {method:'POST', body:'{}'}); toast('✓ '+nick+' разбанен'); renderUsers(); }
+  catch(e){ toast('⚠ ' + e.message); }
+}
+async function cancelBooking(id){
+  if (!confirm('Отменить бронь?')) return;
+  try{ await api('/admin/bookings/'+id+'/cancel', {method:'POST', body:'{}'}); toast('📅 Бронь отменена'); renderBookings(); }
+  catch(e){ toast('⚠ ' + e.message); }
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 3500);
+}
+
+/* ── старт ── */
+(async function init(){
+  if (tokens().a || tokens().r){
+    try{
+      const u = await api('/me');
+      if (u.role === 'admin' || u.role === 'owner'){ me = u; enter(); return; }
+      clearTokens();
+    }catch(e){ clearTokens(); }
+  }
+})();
+</script>
+</body>
+</html>

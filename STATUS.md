@@ -48,6 +48,21 @@
 | POST | `/api/v1/clubs/:id/bookings` | бронь ПК (без пересечений) | JWT |
 | GET  | `/api/v1/me/bookings` | мои брони | JWT |
 | DELETE | `/api/v1/me/bookings/:id` | отмена будущей брони | JWT |
+| GET  | `/api/v1/admin/overview` | сводка: гости/сессии/ПК/брони | admin |
+| GET  | `/api/v1/admin/users?q=` | гости, поиск по нику | admin |
+| POST | `/api/v1/admin/users/:id/ban` · `/unban` | бан/разбан игрока | admin |
+| GET  | `/api/v1/admin/computers` | все ПК + кто играет + Shell online | admin |
+| GET  | `/api/v1/admin/sessions/active` | активные сессии | admin |
+| POST | `/api/v1/admin/sessions/:id/end` | форс-завершение (честное начисление) | admin |
+| GET  | `/api/v1/admin/bookings` | ближайшие брони | admin |
+| POST | `/api/v1/admin/bookings/:id/cancel` | отмена брони | admin |
+
+Роли: `users.role` (player/admin/owner, миграция 008) → JWT-claim `role` →
+`adminMiddleware`. Повысить аккаунт:
+`UPDATE users SET role='admin' WHERE nickname='<ник>';` (после — перелогин).
+Админка: `web/admin.html` (ПК, сессии, гости, брони; автообновление 7с).
+Форс-завершение сессии переиспользует `finishSession` — ту же логику начисления,
+что и у игрока (рефакторинг `sessions.go`).
 
 **XP-движок** (ядро игры) работает целиком на сервере:
 - начисление XP и coins за минуты игры;
@@ -255,7 +270,8 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
    ✅ 3а: lock-экран гостевого ПК (без сессии — блокировка, авто-лок при завершении
    извне, поллинг 10с); клубы (`GET /clubs*`) и бронь (создание с проверкой
    пересечений — `bookingOverlaps` + тест, отмена, список).
-   ⬜ 3б: Admin MVP — гости, статусы ПК real-time, управление сессиями, брони.
+   ✅ 3б: Admin MVP — роль admin (миграция 008, role в JWT), `/admin/*`,
+   `web/admin.html`: гости (бан), ПК (Shell online), форс-завершение сессий, брони.
 4. **Спринт 4 — экономика вглубь**: double_drop, депозиты + coin_mint/cashback_master,
    сгорание кейсов (`expires_at`), daily-квесты.
 5. **Спринт 5 — продакшн-минимум**: logout (Redis blacklist), rate limiting, один роутер,

@@ -12,7 +12,7 @@ func TestTokens(t *testing.T) {
 	jwtSecret = []byte("test_secret")
 
 	// access подписывается и парсится, тип и sub на месте
-	access, err := signToken("user-1", tokenTypeAccess, time.Minute)
+	access, err := signToken("user-1", "player", tokenTypeAccess, time.Minute)
 	if err != nil {
 		t.Fatalf("signToken(access): %v", err)
 	}
@@ -28,7 +28,7 @@ func TestTokens(t *testing.T) {
 	}
 
 	// refresh валиден, но его тип НЕ access → middleware обязан отклонить
-	refresh, _ := signToken("user-1", tokenTypeRefresh, time.Hour)
+	refresh, _ := signToken("user-1", "player", tokenTypeRefresh, time.Hour)
 	claims, err = parseToken(refresh)
 	if err != nil {
 		t.Fatalf("parseToken(refresh): %v", err)
@@ -40,8 +40,15 @@ func TestTokens(t *testing.T) {
 		t.Errorf("typ = %q, ожидался refresh", tokenType(claims))
 	}
 
+	// роль доезжает в claims
+	adm, _ := signToken("user-1", "admin", tokenTypeAccess, time.Minute)
+	claims, _ = parseToken(adm)
+	if r, _ := claims["role"].(string); r != "admin" {
+		t.Errorf("role = %q, ожидался admin", r)
+	}
+
 	// истёкший токен не проходит
-	expired, _ := signToken("user-1", tokenTypeAccess, -time.Minute)
+	expired, _ := signToken("user-1", "player", tokenTypeAccess, -time.Minute)
 	if _, err := parseToken(expired); err == nil {
 		t.Error("истёкший токен прошёл проверку")
 	}

@@ -147,14 +147,60 @@ func handleEndSession(c *gin.Context) {
 		return
 	}
 
+	res, err := finishSession(&session, req.Minutes)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, finishResponse(res))
+}
+
+// finishResult — итог завершения сессии (общий для игрока и админа).
+type finishResult struct {
+	Session       *models.Session
+	Minutes       int
+	XPGained      int64
+	CoinsGained   int64
+	LevelsGained  int
+	BonusCase     bool
+	BonusCaseTier models.CaseTier
+	User          models.User
+}
+
+func finishResponse(r *finishResult) gin.H {
+	return gin.H{
+		"session_id":    r.Session.ID,
+		"minutes":       r.Minutes,
+		"xp_earned":     r.XPGained,
+		"coins_earned":  r.CoinsGained,
+		"levels_gained":   r.LevelsGained,
+		"bonus_case":      r.BonusCase,
+		"bonus_case_tier": r.BonusCaseTier,
+		"user": gin.H{
+			"level":                 r.User.Level,
+			"xp_current":            r.User.XPCurrent,
+			"xp_total":              r.User.XPTotal,
+			"xp_for_next_level":     models.XPForNextLevel(r.User.Level),
+			"coins_balance":         r.User.CoinsBalance,
+			"skillpoints_available": r.User.SkillpointsAvailable,
+		},
+	}
+}
+
+// finishSession — единая логика завершения: начисление XP/coins, уровни, кейсы,
+// достижения, освобождение ПК, команда Shell. Используется игроком (/me/sessions/end)
+// и админом (/admin/sessions/:id/end).
+func finishSession(session *models.Session, minutesOverride *int) (*finishResult, error) {
+	userID := session.UserID.String()
+
 	now := time.Now()
 	minutes := int(math.Ceil(now.Sub(session.StartedAt).Minutes()))
 	if minutes < 0 {
 		minutes = 0
 	}
 	// dev-оверрайд: позволяет тестировать начисление без ожидания реального времени
-	if req.Minutes != nil && os.Getenv("SERVER_ENV") != "production" {
-		minutes = *req.Minutes
+	if minutesOverride != nil && os.Getenv("SERVER_ENV") != "production" {
+		minutes = *minutesOverride
 		if minutes < 0 {
 			minutes = 0
 		}
@@ -166,8 +212,7 @@ func handleEndSession(c *gin.Context) {
 
 	var user models.User
 	if err := db.First(&user, "id = ?", userID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "user_missing", "message": "Пользователь не найден"})
-		return
+		return nil, err
 	}
 
 	levelsGained := applyXP(&user, xpGained)
@@ -180,7 +225,7 @@ func handleEndSession(c *gin.Context) {
 		session.MinutesUsed = minutes
 		session.XPEarned = xpGained
 		session.CoinsEarned = coinsGained
-		if err := tx.Omit("User", "Computer").Save(&session).Error; err != nil {
+		if err := tx.Omit("User", "Computer").Save(session).Error; err != nil {
 			return err
 		}
 		if err := tx.Model(&models.Computer{}).
@@ -191,8 +236,7 @@ func handleEndSession(c *gin.Context) {
 		return tx.Save(&user).Error
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
-		return
+		return nil, err
 	}
 
 	// Кейс за каждый новый уровень.
@@ -226,23 +270,13 @@ func handleEndSession(c *gin.Context) {
 		"coins_earned": coinsGained,
 	})
 
-	c.JSON(http.StatusOK, gin.H{
-		"session_id":    session.ID,
-		"minutes":       minutes,
-		"xp_earned":     xpGained,
-		"coins_earned":  coinsGained,
-		"levels_gained":   levelsGained,
-		"bonus_case":      bonusCase,
-		"bonus_case_tier": bonusCaseTier,
-		"user": gin.H{
-			"level":                 user.Level,
-			"xp_current":            user.XPCurrent,
-			"xp_total":              user.XPTotal,
-			"xp_for_next_level":     models.XPForNextLevel(user.Level),
-			"coins_balance":         user.CoinsBalance,
-			"skillpoints_available": user.SkillpointsAvailable,
-		},
-	})
+	return &finishResult{
+		Session: session, Minutes: minutes,
+		XPGained: xpGained, CoinsGained: coinsGained,
+		LevelsGained: levelsGained,
+		BonusCase:    bonusCase, BonusCaseTier: bonusCaseTier,
+		User: user,
+	}, nil
 }
 
 // GET /me/sessions — последние сессии текущего игрока.
