@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
@@ -20,10 +18,11 @@ import (
 )
 
 var (
-	db        *gorm.DB
-	jwtSecret []byte
-	accessTTL time.Duration
-	hub       *websocket.Hub
+	db         *gorm.DB
+	jwtSecret  []byte
+	accessTTL  time.Duration
+	refreshTTL time.Duration
+	hub        *websocket.Hub
 )
 
 // @title           14:48 API
@@ -38,6 +37,7 @@ func main() {
 
 	jwtSecret = []byte(getenv("JWT_SECRET", "dev_insecure_secret_change_me"))
 	accessTTL = parseDuration(os.Getenv("JWT_ACCESS_TTL"), 15*time.Minute)
+	refreshTTL = parseDuration(os.Getenv("JWT_REFRESH_TTL"), 30*24*time.Hour)
 
 	if os.Getenv("SERVER_ENV") == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -78,7 +78,7 @@ func main() {
 		auth.POST("/login", handleLogin)        // ← настоящий
 		auth.POST("/otp/send", stub("SendOTP"))
 		auth.POST("/otp/verify", stub("VerifyOTP"))
-		auth.POST("/refresh", stub("RefreshToken"))
+		auth.POST("/refresh", handleRefresh) // ← настоящий
 		auth.POST("/logout", stub("Logout"))
 
 		me := v1.Group("/me")
@@ -128,10 +128,11 @@ type loginRequest struct {
 }
 
 type authResponse struct {
-	AccessToken string       `json:"access_token"`
-	TokenType   string       `json:"token_type"`
-	ExpiresIn   int64        `json:"expires_in"`
-	User        *models.User `json:"user"`
+	AccessToken  string       `json:"access_token"`
+	RefreshToken string       `json:"refresh_token"`
+	TokenType    string       `json:"token_type"`
+	ExpiresIn    int64        `json:"expires_in"` // срок access-токена, сек
+	User         *models.User `json:"user"`
 }
 
 func handleRegister(c *gin.Context) {
@@ -202,26 +203,23 @@ func handleLogin(c *gin.Context) {
 }
 
 func writeAuth(c *gin.Context, status int, user *models.User) {
-	token, err := signToken(user.ID.String())
+	access, err := signToken(user.ID.String(), tokenTypeAccess, accessTTL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "token_error", "message": "Не удалось создать токен"})
+		return
+	}
+	refresh, err := signToken(user.ID.String(), tokenTypeRefresh, refreshTTL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "token_error", "message": "Не удалось создать токен"})
 		return
 	}
 	c.JSON(status, authResponse{
-		AccessToken: token,
-		TokenType:   "Bearer",
-		ExpiresIn:   int64(accessTTL.Seconds()),
-		User:        user,
+		AccessToken:  access,
+		RefreshToken: refresh,
+		TokenType:    "Bearer",
+		ExpiresIn:    int64(accessTTL.Seconds()),
+		User:         user,
 	})
-}
-
-func signToken(userID string) (string, error) {
-	claims := jwt.MapClaims{
-		"sub": userID,
-		"iat": time.Now().Unix(),
-		"exp": time.Now().Add(accessTTL).Unix(),
-	}
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
 }
 
 // authMiddleware — проверяет JWT из заголовка Authorization: Bearer <token>
@@ -240,15 +238,15 @@ func authMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(parts[1], claims, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("неожиданный метод подписи")
-			}
-			return jwtSecret, nil
-		})
-		if err != nil || !token.Valid {
+		claims, err := parseToken(parts[1])
+		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": "invalid_token", "message": "Токен недействителен или истёк"})
+			return
+		}
+
+		// Refresh-токен на защищённые роуты не пускаем — только access.
+		if tokenType(claims) != tokenTypeAccess {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": "wrong_token_type", "message": "Требуется access-токен"})
 			return
 		}
 

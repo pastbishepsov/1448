@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>14:48 — Гостевой экран</title>
+<style>
+  :root{
+    --bg:#07090e; --panel:#10141d; --card:#151a24; --card2:#1d2330; --line:#2a3140;
+    --txt:#e8ebf2; --dim:#8a93a6; --acc:#7c5cff; --acc2:#22d3ee;
+    --gold:#fbbf24; --green:#34d399; --red:#f87171;
+    --t-light:#34d399; --t-medium:#38bdf8; --t-heavy:#a78bfa; --t-titan:#fb923c; --t-gods:#f87171;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{margin:0; background:radial-gradient(1200px 600px at 70% -10%, #131a2b 0%, var(--bg) 55%);
+       color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden}
+  button{font-family:inherit}
+  h1,h2,h3{margin:0}
+  .muted{color:var(--dim); font-size:13px}
+  .hidden{display:none!important}
+
+  /* ═══ AUTH ═══ */
+  #authView{height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:26px}
+  .authcard{width:400px; background:var(--panel); border:1px solid var(--line); border-radius:24px; padding:34px}
+  .logo{font-weight:800; letter-spacing:2px; font-size:44px; text-align:center}
+  .logo b{color:var(--acc)}
+  .slogan{text-align:center; color:var(--dim); margin-top:6px}
+  .tabs{display:flex; background:#0c1017; border-radius:12px; padding:4px; margin:24px 0 18px}
+  .tabs button{flex:1; border:0; background:transparent; color:var(--dim); padding:10px; border-radius:9px; font-weight:700; cursor:pointer; font-size:14px}
+  .tabs button.on{background:var(--acc); color:#fff}
+  .input{width:100%; background:#0c1017; border:1px solid var(--line); color:var(--txt);
+         padding:14px; border-radius:12px; font-size:16px; margin-bottom:10px}
+  .input:focus{outline:none; border-color:var(--acc)}
+  .err{color:var(--red); font-size:14px; min-height:18px; margin:4px 2px}
+  .btn{width:100%; border:0; border-radius:14px; padding:15px; font-size:16px; font-weight:700;
+       background:linear-gradient(135deg,var(--acc),#9d7bff); color:#fff; cursor:pointer; transition:.15s}
+  .btn:active{transform:scale(.98)}
+  .btn:disabled{opacity:.5; cursor:default}
+  .btn.ghost{background:var(--card2); color:var(--txt)}
+  .btn.danger{background:linear-gradient(135deg,#ef4444,#f87171)}
+  .btn.slim{padding:10px 14px; font-size:14px; border-radius:11px; width:auto}
+
+  /* ═══ TOPBAR ═══ */
+  #shellView{height:100vh; display:flex; flex-direction:column}
+  .topbar{display:flex; align-items:center; gap:16px; padding:12px 22px; background:rgba(13,16,24,.92);
+          border-bottom:1px solid var(--line); backdrop-filter:blur(8px)}
+  .tb-logo{font-weight:800; font-size:22px; letter-spacing:1px}
+  .tb-logo b{color:var(--acc)}
+  .ava{width:42px; height:42px; border-radius:13px; background:linear-gradient(135deg,var(--acc),var(--acc2));
+       display:flex; align-items:center; justify-content:center; font-size:22px; cursor:pointer; user-select:none}
+  .tb-user{cursor:pointer}
+  .tb-user .nick{font-weight:800; font-size:15px}
+  .lvlpill{background:var(--card2); border:1px solid var(--line); border-radius:20px; padding:5px 12px; font-weight:800; font-size:13px; white-space:nowrap}
+  .lvlpill b{color:var(--gold)}
+  .xpzone{flex:1; max-width:430px}
+  .xpwrap{height:10px; background:#0c1017; border-radius:8px; overflow:hidden}
+  .xpbar{height:100%; width:0; background:linear-gradient(90deg,var(--acc),var(--acc2)); transition:width .8s cubic-bezier(.2,.8,.2,1)}
+  .xpnums{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:3px}
+  .res{display:flex; gap:8px; align-items:center; background:var(--card2); border:1px solid var(--line);
+       border-radius:12px; padding:7px 13px; font-weight:800; font-size:14px; white-space:nowrap}
+  .res .ic{font-size:15px}
+  .gold-t{color:var(--gold)} .cyan-t{color:var(--acc2)} .green-t{color:var(--green)}
+  .timerchip{border-color:var(--green); color:var(--green); display:none}
+  .timerchip.on{display:flex}
+  .clock{font-weight:800; font-size:15px; color:var(--dim); margin-left:auto}
+  .iconbtn{background:var(--card2); border:1px solid var(--line); color:var(--txt); border-radius:11px;
+           padding:8px 13px; cursor:pointer; font-size:14px; font-weight:700; white-space:nowrap}
+  .iconbtn:hover{border-color:var(--acc)}
+
+  /* ═══ MAIN ═══ */
+  .main{flex:1; display:flex; min-height:0}
+  .content{flex:1; overflow-y:auto; padding:26px 28px}
+  .content::-webkit-scrollbar{width:8px}
+  .content::-webkit-scrollbar-thumb{background:var(--card2); border-radius:6px}
+  .sec-h{display:flex; align-items:baseline; gap:10px; margin:4px 2px 14px}
+  .sec-h h2{font-size:19px}
+  .sec-h .cnt{color:var(--dim); font-size:13px}
+  .games{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:16px; margin-bottom:30px}
+  .game{position:relative; border-radius:18px; overflow:hidden; cursor:pointer; border:1px solid var(--line);
+        aspect-ratio:16/9.5; display:flex; align-items:flex-end; transition:.18s}
+  .game:hover{transform:translateY(-3px); border-color:var(--acc); box-shadow:0 12px 30px rgba(0,0,0,.45)}
+  .game .art{position:absolute; inset:0}
+  .game .tag{position:absolute; top:12px; left:14px; font-weight:900; font-size:26px; letter-spacing:1px;
+             color:rgba(255,255,255,.92); text-shadow:0 2px 12px rgba(0,0,0,.5)}
+  .game .meta{position:relative; width:100%; padding:11px 14px; background:linear-gradient(transparent,rgba(5,7,11,.88) 45%)}
+  .game .meta .n{font-weight:800; font-size:15px}
+  .game .meta .s{font-size:12px; color:#c6cbd8}
+  .apps{display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:12px; margin-bottom:30px}
+  .app{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 10px;
+       display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; transition:.15s}
+  .app:hover{border-color:var(--acc); transform:translateY(-2px)}
+  .app .em{font-size:32px}
+  .app .n{font-size:13px; font-weight:700; text-align:center}
+
+  /* ═══ SIDEBAR ═══ */
+  .side{width:390px; border-left:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; min-height:0}
+  .sesscard{padding:16px 18px; border-bottom:1px solid var(--line)}
+  .sess-on{display:flex; align-items:center; justify-content:space-between; gap:10px}
+  .sess-time{font-size:30px; font-weight:900; color:var(--green); font-variant-numeric:tabular-nums}
+  .sidetabs{display:flex; border-bottom:1px solid var(--line)}
+  .sidetabs button{flex:1; background:transparent; border:0; color:var(--dim); padding:12px 4px; cursor:pointer;
+                   font-weight:700; font-size:13px; border-bottom:2px solid transparent}
+  .sidetabs button.on{color:var(--txt); border-bottom-color:var(--acc)}
+  .sidetabs .bub{background:var(--acc); color:#fff; border-radius:9px; font-size:11px; padding:1px 6px; margin-left:4px}
+  .sidebody{flex:1; overflow-y:auto; padding:14px 16px}
+  .sidebody::-webkit-scrollbar{width:6px}
+  .sidebody::-webkit-scrollbar-thumb{background:var(--card2); border-radius:6px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:15px; padding:14px; margin-bottom:10px}
+
+  .case-i{display:flex; align-items:center; gap:12px; cursor:pointer; transition:.15s}
+  .case-i:hover{border-color:var(--acc)}
+  .case-i .box{width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px}
+  .case-i .t{font-weight:800; text-transform:capitalize}
+  .case-i .open-hint{margin-left:auto; font-size:12px; font-weight:700; color:var(--acc)}
+  .case-i.opened{opacity:.45; cursor:default}
+
+  .tal-branch{margin:2px 0 8px; font-size:13px; font-weight:800; color:var(--dim); text-transform:uppercase; letter-spacing:1px}
+  .tal .top{display:flex; justify-content:space-between; align-items:center; gap:8px}
+  .tal .n{font-weight:800; font-size:14px}
+  .tal .lv{font-size:12px; color:var(--dim); white-space:nowrap}
+  .tal .d{font-size:12.5px; color:var(--dim); margin:5px 0 8px}
+  .tal .eff{font-size:12.5px; color:var(--acc2); font-weight:700}
+  .tal .row{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .tal .inv{border:0; background:var(--acc); color:#fff; border-radius:9px; padding:7px 13px; font-weight:800; cursor:pointer; font-size:13px}
+  .tal .inv:disabled{background:var(--card2); color:var(--dim); cursor:default}
+  .tal.locked{opacity:.5}
+  .talbar{height:6px; background:#0c1017; border-radius:5px; overflow:hidden; margin-top:8px}
+  .talbar i{display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2))}
+
+  .ach{display:flex; gap:11px; align-items:flex-start}
+  .ach .st{font-size:20px; line-height:1.2}
+  .ach .t{font-weight:800; font-size:14px}
+  .ach .d{font-size:12.5px; color:var(--dim); margin-top:2px}
+  .ach .rw{font-size:12px; color:var(--gold); margin-top:4px; font-weight:700}
+  .ach.got{border-color:rgba(52,211,153,.4)}
+
+  .lb-row{display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--line)}
+  .lb-row:last-child{border:0}
+  .lb-row .rk{width:30px; font-weight:900; color:var(--dim)}
+  .lb-row .rk.top3{color:var(--gold)}
+  .lb-row .av{font-size:20px}
+  .lb-row .nk{font-weight:700; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .lb-row .xp{font-size:12.5px; color:var(--dim); white-space:nowrap}
+  .lb-row.me{background:rgba(124,92,255,.12); border-radius:10px; padding:9px 8px}
+  .lb-row.me .nk{color:var(--acc2)}
+
+  .sess-item{display:flex; justify-content:space-between; align-items:center; padding:10px 2px; border-bottom:1px solid var(--line); font-size:13.5px}
+  .sess-item:last-child{border:0}
+  .badge{font-size:11px; padding:2px 8px; border-radius:8px; background:var(--card2); color:var(--dim)}
+
+  /* ═══ OVERLAYS ═══ */
+  .toast{position:fixed; left:50%; transform:translateX(-50%) translateY(14px); bottom:26px; background:#101622;
+         border:1px solid var(--acc); border-radius:14px; padding:14px 22px; opacity:0; transition:.3s;
+         pointer-events:none; z-index:60; font-weight:600; max-width:70vw}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  .overlay{position:fixed; inset:0; background:rgba(3,5,9,.85); display:none; align-items:center; justify-content:center; z-index:50}
+  .overlay.show{display:flex}
+  .modal{background:var(--panel); border:1px solid var(--line); border-radius:24px; padding:30px; width:420px; max-width:92vw; text-align:center}
+  .modal h2{margin-bottom:6px}
+  .bignum{font-size:64px; font-weight:900; color:var(--gold); line-height:1.1}
+  .dropbox{width:110px; height:110px; margin:18px auto; border-radius:26px; display:flex; align-items:center;
+           justify-content:center; font-size:52px; animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{transform:scale(1)} 50%{transform:scale(1.07)}}
+  .avapick{display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin:14px 0}
+  .avapick button{font-size:26px; padding:8px 0; background:var(--card); border:1px solid var(--line); border-radius:12px; cursor:pointer}
+  .avapick button.on{border-color:var(--acc); background:rgba(124,92,255,.18)}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ AUTH ═══════════ -->
+<div id="authView">
+  <div>
+    <div class="logo">14<b>:</b>48</div>
+    <div class="slogan">Твой клуб — это игра</div>
+  </div>
+  <div class="authcard">
+    <div class="tabs">
+      <button id="tabLogin" class="on" onclick="setMode('login')">Вход</button>
+      <button id="tabReg" onclick="setMode('register')">Регистрация</button>
+    </div>
+    <input id="nick" class="input" placeholder="Никнейм" autocomplete="off">
+    <input id="pass" class="input" type="password" placeholder="Пароль (мин. 6)" onkeydown="if(event.key==='Enter')submitAuth()">
+    <div id="authErr" class="err"></div>
+    <button id="authBtn" class="btn" onclick="submitAuth()">Войти</button>
+  </div>
+  <div class="muted">Сервер: <span id="srv"></span></div>
+</div>
+
+<!-- ═══════════ SHELL ═══════════ -->
+<div id="shellView" class="hidden">
+  <div class="topbar">
+    <div class="tb-logo">14<b>:</b>48</div>
+    <div class="ava" id="ava" onclick="openProfile()">😎</div>
+    <div class="tb-user" onclick="openProfile()">
+      <div class="nick" id="hNick">—</div>
+      <div class="muted" style="font-size:11px">профиль ⚙</div>
+    </div>
+    <div class="lvlpill">LVL <b id="hLvl">1</b></div>
+    <div class="xpzone">
+      <div class="xpwrap"><div class="xpbar" id="xpBar"></div></div>
+      <div class="xpnums"><span id="xpText">0 / 1000 XP</span><span id="xpLeft"></span></div>
+    </div>
+    <div class="res"><span class="ic">🪙</span><span class="gold-t" id="coins">0</span></div>
+    <div class="res"><span class="ic">✦</span><span class="cyan-t" id="sp">0</span></div>
+    <div class="res timerchip" id="timerChip"><span class="ic">⏱</span><span id="timer">00:00</span></div>
+    <div class="clock" id="clock">--:--</div>
+    <button class="iconbtn" onclick="adminCall()">🛎 Админ</button>
+    <button class="iconbtn" title="Выйти" onclick="logout()">⏻</button>
+  </div>
+
+  <div class="main">
+    <div class="content">
+      <div class="sec-h"><h2>🎮 Игры</h2><span class="cnt" id="gamesCnt"></span></div>
+      <div class="games" id="gamesGrid"></div>
+
+      <div class="sec-h"><h2>🧩 Приложения</h2></div>
+      <div class="apps" id="appsGrid"></div>
+
+      <div class="sec-h"><h2>⚙️ Система</h2></div>
+      <div class="apps" id="sysGrid"></div>
+    </div>
+
+    <div class="side">
+      <div class="sesscard" id="sessCard"><!-- JS --></div>
+      <div class="sidetabs">
+        <button id="st-cases" class="on" onclick="sideTab('cases')">Кейсы<span class="bub hidden" id="casesBub">0</span></button>
+        <button id="st-talents" onclick="sideTab('talents')">Таланты</button>
+        <button id="st-top" onclick="sideTab('top')">Топ</button>
+        <button id="st-ach" onclick="sideTab('ach')">Ачивки</button>
+        <button id="st-hist" onclick="sideTab('hist')">История</button>
+      </div>
+      <div class="sidebody" id="sideBody"><!-- JS --></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ OVERLAYS ═══════════ -->
+<div id="toast" class="toast"></div>
+
+<div id="caseOverlay" class="overlay">
+  <div class="modal">
+    <h2 id="coTitle">Открываем кейс…</h2>
+    <div class="dropbox" id="coBox">🎁</div>
+    <div id="coResult" class="hidden">
+      <div class="bignum" id="coAmount"></div>
+      <div class="muted" id="coType"></div>
+      <button class="btn" style="margin-top:20px" onclick="closeOverlay('caseOverlay'); loadAll()">Забрать</button>
+    </div>
+  </div>
+</div>
+
+<div id="lvlOverlay" class="overlay" onclick="this.classList.remove('show')">
+  <div class="modal" style="border-color:var(--gold)">
+    <div class="muted">НОВЫЙ УРОВЕНЬ</div>
+    <div class="bignum" id="lvlNum">2</div>
+    <div class="muted" id="lvlBonus">+1 очко навыка</div>
+  </div>
+</div>
+
+<div id="endOverlay" class="overlay">
+  <div class="modal">
+    <h2>Сессия завершена</h2>
+    <div style="display:flex; gap:12px; justify-content:center; margin:22px 0">
+      <div class="res" style="font-size:17px"><span class="ic">⚡</span><span class="cyan-t" id="eoXP">+0 XP</span></div>
+      <div class="res" style="font-size:17px"><span class="ic">🪙</span><span class="gold-t" id="eoCoins">+0</span></div>
+    </div>
+    <div class="muted" id="eoExtra"></div>
+    <button class="btn" style="margin-top:18px" onclick="closeOverlay('endOverlay')">Ок</button>
+  </div>
+</div>
+
+<div id="profOverlay" class="overlay">
+  <div class="modal">
+    <h2>Профиль</h2>
+    <input id="pNick" class="input" style="margin-top:16px" placeholder="Никнейм">
+    <div class="avapick" id="avaPick"></div>
+    <div id="pErr" class="err"></div>
+    <div style="display:flex; gap:10px">
+      <button class="btn ghost" onclick="closeOverlay('profOverlay')">Отмена</button>
+      <button class="btn" onclick="saveProfile()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════ КОНФИГ ═══════════════ */
+const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
+document.getElementById('srv').textContent = API;
+
+const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁','🐨','🐵','🐙']; // avatar_id 1..12
+
+/* Каталог гостевого экрана. Приоритет: игры → приложения → система.
+   type:'proto' — запуск через протокол ОС (работает уже сейчас, если программа установлена),
+   type:'url' — открыть в браузере, type:'agent' — запуск с ПК через shell-agent (спринт 2). */
+const CATALOG = {
+  games: [
+    {name:'Counter-Strike 2', sub:'Steam',      tag:'CS2',  g:['#f59e0b','#ef4444'], launch:{type:'proto', uri:'steam://rungameid/730'}},
+    {name:'Dota 2',           sub:'Steam',      tag:'DOTA', g:['#ef4444','#7c5cff'], launch:{type:'proto', uri:'steam://rungameid/570'}},
+    {name:'Valorant',         sub:'Riot Games', tag:'VAL',  g:['#fb7185','#be123c'], launch:{type:'agent'}},
+    {name:'Fortnite',         sub:'Epic Games', tag:'FN',   g:['#22d3ee','#6366f1'], launch:{type:'proto', uri:'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true'}},
+    {name:'League of Legends',sub:'Riot Games', tag:'LoL',  g:['#fbbf24','#0ea5e9'], launch:{type:'agent'}},
+    {name:'GTA V',            sub:'Rockstar',   tag:'GTA',  g:['#34d399','#0f766e'], launch:{type:'proto', uri:'steam://rungameid/271590'}},
+  ],
+  apps: [
+    {name:'Steam',    em:'🎮', launch:{type:'proto', uri:'steam://open/main'}},
+    {name:'Discord',  em:'💬', launch:{type:'proto', uri:'discord://'}},
+    {name:'Браузер',  em:'🌐', launch:{type:'url',   uri:'https://www.google.com'}},
+    {name:'Spotify',  em:'🎵', launch:{type:'proto', uri:'spotify:'}},
+    {name:'YouTube',  em:'▶️', launch:{type:'url',   uri:'https://www.youtube.com'}},
+    {name:'Telegram', em:'✈️', launch:{type:'url',   uri:'https://web.telegram.org'}},
+  ],
+  system: [
+    {name:'Звук',    em:'🔊', launch:{type:'agent'}},
+    {name:'Дисплей', em:'🖥️', launch:{type:'agent'}},
+    {name:'NVIDIA',  em:'🟢', launch:{type:'agent'}},
+  ],
+};
+
+const TIER = {
+  light:  {c:'var(--t-light)',  em:'🟢'}, medium: {c:'var(--t-medium)', em:'🔵'},
+  heavy:  {c:'var(--t-heavy)',  em:'🟣'}, titan:  {c:'var(--t-titan)',  em:'🟠'},
+  gods:   {c:'var(--t-gods)',   em:'🔴'},
+};
+const BRANCH = {strength:'💪 Strength', agility:'🏃 Agility', intellect:'🧠 Intellect'};
+
+/* ═══════════════ СОСТОЯНИЕ ═══════════════ */
+let me = null, cases = [], talents = null, achievements = null, leaderboard = null, sessions = [];
+let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
+let authMode = 'login';
+
+/* ═══════════════ API + refresh-токены ═══════════════ */
+function tokens(){ return {a: localStorage.getItem('1448_access'), r: localStorage.getItem('1448_refresh')}; }
+function setTokens(a, r){ localStorage.setItem('1448_access', a); localStorage.setItem('1448_refresh', r); }
+function clearTokens(){ localStorage.removeItem('1448_access'); localStorage.removeItem('1448_refresh'); }
+
+async function api(path, opts = {}, retry = true){
+  const {a} = tokens();
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: {'Content-Type':'application/json', ...(a ? {Authorization:'Bearer '+a} : {}), ...(opts.headers||{})},
+  });
+  if (res.status === 401 && retry && tokens().r){
+    const ok = await tryRefresh();
+    if (ok) return api(path, opts, false);
+    logout(); throw new Error('unauthorized');
+  }
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code, status:res.status});
+  return data;
+}
+
+async function tryRefresh(){
+  try{
+    const res = await fetch(API + '/auth/refresh', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({refresh_token: tokens().r}),
+    });
+    if (!res.ok) return false;
+    const d = await res.json();
+    setTokens(d.access_token, d.refresh_token);
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ═══════════════ AUTH ═══════════════ */
+function setMode(m){
+  authMode = m;
+  document.getElementById('tabLogin').classList.toggle('on', m==='login');
+  document.getElementById('tabReg').classList.toggle('on', m==='register');
+  document.getElementById('authBtn').textContent = m==='login' ? 'Войти' : 'Создать аккаунт';
+  document.getElementById('authErr').textContent = '';
+}
+
+async function submitAuth(){
+  const nick = document.getElementById('nick').value.trim();
+  const pass = document.getElementById('pass').value;
+  const err = document.getElementById('authErr');
+  const btn = document.getElementById('authBtn');
+  err.textContent = ''; btn.disabled = true;
+  try{
+    const path = authMode==='login' ? '/auth/login' : '/auth/register';
+    const body = authMode==='login' ? {login:nick, password:pass} : {nickname:nick, password:pass};
+    const d = await api(path, {method:'POST', body:JSON.stringify(body)}, false);
+    setTokens(d.access_token, d.refresh_token);
+    me = d.user;
+    enterShell();
+  }catch(e){ err.textContent = e.message || 'Ошибка'; }
+  btn.disabled = false;
+}
+
+function logout(){
+  clearTokens(); me = null; activeSession = null;
+  if (timerIv) clearInterval(timerIv);
+  document.getElementById('shellView').classList.add('hidden');
+  document.getElementById('authView').classList.remove('hidden');
+}
+
+/* ═══════════════ SHELL ═══════════════ */
+function enterShell(){
+  document.getElementById('authView').classList.add('hidden');
+  document.getElementById('shellView').classList.remove('hidden');
+  renderCatalog();
+  loadAll();
+}
+
+async function loadAll(){
+  try{
+    const [m, cs, tl, ac, lb, ss] = await Promise.all([
+      api('/me'), api('/me/cases'), api('/me/talents'),
+      api('/me/achievements'), api('/leaderboard'), api('/me/sessions'),
+    ]);
+    const prevLvl = me ? me.level : null;
+    me = m.user || m; cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
+    sessions = ss.sessions || [];
+    activeSession = sessions.find(s => !s.ended_at) || null;
+    if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
+    renderTop(); renderSession(); renderSide();
+    document.getElementById('casesBub').classList.toggle('hidden', !(cs.unopened > 0));
+    document.getElementById('casesBub').textContent = cs.unopened;
+  }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
+}
+
+function xpNext(level){ return Math.floor(1000 * Math.pow(level, 1.4)); }
+
+function renderTop(){
+  const need = xpNext(me.level);
+  document.getElementById('hNick').textContent = me.nickname;
+  document.getElementById('hLvl').textContent = me.level;
+  document.getElementById('ava').textContent = AVATARS[(me.avatar_id||1)-1] || '😎';
+  document.getElementById('coins').textContent = fmt(me.coins_balance);
+  document.getElementById('sp').textContent = me.skillpoints_available;
+  document.getElementById('xpText').textContent = fmt(me.xp_current) + ' / ' + fmt(need) + ' XP';
+  document.getElementById('xpLeft').textContent = 'до уровня: ' + fmt(Math.max(0, need - me.xp_current)) + ' XP';
+  document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
+}
+
+/* ═══════════════ КАТАЛОГ ═══════════════ */
+function renderCatalog(){
+  const gg = document.getElementById('gamesGrid');
+  gg.innerHTML = CATALOG.games.map((g,i) => `
+    <div class="game" onclick="launch('games',${i})">
+      <div class="art" style="background:linear-gradient(135deg,${g.g[0]},${g.g[1]})"></div>
+      <div class="tag">${g.tag}</div>
+      <div class="meta"><div class="n">${g.name}</div><div class="s">${g.sub}</div></div>
+    </div>`).join('');
+  document.getElementById('gamesCnt').textContent = CATALOG.games.length + ' установлено';
+  document.getElementById('appsGrid').innerHTML = CATALOG.apps.map((a,i) => `
+    <div class="app" onclick="launch('apps',${i})"><div class="em">${a.em}</div><div class="n">${a.name}</div></div>`).join('');
+  document.getElementById('sysGrid').innerHTML = CATALOG.system.map((a,i) => `
+    <div class="app" onclick="launch('system',${i})"><div class="em">${a.em}</div><div class="n">${a.name}</div></div>`).join('');
+}
+
+function launch(cat, i){
+  const item = CATALOG[cat][i];
+  const l = item.launch;
+  if (l.type === 'url'){ window.open(l.uri, '_blank'); return; }
+  if (l.type === 'proto'){
+    toast('🚀 Запускаю ' + item.name + '…');
+    const f = document.createElement('iframe');
+    f.style.display = 'none'; f.src = l.uri;
+    document.body.appendChild(f); setTimeout(()=>f.remove(), 3000);
+    return;
+  }
+  toast('🔧 ' + item.name + ': запуск с ПК подключается в спринте 2 (shell-agent)');
+}
+
+function adminCall(){ toast('🛎 Сигнал администратору уйдёт через shell-agent (спринт 2)'); }
+
+/* ═══════════════ СЕССИЯ ═══════════════ */
+function renderSession(){
+  const el = document.getElementById('sessCard');
+  const chip = document.getElementById('timerChip');
+  if (activeSession){
+    chip.classList.add('on');
+    el.innerHTML = `
+      <div class="sess-on">
+        <div>
+          <div class="muted">Сессия идёт</div>
+          <div class="sess-time" id="sessTime">00:00</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <button class="btn danger slim" onclick="endSession(null)">Завершить</button>
+          <button class="btn ghost slim" title="dev: засчитать 150 минут" onclick="endSession(150)">+150 мин (dev)</button>
+        </div>
+      </div>`;
+    if (timerIv) clearInterval(timerIv);
+    timerIv = setInterval(tickTimer, 1000); tickTimer();
+  } else {
+    chip.classList.remove('on');
+    if (timerIv) clearInterval(timerIv);
+    el.innerHTML = `
+      <div class="sess-on">
+        <div>
+          <div class="muted">Сессия не начата</div>
+          <div style="font-weight:800; font-size:17px; margin-top:2px">Готов играть?</div>
+        </div>
+        <button class="btn slim" onclick="startSession()">▶ Начать сессию</button>
+      </div>`;
+  }
+}
+
+function tickTimer(){
+  if (!activeSession) return;
+  const sec = Math.max(0, Math.floor((Date.now() - new Date(activeSession.started_at)) / 1000));
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  const t = (h>0 ? h+':' : '') + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  const st = document.getElementById('sessTime');
+  if (st) st.textContent = t;
+  document.getElementById('timer').textContent = t;
+}
+
+async function startSession(){
+  try{
+    const d = await api('/me/sessions/start', {method:'POST', body:'{}'});
+    toast('▶ Сессия на «' + (d.computer||'ПК') + '» началась. Играй!');
+    await loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+async function endSession(devMinutes){
+  try{
+    const body = devMinutes ? JSON.stringify({minutes:devMinutes}) : '{}';
+    const d = await api('/me/sessions/end', {method:'POST', body});
+    document.getElementById('eoXP').textContent = '+' + fmt(d.xp_earned) + ' XP';
+    document.getElementById('eoCoins').textContent = '+' + fmt(d.coins_earned);
+    let extra = [];
+    if (d.levels_gained > 0) extra.push('уровней получено: ' + d.levels_gained);
+    if (d.bonus_case) extra.push('🎁 бонусный кейс: ' + (d.bonus_case_tier||''));
+    document.getElementById('eoExtra').textContent = extra.join(' · ');
+    document.getElementById('endOverlay').classList.add('show');
+    if (d.levels_gained > 0) setTimeout(()=>showLevelUp(d.user.level), 400);
+    await loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function showLevelUp(level){
+  document.getElementById('lvlNum').textContent = level;
+  document.getElementById('lvlOverlay').classList.add('show');
+}
+
+/* ═══════════════ САЙДБАР ═══════════════ */
+function sideTab(t){
+  curTab = t;
+  ['cases','talents','top','ach','hist'].forEach(x =>
+    document.getElementById('st-'+x).classList.toggle('on', x===t));
+  renderSide();
+}
+
+function renderSide(){
+  const el = document.getElementById('sideBody');
+  if (curTab === 'cases'){
+    if (!cases.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">🎁<br>Кейсов пока нет.<br>Играй, поднимай уровень, выполняй ачивки.</div>'; return; }
+    el.innerHTML = cases.map(c => {
+      const t = TIER[c.tier] || TIER.light;
+      const opened = !!c.opened_at;
+      return `<div class="card case-i ${opened?'opened':''}" ${opened?'':`onclick="openCase('${c.id}','${c.tier}')"`}>
+        <div class="box" style="background:${t.c}22; border:1px solid ${t.c}">${t.em}</div>
+        <div><div class="t" style="color:${t.c}">${c.tier}</div>
+        <div class="muted" style="font-size:11.5px">${opened ? 'открыт: '+(c.drop_type==='coins' ? '+'+fmt(c.drop_amount)+' 🪙' : '+'+c.drop_amount+'% кэшбек') : 'источник: '+c.source}</div></div>
+        ${opened?'':'<div class="open-hint">ОТКРЫТЬ ▸</div>'}
+      </div>`;
+    }).join('');
+  }
+  if (curTab === 'talents'){
+    if (!talents){ el.innerHTML = ''; return; }
+    const sp = talents.skillpoints_available;
+    let html = `<div class="muted" style="margin-bottom:10px">Свободные очки: <b class="cyan-t">${sp}</b></div>`;
+    for (const br of ['strength','agility','intellect']){
+      const list = (talents.talents||[]).filter(t => t.branch === br);
+      if (!list.length) continue;
+      html += `<div class="tal-branch">${BRANCH[br]}</div>` + list.map(t => `
+        <div class="card tal ${t.unlocked?'':'locked'}">
+          <div class="top"><div class="n">${t.name}</div><div class="lv">${t.current_level}/${t.max_level}</div></div>
+          <div class="d">${t.description||''}</div>
+          <div class="row">
+            <div class="eff">${t.current_level>0 ? 'сейчас: '+t.effect_now : ''} ${t.current_level<t.max_level ? '→ '+t.effect_next : ''}</div>
+            <button class="inv" ${(!t.unlocked || sp<1 || t.current_level>=t.max_level)?'disabled':''}
+              onclick="invest('${t.id}')">${t.unlocked ? (t.current_level>=t.max_level?'MAX':'+1 ✦') : 'LVL '+t.min_user_level}</button>
+          </div>
+          <div class="talbar"><i style="width:${100*t.current_level/t.max_level}%"></i></div>
+        </div>`).join('');
+    }
+    el.innerHTML = html;
+  }
+  if (curTab === 'top'){
+    if (!leaderboard){ el.innerHTML = ''; return; }
+    const rows = (leaderboard.top||[]).map(r => `
+      <div class="lb-row ${r.is_me?'me':''}">
+        <div class="rk ${r.rank<=3?'top3':''}">#${r.rank}</div>
+        <div class="av">${AVATARS[(r.avatar_id||1)-1]||'😎'}</div>
+        <div class="nk">${esc(r.nickname)}</div>
+        <div class="lvlpill" style="font-size:11px; padding:3px 8px">LVL <b>${r.level}</b></div>
+        <div class="xp">${fmt(r.xp_total)} XP</div>
+      </div>`).join('');
+    const myRank = leaderboard.me && leaderboard.me.rank ? `<div class="muted" style="text-align:center; margin-top:10px">Твоё место: <b class="cyan-t">#${leaderboard.me.rank}</b></div>` : '';
+    el.innerHTML = `<div class="card">${rows || '<div class="muted">Пока пусто</div>'}</div>` + myRank;
+  }
+  if (curTab === 'ach'){
+    if (!achievements){ el.innerHTML = ''; return; }
+    const list = achievements.achievements || [];
+    const got = list.filter(a=>a.earned), rest = list.filter(a=>!a.earned);
+    el.innerHTML = `<div class="muted" style="margin-bottom:10px">Получено: <b class="green-t">${achievements.earned_count}</b> · Наиграно часов: <b>${Math.floor(achievements.hours_played||0)}</b></div>`
+      + [...got, ...rest].map(a => `
+      <div class="card ach ${a.earned?'got':''}">
+        <div class="st">${a.earned?'✅':'🔒'}</div>
+        <div><div class="t">${a.title}</div><div class="d">${a.description||''}</div>
+        <div class="rw">${a.reward_skillpoints ? '+'+a.reward_skillpoints+' ✦ ' : ''}${a.reward_case_tier ? '+ кейс '+a.reward_case_tier : ''}</div></div>
+      </div>`).join('');
+  }
+  if (curTab === 'hist'){
+    if (!sessions.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">История сессий пуста</div>'; return; }
+    el.innerHTML = '<div class="card">' + sessions.map(s => {
+      const d = new Date(s.started_at);
+      const dt = String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      return `<div class="sess-item"><span>${dt}</span>
+        ${s.ended_at ? `<span class="cyan-t">+${fmt(s.xp_earned)} XP</span><span class="gold-t">+${fmt(s.coins_earned)} 🪙</span><span class="badge">${s.minutes_total} мин</span>`
+                     : '<span class="badge" style="color:var(--green)">идёт сейчас</span>'}
+      </div>`;
+    }).join('') + '</div>';
+  }
+}
+
+async function invest(id){
+  try{
+    await api('/me/talents/invest', {method:'POST', body:JSON.stringify({talent_id:id})});
+    toast('✦ Талант прокачан');
+    await loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* ═══════════════ КЕЙСЫ ═══════════════ */
+async function openCase(id, tier){
+  const t = TIER[tier] || TIER.light;
+  const ov = document.getElementById('caseOverlay');
+  document.getElementById('coTitle').textContent = 'Открываем кейс…';
+  const box = document.getElementById('coBox');
+  box.style.background = 'transparent'; box.style.border = '2px solid '+t.c; box.textContent = '🎁';
+  box.style.animation = 'pulse .5s infinite';
+  document.getElementById('coResult').classList.add('hidden');
+  ov.classList.add('show');
+  try{
+    const d = await api('/me/cases/'+id+'/open', {method:'POST', body:'{}'});
+    setTimeout(() => {
+      box.style.animation = 'none';
+      document.getElementById('coTitle').textContent = 'Твой дроп!';
+      if (d.drop_type === 'coins'){
+        box.textContent = '🪙';
+        document.getElementById('coAmount').textContent = '+' + fmt(d.drop_amount);
+        document.getElementById('coType').textContent = 'монет · кейс ' + d.tier;
+      } else {
+        box.textContent = '⚡';
+        document.getElementById('coAmount').textContent = '+' + d.drop_amount + '%';
+        document.getElementById('coType').textContent = 'бустер кэшбека · кейс ' + d.tier;
+      }
+      document.getElementById('coResult').classList.remove('hidden');
+    }, 1200);
+  }catch(e){ ov.classList.remove('show'); toast('⚠ ' + e.message); }
+}
+
+/* ═══════════════ ПРОФИЛЬ ═══════════════ */
+function openProfile(){
+  document.getElementById('pNick').value = me.nickname;
+  profAva = me.avatar_id || 1;
+  const pick = document.getElementById('avaPick');
+  pick.innerHTML = AVATARS.map((a,i) =>
+    `<button class="${i+1===profAva?'on':''}" onclick="pickAva(${i+1})">${a}</button>`).join('');
+  document.getElementById('pErr').textContent = '';
+  document.getElementById('profOverlay').classList.add('show');
+}
+function pickAva(id){
+  profAva = id;
+  [...document.getElementById('avaPick').children].forEach((b,i) => b.classList.toggle('on', i+1===id));
+}
+async function saveProfile(){
+  try{
+    await api('/me', {method:'PATCH', body:JSON.stringify({nickname:document.getElementById('pNick').value.trim(), avatar_id:profAva})});
+    closeOverlay('profOverlay'); toast('✓ Профиль обновлён');
+    await loadAll();
+  }catch(e){ document.getElementById('pErr').textContent = e.message; }
+}
+
+/* ═══════════════ УТИЛИТЫ ═══════════════ */
+function fmt(n){ return (n==null?0:n).toLocaleString('ru-RU'); }
+function esc(s){ const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
+setInterval(() => {
+  const d = new Date();
+  document.getElementById('clock').textContent = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}, 1000);
+
+/* ═══════════════ СТАРТ ═══════════════ */
+(async function init(){
+  if (tokens().a || tokens().r){
+    try{
+      me = await api('/me');
+      enterShell();
+      return;
+    }catch(e){ clearTokens(); }
+  }
+  document.getElementById('authView').classList.remove('hidden');
+})();
+</script>
+</body>
+</html>
