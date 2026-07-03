@@ -103,14 +103,16 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — go vet/test/build + синт
 - запуск: открыть файл в браузере; киоск-режим:
   `msedge --kiosk "file:///<путь>/web/shell.html" --edge-kiosk-type=fullscreen`.
 
-**Дизайн-язык «14:48 Aurora»** (гостевой экран, редизайн по референсам reactbits/
-glass3d/cta.gallery/designspells): тёмная база + новый акцент-фуксия `--acc3`,
-фирменный aurora-фон (плывущие blob'ы), glassmorphism (backdrop-blur карточки),
-пульсирующее двоеточие в лого (мотив времени), premium-кнопки (shimmer+glow+magnet),
-3D-tilt игровых тайлов со spotlight, count-up чисел, star-border на Titan/God's
-кейсах, конфетти при дропе/левел-апе, click-spark, пружинные переходы вкладок.
-Всё ванильным CSS/JS (движок `FX`), офлайн. Перф-гард: `prefers-reduced-motion`,
-`hardwareConcurrency<=2` и FPS<32 → класс `perf-lite` (отключает blur/частицы/tilt).
+**Дизайн-язык «14:48 Noir»** (гостевой экран, редизайн по референсам reactbits/
+glass3d/cta.gallery/designspells): чёрная база, **красный — единственный акцент**
+(`--acc #ff2740`: шрифт, активное, свечение, «что выделяется»), вторичное —
+нейтральный светлый `--acc2`. Фирменный красно-чёрный фон (приглушённые blob'ы),
+glassmorphism, пульсирующее двоеточие в лого, premium-кнопки (shimmer+glow+magnet),
+3D-tilt игровых тайлов (единая тёмная подложка, различие по TAG) со spotlight,
+count-up чисел, star-border на Titan/God's кейсах, конфетти (красно-белые) при
+дропе/левел-апе, click-spark, пружинные переходы вкладок. Тиры — монохромные глифы
+по красной шкале (`--t-*`). Всё ванильным CSS/JS (движок `FX`), офлайн.
+Перф-гард: `prefers-reduced-motion`, `hardwareConcurrency<=2`, FPS<32 → `perf-lite`.
 
 **Real-time / WebSocket** (мост к PC Shell):
 - ПК подключается к `/api/v1/ws/shell?computer_id=...`;

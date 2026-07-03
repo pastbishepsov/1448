@@ -6,21 +6,24 @@
 <title>14:48 — Гостевой экран</title>
 <style>
   :root{
-    --bg:#06070f; --panel:#0e1220; --card:#141a2b; --card2:#1b2236; --line:#28304a;
-    --txt:#eaedf6; --dim:#8b93ab; --acc:#7c5cff; --acc2:#22d3ee;
-    --acc3:#e879f9; /* НОВЫЙ фирменный акцент — фуксия (Aurora) */
-    --gold:#fbbf24; --green:#34d399; --red:#f87171;
-    --t-light:#34d399; --t-medium:#38bdf8; --t-heavy:#a78bfa; --t-titan:#fb923c; --t-gods:#fb7185;
+    /* ── 14:48 Noir — чёрная база, красный акцент ── */
+    --bg:#070708; --panel:#0f0f12; --card:#141417; --card2:#1c1c21; --line:#2b2b32;
+    --txt:#f2f0f2; --dim:#8d8d97;
+    --acc:#ff2740;   /* красный — единственный акцент, «то что выделяется» */
+    --acc2:#c9ccd6;  /* нейтральный светлый — вторичные данные (без цвета) */
+    --acc3:#ff5563;  /* светло-красный — вариации акцента */
+    --gold:#ff3b45; --green:#c9ccd6; --red:#ff2740; /* золото/зелёный убраны в гамму */
+    --t-light:#9aa0ad; --t-medium:#d1687a; --t-heavy:#e5334c; --t-titan:#ff2740; --t-gods:#ff1744;
     /* glass */
-    --glass:rgba(20,26,43,.55); --glass-2:rgba(27,34,54,.5);
-    --glass-brd:rgba(255,255,255,.09); --glass-hi:rgba(255,255,255,.14);
+    --glass:rgba(20,20,24,.55); --glass-2:rgba(28,28,33,.5);
+    --glass-brd:rgba(255,255,255,.08); --glass-hi:rgba(255,60,80,.28);
     --blur:14px;
-    /* фирменный aurora-градиент */
-    --aurora:linear-gradient(120deg,#7c5cff 0%,#e879f9 45%,#22d3ee 100%);
-    --aurora-soft:linear-gradient(120deg,rgba(124,92,255,.9),rgba(232,121,249,.85),rgba(34,211,238,.9));
+    /* фирменный градиент — оттенки красного */
+    --aurora:linear-gradient(120deg,#ff2740 0%,#ff5563 50%,#7a0f1c 100%);
+    --aurora-soft:linear-gradient(120deg,rgba(255,39,64,.9),rgba(255,85,99,.85),rgba(122,15,28,.9));
     /* тени и свечения */
-    --sh-1:0 8px 30px rgba(0,0,0,.35); --sh-2:0 18px 50px rgba(0,0,0,.5);
-    --glow:0 0 24px rgba(124,92,255,.45); --glow-2:0 0 30px rgba(232,121,249,.4);
+    --sh-1:0 8px 30px rgba(0,0,0,.45); --sh-2:0 18px 50px rgba(0,0,0,.6);
+    --glow:0 0 24px rgba(255,39,64,.45); --glow-2:0 0 30px rgba(255,39,64,.35);
     /* easing */
     --spring:cubic-bezier(.22,1,.36,1); --smooth:cubic-bezier(.4,0,.2,1);
   }
@@ -30,10 +33,10 @@
        color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden}
   /* ═══ AURORA-ФОН (фирменный приём) ═══ */
   .aurora-bg{position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; background:var(--bg)}
-  .aurora-bg .blob{position:absolute; border-radius:50%; filter:blur(70px); opacity:.5; mix-blend-mode:screen; will-change:transform}
-  .aurora-bg .b1{width:46vw; height:46vw; left:-8vw; top:-12vw; background:radial-gradient(circle,#7c5cff,transparent 65%); animation:drift1 26s var(--smooth) infinite alternate}
-  .aurora-bg .b2{width:42vw; height:42vw; right:-10vw; top:-6vw; background:radial-gradient(circle,#e879f9,transparent 65%); animation:drift2 32s var(--smooth) infinite alternate}
-  .aurora-bg .b3{width:50vw; height:50vw; left:18vw; bottom:-24vw; background:radial-gradient(circle,#22d3ee,transparent 65%); animation:drift3 30s var(--smooth) infinite alternate}
+  .aurora-bg .blob{position:absolute; border-radius:50%; filter:blur(80px); opacity:.38; mix-blend-mode:screen; will-change:transform}
+  .aurora-bg .b1{width:46vw; height:46vw; left:-8vw; top:-12vw; background:radial-gradient(circle,#ff2740,transparent 65%); animation:drift1 26s var(--smooth) infinite alternate}
+  .aurora-bg .b2{width:42vw; height:42vw; right:-10vw; top:-6vw; background:radial-gradient(circle,#8a0f1c,transparent 65%); animation:drift2 32s var(--smooth) infinite alternate}
+  .aurora-bg .b3{width:50vw; height:50vw; left:18vw; bottom:-24vw; background:radial-gradient(circle,#4a0a12,transparent 65%); animation:drift3 30s var(--smooth) infinite alternate}
   .aurora-bg .grain{position:absolute; inset:0; opacity:.035;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
   @keyframes drift1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(8vw,10vh) scale(1.18)}}
@@ -174,7 +177,7 @@
   .lb-row .av{font-size:20px}
   .lb-row .nk{font-weight:700; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .lb-row .xp{font-size:12.5px; color:var(--dim); white-space:nowrap}
-  .lb-row.me{background:rgba(124,92,255,.12); border-radius:10px; padding:9px 8px}
+  .lb-row.me{background:rgba(255,39,64,.12); border-radius:10px; padding:9px 8px}
   .lb-row.me .nk{color:var(--acc2)}
 
   .sess-item{display:flex; justify-content:space-between; align-items:center; padding:10px 2px; border-bottom:1px solid var(--line); font-size:13.5px}
@@ -196,7 +199,7 @@
   @keyframes pulse{0%,100%{transform:scale(1)} 50%{transform:scale(1.07)}}
   .avapick{display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin:14px 0}
   .avapick button{font-size:26px; padding:8px 0; background:var(--card); border:1px solid var(--line); border-radius:12px; cursor:pointer}
-  .avapick button.on{border-color:var(--acc); background:rgba(124,92,255,.18)}
+  .avapick button.on{border-color:var(--acc); background:rgba(255,39,64,.18)}
 
   /* ═══ LOCK (как в клубе: без сессии ПК заблокирован) ═══ */
   .lockscreen{position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center;
@@ -232,17 +235,17 @@
     box-shadow:var(--glow); transition:transform .2s var(--spring), box-shadow .25s var(--smooth), background-position .6s var(--smooth); z-index:0}
   .btn::after{content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; z-index:1;
     background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent); transform:skewX(-18deg)}
-  .btn:hover{transform:translateY(-2px) scale(1.015); box-shadow:0 10px 30px rgba(124,92,255,.5), var(--glow-2); background-position:100% 0}
+  .btn:hover{transform:translateY(-2px) scale(1.015); box-shadow:0 10px 30px rgba(255,39,64,.5), var(--glow-2); background-position:100% 0}
   .btn:hover::after{animation:shimmer .9s var(--smooth)}
   @keyframes shimmer{0%{left:-60%}100%{left:130%}}
   .btn.ghost{background:var(--glass-2); box-shadow:none; border:1px solid var(--glass-brd)}
   .btn.ghost:hover{border-color:var(--acc); box-shadow:var(--glow)}
   .btn.danger{background:linear-gradient(135deg,#ef4444,#fb7185); box-shadow:0 0 22px rgba(248,113,113,.4)}
-  .btn.gold{background:linear-gradient(135deg,#f59e0b,var(--gold)); color:#1a1205; box-shadow:0 0 22px rgba(251,191,36,.4)}
+  .btn.gold{background:linear-gradient(135deg,#c00e26,var(--acc)); color:#fff; box-shadow:0 0 22px rgba(255,39,64,.4)}
 
   /* — inputs — */
   .input{background:rgba(8,11,20,.7); border:1px solid var(--glass-brd); transition:border-color .2s, box-shadow .2s}
-  .input:focus{border-color:var(--acc); box-shadow:0 0 0 3px rgba(124,92,255,.18)}
+  .input:focus{border-color:var(--acc); box-shadow:0 0 0 3px rgba(255,39,64,.18)}
 
   /* — таб-переключатель авторизации — */
   .tabs{background:rgba(8,11,20,.6); border:1px solid var(--glass-brd)}
@@ -255,8 +258,8 @@
   .topbar{background:rgba(9,11,18,.72); border-bottom:1px solid var(--glass-brd)}
 
   /* — XP-бар: живой блеск — */
-  .xpbar{background:linear-gradient(90deg,var(--acc),var(--acc3),var(--acc2)); background-size:200% 100%;
-    animation:xpFlow 3s linear infinite; box-shadow:0 0 12px rgba(124,92,255,.6)}
+  .xpbar{background:linear-gradient(90deg,#7a0f1c,var(--acc),#ff6b78); background-size:200% 100%;
+    animation:xpFlow 3s linear infinite; box-shadow:0 0 12px rgba(255,39,64,.6)}
   @keyframes xpFlow{0%{background-position:0 0}100%{background-position:200% 0}}
 
   /* — игровые тайлы: 3D-tilt + spotlight — */
@@ -264,8 +267,10 @@
   .game::after{content:""; position:absolute; inset:0; opacity:0; transition:opacity .25s; pointer-events:none;
     background:radial-gradient(300px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.18), transparent 60%)}
   .game:hover::after{opacity:1}
-  .game .tag{transition:transform .18s var(--smooth)}
-  .game:hover .tag{transform:translateZ(30px)}
+  .game .art{background:radial-gradient(130% 130% at 78% 12%, rgba(255,39,64,.18), transparent 44%), linear-gradient(160deg,#170a0d,#0b0b0d)}
+  .game .tag{transition:transform .18s var(--smooth); color:#f4f2f4; text-shadow:0 2px 14px rgba(0,0,0,.6)}
+  .game:hover{border-color:var(--acc); box-shadow:0 12px 30px rgba(0,0,0,.5), var(--glow)}
+  .game:hover .tag{transform:translateZ(30px); color:var(--acc)}
   .app{background:var(--glass); border:1px solid var(--glass-brd); transition:transform .2s var(--spring), border-color .2s, box-shadow .2s}
   .app:hover{transform:translateY(-3px); box-shadow:var(--glow)}
 
@@ -307,11 +312,11 @@
 
   /* — level-up: лучи — */
   .lvl-rays{position:absolute; inset:-40%; z-index:-1; opacity:.4;
-    background:conic-gradient(from 0deg, transparent 0 10deg, rgba(251,191,36,.5) 12deg 14deg, transparent 16deg 30deg);
+    background:conic-gradient(from 0deg, transparent 0 10deg, rgba(255,39,64,.5) 12deg 14deg, transparent 16deg 30deg);
     animation:spinSlow 8s linear infinite}
   @keyframes spinSlow{to{transform:rotate(360deg)}}
 
-  .dropbox{box-shadow:0 0 40px rgba(124,92,255,.5)}
+  .dropbox{box-shadow:0 0 40px rgba(255,39,64,.5)}
   .modal{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2)}
   .overlay{backdrop-filter:blur(10px)}
 </style>
@@ -487,7 +492,7 @@ const FALLBACK_CATALOG = {
   system: [
     {id:'sound',   name:'Звук',    em:'🔊', launch:{type:'agent'}},
     {id:'display', name:'Дисплей', em:'🖥️', launch:{type:'agent'}},
-    {id:'nvidia',  name:'NVIDIA',  em:'🟢', launch:{type:'agent'}},
+    {id:'nvidia',  name:'NVIDIA',  em:'◆', launch:{type:'agent'}},
   ],
 };
 let CATALOG = FALLBACK_CATALOG;
@@ -504,7 +509,7 @@ function launchFromTarget(t){
 function mapCatalogRow(r){
   return {
     id: r.id, name: r.name, sub: r.subtitle || '', tag: r.tag || '',
-    g: [r.color_a || '#7c5cff', r.color_b || '#22d3ee'],
+    g: [r.color_a || '#170a0d', r.color_b || '#0b0b0d'],
     em: r.emoji || '🎮',
     launch: launchFromTarget(r.target),
   };
@@ -524,10 +529,11 @@ async function loadCatalog(){
   renderCatalog();
 }
 
+/* монохромные глифы — цвет задаёт красная шкала --t-* (редкость = ярче/краснее) */
 const TIER = {
-  light:  {c:'var(--t-light)',  em:'🟢'}, medium: {c:'var(--t-medium)', em:'🔵'},
-  heavy:  {c:'var(--t-heavy)',  em:'🟣'}, titan:  {c:'var(--t-titan)',  em:'🟠'},
-  gods:   {c:'var(--t-gods)',   em:'🔴'},
+  light:  {c:'var(--t-light)',  em:'◇'}, medium: {c:'var(--t-medium)', em:'◈'},
+  heavy:  {c:'var(--t-heavy)',  em:'◆'}, titan:  {c:'var(--t-titan)',  em:'✦'},
+  gods:   {c:'var(--t-gods)',   em:'★'},
 };
 const BRANCH = {strength:'💪 Strength', agility:'🏃 Agility', intellect:'🧠 Intellect'};
 
@@ -657,7 +663,7 @@ function renderCatalog(){
   const gg = document.getElementById('gamesGrid');
   gg.innerHTML = CATALOG.games.map((g,i) => `
     <div class="game" onclick="launch('games',${i})">
-      <div class="art" style="background:linear-gradient(135deg,${g.g[0]},${g.g[1]})"></div>
+      <div class="art"></div>
       <div class="tag">${g.tag}</div>
       <div class="meta"><div class="n">${g.name}</div><div class="s">${g.sub}</div></div>
     </div>`).join('');
@@ -1155,7 +1161,7 @@ const FX = (() => {
   // конфетти (открытие кейса / левел-ап)
   function confetti(n){
     if (lite){ return; }
-    const colors = ['#7c5cff', '#e879f9', '#22d3ee', '#fbbf24', '#34d399'];
+    const colors = ['#ff2740', '#ff5563', '#ffffff', '#e5133a', '#c9ccd6'];
     for (let i = 0; i < n; i++){
       const c = document.createElement('div');
       c.className = 'confetti';
