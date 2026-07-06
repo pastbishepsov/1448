@@ -271,6 +271,18 @@
   .game .tag{transition:transform .18s var(--smooth); color:#f4f2f4; text-shadow:0 2px 14px rgba(0,0,0,.6)}
   .game:hover{border-color:var(--acc); box-shadow:0 12px 30px rgba(0,0,0,.5), var(--glow)}
   .game:hover .tag{transform:translateZ(30px); color:var(--acc)}
+  /* — крупные эмблемы игр — */
+  .gemblem{position:absolute; inset:0 0 34px 0; display:flex; align-items:center; justify-content:center;
+    color:#f4f2f4; font-weight:900; font-size:28px; letter-spacing:1px;
+    filter:drop-shadow(0 3px 12px rgba(0,0,0,.55)); transition:color .18s, transform .2s var(--smooth); z-index:1}
+  .gemblem svg{width:60px; height:60px}
+  .game:hover .gemblem{color:var(--acc); transform:translateZ(34px) scale(1.06)}
+  /* — иконки приложений/системы — */
+  .aicon{display:flex; align-items:center; justify-content:center; height:34px; color:#e6e4ea;
+    transition:color .18s, transform .18s var(--smooth)}
+  .aicon svg{width:30px; height:30px}
+  .aicon .em{font-size:30px; line-height:1}
+  .app:hover .aicon{color:var(--acc); transform:translateY(-1px)}
   .app{background:var(--glass); border:1px solid var(--glass-brd); transition:transform .2s var(--spring), border-color .2s, box-shadow .2s}
   .app:hover{transform:translateY(-3px); box-shadow:var(--glow)}
 
@@ -537,6 +549,29 @@ const TIER = {
 };
 const BRANCH = {strength:'💪 Strength', agility:'🏃 Agility', intellect:'🧠 Intellect'};
 
+/* Монохромные SVG-логотипы (fill=currentColor → светлый по умолчанию, красный на hover).
+   Встроены локально — работают офлайн в киоске. Ключ = id из каталога. */
+const ICONS = {
+  // — игры (крупные эмблемы) —
+  cs2: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7.5"/><path d="M12 1.5v4.5M12 18v4.5M1.5 12H6M18 12h4.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>`,
+  dota2: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 3h6.5a9 9 0 0 1 0 18H4v-6.2h6.2a2.8 2.8 0 0 0 0-5.6H4z"/></svg>`,
+  valorant: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 4h5.2l5 6.4v6.9zM21.5 4h-4.3l-4.2 5.3v4.1z"/></svg>`,
+  fortnite: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12v3.3h-8v3.4h6V13h-6v8H6z"/></svg>`,
+  lol: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M9.2 6.8v10.4H15" stroke-linecap="square"/></svg>`,
+  gta5: `<svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M4 3h16v8.5A10.5 10.5 0 0 1 12 21 10.5 10.5 0 0 1 4 11.5zm4.3 4 3.7 8.4L15.7 7H13l-1 4.7L10.9 7z"/></svg>`,
+  // — приложения —
+  steam: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-9.96 9.2l5.35 2.2a2.8 2.8 0 0 1 1.53-.47l2.42-3.5v-.05a3.74 3.74 0 1 1 3.74 3.74h-.09l-3.44 2.46a2.81 2.81 0 0 1-5.58.4L2 14.3A10 10 0 1 0 12 2zM8.06 17.2l-1.2-.5a2.1 2.1 0 0 0 3.87-1.6 2.1 2.1 0 0 0-2.75-1.16l1.24.52a1.55 1.55 0 1 1-1.16 2.74zm9.14-7.53a2.5 2.5 0 1 0-2.5-2.5 2.5 2.5 0 0 0 2.5 2.5zm0-3.9a1.4 1.4 0 1 1-1.4 1.4 1.4 1.4 0 0 1 1.4-1.4z"/></svg>`,
+  discord: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 5.6A15.5 15.5 0 0 0 15.6 4.4l-.2.4a13.6 13.6 0 0 1 3.4 1.7 14.5 14.5 0 0 0-12.6 0 13.6 13.6 0 0 1 3.4-1.7l-.2-.4A15.5 15.5 0 0 0 4.5 5.6 16.6 16.6 0 0 0 1.7 16.9a15.6 15.6 0 0 0 4.7 2.4l.5-.7a10.2 10.2 0 0 1-1.6-.8l.4-.3a11 11 0 0 0 9.6 0l.4.3a10.2 10.2 0 0 1-1.6.8l.5.7a15.6 15.6 0 0 0 4.7-2.4 16.6 16.6 0 0 0-2.8-11.3zM9 14.3c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8zm6 0c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8z"/></svg>`,
+  browser: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3.2 9.5h17.6M3.2 14.5h17.6"/></svg>`,
+  spotify: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.55 14.42a.62.62 0 0 1-.86.2c-2.35-1.43-5.3-1.76-8.79-.96a.62.62 0 1 1-.28-1.21c3.82-.87 7.09-.5 9.73 1.11a.62.62 0 0 1 .2.86zm1.21-2.7a.78.78 0 0 1-1.07.26c-2.69-1.65-6.79-2.13-9.97-1.17a.78.78 0 1 1-.45-1.49c3.63-1.1 8.15-.56 11.24 1.33a.78.78 0 0 1 .25 1.07zm.1-2.81C14.72 8.98 9.1 8.8 5.82 9.8a.93.93 0 1 1-.54-1.78c3.77-1.14 9.98-.92 13.65 1.26a.93.93 0 1 1-.96 1.6z"/></svg>`,
+  youtube: `<svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M22.5 7.5a2.9 2.9 0 0 0-2-2C18.7 5 12 5 12 5s-6.7 0-8.5.5a2.9 2.9 0 0 0-2 2A30 30 0 0 0 1 12a30 30 0 0 0 .5 4.5 2.9 2.9 0 0 0 2 2C5.3 19 12 19 12 19s6.7 0 8.5-.5a2.9 2.9 0 0 0 2-2A30 30 0 0 0 23 12a30 30 0 0 0-.5-4.5zM10 15.2V8.8l5.5 3.2z"/></svg>`,
+  telegram: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.6 6.9-1.55 7.35c-.12.52-.42.65-.85.4l-2.35-1.73-1.13 1.09c-.13.13-.24.24-.48.24l.17-2.42 4.4-3.98c.19-.17-.04-.27-.3-.1l-5.44 3.43-2.34-.73c-.51-.16-.52-.51.11-.76l9.14-3.52c.42-.16.79.1.65.75z"/></svg>`,
+  // — система —
+  sound: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 4V5L8 9zm11.5-.5a5 5 0 0 1 0 7v-2.1a3 3 0 0 0 0-2.8z"/></svg>`,
+  display: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8.5 20h7M12 16v4"/></svg>`,
+  nvidia: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 8.2v-1.6C13.4 6.3 16.5 9.9 16.5 12c0 0-1.7 4.6-7.7 4.6V15c3.3.3 4.8-2.6 4.8-3s-1.5-3.8-4.8-3.8zm0 3v2.1c-1.4-.5-1.8-2-1.1-3.3a2.4 2.4 0 0 1 1.1-1v1.2c-.5.3-.5 1 0 1zM3 8.2a10 10 0 0 1 18.9 3.8A10 10 0 0 1 3 15.8v-1.3a9 9 0 0 0 16.6-2.5A9 9 0 0 0 3 9.5z"/></svg>`,
+};
+
 /* ═══════════════ СОСТОЯНИЕ ═══════════════ */
 let me = null, cases = [], talents = null, achievements = null, leaderboard = null, sessions = [];
 let bookings = [], clubs = [];
@@ -664,14 +699,17 @@ function renderCatalog(){
   gg.innerHTML = CATALOG.games.map((g,i) => `
     <div class="game" onclick="launch('games',${i})">
       <div class="art"></div>
-      <div class="tag">${g.tag}</div>
-      <div class="meta"><div class="n">${g.name}</div><div class="s">${g.sub}</div></div>
+      <div class="gemblem">${ICONS[g.id] || esc(g.tag)}</div>
+      <div class="meta"><div class="n">${esc(g.name)}</div><div class="s">${esc(g.sub)}</div></div>
     </div>`).join('');
   document.getElementById('gamesCnt').textContent = CATALOG.games.length + ' установлено';
-  document.getElementById('appsGrid').innerHTML = CATALOG.apps.map((a,i) => `
-    <div class="app" onclick="launch('apps',${i})"><div class="em">${a.em}</div><div class="n">${a.name}</div></div>`).join('');
-  document.getElementById('sysGrid').innerHTML = CATALOG.system.map((a,i) => `
-    <div class="app" onclick="launch('system',${i})"><div class="em">${a.em}</div><div class="n">${a.name}</div></div>`).join('');
+  const appTile = (cat,a,i) => `
+    <div class="app" onclick="launch('${cat}',${i})">
+      <div class="aicon">${ICONS[a.id] || `<span class="em">${a.em||'▪'}</span>`}</div>
+      <div class="n">${esc(a.name)}</div>
+    </div>`;
+  document.getElementById('appsGrid').innerHTML = CATALOG.apps.map((a,i) => appTile('apps',a,i)).join('');
+  document.getElementById('sysGrid').innerHTML = CATALOG.system.map((a,i) => appTile('system',a,i)).join('');
   // оживление: наклон тайлов + появление со stagger
   const content = document.querySelector('.content');
   FX.bindTilt(content);
@@ -693,18 +731,23 @@ async function launch(cat, i){
       // 404 = нет в allowlist агента → пробуем fallback ниже
     }catch(e){ agentOnline = false; renderAgentDot(); }
   }
-  // 2) fallback без агента
+  // 2) fallback без агента (браузерное демо)
   const l = item.launch;
   if (l.type === 'url'){ window.open(l.uri, '_blank'); return; }
-  if (l.type === 'proto'){
+  // системные настройки Windows открываются протоколом прямо из браузера
+  const proto = l.type === 'proto' ? l.uri : BROWSER_PROTO[item.id];
+  if (proto){
     toast('🚀 Запускаю ' + item.name + '…');
     const f = document.createElement('iframe');
-    f.style.display = 'none'; f.src = l.uri;
+    f.style.display = 'none'; f.src = proto;
     document.body.appendChild(f); setTimeout(()=>f.remove(), 3000);
     return;
   }
-  toast('🔧 ' + item.name + ': нужен shell-agent (backend/bin/shell-agent.exe)');
+  // требует установленной программы на игровом ПК (запустится в киоске/через агента)
+  toast('🖥 ' + item.name + ' запускается на игровом ПК клуба');
 }
+// протоколы Windows, работающие из браузера без агента (для type:'agent')
+const BROWSER_PROTO = { sound:'ms-settings:sound', display:'ms-settings:display' };
 
 async function adminCall(){
   if (NATIVE && nativePost({cmd:'admin_call'})){ toast('🛎 Администратор вызван'); return; }
