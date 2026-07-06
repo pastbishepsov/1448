@@ -361,6 +361,29 @@
   .calc-break .row:last-child{border:0}
   .calc-break b{color:var(--txt)}
   .calc-break .plus{color:var(--acc)}
+
+  /* — карточка всех рангов — */
+  .ranks-modal{width:480px; max-width:94vw; text-align:left; max-height:88vh; display:flex; flex-direction:column}
+  .ranks-head{display:flex; align-items:center; justify-content:space-between}
+  #ranksList{overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px}
+  #ranksList::-webkit-scrollbar{width:6px}
+  #ranksList::-webkit-scrollbar-thumb{background:var(--card2); border-radius:6px}
+  .rank-row{display:flex; align-items:center; gap:12px; background:var(--glass-2); border:1px solid var(--glass-brd);
+    border-radius:14px; padding:12px 14px; transition:border-color .2s, opacity .2s}
+  .rank-row .rk-em{width:44px; height:44px; flex:0 0 44px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+    font-size:22px; background:#0c0c0e; border:1px solid var(--line); color:var(--dim)}
+  .rank-row .rk-body{flex:1; min-width:0}
+  .rank-row .rk-name{font-weight:800; font-size:15px}
+  .rank-row .rk-hours{font-size:12px; color:var(--dim)}
+  .rank-row .rk-perks{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px}
+  .rank-row .perk{font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:8px; background:#0c0c0e; border:1px solid var(--line); color:var(--dim); white-space:nowrap}
+  .rank-row.reached{border-color:rgba(255,39,64,.35)}
+  .rank-row.reached .rk-em{border-color:var(--acc); color:var(--acc); background:rgba(255,39,64,.1)}
+  .rank-row.reached .perk{color:var(--txt)}
+  .rank-row.current{border-color:var(--acc); box-shadow:var(--glow)}
+  .rank-row.current .rk-em{background:var(--aurora); color:#fff; border-color:transparent}
+  .rank-row.locked{opacity:.5}
+  .rank-row .now{margin-left:auto; font-size:11px; font-weight:800; color:var(--acc); white-space:nowrap}
 </style>
 </head>
 <body>
@@ -400,7 +423,7 @@
       <div class="muted" style="font-size:11px">профиль ⚙</div>
     </div>
     <div class="lvlpill">LVL <b id="hLvl">1</b></div>
-    <div class="rankpill" id="rankPill" onclick="sideTab('coins')" title="Ранг аккаунта — жми для калькулятора">
+    <div class="rankpill" id="rankPill" onclick="openRanks()" title="Ранг аккаунта — жми, чтобы увидеть все">
       <span class="rank-em" id="rankEm">✦</span><b id="rankName">—</b>
     </div>
     <div class="xpzone">
@@ -465,6 +488,17 @@
     <div class="muted">НОВЫЙ УРОВЕНЬ</div>
     <div class="bignum" id="lvlNum">2</div>
     <div class="muted" id="lvlBonus">+1 очко навыка</div>
+  </div>
+</div>
+
+<div id="rankOverlay" class="overlay" onclick="if(event.target===this)closeOverlay('rankOverlay')">
+  <div class="modal ranks-modal">
+    <div class="ranks-head">
+      <h2>Ранги аккаунта</h2>
+      <button class="iconbtn" onclick="closeOverlay('rankOverlay')">✕</button>
+    </div>
+    <div class="muted" style="margin:-4px 0 12px; font-size:13px">Растут за наигранные часы. Бонусы складываются с талантами.</div>
+    <div id="ranksList"></div>
   </div>
 </div>
 
@@ -1140,7 +1174,8 @@ function renderCalc(){
       <div class="muted" style="font-size:12px">Ранг ${rk.level}/7 · наиграно ${e.hours_played} ч</div></div>
     </div>
     <div class="rank-prog"><i style="width:${prog}%"></i></div>
-    <div class="muted" style="font-size:12px">${progText}</div>
+    <div class="muted" style="font-size:12px; margin-bottom:10px">${progText}</div>
+    <button class="btn ghost slim" style="width:100%" onclick="openRanks()">🏆 Все ранги и бонусы</button>
   </div>
   <div class="card">
     <div style="font-weight:800; margin-bottom:2px">Калькулятор койнов</div>
@@ -1174,6 +1209,35 @@ function calcSlide(v){
   const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
   set('calcCoins', fmt(c.coins)); set('calcXp', fmt(c.xp)); set('calcTime', calcTimeLabel());
   const b = document.getElementById('calcBreak'); if (b) b.innerHTML = calcBreakHtml(c);
+}
+
+/* ═══════════════ КАРТОЧКА ВСЕХ РАНГОВ ═══════════════ */
+function openRanks(){
+  if (!economy || !economy.ranks){ toast('Ранги ещё грузятся…'); return; }
+  const cur = economy.rank ? economy.rank.level : 1;
+  const rows = economy.ranks.map(r => {
+    const state = r.level === cur ? 'current' : (r.level < cur ? 'reached' : 'locked');
+    // бонусы показываем только там, где они есть (ранг 1 — «чистая база»)
+    const perks = [];
+    if (r.xp_mult > 1)          perks.push(`⚡ XP ×${r.xp_mult}`);
+    if (r.coin_mult > 1)        perks.push(`🪙 койны ×${r.coin_mult}`);
+    if (r.case_chance_bonus > 0) perks.push(`🎁 кейс +${Math.round(r.case_chance_bonus*100)}%`);
+    if (r.tier_boost > 0)       perks.push(`✦ тир +${Math.round(r.tier_boost*100)}%`);
+    const perksHtml = perks.length
+      ? perks.map(p=>`<span class="perk">${p}</span>`).join('')
+      : '<span class="perk">базовые ставки</span>';
+    return `<div class="rank-row ${state}">
+      <div class="rk-em">${RANK_EM[r.level]||'✦'}</div>
+      <div class="rk-body">
+        <div class="rk-name">${esc(r.name)}</div>
+        <div class="rk-hours">${r.min_hours === 0 ? 'с самого старта' : 'от ' + r.min_hours + ' ч игры'}</div>
+        <div class="rk-perks">${perksHtml}</div>
+      </div>
+      ${r.level === cur ? '<span class="now">ТЫ ЗДЕСЬ</span>' : ''}
+    </div>`;
+  }).join('');
+  document.getElementById('ranksList').innerHTML = rows;
+  document.getElementById('rankOverlay').classList.add('show');
 }
 
 /* ═══════════════ КЕЙСЫ ═══════════════ */

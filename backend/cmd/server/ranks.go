@@ -106,5 +106,15 @@ func handleGetEconomy(c *gin.Context) {
 			"hours_left": next.MinHours - hours,
 		}
 	}
+	// Все 7 рангов — чтобы игрок видел, что даёт каждый (карточка рангов в UI).
+	all := make([]gin.H, len(accountRanks))
+	for i, r := range accountRanks {
+		all[i] = gin.H{
+			"level": r.Level, "name": r.Name, "min_hours": r.MinHours,
+			"xp_mult": r.XPMult, "coin_mult": r.CoinMult,
+			"case_chance_bonus": r.CaseChanceBonus, "tier_boost": r.TierBoost,
+		}
+	}
+	resp["ranks"] = all
 	c.JSON(http.StatusOK, resp)
 }
