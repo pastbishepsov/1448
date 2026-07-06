@@ -384,6 +384,18 @@
   .rank-row.current .rk-em{background:var(--aurora); color:#fff; border-color:transparent}
   .rank-row.locked{opacity:.5}
   .rank-row .now{margin-left:auto; font-size:11px; font-weight:800; color:var(--acc); white-space:nowrap}
+
+  /* — студия сенсы — */
+  .sens-row{display:flex; gap:10px; align-items:flex-end}
+  .sens-row select.input, .sens-row input.input{margin-bottom:0}
+  .sens-result{background:rgba(255,39,64,.1); border:1px solid var(--acc); border-radius:12px;
+    padding:12px 6px; text-align:center; font-size:20px; font-weight:900; color:var(--acc); font-variant-numeric:tabular-nums}
+  .sens-metrics{display:flex; gap:10px}
+  .sens-metrics .box{flex:1; background:var(--glass-2); border:1px solid var(--glass-brd); border-radius:14px; padding:14px; text-align:center}
+  .sens-metrics .v{font-size:24px; font-weight:900}
+  .sens-metrics .l{font-size:12px; color:var(--dim); margin-top:2px}
+  select.input{appearance:none; -webkit-appearance:none; cursor:pointer}
+  select.input option{background:var(--panel); color:var(--txt)}
 </style>
 </head>
 <body>
@@ -461,6 +473,7 @@
         <button id="st-hist" onclick="sideTab('hist')">История</button>
         <button id="st-book" onclick="sideTab('book')">📅</button>
         <button id="st-coins" onclick="sideTab('coins')">🪙</button>
+        <button id="st-sens" onclick="sideTab('sens')">🎯</button>
       </div>
       <div class="sidebody" id="sideBody"><!-- JS --></div>
     </div>
@@ -641,6 +654,17 @@ const ICONS = {
 /* ═══════════════ СОСТОЯНИЕ ═══════════════ */
 let me = null, cases = [], talents = null, achievements = null, leaderboard = null, sessions = [];
 let bookings = [], clubs = [], economy = null, calcMinutes = 60;
+// Студия сенсы (S1): yaw = градусов на «отсчёт» мыши при сенсе 1 (проверено на CS2↔Valorant).
+const SENS_GAMES = [
+  {id:'cs2',      name:'CS2',           yaw:0.022},
+  {id:'valorant', name:'Valorant',      yaw:0.07},
+  {id:'apex',     name:'Apex Legends',  yaw:0.022},
+  {id:'ow2',      name:'Overwatch 2',   yaw:0.0066},
+  {id:'cod',      name:'Call of Duty',  yaw:0.0066},
+  {id:'quake',    name:'Quake',         yaw:0.022},
+];
+let sensDPI = +(localStorage.getItem('1448_dpi') || 800);
+let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
 let authMode = 'login';
 
@@ -965,7 +989,7 @@ setInterval(async () => {
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
-  ['cases','talents','top','ach','hist','book','coins'].forEach(x =>
+  ['cases','talents','top','ach','hist','book','coins','sens'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
   renderSide();
   FX.swap(document.getElementById('sideBody'));
@@ -1043,6 +1067,10 @@ function renderSide(){
   if (curTab === 'coins'){
     if (!economy){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">Загрузка экономики…</div>'; return; }
     el.innerHTML = renderCalc();
+    return;
+  }
+  if (curTab === 'sens'){
+    el.innerHTML = renderSens();
     return;
   }
   if (curTab === 'book'){
@@ -1238,6 +1266,104 @@ function openRanks(){
   }).join('');
   document.getElementById('ranksList').innerHTML = rows;
   document.getElementById('rankOverlay').classList.add('show');
+}
+
+/* ═══════════════ СТУДИЯ СЕНСЫ (S1: конвертер) ═══════════════ */
+function sensGame(id){ return SENS_GAMES.find(g => g.id === id) || SENS_GAMES[0]; }
+function sensCm360(g, sens, dpi){ return (sens>0&&dpi>0) ? (360/(g.yaw*sens))/dpi*2.54 : 0; }
+function sensConvert(fr, to, sens){ return to.yaw>0 ? sens*fr.yaw/to.yaw : 0; }
+
+function renderSens(){
+  const gf = sensGame(sensFrom), gt = sensGame(sensTo);
+  const res = sensConvert(gf, gt, sensVal);
+  const opt = (sel) => SENS_GAMES.map(g => `<option value="${g.id}" ${g.id===sel?'selected':''}>${esc(g.name)}</option>`).join('');
+  return `
+  <div class="card">
+    <div style="font-weight:800; margin-bottom:2px">🎯 Студия сенсы</div>
+    <div class="muted" style="font-size:12.5px; margin-bottom:10px">Перенеси свою сенсу из одной игры в другую — прицел останется тем же</div>
+    <label class="muted" style="font-size:12px">DPI мыши (посмотри в софте мыши)</label>
+    <input class="input" id="sensDpi" type="number" min="100" max="32000" step="50" value="${sensDPI}" oninput="sensUpdate()" style="margin-top:4px">
+  </div>
+
+  <div class="card">
+    <div class="sens-row">
+      <div style="flex:1">
+        <label class="muted" style="font-size:12px">Из игры</label>
+        <select class="input" id="sensFrom" onchange="sensUpdate()">${opt(sensFrom)}</select>
+      </div>
+      <div style="width:96px">
+        <label class="muted" style="font-size:12px">Сенса</label>
+        <input class="input" id="sensVal" type="number" min="0" step="0.01" value="${sensVal}" oninput="sensUpdate()">
+      </div>
+    </div>
+    <div style="text-align:center; margin:8px 0">
+      <button class="btn ghost slim" onclick="sensSwap()" style="width:auto">⇅ поменять местами</button>
+    </div>
+    <div class="sens-row">
+      <div style="flex:1">
+        <label class="muted" style="font-size:12px">В игру</label>
+        <select class="input" id="sensTo" onchange="sensUpdate()">${opt(sensTo)}</select>
+      </div>
+      <div style="width:96px">
+        <label class="muted" style="font-size:12px">Результат</label>
+        <div class="sens-result" id="sensResult">${res.toFixed(3)}</div>
+      </div>
+    </div>
+    <button class="btn slim" style="width:100%; margin-top:10px" onclick="sensCopy()">📋 Скопировать «<span id="sensCopyVal">${res.toFixed(3)}</span>»</button>
+    <div class="muted" style="font-size:12px; text-align:center; margin-top:6px">Впиши это значение в настройках «${esc(gt.name)}»</div>
+  </div>
+
+  <div class="card">
+    <div class="sens-metrics">
+      <div class="box"><div class="v cnum" id="sensCm">${sensCm360(gf,sensVal,sensDPI).toFixed(1)}</div><div class="l">см / 360°</div></div>
+      <div class="box"><div class="v cnum" id="sensEdpi">${Math.round(sensDPI*sensVal)}</div><div class="l">eDPI (из игры)</div></div>
+    </div>
+    <div class="muted" style="font-size:12px; margin-top:8px; line-height:1.6">
+      <b style="color:var(--txt)">см / 360°</b> — сколько сантиметров провести мышью для полного разворота. Это и есть «мышечная память»: сохраняем её — сохраняем прицел.<br>
+      <b style="color:var(--txt)">eDPI</b> = DPI × сенса — эффективная чувствительность для сравнения внутри игры.
+    </div>
+  </div>
+
+  <div class="card" style="border-color:rgba(255,39,64,.25)">
+    <div style="font-weight:800; margin-bottom:4px">⚠ Важно для аима</div>
+    <div class="muted" style="font-size:12px; line-height:1.6">
+      Отключи в Windows «Повышенную точность указателя» (mouse acceleration) — она незаметно ломает прицел. Автопроверку добавим в следующем обновлении.<br>
+      Значения точны для CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. Другие игры добавим по запросу.
+    </div>
+  </div>`;
+}
+
+function sensUpdate(){
+  const dpiEl = document.getElementById('sensDpi');
+  sensDPI = Math.max(1, +dpiEl.value || 800);
+  localStorage.setItem('1448_dpi', sensDPI);
+  sensFrom = document.getElementById('sensFrom').value;
+  sensTo = document.getElementById('sensTo').value;
+  sensVal = Math.max(0, +document.getElementById('sensVal').value || 0);
+  const gf = sensGame(sensFrom), gt = sensGame(sensTo);
+  const res = sensConvert(gf, gt, sensVal);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('sensResult', res.toFixed(3));
+  set('sensCopyVal', res.toFixed(3));
+  set('sensCm', sensCm360(gf, sensVal, sensDPI).toFixed(1));
+  set('sensEdpi', Math.round(sensDPI * sensVal));
+}
+
+function sensSwap(){
+  const from = document.getElementById('sensFrom').value;
+  const to = document.getElementById('sensTo').value;
+  // результат конвертации становится новой исходной сенсой
+  const res = sensConvert(sensGame(from), sensGame(to), Math.max(0, +document.getElementById('sensVal').value || 0));
+  sensFrom = to; sensTo = from; sensVal = +res.toFixed(3);
+  renderSide();
+}
+
+function sensCopy(){
+  const v = document.getElementById('sensResult').textContent;
+  navigator.clipboard?.writeText(v).then(
+    () => toast('📋 Скопировано: ' + v),
+    () => toast('Значение: ' + v)
+  );
 }
 
 /* ═══════════════ КЕЙСЫ ═══════════════ */
