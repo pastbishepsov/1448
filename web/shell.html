@@ -402,6 +402,12 @@
   .mouse-row.ok{border-color:rgba(52,211,153,.35)} .mouse-row.ok span{color:var(--green)}
   .mouse-row.bad{border-color:var(--acc)} .mouse-row.bad span{color:var(--acc)}
   .mouse-row.warn{border-color:rgba(251,146,60,.4)} .mouse-row.warn span{color:#fb923c}
+  .sg-row{display:flex; align-items:center; gap:8px; padding:9px 4px; border-bottom:1px solid var(--line); font-size:13.5px}
+  .sg-row:last-child{border:0}
+  .sg-row .sg-name{flex:1; font-weight:700}
+  .sg-row .sg-sens{font-variant-numeric:tabular-nums; color:var(--acc); font-size:15px}
+  .sg-row .sg-edpi{width:88px; text-align:right; font-size:12px; color:var(--dim)}
+  .sg-row.from{background:rgba(255,39,64,.08); border-radius:9px; padding:9px 8px}
 
   /* — акцентная кнопка «Сенса» в топбаре — */
   .tb-sens{display:flex; align-items:center; gap:7px; border:1px solid var(--acc); border-radius:12px;
@@ -686,6 +692,7 @@ const SENS_GAMES = [
   {id:'ow2',      name:'Overwatch 2',   yaw:0.0066},
   {id:'cod',      name:'Call of Duty',  yaw:0.0066},
   {id:'quake',    name:'Quake',         yaw:0.022},
+  {id:'deadlock', name:'Deadlock',      yaw:0.022},
 ];
 let sensDPI = +(localStorage.getItem('1448_dpi') || 800);
 let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
@@ -1318,11 +1325,15 @@ function renderSens(){
   <div class="card">
     <div style="font-weight:800; margin-bottom:2px">🎯 Студия сенсы</div>
     <div class="muted" style="font-size:12.5px; margin-bottom:10px">Перенеси свою сенсу из одной игры в другую — прицел останется тем же</div>
-    <label class="muted" style="font-size:12px">DPI мыши (посмотри в софте мыши)</label>
-    <input class="input" id="sensDpi" type="number" min="100" max="32000" step="50" value="${sensDPI}" oninput="sensUpdate()" style="margin-top:4px">
+    <label class="muted" style="font-size:12px"><b style="color:var(--acc)">Шаг 1.</b> DPI мыши (посмотри в софте мыши)</label>
+    <input class="input" id="sensDpi" type="number" min="100" max="32000" step="50" value="${sensDPI}" oninput="sensUpdate()" style="margin:4px 0 8px">
+    <div class="presets">
+      ${[400,800,1600,3200].map(d=>`<button class="${sensDPI===d?'on':''}" onclick="setDpiPreset(${d})">${d}</button>`).join('')}
+    </div>
   </div>
 
   <div class="card">
+    <div class="muted" style="font-size:12px; margin-bottom:8px"><b style="color:var(--acc)">Шаг 2.</b> Из какой игры переносим и куда</div>
     <div class="sens-row">
       <div style="flex:1">
         <label class="muted" style="font-size:12px">Из игры</label>
@@ -1367,6 +1378,12 @@ function renderSens(){
       <b style="color:var(--txt)">см / 360°</b> — сколько сантиметров провести мышью для полного разворота. Это и есть «мышечная память»: сохраняем её — сохраняем прицел.<br>
       <b style="color:var(--txt)">eDPI</b> = DPI × сенса — эффективная чувствительность для сравнения внутри игры.
     </div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:800; margin-bottom:2px">📋 Твоя сенса во всех играх</div>
+    <div class="muted" style="font-size:12px; margin-bottom:10px">Одинаковый прицел (см/360) — готовые значения для каждой игры</div>
+    <div id="sensAll">${sensAllGamesHtml()}</div>
   </div>
 
   <div class="card" id="mouseBlock">
@@ -1424,6 +1441,22 @@ async function mouseAccelOff(){
   }catch(e){ toast('⚠ Агент недоступен'); }
 }
 
+// «Твоя сенса во всех играх» — cm/360 одинаковый, показываем sens+eDPI для каждой.
+function sensAllGamesHtml(){
+  const gf = sensGame(sensFrom);
+  return SENS_GAMES.map(g => {
+    const s = sensConvert(gf, g, sensVal);
+    const isFrom = g.id === sensFrom;
+    return `<div class="sg-row ${isFrom?'from':''}">
+      <span class="sg-name">${esc(g.name)}${isFrom?' <span class="muted" style="font-weight:400">· исходная</span>':''}</span>
+      <b class="sg-sens">${s.toFixed(3)}</b>
+      <span class="sg-edpi">${Math.round(sensDPI*s)} eDPI</span>
+    </div>`;
+  }).join('');
+}
+
+function setDpiPreset(d){ sensDPI = d; localStorage.setItem('1448_dpi', d); renderSide(); }
+
 function sensUpdate(){
   const dpiEl = document.getElementById('sensDpi');
   sensDPI = Math.max(1, +dpiEl.value || 800);
@@ -1438,6 +1471,11 @@ function sensUpdate(){
   set('sensCopyVal', res.toFixed(3));
   set('sensCm', sensCm360(gf, sensVal, sensDPI).toFixed(1));
   set('sensEdpi', Math.round(sensDPI * sensVal));
+  const all = document.getElementById('sensAll'); if (all) all.innerHTML = sensAllGamesHtml();
+  // подсветка активного пресета DPI
+  document.querySelectorAll('#sideBody .presets button').forEach(b => {
+    b.classList.toggle('on', +b.textContent === sensDPI);
+  });
 }
 
 function sensSwap(){
