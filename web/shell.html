@@ -396,6 +396,12 @@
   .sens-metrics .l{font-size:12px; color:var(--dim); margin-top:2px}
   select.input{appearance:none; -webkit-appearance:none; cursor:pointer}
   select.input option{background:var(--panel); color:var(--txt)}
+  .mouse-row{display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; font-weight:700;
+    padding:9px 11px; border-radius:11px; background:var(--glass-2); border:1px solid var(--glass-brd); margin-bottom:7px}
+  .mouse-row b{font-size:12px; color:var(--dim); font-weight:700}
+  .mouse-row.ok{border-color:rgba(52,211,153,.35)} .mouse-row.ok span{color:var(--green)}
+  .mouse-row.bad{border-color:var(--acc)} .mouse-row.bad span{color:var(--acc)}
+  .mouse-row.warn{border-color:rgba(251,146,60,.4)} .mouse-row.warn span{color:#fb923c}
 
   /* — акцентная кнопка «Сенса» в топбаре — */
   .tb-sens{display:flex; align-items:center; gap:7px; border:1px solid var(--acc); border-radius:12px;
@@ -683,6 +689,7 @@ const SENS_GAMES = [
 ];
 let sensDPI = +(localStorage.getItem('1448_dpi') || 800);
 let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
+let sensProfile = null, sensProfileApplied = false;
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
 let authMode = 'login';
 
@@ -770,16 +777,24 @@ function enterShell(){
 
 async function loadAll(){
   try{
-    const [m, cs, tl, ac, lb, ss, bk, ec] = await Promise.all([
+    const [m, cs, tl, ac, lb, ss, bk, ec, sp] = await Promise.all([
       api('/me'), api('/me/cases'), api('/me/talents'),
       api('/me/achievements'), api('/leaderboard'), api('/me/sessions'),
-      api('/me/bookings'), api('/me/economy'),
+      api('/me/bookings'), api('/me/economy'), api('/me/sensitivity'),
     ]);
     const prevLvl = me ? me.level : null;
     me = m.user || m; cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
     sessions = ss.sessions || [];
     bookings = bk.bookings || [];
     economy = ec;
+    sensProfile = sp;
+    // профиль сенсы едет за игроком: подставляем сохранённые DPI и сенсу один раз
+    if (sensProfile && !sensProfileApplied){
+      if (sensProfile.dpi) sensDPI = sensProfile.dpi;
+      const g = sensProfile.games || {};
+      if (g[sensFrom] != null) sensVal = g[sensFrom];
+      sensProfileApplied = true;
+    }
     activeSession = sessions.find(s => !s.ended_at) || null;
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
     renderTop(); renderSession(); renderSide(); renderLock();
@@ -1092,6 +1107,7 @@ function renderSide(){
   }
   if (curTab === 'sens'){
     el.innerHTML = renderSens();
+    loadMouseInfo();
     return;
   }
   if (curTab === 'book'){
@@ -1334,6 +1350,14 @@ function renderSens(){
     <div class="muted" style="font-size:12px; text-align:center; margin-top:6px">Впиши это значение в настройках «${esc(gt.name)}»</div>
   </div>
 
+  <div class="card" style="border-color:rgba(255,39,64,.25)">
+    <div style="font-weight:800; margin-bottom:4px">☁ Сенса едет за тобой</div>
+    <div class="muted" style="font-size:12px; line-height:1.6; margin-bottom:10px">
+      Сохрани DPI и сенсу в свой аккаунт — и на любом ПК сети 14:48 они подставятся сами. ${sensSyncStatus()}
+    </div>
+    <button class="btn slim" style="width:100%" onclick="sensSave()">💾 Сохранить в аккаунт</button>
+  </div>
+
   <div class="card">
     <div class="sens-metrics">
       <div class="box"><div class="v cnum" id="sensCm">${sensCm360(gf,sensVal,sensDPI).toFixed(1)}</div><div class="l">см / 360°</div></div>
@@ -1345,13 +1369,59 @@ function renderSens(){
     </div>
   </div>
 
-  <div class="card" style="border-color:rgba(255,39,64,.25)">
-    <div style="font-weight:800; margin-bottom:4px">⚠ Важно для аима</div>
+  <div class="card" id="mouseBlock">
+    <div class="muted" style="text-align:center; padding:14px 0">🖱 Проверяю мышь…</div>
+  </div>
+
+  <div class="card">
     <div class="muted" style="font-size:12px; line-height:1.6">
-      Отключи в Windows «Повышенную точность указателя» (mouse acceleration) — она незаметно ломает прицел. Автопроверку добавим в следующем обновлении.<br>
       Значения точны для CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. Другие игры добавим по запросу.
     </div>
   </div>`;
+}
+
+/* — блок «Твоя мышь» (S2, через shell-agent) — */
+function mouseFallbackHtml(){
+  return `<div style="font-weight:800; margin-bottom:6px">🖱 Твоя мышь</div>
+    <div class="muted" style="font-size:12px; line-height:1.6">
+      Запусти 14:48 на игровом ПК (в киоске/с агентом) — и студия сама проверит акселерацию и подскажет DPI.<br><br>
+      Пока вручную: <b style="color:var(--txt)">Windows → Параметры → Мышь → Дополнительно → сними галку «Повысить точность установки указателя»</b>. Она незаметно ломает прицел.
+    </div>`;
+}
+
+function mouseInfoHtml(m){
+  if (!m || !m.available) return mouseFallbackHtml();
+  const speedOk = m.pointer_speed === 10;
+  const accelRow = m.accel
+    ? `<div class="mouse-row bad"><span>⚠ Акселерация включена</span>
+         <button class="btn danger slim" style="width:auto; padding:6px 12px" onclick="mouseAccelOff()">Выключить</button></div>`
+    : `<div class="mouse-row ok"><span>✓ Акселерация выключена</span><b>отлично для аима</b></div>`;
+  const speedRow = `<div class="mouse-row ${speedOk?'ok':'warn'}">
+      <span>${speedOk?'✓':'⚠'} Скорость указателя: ${m.pointer_speed}/20</span>
+      <b>${speedOk?'1:1 — идеально':'рекомендуется 10/20'}</b></div>`;
+  const vendorRow = (m.vendors && m.vendors.length)
+    ? `<div class="mouse-row"><span>🎛 Софт мыши: <b style="color:var(--txt)">${m.vendors.map(esc).join(', ')}</b></span></div>
+       <div class="muted" style="font-size:12px; margin-top:6px">Открой его, чтобы посмотреть свой DPI и вписать выше.</div>`
+    : `<div class="muted" style="font-size:12px">Софт мыши не найден. DPI обычно указан в приложении мыши (Logitech G HUB, Razer Synapse и т.п.) или на сайте производителя.</div>`;
+  return `<div style="font-weight:800; margin-bottom:8px">🖱 Твоя мышь</div>${accelRow}${speedRow}${vendorRow}`;
+}
+
+async function loadMouseInfo(){
+  const box = document.getElementById('mouseBlock');
+  if (!box) return;
+  if (!agentOnline){ box.innerHTML = mouseFallbackHtml(); return; }
+  try{
+    const r = await fetch(AGENT + '/mouse-info', {signal: AbortSignal.timeout(2000)});
+    box.innerHTML = mouseInfoHtml(await r.json());
+  }catch(e){ box.innerHTML = mouseFallbackHtml(); }
+}
+
+async function mouseAccelOff(){
+  try{
+    const r = await fetch(AGENT + '/mouse-accel-off', {method:'POST'});
+    if (r.ok){ toast('🖱 Акселерация выключена — прицел стал честнее'); loadMouseInfo(); }
+    else { const d = await r.json().catch(()=>({})); toast('⚠ ' + (d.message||'не удалось')); }
+  }catch(e){ toast('⚠ Агент недоступен'); }
 }
 
 function sensUpdate(){
@@ -1385,6 +1455,30 @@ function sensCopy(){
     () => toast('📋 Скопировано: ' + v),
     () => toast('Значение: ' + v)
   );
+}
+
+function sensSyncStatus(){
+  if (sensProfile && sensProfile.saved){
+    const g = sensProfile.games || {};
+    const n = Object.keys(g).length;
+    return `<span style="color:var(--green)">✓ Синхронизировано${n?` · ${n} ${n===1?'игра':'игр(ы)'}`:''}.</span>`;
+  }
+  return '<span style="color:var(--dim)">Пока не сохранено.</span>';
+}
+
+async function sensSave(){
+  // читаем актуальные значения из полей
+  sensUpdate();
+  const games = Object.assign({}, (sensProfile && sensProfile.games) || {});
+  games[sensFrom] = sensVal;
+  const res = sensConvert(sensGame(sensFrom), sensGame(sensTo), sensVal);
+  if (res > 0) games[sensTo] = +res.toFixed(3);
+  try{
+    const d = await api('/me/sensitivity', {method:'PUT', body:JSON.stringify({dpi: sensDPI, games})});
+    sensProfile = {dpi: d.dpi, games: d.games, saved: true};
+    toast('💾 Сенса сохранена — подставится на любом ПК клуба');
+    renderSide();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* ═══════════════ КЕЙСЫ ═══════════════ */

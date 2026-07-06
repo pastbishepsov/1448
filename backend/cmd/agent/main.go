@@ -357,6 +357,23 @@ func main() {
 		})
 	}))
 
+	// Студия сенсы (S2): чтение настроек мыши и выключение акселерации.
+	mux.HandleFunc("/mouse-info", cors(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, readMouse())
+	}))
+	mux.HandleFunc("/mouse-accel-off", cors(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"code": "method"})
+			return
+		}
+		if err := disableAccel(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"code": "accel_failed", "message": err.Error()})
+			return
+		}
+		log.Println("🖱 Акселерация мыши выключена по запросу гостевого экрана")
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "accel": false})
+	}))
+
 	mux.HandleFunc("/launch", cors(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"code": "method"})
