@@ -181,6 +181,7 @@ type finishResult struct {
 	BonusCase      bool
 	BonusCaseTier  models.CaseTier
 	BonusCaseTier2 models.CaseTier
+	Rank           AccountRank
 	User           models.User
 }
 
@@ -195,6 +196,7 @@ func finishResponse(r *finishResult) gin.H {
 		"bonus_case":      r.BonusCase,
 		"bonus_case_tier": r.BonusCaseTier,
 		"bonus_case_tier_2": r.BonusCaseTier2,
+		"rank":            gin.H{"level": r.Rank.Level, "name": r.Rank.Name, "xp_mult": r.Rank.XPMult, "coin_mult": r.Rank.CoinMult},
 		"user": gin.H{
 			"level":                 r.User.Level,
 			"xp_current":            r.User.XPCurrent,
@@ -225,9 +227,13 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 		}
 	}
 
-	// Талант xp_boost (Agility) увеличивает опыт за сессию.
-	xpGained := boostedXP(int64(minutes)*xpPerMinute, talentEffect(userID, "xp_boost"))
-	coinsGained := int64(minutes) * coinsPerMinute
+	// Ранг аккаунта (по наигранным часам) множит XP/coins и бустит кейсы.
+	rank, _ := accountRankFor(userHoursPlayed(userID))
+
+	// XP: базовый × (1 + xp_boost) × множитель ранга.
+	xpGained := int64(math.Round(float64(boostedXP(int64(minutes)*xpPerMinute, talentEffect(userID, "xp_boost"))) * rank.XPMult))
+	// coins: базовый × множитель ранга.
+	coinsGained := int64(math.Round(float64(int64(minutes)*coinsPerMinute) * rank.CoinMult))
 
 	// Первый визит за день: +50 XP (фиксировано, без модификаторов — ТЗ 4.1).
 	dailyBonusXP := int64(0)
@@ -278,15 +284,13 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 		}
 	}
 
-	// Бонусный кейс за сессию. Шанс усиливает case_hunter, тир — luck_grade.
+	// Бонусный кейс за сессию. Шанс: case_hunter + ранг; тир: luck_grade + ранг.
 	bonusCase := false
 	var bonusCaseTier models.CaseTier
-	dropChance := baseSessionCaseChance + talentEffect(userID, "case_hunter")
-	if dropChance > maxSessionCaseChance {
-		dropChance = maxSessionCaseChance
-	}
+	dropChance := sessionCaseChance(talentEffect(userID, "case_hunter"), rank.CaseChanceBonus)
+	tierBoost := talentEffect(userID, "luck_grade") + rank.TierBoost
 	if chance(dropChance) {
-		bonusCaseTier = rollCaseTier(talentEffect(userID, "luck_grade"))
+		bonusCaseTier = rollCaseTier(tierBoost)
 		if grantCase(db, user.ID, &session.ClubID, bonusCaseTier, models.CaseSourceDailyVisit) == nil {
 			bonusCase = true
 		}
@@ -295,7 +299,7 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 	// Талант double_drop (Strength): шанс второго бонусного кейса (тир роллится заново).
 	var bonusCaseTier2 models.CaseTier
 	if bonusCase && chance(talentEffect(userID, "double_drop")) {
-		bonusCaseTier2 = rollCaseTier(talentEffect(userID, "luck_grade"))
+		bonusCaseTier2 = rollCaseTier(tierBoost)
 		if grantCase(db, user.ID, &session.ClubID, bonusCaseTier2, models.CaseSourceDailyVisit) != nil {
 			bonusCaseTier2 = ""
 		}
@@ -321,6 +325,7 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 		DailyBonusXP: dailyBonusXP,
 		LevelsGained: levelsGained,
 		BonusCase:    bonusCase, BonusCaseTier: bonusCaseTier, BonusCaseTier2: bonusCaseTier2,
+		Rank: rank,
 		User: user,
 	}, nil
 }

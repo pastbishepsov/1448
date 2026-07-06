@@ -97,6 +97,7 @@ func main() {
 		me.GET("/bookings", handleGetMyBookings)          // ← настоящий
 		me.DELETE("/bookings/:id", handleCancelBooking)   // ← настоящий
 		me.GET("/deposits", handleGetMyDeposits)          // ← настоящий
+		me.GET("/economy", handleGetEconomy)              // ← настоящий (калькулятор + ранг)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)

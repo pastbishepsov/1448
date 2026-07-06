@@ -331,6 +331,36 @@
   .dropbox{box-shadow:0 0 40px rgba(255,39,64,.5)}
   .modal{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2)}
   .overlay{backdrop-filter:blur(10px)}
+
+  /* — ранг аккаунта в топбаре — */
+  .rankpill{display:flex; align-items:center; gap:6px; background:var(--glass-2); border:1px solid var(--glass-brd);
+    border-radius:20px; padding:5px 12px; font-weight:800; font-size:13px; white-space:nowrap; cursor:pointer;
+    transition:transform .2s var(--spring), box-shadow .2s, border-color .2s}
+  .rankpill:hover{transform:translateY(-1px); border-color:var(--acc); box-shadow:var(--glow)}
+  .rankpill .rank-em{color:var(--acc); font-size:14px}
+  .rankpill b{background:var(--aurora); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent}
+
+  /* — калькулятор койнов — */
+  .calc-rank{display:flex; align-items:center; gap:12px; margin-bottom:12px}
+  .calc-rank .badge-em{width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+    font-size:24px; background:rgba(255,39,64,.12); border:1px solid var(--acc); color:var(--acc)}
+  .calc-rank .rn{font-weight:800; font-size:16px}
+  .rank-prog{height:8px; background:#0c0c0e; border-radius:6px; overflow:hidden; margin:8px 0 4px}
+  .rank-prog i{display:block; height:100%; background:var(--aurora); box-shadow:var(--glow)}
+  .presets{display:flex; gap:8px; margin:12px 0}
+  .presets button{flex:1; background:var(--glass-2); border:1px solid var(--glass-brd); color:var(--txt);
+    border-radius:10px; padding:9px 4px; font-weight:700; cursor:pointer; font-size:13px; transition:.15s}
+  .presets button.on{border-color:var(--acc); color:var(--acc); box-shadow:var(--glow)}
+  .calc-slider{width:100%; margin:6px 0 4px; accent-color:var(--acc)}
+  .calc-out{display:flex; gap:10px; margin:12px 0}
+  .calc-out .box{flex:1; background:var(--glass-2); border:1px solid var(--glass-brd); border-radius:14px; padding:14px; text-align:center}
+  .calc-out .v{font-size:26px; font-weight:900}
+  .calc-out .l{font-size:12px; color:var(--dim); margin-top:2px}
+  .calc-break{font-size:12.5px; color:var(--dim); line-height:1.7}
+  .calc-break .row{display:flex; justify-content:space-between; border-bottom:1px solid var(--line); padding:5px 0}
+  .calc-break .row:last-child{border:0}
+  .calc-break b{color:var(--txt)}
+  .calc-break .plus{color:var(--acc)}
 </style>
 </head>
 <body>
@@ -370,6 +400,9 @@
       <div class="muted" style="font-size:11px">профиль ⚙</div>
     </div>
     <div class="lvlpill">LVL <b id="hLvl">1</b></div>
+    <div class="rankpill" id="rankPill" onclick="sideTab('coins')" title="Ранг аккаунта — жми для калькулятора">
+      <span class="rank-em" id="rankEm">✦</span><b id="rankName">—</b>
+    </div>
     <div class="xpzone">
       <div class="xpwrap"><div class="xpbar" id="xpBar"></div></div>
       <div class="xpnums"><span id="xpText">0 / 1000 XP</span><span id="xpLeft"></span></div>
@@ -404,6 +437,7 @@
         <button id="st-ach" onclick="sideTab('ach')">Ачивки</button>
         <button id="st-hist" onclick="sideTab('hist')">История</button>
         <button id="st-book" onclick="sideTab('book')">📅</button>
+        <button id="st-coins" onclick="sideTab('coins')">🪙</button>
       </div>
       <div class="sidebody" id="sideBody"><!-- JS --></div>
     </div>
@@ -572,7 +606,7 @@ const ICONS = {
 
 /* ═══════════════ СОСТОЯНИЕ ═══════════════ */
 let me = null, cases = [], talents = null, achievements = null, leaderboard = null, sessions = [];
-let bookings = [], clubs = [];
+let bookings = [], clubs = [], economy = null, calcMinutes = 60;
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
 let authMode = 'login';
 
@@ -660,15 +694,16 @@ function enterShell(){
 
 async function loadAll(){
   try{
-    const [m, cs, tl, ac, lb, ss, bk] = await Promise.all([
+    const [m, cs, tl, ac, lb, ss, bk, ec] = await Promise.all([
       api('/me'), api('/me/cases'), api('/me/talents'),
       api('/me/achievements'), api('/leaderboard'), api('/me/sessions'),
-      api('/me/bookings'),
+      api('/me/bookings'), api('/me/economy'),
     ]);
     const prevLvl = me ? me.level : null;
     me = m.user || m; cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
     sessions = ss.sessions || [];
     bookings = bk.bookings || [];
+    economy = ec;
     activeSession = sessions.find(s => !s.ended_at) || null;
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
     renderTop(); renderSession(); renderSide(); renderLock();
@@ -689,7 +724,12 @@ function renderTop(){
   document.getElementById('xpText').textContent = fmt(me.xp_current) + ' / ' + fmt(need) + ' XP';
   document.getElementById('xpLeft').textContent = 'до уровня: ' + fmt(Math.max(0, need - me.xp_current)) + ' XP';
   document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
+  if (economy && economy.rank){
+    document.getElementById('rankName').textContent = economy.rank.name;
+    document.getElementById('rankEm').textContent = RANK_EM[economy.rank.level] || '✦';
+  }
 }
+const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
 
 /* ═══════════════ КАТАЛОГ ═══════════════ */
 function renderCatalog(){
@@ -891,7 +931,7 @@ setInterval(async () => {
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
-  ['cases','talents','top','ach','hist','book'].forEach(x =>
+  ['cases','talents','top','ach','hist','book','coins'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
   renderSide();
   FX.swap(document.getElementById('sideBody'));
@@ -965,6 +1005,11 @@ function renderSide(){
         <div><div class="t">${a.title}</div><div class="d">${a.description||''}</div>
         <div class="rw">${a.reward_skillpoints ? '+'+a.reward_skillpoints+' ✦ ' : ''}${a.reward_case_tier ? '+ кейс '+a.reward_case_tier : ''}</div></div>
       </div>`).join('');
+  }
+  if (curTab === 'coins'){
+    if (!economy){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">Загрузка экономики…</div>'; return; }
+    el.innerHTML = renderCalc();
+    return;
   }
   if (curTab === 'book'){
     const opts = clubs.map(c => `<option value="${c.id}">${esc(c.name)} · свободно ${c.computers_free}/${c.computers_total}</option>`).join('');
@@ -1049,6 +1094,86 @@ async function invest(id){
     toast('✦ Талант прокачан');
     await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* ═══════════════ КАЛЬКУЛЯТОР КОЙНОВ ═══════════════ */
+function calcCompute(m){
+  const r = economy.rates, rk = economy.rank, t = economy.talents;
+  const baseCoins = m * r.coins_per_min;
+  const coins = Math.round(baseCoins * rk.coin_mult);
+  const baseXp = m * r.xp_per_min;
+  const withTalent = Math.round(baseXp * (1 + (t.xp_boost || 0)));
+  const xp = Math.round(baseXp * (1 + (t.xp_boost || 0)) * rk.xp_mult);
+  return { baseCoins, coins, rankCoinBonus: coins - baseCoins,
+    baseXp, xp, talentXpBonus: withTalent - baseXp, rankXpBonus: xp - withTalent };
+}
+
+function calcTimeLabel(){
+  const h = Math.floor(calcMinutes/60), m = calcMinutes%60;
+  return ((h?h+' ч ':'') + (m?m+' мин':'') || '0 мин') + ' игры';
+}
+
+function calcBreakHtml(c){
+  const t = economy.talents, rk = economy.rank, r = economy.rates;
+  return `
+    <div class="row"><span>Койны: база (${calcMinutes} × ${r.coins_per_min})</span><b>${fmt(c.baseCoins)}</b></div>
+    <div class="row"><span>+ ранг ×${rk.coin_mult}</span><b class="plus">+${fmt(c.rankCoinBonus)}</b></div>
+    <div class="row"><span>XP: база (${calcMinutes} × ${r.xp_per_min})</span><b>${fmt(c.baseXp)}</b></div>
+    ${t.xp_boost>0?`<div class="row"><span>+ «Разгон опыта» +${Math.round(t.xp_boost*100)}%</span><b class="plus">+${fmt(c.talentXpBonus)}</b></div>`:''}
+    <div class="row"><span>+ ранг ×${rk.xp_mult}</span><b class="plus">+${fmt(c.rankXpBonus)}</b></div>`;
+}
+
+function renderCalc(){
+  const e = economy, rk = e.rank, c = calcCompute(calcMinutes);
+  let prog = 100, progText = '🏆 Максимальный ранг — выше некуда';
+  if (e.next_rank){
+    const span = e.next_rank.min_hours - rk.min_hours;
+    prog = Math.max(0, Math.min(100, Math.round(100*(e.hours_played - rk.min_hours)/span)));
+    progText = `Ещё ${e.next_rank.hours_left} ч до «${esc(e.next_rank.name)}»`;
+  }
+  const presets = [30,60,180,300];
+  return `
+  <div class="card">
+    <div class="calc-rank">
+      <div class="badge-em">${RANK_EM[rk.level]||'✦'}</div>
+      <div><div class="rn">${esc(rk.name)}</div>
+      <div class="muted" style="font-size:12px">Ранг ${rk.level}/7 · наиграно ${e.hours_played} ч</div></div>
+    </div>
+    <div class="rank-prog"><i style="width:${prog}%"></i></div>
+    <div class="muted" style="font-size:12px">${progText}</div>
+  </div>
+  <div class="card">
+    <div style="font-weight:800; margin-bottom:2px">Калькулятор койнов</div>
+    <div class="muted" style="font-size:12.5px; margin-bottom:8px">Что накапает за сессию с учётом ранга и талантов</div>
+    <div class="presets">
+      ${presets.map(p=>`<button class="${calcMinutes===p?'on':''}" onclick="setPreset(${p})">${p<60?p+'м':(p/60)+'ч'}</button>`).join('')}
+    </div>
+    <input class="calc-slider" type="range" min="15" max="600" step="15" value="${calcMinutes}" oninput="calcSlide(this.value)">
+    <div class="muted" style="text-align:center; font-weight:700" id="calcTime">${calcTimeLabel()}</div>
+    <div class="calc-out">
+      <div class="box"><div class="v gold-t cnum" id="calcCoins">${fmt(c.coins)}</div><div class="l">🪙 койнов</div></div>
+      <div class="box"><div class="v cyan-t cnum" id="calcXp">${fmt(c.xp)}</div><div class="l">⚡ XP</div></div>
+    </div>
+    <div class="calc-break" id="calcBreak">${calcBreakHtml(c)}</div>
+  </div>
+  <div class="card">
+    <div style="font-weight:800; margin-bottom:6px">Как образуются койны</div>
+    <div class="muted" style="font-size:12.5px; line-height:1.7">
+      Базовая ставка — <b style="color:var(--txt)">${e.rates.coins_per_min} койна/мин</b> за время за ПК.<br>
+      Множитель ранга «${esc(rk.name)}» — <b class="plus">×${rk.coin_mult}</b> к койнам, <b class="plus">×${rk.xp_mult}</b> к опыту.<br>
+      ${e.talents.coin_mint>0?`Талант «Монетный двор» — при пополнении баланса <b class="plus">+${Math.round(e.talents.coin_mint*100)}%</b> койнов (курс ${e.rates.deposit_coins_per_pln} койнов за 1 zł).<br>`:''}
+      Чем выше ранг (больше наиграно часов), тем больше койнов и XP, и тем чаще падают кейсы: сейчас <b style="color:var(--txt)">${Math.round(e.session_case_chance*100)}%</b> за сессию.
+    </div>
+  </div>`;
+}
+
+function setPreset(m){ calcMinutes = m; renderSide(); }
+function calcSlide(v){
+  calcMinutes = +v;
+  const c = calcCompute(calcMinutes);
+  const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  set('calcCoins', fmt(c.coins)); set('calcXp', fmt(c.xp)); set('calcTime', calcTimeLabel());
+  const b = document.getElementById('calcBreak'); if (b) b.innerHTML = calcBreakHtml(c);
 }
 
 /* ═══════════════ КЕЙСЫ ═══════════════ */
