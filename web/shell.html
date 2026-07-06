@@ -396,6 +396,21 @@
   .sens-metrics .l{font-size:12px; color:var(--dim); margin-top:2px}
   select.input{appearance:none; -webkit-appearance:none; cursor:pointer}
   select.input option{background:var(--panel); color:var(--txt)}
+
+  /* — акцентная кнопка «Сенса» в топбаре — */
+  .tb-sens{display:flex; align-items:center; gap:7px; border:1px solid var(--acc); border-radius:12px;
+    padding:8px 14px; font-weight:800; font-size:13.5px; color:var(--acc); cursor:pointer; white-space:nowrap;
+    background:rgba(255,39,64,.08); position:relative; overflow:hidden;
+    box-shadow:0 0 0 0 rgba(255,39,64,.5); animation:sensPulse 2.6s var(--smooth) infinite;
+    transition:transform .2s var(--spring), background .2s, color .2s}
+  .tb-sens svg{width:17px; height:17px}
+  .tb-sens:hover{background:var(--aurora); color:#fff; transform:translateY(-1px); animation:none; box-shadow:var(--glow)}
+  .tb-sens::after{content:""; position:absolute; top:0; left:-60%; width:45%; height:100%;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.3),transparent); transform:skewX(-18deg)}
+  .tb-sens:hover::after{animation:shimmer .9s var(--smooth)}
+  .tb-sens.active{background:var(--aurora); color:#fff; animation:none; box-shadow:var(--glow)}
+  @keyframes sensPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,39,64,.4)}50%{box-shadow:0 0 14px 2px rgba(255,39,64,.35)}}
+  body.perf-lite .tb-sens{animation:none}
 </style>
 </head>
 <body>
@@ -447,6 +462,10 @@
     <div class="res timerchip" id="timerChip"><span class="ic">⏱</span><span id="timer">00:00</span></div>
     <div class="clock" id="clock">--:--</div>
     <div class="muted" id="agentDot" style="font-weight:700; white-space:nowrap">🖥 ПК ○</div>
+    <button class="tb-sens" id="tbSens" onclick="sideTab('sens')" title="Студия сенсы — настрой прицел под любую игру">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 1.5v5M12 17.5v5M1.5 12h5M17.5 12h5"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
+      <span>Сенса</span>
+    </button>
     <button class="iconbtn" onclick="adminCall()">🛎 Админ</button>
     <button class="iconbtn" title="Выйти" onclick="logout()">⏻</button>
   </div>
@@ -473,7 +492,6 @@
         <button id="st-hist" onclick="sideTab('hist')">История</button>
         <button id="st-book" onclick="sideTab('book')">📅</button>
         <button id="st-coins" onclick="sideTab('coins')">🪙</button>
-        <button id="st-sens" onclick="sideTab('sens')">🎯</button>
       </div>
       <div class="sidebody" id="sideBody"><!-- JS --></div>
     </div>
@@ -989,8 +1007,11 @@ setInterval(async () => {
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
-  ['cases','talents','top','ach','hist','book','coins','sens'].forEach(x =>
+  ['cases','talents','top','ach','hist','book','coins'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
+  // студия сенсы живёт в топбаре — подсвечиваем её кнопку
+  const tbSens = document.getElementById('tbSens');
+  if (tbSens) tbSens.classList.toggle('active', t==='sens');
   renderSide();
   FX.swap(document.getElementById('sideBody'));
 }
