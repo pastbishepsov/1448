@@ -18,7 +18,8 @@ UPDATE catalog_apps SET subtitle = 'Steam' WHERE id = 'gta5' AND subtitle = 'Roc
 INSERT INTO catalog_apps (id, name, subtitle, category, tag, emoji, color_a, color_b, target, args, sort) VALUES
 ('riot',      'Riot Games', NULL, 'platform', NULL, '⚡', NULL, NULL, 'C:\Riot Games\Riot Client\RiotClientServices.exe',          NULL, 20),
 ('epic',      'Epic Games', NULL, 'platform', NULL, '🎪', NULL, NULL, 'com.epicgames.launcher://',                                 NULL, 30),
-('battlenet', 'Battle.net', NULL, 'platform', NULL, '🌀', NULL, NULL, 'C:\Program Files (x86)\Battle.net\Battle.net Launcher.exe', NULL, 40)
+('battlenet', 'Battle.net', NULL, 'platform', NULL, '🌀', NULL, NULL, 'C:\Program Files (x86)\Battle.net\Battle.net Launcher.exe', NULL, 40),
+('faceit',    'FACEIT',     NULL, 'platform', NULL, '🎯', NULL, NULL, 'https://www.faceit.com',                                    NULL, 50)
 ON CONFLICT (id) DO NOTHING;
 
 -- Больше игр по платформам.
@@ -33,13 +34,16 @@ ON CONFLICT (id) DO NOTHING;
 -- пусто = «Другие»; системные — своя папка из category='system').
 INSERT INTO catalog_apps (id, name, subtitle, category, tag, emoji, color_a, color_b, target, args, sort) VALUES
 ('teamspeak', 'TeamSpeak',  'Коммуникация', 'app', NULL, '🎙', NULL, NULL, 'C:\Program Files\TeamSpeak 3 Client\ts3client_win64.exe', NULL, 25),
-('faceit',    'FACEIT',     NULL,           'app', NULL, '🎯', NULL, NULL, 'https://www.faceit.com',                                  NULL, 35),
 ('obs',       'OBS Studio', NULL,           'app', NULL, '📹', NULL, NULL, 'C:\Program Files\obs-studio\bin\64bit\obs64.exe',         NULL, 45)
 ON CONFLICT (id) DO NOTHING;
 
-UPDATE catalog_apps SET subtitle = 'Коммуникация' WHERE id = 'discord';
+-- Правки существующих строк — явными UPDATE, а не через INSERT:
+-- ON CONFLICT DO NOTHING не трогает уже вставленные строки, и при повторном
+-- прогоне (или после промежуточных версий 014) значения иначе не доехали бы.
+UPDATE catalog_apps SET subtitle = 'Коммуникация' WHERE id IN ('discord', 'teamspeak');
+UPDATE catalog_apps SET category = 'platform', subtitle = NULL, sort = 50 WHERE id = 'faceit';
 UPDATE catalog_apps SET name = 'Google Chrome' WHERE id = 'browser' AND name = 'Браузер';
--- Убраны с экрана ещё в июле (осталось в БД с сида 011) — гасим и в базе.
+-- Убраны с экрана ещё в июле (остались в БД с сида 011) — гасим и в базе.
 UPDATE catalog_apps SET enabled = FALSE WHERE id IN ('youtube', 'telegram');
 
 -- Система: настройки мыши (скорость, кнопки; ms-settings работает и без агента).
