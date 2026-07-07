@@ -29,14 +29,18 @@ INSERT INTO catalog_apps (id, name, subtitle, category, tag, emoji, color_a, col
 ('ow2',    'Overwatch 2',   'Battle.net', 'game', 'OW2',  NULL, '#fb923c', '#9a3412', 'battlenet://Pro',           NULL, 100)
 ON CONFLICT (id) DO NOTHING;
 
--- Приложения: голосовой чат и стриминг. Для 'app' subtitle = группа внутри
--- папки «Приложения» на экране (пусто = «Другие»).
+-- Приложения. Для 'app' subtitle = папка на экране («Коммуникация»;
+-- пусто = «Другие»; системные — своя папка из category='system').
 INSERT INTO catalog_apps (id, name, subtitle, category, tag, emoji, color_a, color_b, target, args, sort) VALUES
 ('teamspeak', 'TeamSpeak',  'Коммуникация', 'app', NULL, '🎙', NULL, NULL, 'C:\Program Files\TeamSpeak 3 Client\ts3client_win64.exe', NULL, 25),
+('faceit',    'FACEIT',     NULL,           'app', NULL, '🎯', NULL, NULL, 'https://www.faceit.com',                                  NULL, 35),
 ('obs',       'OBS Studio', NULL,           'app', NULL, '📹', NULL, NULL, 'C:\Program Files\obs-studio\bin\64bit\obs64.exe',         NULL, 45)
 ON CONFLICT (id) DO NOTHING;
 
 UPDATE catalog_apps SET subtitle = 'Коммуникация' WHERE id = 'discord';
+UPDATE catalog_apps SET name = 'Google Chrome' WHERE id = 'browser' AND name = 'Браузер';
+-- Убраны с экрана ещё в июле (осталось в БД с сида 011) — гасим и в базе.
+UPDATE catalog_apps SET enabled = FALSE WHERE id IN ('youtube', 'telegram');
 
 -- Система: настройки мыши (скорость, кнопки; ms-settings работает и без агента).
 INSERT INTO catalog_apps (id, name, subtitle, category, tag, emoji, color_a, color_b, target, args, sort) VALUES

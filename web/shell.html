@@ -137,6 +137,7 @@
   .plat-btn:hover{color:var(--txt); border-color:var(--acc); transform:translateY(-1px)}
   .plat-btn svg{width:15px; height:15px}
   .plat-btn.right{margin-left:auto}
+  .game.client .s{color:var(--acc); font-weight:700}
   .games{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:16px; margin-bottom:30px}
   .game{position:relative; border-radius:18px; overflow:hidden; cursor:pointer; border:1px solid var(--line);
         aspect-ratio:16/9.5; display:flex; align-items:flex-end; transition:.18s}
@@ -635,12 +636,13 @@ const FALLBACK_CATALOG = {
     {id:'fortnite', name:'Fortnite',         sub:'Epic Games', tag:'FN',   g:['#22d3ee','#6366f1'], launch:{type:'proto', uri:'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true'}},
     {id:'ow2',      name:'Overwatch 2',      sub:'Battle.net', tag:'OW2',  g:['#fb923c','#9a3412'], launch:{type:'proto', uri:'battlenet://Pro'}},
   ],
-  apps: [ // sub — группа внутри папки «Приложения» (пусто = «Другие»)
-    {id:'discord',   name:'Discord',   sub:'Коммуникация', em:'💬', launch:{type:'proto', uri:'discord://'}},
-    {id:'teamspeak', name:'TeamSpeak', sub:'Коммуникация', em:'🎙', launch:{type:'agent'}},
-    {id:'browser',   name:'Браузер',   em:'🌐', launch:{type:'url',   uri:'https://www.google.com'}},
-    {id:'spotify',   name:'Spotify',   em:'🎵', launch:{type:'proto', uri:'spotify:'}},
-    {id:'obs',       name:'OBS Studio',em:'📹', launch:{type:'agent'}},
+  apps: [ // sub — папка приложения (пусто = «Другие»)
+    {id:'discord',   name:'Discord',      sub:'Коммуникация', em:'💬', launch:{type:'proto', uri:'discord://'}},
+    {id:'teamspeak', name:'TeamSpeak',    sub:'Коммуникация', em:'🎙', launch:{type:'agent'}},
+    {id:'browser',   name:'Google Chrome',em:'🌐', launch:{type:'url',   uri:'https://www.google.com'}},
+    {id:'faceit',    name:'FACEIT',       em:'🎯', launch:{type:'url',   uri:'https://www.faceit.com'}},
+    {id:'spotify',   name:'Spotify',      em:'🎵', launch:{type:'proto', uri:'spotify:'}},
+    {id:'obs',       name:'OBS Studio',   em:'📹', launch:{type:'agent'}},
   ],
   system: [
     {id:'sound',   name:'Звук',    em:'🔊', launch:{type:'agent'}},
@@ -713,7 +715,8 @@ const ICONS = {
   battlenet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="11.2" r="6.3"/><path d="M2.5 16.8c4.4 3.5 15.7 1.5 19-5.6"/></svg>`,
   // — приложения —
   discord: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 5.6A15.5 15.5 0 0 0 15.6 4.4l-.2.4a13.6 13.6 0 0 1 3.4 1.7 14.5 14.5 0 0 0-12.6 0 13.6 13.6 0 0 1 3.4-1.7l-.2-.4A15.5 15.5 0 0 0 4.5 5.6 16.6 16.6 0 0 0 1.7 16.9a15.6 15.6 0 0 0 4.7 2.4l.5-.7a10.2 10.2 0 0 1-1.6-.8l.4-.3a11 11 0 0 0 9.6 0l.4.3a10.2 10.2 0 0 1-1.6.8l.5.7a15.6 15.6 0 0 0 4.7-2.4 16.6 16.6 0 0 0-2.8-11.3zM9 14.3c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8zm6 0c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8z"/></svg>`,
-  browser: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3.2 9.5h17.6M3.2 14.5h17.6"/></svg>`,
+  browser: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.6"/><path d="M12 8.4h8.2M8.9 13.8 4.8 6.7M15.1 13.8l-4.1 7.1"/></svg>`,
+  faceit: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 3h13.5l-2.3 3.4h-7.8v4.1h6.4l-2.2 3.3h-4.2V21H7z"/></svg>`,
   spotify: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.55 14.42a.62.62 0 0 1-.86.2c-2.35-1.43-5.3-1.76-8.79-.96a.62.62 0 1 1-.28-1.21c3.82-.87 7.09-.5 9.73 1.11a.62.62 0 0 1 .2.86zm1.21-2.7a.78.78 0 0 1-1.07.26c-2.69-1.65-6.79-2.13-9.97-1.17a.78.78 0 1 1-.45-1.49c3.63-1.1 8.15-.56 11.24 1.33a.78.78 0 0 1 .25 1.07zm.1-2.81C14.72 8.98 9.1 8.8 5.82 9.8a.93.93 0 1 1-.54-1.78c3.77-1.14 9.98-.92 13.65 1.26a.93.93 0 1 1-.96 1.6z"/></svg>`,
   youtube: `<svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M22.5 7.5a2.9 2.9 0 0 0-2-2C18.7 5 12 5 12 5s-6.7 0-8.5.5a2.9 2.9 0 0 0-2 2A30 30 0 0 0 1 12a30 30 0 0 0 .5 4.5 2.9 2.9 0 0 0 2 2C5.3 19 12 19 12 19s6.7 0 8.5-.5a2.9 2.9 0 0 0 2-2A30 30 0 0 0 23 12a30 30 0 0 0-.5-4.5zM10 15.2V8.8l5.5 3.2z"/></svg>`,
   telegram: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.6 6.9-1.55 7.35c-.12.52-.42.65-.85.4l-2.35-1.73-1.13 1.09c-.13.13-.24.24-.48.24l.17-2.42 4.4-3.98c.19-.17-.04-.27-.3-.1l-5.44 3.43-2.34-.73c-.51-.16-.52-.51.11-.76l9.14-3.52c.42-.16.79.1.65.75z"/></svg>`,
@@ -881,11 +884,18 @@ function plural(n, forms){ // 1 игра / 2 игры / 5 игр
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
   return forms[2];
 }
-/* Каталог — папки, как на рабочем столе: платформы (Steam, Riot...) с играми
-   внутри и одна папка «Приложения» (внутри: Системные / Коммуникация / Другие).
-   catFolder: null = главный экран | {t:'plat', name} | {t:'apps'} */
-let catFolder = null, catGroups = [];
+/* Каталог в три ряда: (1) популярные игры плитками — сразу запускаются,
+   (2) платформы-папки (Steam, Riot...) — внутри игры платформы и её клиент,
+   (3) папки приложений: Коммуникация / Системные / Другие (группа = subtitle).
+   catFolder: null = главный экран | {t:'plat', name} | {t:'appgrp', name, sys} */
+let catFolder = null, catGroups = [], catAppGroups = [];
+const TOP_GAMES = 6; // сколько популярных игр в верхнем ряду (порядок = sort админки)
 const FOLDER_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h9A1.5 1.5 0 0 1 21 9v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></svg>`;
+const APPGRP_ICONS = {
+  'Коммуникация': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.6A8.5 8.5 0 1 1 21 11.5z"/><path d="M8 10.5h8M8 13.5h5"/></svg>`,
+  'Системные':    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/></svg>`,
+  'Другие':       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>`,
+};
 function buildCatGroups(){
   const platforms = CATALOG.platforms || [];
   const groups = platforms.map((p,pi) => ({name:p.name, p, pi, items:[]}));
@@ -897,13 +907,27 @@ function buildCatGroups(){
   });
   return groups;
 }
+function buildAppGroups(){
+  const groups = [], byName = {};
+  CATALOG.apps.forEach((a,i) => {
+    const key = a.sub || 'Другие';
+    if (!byName[key]){ byName[key] = {name:key, sys:false, items:[]}; groups.push(byName[key]); }
+    byName[key].items.push({a,i});
+  });
+  groups.sort((x,y) => (x.name==='Другие') - (y.name==='Другие')); // «Другие» — в конец
+  const sysGroup = {name:'Системные', sys:true, items:CATALOG.system.map((a,i) => ({a,i}))};
+  const oi = groups.findIndex(g => g.name === 'Другие'); // системные — рядом с «Другими»
+  if (oi === -1) groups.push(sysGroup); else groups.splice(oi, 0, sysGroup);
+  return groups;
+}
 function openCatFolder(i){ if (catGroups[i]){ catFolder = {t:'plat', name:catGroups[i].name}; renderCatalog(); } }
-function openAppsFolder(){ catFolder = {t:'apps'}; renderCatalog(); }
+function openAppGroup(i){ if (catAppGroups[i]){ catFolder = {t:'appgrp', name:catAppGroups[i].name, sys:catAppGroups[i].sys}; renderCatalog(); } }
 function closeCatFolder(){ catFolder = null; renderCatalog(); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && catFolder) closeCatFolder(); });
 
 function renderCatalog(){
   catGroups = buildCatGroups();
+  catAppGroups = buildAppGroups();
   const area = document.getElementById('catalogArea');
   const gameTile = ({g,i}) => `
     <div class="game" onclick="launch('games',${i})">
@@ -919,34 +943,30 @@ function renderCatalog(){
   const icon = it => ICONS[it.id] || `<b>${esc(it.tag || (it.em||'') || it.name[0])}</b>`;
   const backBtn = `<button class="plat-btn" onclick="closeCatFolder()">← Назад</button>`;
 
-  // ── внутри папки платформы: игры + запуск клиента ──
+  // ── внутри папки платформы: плитка клиента (понятно, куда жать) + её игры ──
   const gr = catFolder && catFolder.t === 'plat' && catGroups.find(x => x.name === catFolder.name);
+  const ag = catFolder && catFolder.t === 'appgrp' && catAppGroups.find(x => x.name === catFolder.name && x.sys === catFolder.sys);
   if (gr){
     const n = gr.items.length;
-    const openBtn = gr.p ? `<button class="plat-btn right" onclick="launch('platforms',${gr.pi})">${ICONS[gr.p.id]||''}<span>Открыть ${esc(gr.name)}</span></button>` : '';
+    const clientTile = gr.p ? `
+      <div class="game client" onclick="launch('platforms',${gr.pi})">
+        <div class="art"></div>
+        <div class="gemblem">${ICONS[gr.p.id] || FOLDER_ICON}</div>
+        <div class="meta"><div class="n">${esc(gr.p.name)}</div><div class="s">▶ Открыть клиент</div></div>
+      </div>` : '';
     area.innerHTML = `
       <div class="folder-top">${backBtn}${gr.p ? (ICONS[gr.p.id]||'') : ''}<h2>${esc(gr.name)}</h2>
-        <span class="cnt">${n ? n + ' ' + plural(n, ['игра','игры','игр']) : 'клиент платформы'}</span>${openBtn}</div>
-      <div class="games">${gr.items.map(gameTile).join('')}</div>`;
+        <span class="cnt">${n ? n + ' ' + plural(n, ['игра','игры','игр']) : 'клиент платформы'}</span></div>
+      <div class="games">${clientTile}${gr.items.map(gameTile).join('')}</div>`;
   }
-  // ── внутри папки «Приложения»: Системные / Коммуникация / Другие ──
-  else if (catFolder && catFolder.t === 'apps'){
-    const subs = [];       // группы по подписи (sub), в порядке появления
-    const bySub = {};
-    CATALOG.apps.forEach((a,i) => {
-      const key = a.sub || 'Другие';
-      if (!bySub[key]){ bySub[key] = {name:key, items:[]}; subs.push(bySub[key]); }
-      bySub[key].items.push({a,i});
-    });
-    subs.sort((x,y) => (x.name==='Другие') - (y.name==='Другие')); // «Другие» — вниз
-    const section = (title, inner) => `<div class="plat-h"><h3>${esc(title)}</h3></div><div class="apps">${inner}</div>`;
+  // ── внутри папки приложений (Коммуникация / Системные / Другие / свои) ──
+  else if (ag){
     area.innerHTML = `
-      <div class="folder-top">${backBtn}${FOLDER_ICON}<h2>Приложения</h2>
-        <span class="cnt">${CATALOG.apps.length + CATALOG.system.length}</span></div>
-      ${section('⚙️ Системные', CATALOG.system.map((a,i) => appTile('system',a,i)).join(''))}
-      ${subs.map(s => section(s.name, s.items.map(({a,i}) => appTile('apps',a,i)).join(''))).join('')}`;
+      <div class="folder-top">${backBtn}${APPGRP_ICONS[ag.name] || FOLDER_ICON}<h2>${esc(ag.name)}</h2>
+        <span class="cnt">${ag.items.length} ${plural(ag.items.length, ['приложение','приложения','приложений'])}</span></div>
+      <div class="apps">${ag.items.map(({a,i}) => appTile(ag.sys ? 'system' : 'apps', a, i)).join('')}</div>`;
   }
-  // ── главный экран: папки ──
+  // ── главный экран: (1) популярные игры, (2) платформы, (3) папки приложений ──
   else {
     catFolder = null;
     const folderTile = (onclick, iconHtml, name, cnt, preview) => `
@@ -956,6 +976,7 @@ function renderCatalog(){
         <div class="f-name">${esc(name)}</div>
         <div class="f-cnt">${cnt}</div>
       </div>`;
+    const top = CATALOG.games.slice(0, TOP_GAMES);
     const platFolders = catGroups.map((g,i) => folderTile(
       `openCatFolder(${i})`,
       g.p ? (ICONS[g.p.id] || FOLDER_ICON) : FOLDER_ICON,
@@ -963,15 +984,20 @@ function renderCatalog(){
       g.items.length ? g.items.length + ' ' + plural(g.items.length, ['игра','игры','игр']) : 'клиент',
       g.items.slice(0,3).map(({g}) => icon(g)).join('') + (g.items.length > 3 ? '<b>+' + (g.items.length-3) + '</b>' : '')
     )).join('');
-    const appsCnt = CATALOG.apps.length + CATALOG.system.length;
-    const appsFolder = folderTile(
-      'openAppsFolder()', FOLDER_ICON, 'Приложения',
-      appsCnt + ' ' + plural(appsCnt, ['приложение','приложения','приложений']),
-      CATALOG.apps.slice(0,3).map(icon).join('')
-    );
+    const appFolders = catAppGroups.map((s,i) => folderTile(
+      `openAppGroup(${i})`,
+      APPGRP_ICONS[s.name] || FOLDER_ICON,
+      s.name,
+      s.items.length + ' ' + plural(s.items.length, ['приложение','приложения','приложений']),
+      s.items.slice(0,3).map(({a}) => icon(a)).join('') + (s.items.length > 3 ? '<b>+' + (s.items.length-3) + '</b>' : '')
+    )).join('');
     area.innerHTML = `
-      <div class="sec-h"><h2>🎮 Каталог</h2><span class="cnt">${CATALOG.games.length} ${plural(CATALOG.games.length, ['игра','игры','игр'])} установлено</span></div>
-      <div class="folders">${platFolders}${appsFolder}</div>`;
+      <div class="sec-h"><h2>🎮 Игры</h2><span class="cnt">самое популярное · всего ${CATALOG.games.length}</span></div>
+      <div class="games">${top.map((g,i) => gameTile({g,i})).join('')}</div>
+      <div class="sec-h"><h2>🚀 Платформы</h2><span class="cnt">папки — внутри все игры платформы и её клиент</span></div>
+      <div class="folders">${platFolders}</div>
+      <div class="sec-h"><h2>🧩 Приложения</h2><span class="cnt">папки — зайди и выбери</span></div>
+      <div class="folders">${appFolders}</div>`;
   }
   // оживление: наклон тайлов + появление со stagger
   const content = document.querySelector('.content');
