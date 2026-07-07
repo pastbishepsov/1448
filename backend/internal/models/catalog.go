@@ -8,7 +8,7 @@ type CatalogApp struct {
 	ID        string    `json:"id"        gorm:"primaryKey;size:32"`
 	Name      string    `json:"name"      gorm:"size:64;not null"`
 	Subtitle  *string   `json:"subtitle,omitempty" gorm:"size:64"`
-	Category  string    `json:"category"  gorm:"size:16;not null"` // game | app | system
+	Category  string    `json:"category"  gorm:"size:16;not null"` // game | app | system | platform
 	Tag       *string   `json:"tag,omitempty"   gorm:"size:12"`
 	Emoji     *string   `json:"emoji,omitempty" gorm:"size:8"`
 	ColorA    *string   `json:"color_a,omitempty" gorm:"size:9"`

@@ -280,7 +280,7 @@ async function renderCatalogTab(){
     const d = await api('/admin/catalog');
     catApps = d.apps || [];
   }catch(e){ toast('⚠ ' + e.message); return; }
-  const cat = {game:'🎮 игра', app:'🧩 приложение', system:'⚙️ система'};
+  const cat = {game:'🎮 игра', platform:'🚀 платформа', app:'🧩 приложение', system:'⚙️ система'};
   document.getElementById('content').innerHTML = `
   <div class="toolrow">
     <button class="btn mini" onclick="editApp('')">+ Добавить</button>
@@ -313,6 +313,7 @@ function editApp(id){
       <input id="f_name" class="input" placeholder="Название" value="${esc(a.name||'')}">
       <select id="f_category" class="input">
         <option value="game" ${a.category==='game'?'selected':''}>игра</option>
+        <option value="platform" ${a.category==='platform'?'selected':''}>платформа (Steam, Riot...)</option>
         <option value="app" ${a.category==='app'?'selected':''}>приложение</option>
         <option value="system" ${a.category==='system'?'selected':''}>система</option>
       </select>

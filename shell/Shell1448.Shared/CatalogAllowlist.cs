@@ -14,11 +14,12 @@ public sealed class CatalogItem
 /// <summary>Ответ /catalog по категориям.</summary>
 public sealed class CatalogResponse
 {
-    [JsonPropertyName("games")]  public List<CatalogItem> Games { get; set; } = [];
-    [JsonPropertyName("apps")]   public List<CatalogItem> Apps { get; set; } = [];
-    [JsonPropertyName("system")] public List<CatalogItem> System { get; set; } = [];
+    [JsonPropertyName("games")]     public List<CatalogItem> Games { get; set; } = [];
+    [JsonPropertyName("apps")]      public List<CatalogItem> Apps { get; set; } = [];
+    [JsonPropertyName("system")]    public List<CatalogItem> System { get; set; } = [];
+    [JsonPropertyName("platforms")] public List<CatalogItem> Platforms { get; set; } = []; // клиенты платформ
 
-    public IEnumerable<CatalogItem> All() => Games.Concat(Apps).Concat(System);
+    public IEnumerable<CatalogItem> All() => Games.Concat(Apps).Concat(System).Concat(Platforms);
 }
 
 /// <summary>Одна разрешённая к запуску запись.</summary>

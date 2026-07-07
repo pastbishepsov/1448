@@ -24,7 +24,7 @@ func validateCatalogApp(id, name, category string) (ok bool, code string) {
 	if name == "" || len(name) > 64 {
 		return false, "bad_name"
 	}
-	if category != "game" && category != "app" && category != "system" {
+	if category != "game" && category != "app" && category != "system" && category != "platform" {
 		return false, "bad_category"
 	}
 	return true, ""
@@ -37,8 +37,7 @@ func handleGetCatalog(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
-	out := gin.H{"games": []models.CatalogApp{}, "apps": []models.CatalogApp{}, "system": []models.CatalogApp{}}
-	games, appsList, system := []models.CatalogApp{}, []models.CatalogApp{}, []models.CatalogApp{}
+	games, appsList, system, platforms := []models.CatalogApp{}, []models.CatalogApp{}, []models.CatalogApp{}, []models.CatalogApp{}
 	for _, a := range apps {
 		switch a.Category {
 		case "game":
@@ -47,10 +46,11 @@ func handleGetCatalog(c *gin.Context) {
 			appsList = append(appsList, a)
 		case "system":
 			system = append(system, a)
+		case "platform":
+			platforms = append(platforms, a)
 		}
 	}
-	out["games"], out["apps"], out["system"] = games, appsList, system
-	c.JSON(http.StatusOK, out)
+	c.JSON(http.StatusOK, gin.H{"games": games, "apps": appsList, "system": system, "platforms": platforms})
 }
 
 // GET /admin/catalog — все приложения, включая выключенные.
@@ -85,7 +85,7 @@ func handleAdminCatalogUpsert(c *gin.Context) {
 		msg := map[string]string{
 			"bad_id":       "id: строчные латинские буквы/цифры/_, 2–32 символа",
 			"bad_name":     "Название: 1–64 символа",
-			"bad_category": "category: game | app | system",
+			"bad_category": "category: game | app | system | platform",
 		}[code]
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": msg})
 		return

@@ -129,9 +129,10 @@ type catalogItem struct {
 }
 
 type catalogResponse struct {
-	Games  []catalogItem `json:"games"`
-	Apps   []catalogItem `json:"apps"`
-	System []catalogItem `json:"system"`
+	Games     []catalogItem `json:"games"`
+	Apps      []catalogItem `json:"apps"`
+	System    []catalogItem `json:"system"`
+	Platforms []catalogItem `json:"platforms"` // клиенты платформ (Steam, Riot, Epic...)
 }
 
 // remoteAllowlist — чистая сборка allowlist из каталога (тестируется отдельно).
@@ -168,7 +169,7 @@ func (a *agent) refreshCatalog() {
 		log.Printf("Каталог: некорректный ответ (%v)", err)
 		return
 	}
-	items := append(append(cr.Games, cr.Apps...), cr.System...)
+	items := append(append(append(cr.Games, cr.Apps...), cr.System...), cr.Platforms...)
 	remote := remoteAllowlist(items)
 	a.mu.Lock()
 	a.remote = remote
