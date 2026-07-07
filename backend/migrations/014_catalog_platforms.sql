@@ -29,11 +29,14 @@ INSERT INTO catalog_apps (id, name, subtitle, category, tag, emoji, color_a, col
 ('ow2',    'Overwatch 2',   'Battle.net', 'game', 'OW2',  NULL, '#fb923c', '#9a3412', 'battlenet://Pro',           NULL, 100)
 ON CONFLICT (id) DO NOTHING;
 
--- Приложения: голосовой чат и стриминг.
+-- Приложения: голосовой чат и стриминг. Для 'app' subtitle = группа внутри
+-- папки «Приложения» на экране (пусто = «Другие»).
 INSERT INTO catalog_apps (id, name, subtitle, category, tag, emoji, color_a, color_b, target, args, sort) VALUES
-('teamspeak', 'TeamSpeak',  NULL, 'app', NULL, '🎙', NULL, NULL, 'C:\Program Files\TeamSpeak 3 Client\ts3client_win64.exe', NULL, 25),
-('obs',       'OBS Studio', NULL, 'app', NULL, '📹', NULL, NULL, 'C:\Program Files\obs-studio\bin\64bit\obs64.exe',         NULL, 45)
+('teamspeak', 'TeamSpeak',  'Коммуникация', 'app', NULL, '🎙', NULL, NULL, 'C:\Program Files\TeamSpeak 3 Client\ts3client_win64.exe', NULL, 25),
+('obs',       'OBS Studio', NULL,           'app', NULL, '📹', NULL, NULL, 'C:\Program Files\obs-studio\bin\64bit\obs64.exe',         NULL, 45)
 ON CONFLICT (id) DO NOTHING;
+
+UPDATE catalog_apps SET subtitle = 'Коммуникация' WHERE id = 'discord';
 
 -- Система: настройки мыши (скорость, кнопки; ms-settings работает и без агента).
 INSERT INTO catalog_apps (id, name, subtitle, category, tag, emoji, color_a, color_b, target, args, sort) VALUES

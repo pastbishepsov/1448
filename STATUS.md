@@ -99,13 +99,17 @@ Rate limiting: ~10 rps с IP, burst 20, in-memory (`ratelimit.go`, тест), к
 CI: GitHub Actions (`.github/workflows/ci.yml`) — go vet/test/build + синтаксис JS экранов.
 
 **Гостевой экран** (`web/shell.html`, спринт 1 трека «ПК как клуб»):
-- фулскрин-лаунчер: **игры сгруппированы по платформам** (Steam / Riot Games /
-  Epic Games / Battle.net — миграция 014, категория `platform`): шапка группы —
-  запускаемый клиент платформы («Открыть»), связь `game.subtitle = platform.name`,
-  игры без платформы падают в группу по своей подписи; 10 игр в сиде (CS2, Dota 2,
-  GTA V, Apex, PUBG, Marvel Rivals, Valorant, LoL, Fortnite, Overwatch 2);
-- ниже отдельные разделы: приложения (Discord, TeamSpeak, браузер, Spotify, OBS)
-  и система (звук, **мышь** — `ms-settings:mousetouchpad`, дисплей, NVIDIA);
+- **каталог — папки, как на рабочем столе**: платформы (Steam / Riot Games /
+  Epic Games / Battle.net — миграция 014, категория `platform`) + папка
+  «Приложения»; клик — внутрь, «← Назад» или Esc — домой; на папке превью
+  первых иконок и счётчик;
+- внутри платформы: её игры + кнопка «Открыть <клиент>»; связь
+  `game.subtitle = platform.name`, игры без платформы образуют папку по своей
+  подписи; 10 игр в сиде (CS2, Dota 2, GTA V, Apex, PUBG, Marvel Rivals,
+  Valorant, LoL, Fortnite, Overwatch 2);
+- внутри «Приложений» три группы: **Системные** (звук, **мышь** —
+  `ms-settings:mousetouchpad`, дисплей, NVIDIA), **Коммуникация** (Discord,
+  TeamSpeak; для 'app' группа = subtitle) и **Другие** (браузер, Spotify, OBS);
 - **каталог грузится с сервера** (`GET /catalog`, миграции 011+014 `catalog_apps`,
   редактируется во вкладке «Каталог» админки: добавление, правка, вкл/выкл,
   порядок); встроенный каталог остаётся запасным при недоступности API;

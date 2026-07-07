@@ -318,7 +318,7 @@ function editApp(id){
         <option value="system" ${a.category==='system'?'selected':''}>система</option>
       </select>
       <input id="f_sort" class="input" placeholder="Порядок (меньше = выше)" value="${a.sort??100}">
-      <input id="f_subtitle" class="input" placeholder="Подпись (Steam / Riot...)" value="${esc(a.subtitle||'')}">
+      <input id="f_subtitle" class="input" placeholder="Подпись: игре — платформа (Steam), прилож. — группа (Коммуникация)" value="${esc(a.subtitle||'')}">
       <input id="f_tag" class="input" placeholder="TAG на тайле (CS2)" value="${esc(a.tag||'')}">
       <input id="f_emoji" class="input" placeholder="Эмодзи (для прил.)" value="${esc(a.emoji||'')}">
       <input id="f_colors" class="input" placeholder="Цвета: #f59e0b,#ef4444" value="${esc((a.color_a||'')+(a.color_b?','+a.color_b:''))}">
