@@ -65,7 +65,7 @@
   .tabs{display:flex; background:#0c1017; border-radius:12px; padding:4px; margin:24px 0 18px}
   .tabs button{flex:1; border:0; background:transparent; color:var(--dim); padding:10px; border-radius:9px; font-weight:700; cursor:pointer; font-size:14px}
   .tabs button.on{background:var(--acc); color:#fff}
-  .input{width:100%; background:#0c1017; border:1px solid var(--line); color:var(--txt);
+  .input{width:100%; background:#0e0d10; border:1px solid var(--hair); color:var(--txt);
          padding:14px; border-radius:12px; font-size:16px; margin-bottom:10px}
   .input:focus{outline:none; border-color:var(--acc)}
   .err{color:var(--red); font-size:14px; min-height:18px; margin:4px 2px}
@@ -92,8 +92,6 @@
   .tb-user .sub b{color:var(--gold)}
   .tb-user .sub .rk{color:var(--acc); cursor:pointer}
   .tb-user .sub .rk:hover{text-decoration:underline}
-  .lvlpill{background:var(--card2); border:1px solid var(--line); border-radius:20px; padding:5px 12px; font-weight:800; font-size:13px; white-space:nowrap}
-  .lvlpill b{color:var(--gold)}
   .xpzone{flex:1; max-width:430px}
   .xpwrap{height:7px; background:rgba(255,255,255,.06); border-radius:6px; overflow:hidden}
   .xpbar{height:100%; width:0; background:linear-gradient(90deg,var(--acc),var(--acc3)); border-radius:6px;
@@ -212,7 +210,7 @@
   .ach .rw{font-size:12px; color:var(--gold); margin-top:4px; font-weight:700}
   .ach.got{border-color:rgba(52,211,153,.4)}
 
-  .lb-row{display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--line)}
+  .lb-row{display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--hair)}
   .lb-row:last-child{border:0}
   .lb-row .rk{width:30px; font-weight:900; color:var(--dim)}
   .lb-row .rk.top3{color:var(--gold)}
@@ -222,30 +220,31 @@
   .lb-row.me{background:rgba(255,39,64,.12); border-radius:10px; padding:9px 8px}
   .lb-row.me .nk{color:var(--acc2)}
 
-  .sess-item{display:flex; justify-content:space-between; align-items:center; padding:10px 2px; border-bottom:1px solid var(--line); font-size:13.5px}
+  .sess-item{display:flex; justify-content:space-between; align-items:center; padding:10px 2px; border-bottom:1px solid var(--hair); font-size:13.5px}
   .sess-item:last-child{border:0}
-  .badge{font-size:11px; padding:2px 8px; border-radius:8px; background:var(--card2); color:var(--dim)}
+  .badge{font-size:11px; padding:2px 8px; border-radius:8px; background:rgba(255,255,255,.06); color:var(--dim)}
 
   /* ═══ OVERLAYS ═══ */
-  .toast{position:fixed; left:50%; transform:translateX(-50%) translateY(14px); bottom:26px; background:#101622;
+  .toast{position:fixed; left:50%; transform:translateX(-50%) translateY(14px); bottom:26px; background:#131014;
          border:1px solid var(--acc); border-radius:14px; padding:14px 22px; opacity:0; transition:.3s;
          pointer-events:none; z-index:60; font-weight:600; max-width:70vw}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
-  .overlay{position:fixed; inset:0; background:rgba(3,5,9,.85); display:none; align-items:center; justify-content:center; z-index:50}
+  .overlay{position:fixed; inset:0; background:rgba(4,4,6,.85); display:none; align-items:center; justify-content:center; z-index:50}
   .overlay.show{display:flex}
-  .modal{background:var(--panel); border:1px solid var(--line); border-radius:24px; padding:30px; width:420px; max-width:92vw; text-align:center}
+  .modal{background:var(--panel); border:1px solid var(--hair); border-radius:24px; padding:30px; width:420px; max-width:92vw; text-align:center}
   .modal h2{margin-bottom:6px}
   .bignum{font-size:64px; font-weight:900; color:var(--gold); line-height:1.1}
   .dropbox{width:110px; height:110px; margin:18px auto; border-radius:26px; display:flex; align-items:center;
            justify-content:center; font-size:52px; animation:pulse 1s infinite}
   @keyframes pulse{0%,100%{transform:scale(1)} 50%{transform:scale(1.07)}}
   .avapick{display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin:14px 0}
-  .avapick button{font-size:26px; padding:8px 0; background:var(--card); border:1px solid var(--line); border-radius:12px; cursor:pointer}
+  .avapick button{font-size:26px; padding:8px 0; background:var(--card); border:1px solid var(--hair); border-radius:12px; cursor:pointer; transition:border-color .15s, transform .15s}
+  .avapick button:hover{border-color:var(--acc); transform:translateY(-1px)}
   .avapick button.on{border-color:var(--acc); background:rgba(255,39,64,.18)}
 
   /* ═══ LOCK (как в клубе: без сессии ПК заблокирован) ═══ */
   .lockscreen{position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center;
-              flex-direction:column; gap:10px; background:radial-gradient(900px 500px at 50% 30%, #131a2b 0%, rgba(5,7,11,.98) 60%);
+              flex-direction:column; gap:10px; background:radial-gradient(900px 500px at 50% 30%, #1c0d12 0%, rgba(5,4,6,.98) 60%);
               backdrop-filter:blur(6px)}
   .lockscreen.show{display:flex}
   .lock-clock{font-size:88px; font-weight:900; letter-spacing:2px; font-variant-numeric:tabular-nums; line-height:1}
@@ -256,7 +255,7 @@
   /* ═══════════ 14:48 AURORA — премиум-слой ═══════════ */
 
   /* — glass-поверхности — */
-  .authcard,.card,.res,.lvlpill,.side,.sesscard,.modal,.iconbtn{
+  .authcard,.card,.res,.side,.sesscard,.modal,.iconbtn{
     backdrop-filter:blur(var(--blur)) saturate(1.2); -webkit-backdrop-filter:blur(var(--blur)) saturate(1.2);}
   .authcard{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2);
     position:relative; overflow:hidden}
@@ -269,7 +268,7 @@
   /* — лого с пульсирующим двоеточием (мотив времени) — */
   .logo,.tb-logo{background:var(--aurora); -webkit-background-clip:text; background-clip:text; color:transparent;
     -webkit-text-fill-color:transparent}
-  .logo b,.tb-logo b,.clock b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
+  .logo b,.tb-logo b,.clock b,.lock-clock b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
   @keyframes colonPulse{0%,100%{opacity:1; text-shadow:0 0 10px var(--acc3)}50%{opacity:.35; text-shadow:none}}
 
   /* — premium-кнопки: shimmer + glow + magnet — */
@@ -383,13 +382,6 @@
   .overlay{backdrop-filter:blur(10px)}
 
   /* — ранг аккаунта в топбаре — */
-  .rankpill{display:flex; align-items:center; gap:6px; background:var(--glass-2); border:1px solid var(--glass-brd);
-    border-radius:20px; padding:5px 12px; font-weight:800; font-size:13px; white-space:nowrap; cursor:pointer;
-    transition:transform .2s var(--spring), box-shadow .2s, border-color .2s}
-  .rankpill:hover{transform:translateY(-1px); border-color:var(--acc); box-shadow:var(--glow)}
-  .rankpill .rank-em{color:var(--acc); font-size:14px}
-  .rankpill b{background:var(--aurora); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent}
-
   /* — калькулятор койнов — */
   .calc-rank{display:flex; align-items:center; gap:12px; margin-bottom:12px}
   .calc-rank .badge-em{width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center;
@@ -407,7 +399,7 @@
   .calc-out .v{font-size:26px; font-weight:900}
   .calc-out .l{font-size:12px; color:var(--dim); margin-top:2px}
   .calc-break{font-size:12.5px; color:var(--dim); line-height:1.7}
-  .calc-break .row{display:flex; justify-content:space-between; border-bottom:1px solid var(--line); padding:5px 0}
+  .calc-break .row{display:flex; justify-content:space-between; border-bottom:1px solid var(--hair); padding:5px 0}
   .calc-break .row:last-child{border:0}
   .calc-break b{color:var(--txt)}
   .calc-break .plus{color:var(--acc)}
@@ -1206,9 +1198,9 @@ async function endSession(devMinutes){
     let extra = [];
     if (d.daily_bonus_xp > 0) extra.push('☀ первый визит дня: +' + d.daily_bonus_xp + ' XP');
     if (d.levels_gained > 0) extra.push('уровней получено: ' + d.levels_gained);
-    if (d.bonus_case) extra.push('🎁 бонусный кейс: ' + (d.bonus_case_tier||''));
-    if (d.bonus_case_tier_2) extra.push('🎁🎁 двойной дроп: ' + d.bonus_case_tier_2);
-    document.getElementById('eoExtra').textContent = extra.join(' · ');
+    if (d.bonus_case) extra.push(UI.chest + ' бонусный кейс: ' + esc(d.bonus_case_tier||''));
+    if (d.bonus_case_tier_2) extra.push(UI.chest + UI.chest + ' двойной дроп: ' + esc(d.bonus_case_tier_2));
+    document.getElementById('eoExtra').innerHTML = extra.join(' · ');
     document.getElementById('endOverlay').classList.add('show');
     if (d.levels_gained > 0) setTimeout(()=>showLevelUp(d.user.level), 400);
     await loadAll();
@@ -1801,7 +1793,7 @@ setInterval(() => {
   const d = new Date();
   const t = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   document.getElementById('clock').innerHTML = t.replace(':','<b>:</b>');
-  document.getElementById('lockClock').textContent = t;
+  document.getElementById('lockClock').innerHTML = t.replace(':','<b>:</b>');
 }, 1000);
 
 /* ═══════════════ FX: ДВИЖОК АНИМАЦИЙ (14:48 Aurora) ═══════════════ */
