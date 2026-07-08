@@ -24,6 +24,7 @@
     /* тени и свечения */
     --sh-1:0 8px 30px rgba(0,0,0,.45); --sh-2:0 18px 50px rgba(0,0,0,.6);
     --glow:0 0 24px rgba(255,39,64,.45); --glow-2:0 0 30px rgba(255,39,64,.35);
+    --hair:rgba(255,255,255,.055);
     /* easing */
     --spring:cubic-bezier(.22,1,.36,1); --smooth:cubic-bezier(.4,0,.2,1);
   }
@@ -69,40 +70,47 @@
   .input:focus{outline:none; border-color:var(--acc)}
   .err{color:var(--red); font-size:14px; min-height:18px; margin:4px 2px}
   .btn{width:100%; border:0; border-radius:14px; padding:15px; font-size:16px; font-weight:700;
-       background:linear-gradient(135deg,var(--acc),#9d7bff); color:#fff; cursor:pointer; transition:.15s}
+       background:linear-gradient(135deg,var(--acc),#c11226); color:#fff; cursor:pointer; transition:.15s;
+       box-shadow:0 4px 18px rgba(255,39,64,.28)}
   .btn:active{transform:scale(.98)}
   .btn:disabled{opacity:.5; cursor:default}
-  .btn.ghost{background:var(--card2); color:var(--txt)}
-  .btn.danger{background:linear-gradient(135deg,#ef4444,#f87171)}
+  .btn.ghost{background:rgba(255,255,255,.06); color:var(--txt); box-shadow:none}
+  .btn.danger{background:linear-gradient(135deg,#ef4444,#b91c1c)}
   .btn.slim{padding:10px 14px; font-size:14px; border-radius:11px; width:auto}
 
   /* ═══ TOPBAR ═══ */
   #shellView{height:100vh; display:flex; flex-direction:column}
-  .topbar{display:flex; align-items:center; gap:16px; padding:12px 22px; background:rgba(13,16,24,.92);
-          border-bottom:1px solid var(--line); backdrop-filter:blur(8px)}
+  .topbar{display:flex; align-items:center; gap:14px; padding:11px 22px; background:rgba(13,14,20,.92);
+          border-bottom:1px solid var(--hair); backdrop-filter:blur(8px)}
   .tb-logo{font-weight:800; font-size:22px; letter-spacing:1px}
   .tb-logo b{color:var(--acc)}
-  .ava{width:42px; height:42px; border-radius:13px; background:linear-gradient(135deg,var(--acc),var(--acc2));
+  .ava{width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg,var(--acc),#7a1020);
        display:flex; align-items:center; justify-content:center; font-size:22px; cursor:pointer; user-select:none}
-  .tb-user{cursor:pointer}
+  .tb-user{cursor:pointer; line-height:1.25}
   .tb-user .nick{font-weight:800; font-size:15px}
+  .tb-user .sub{font-size:11.5px; color:var(--dim); font-weight:700; white-space:nowrap}
+  .tb-user .sub b{color:var(--gold)}
+  .tb-user .sub .rk{color:var(--acc); cursor:pointer}
+  .tb-user .sub .rk:hover{text-decoration:underline}
   .lvlpill{background:var(--card2); border:1px solid var(--line); border-radius:20px; padding:5px 12px; font-weight:800; font-size:13px; white-space:nowrap}
   .lvlpill b{color:var(--gold)}
   .xpzone{flex:1; max-width:430px}
-  .xpwrap{height:10px; background:#0c1017; border-radius:8px; overflow:hidden}
-  .xpbar{height:100%; width:0; background:linear-gradient(90deg,var(--acc),var(--acc2)); transition:width .8s cubic-bezier(.2,.8,.2,1)}
-  .xpnums{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:3px}
-  .res{display:flex; gap:8px; align-items:center; background:var(--card2); border:1px solid var(--line);
-       border-radius:12px; padding:7px 13px; font-weight:800; font-size:14px; white-space:nowrap}
+  .xpwrap{height:7px; background:rgba(255,255,255,.06); border-radius:6px; overflow:hidden}
+  .xpbar{height:100%; width:0; background:linear-gradient(90deg,var(--acc),var(--acc3)); border-radius:6px;
+    box-shadow:0 0 10px rgba(255,39,64,.55); transition:width .8s cubic-bezier(.2,.8,.2,1)}
+  .xpnums{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:4px}
+  .res{display:flex; gap:7px; align-items:center; background:rgba(255,255,255,.045); border:1px solid transparent;
+       border-radius:11px; padding:7px 12px; font-weight:800; font-size:14px; white-space:nowrap}
   .res .ic{font-size:15px}
   .isvg{width:1em; height:1em; display:inline-block; vertical-align:-.125em; flex:none}
   .dropbox svg{width:58px; height:58px}
   .gold-t{color:var(--gold)} .cyan-t{color:var(--acc2)} .green-t{color:var(--green)}
-  .timerchip{border-color:var(--green); color:var(--green); display:none}
+  .timerchip{border-color:rgba(52,211,153,.4); color:var(--green); display:none}
   .timerchip.on{display:flex}
-  .clock{font-weight:800; font-size:15px; color:var(--dim); margin-left:auto}
-  .iconbtn{background:var(--card2); border:1px solid var(--line); color:var(--txt); border-radius:11px;
-           padding:8px 13px; cursor:pointer; font-size:14px; font-weight:700; white-space:nowrap}
+  .clock{font-weight:800; font-size:17px; color:var(--txt); margin-left:auto;
+    font-variant-numeric:tabular-nums; letter-spacing:.5px}
+  .iconbtn{background:rgba(255,255,255,.045); border:1px solid transparent; color:var(--txt); border-radius:11px;
+           padding:8px 13px; cursor:pointer; font-size:13.5px; font-weight:700; white-space:nowrap; transition:border-color .15s}
   .iconbtn:hover{border-color:var(--acc)}
 
   /* ═══ MAIN ═══ */
@@ -160,19 +168,22 @@
   .app .n{font-size:13px; font-weight:700; text-align:center}
 
   /* ═══ SIDEBAR ═══ */
-  .side{width:390px; border-left:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; min-height:0}
-  .sesscard{padding:16px 18px; border-bottom:1px solid var(--line)}
+  .side{width:390px; border-left:1px solid var(--hair); background:var(--panel); display:flex; flex-direction:column; min-height:0}
+  .sesscard{padding:16px 18px; border-bottom:1px solid var(--hair); transition:background .4s}
+  .sesscard.live{background:linear-gradient(160deg, rgba(52,211,153,.07), transparent 55%)}
   .sess-on{display:flex; align-items:center; justify-content:space-between; gap:10px}
-  .sess-time{font-size:30px; font-weight:900; color:var(--green); font-variant-numeric:tabular-nums}
-  .sidetabs{display:flex; border-bottom:1px solid var(--line)}
+  .sess-time{font-size:30px; font-weight:900; color:var(--green); font-variant-numeric:tabular-nums;
+    text-shadow:0 0 18px rgba(52,211,153,.35)}
+  .sidetabs{display:flex; border-bottom:1px solid var(--hair)}
   .sidetabs button{flex:1; background:transparent; border:0; color:var(--dim); padding:12px 4px; cursor:pointer;
-                   font-weight:700; font-size:13px; border-bottom:2px solid transparent}
+                   font-weight:700; font-size:12.5px; border-bottom:2px solid transparent; transition:color .15s}
+  .sidetabs button:hover{color:var(--txt)}
   .sidetabs button.on{color:var(--txt); border-bottom-color:var(--acc)}
   .sidetabs .bub{background:var(--acc); color:#fff; border-radius:9px; font-size:11px; padding:1px 6px; margin-left:4px}
   .sidebody{flex:1; overflow-y:auto; padding:14px 16px}
   .sidebody::-webkit-scrollbar{width:6px}
   .sidebody::-webkit-scrollbar-thumb{background:var(--card2); border-radius:6px}
-  .card{background:var(--card); border:1px solid var(--line); border-radius:15px; padding:14px; margin-bottom:10px}
+  .card{background:var(--card); border:1px solid var(--hair); border-radius:14px; padding:14px; margin-bottom:10px}
 
   .case-i{display:flex; align-items:center; gap:12px; cursor:pointer; transition:.15s}
   .case-i:hover{border-color:var(--acc)}
@@ -258,7 +269,7 @@
   /* — лого с пульсирующим двоеточием (мотив времени) — */
   .logo,.tb-logo{background:var(--aurora); -webkit-background-clip:text; background-clip:text; color:transparent;
     -webkit-text-fill-color:transparent}
-  .logo b,.tb-logo b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
+  .logo b,.tb-logo b,.clock b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
   @keyframes colonPulse{0%,100%{opacity:1; text-shadow:0 0 10px var(--acc3)}50%{opacity:.35; text-shadow:none}}
 
   /* — premium-кнопки: shimmer + glow + magnet — */
@@ -498,11 +509,9 @@
     <div class="ava" id="ava" onclick="openProfile()">😎</div>
     <div class="tb-user" onclick="openProfile()">
       <div class="nick" id="hNick">—</div>
-      <div class="muted" style="font-size:11px">профиль <span data-ic="gear"></span></div>
-    </div>
-    <div class="lvlpill">LVL <b id="hLvl">1</b></div>
-    <div class="rankpill" id="rankPill" onclick="openRanks()" title="Ранг аккаунта — жми, чтобы увидеть все">
-      <span class="rank-em" id="rankEm">✦</span><b id="rankName">—</b>
+      <div class="sub">LVL <b id="hLvl">1</b> · <span class="rk" id="rankPill"
+        onclick="event.stopPropagation(); openRanks()" title="Ранг аккаунта — жми, чтобы увидеть все"><span
+        class="rank-em" id="rankEm">✦</span> <b id="rankName">—</b></span></div>
     </div>
     <div class="xpzone">
       <div class="xpwrap"><div class="xpbar" id="xpBar"></div></div>
@@ -1140,6 +1149,7 @@ setInterval(pingAgent, 30000);
 function renderSession(){
   const el = document.getElementById('sessCard');
   const chip = document.getElementById('timerChip');
+  el.classList.toggle('live', !!activeSession);
   if (activeSession){
     chip.classList.add('on');
     el.innerHTML = `
@@ -1790,7 +1800,7 @@ function closeOverlay(id){ document.getElementById(id).classList.remove('show');
 setInterval(() => {
   const d = new Date();
   const t = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-  document.getElementById('clock').textContent = t;
+  document.getElementById('clock').innerHTML = t.replace(':','<b>:</b>');
   document.getElementById('lockClock').textContent = t;
 }, 1000);
 
@@ -1919,4 +1929,3 @@ mountIcons(); // статичные [data-ic] в топбаре/оверлеях
 </script>
 </body>
 </html>
-                      
