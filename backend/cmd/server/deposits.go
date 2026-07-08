@@ -30,11 +30,11 @@ const (
 )
 
 // depositCoins — монеты за депозит: база по курсу + бонус таланта coin_mint.
-// Чистая функция (тестируется отдельно).
+// Чистая функция (тестируется отдельно). Оба значения кратны 5 (правило цифр).
 func depositCoins(amountPLN, mintEffect float64) (base, bonus int64) {
-	base = int64(math.Round(amountPLN * float64(coinsPerPLN)))
+	base = models.RoundToStep(int64(math.Round(amountPLN*float64(coinsPerPLN))), 5)
 	if mintEffect > 0 {
-		bonus = int64(math.Round(float64(base) * mintEffect))
+		bonus = models.RoundToStep(int64(math.Round(float64(base)*mintEffect)), 5)
 	}
 	return base, bonus
 }

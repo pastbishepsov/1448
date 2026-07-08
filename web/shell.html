@@ -1357,12 +1357,14 @@ async function invest(id){
 
 /* ═══════════════ КАЛЬКУЛЯТОР КОЙНОВ ═══════════════ */
 function calcCompute(m){
+  // правило цифр: показываем только кратное 5 (сервер округляет так же при начислении)
+  const r5 = v => Math.round(v/5)*5;
   const r = economy.rates, rk = economy.rank, t = economy.talents;
-  const baseCoins = m * r.coins_per_min;
-  const coins = Math.round(baseCoins * rk.coin_mult);
-  const baseXp = m * r.xp_per_min;
-  const withTalent = Math.round(baseXp * (1 + (t.xp_boost || 0)));
-  const xp = Math.round(baseXp * (1 + (t.xp_boost || 0)) * rk.xp_mult);
+  const baseCoins = r5(m * r.coins_per_min);
+  const coins = r5(m * r.coins_per_min * rk.coin_mult);
+  const baseXp = r5(m * r.xp_per_min);
+  const withTalent = r5(m * r.xp_per_min * (1 + (t.xp_boost || 0)));
+  const xp = r5(m * r.xp_per_min * (1 + (t.xp_boost || 0)) * rk.xp_mult);
   return { baseCoins, coins, rankCoinBonus: coins - baseCoins,
     baseXp, xp, talentXpBonus: withTalent - baseXp, rankXpBonus: xp - withTalent };
 }

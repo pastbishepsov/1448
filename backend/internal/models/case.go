@@ -90,7 +90,12 @@ func (c *Case) Roll(rtpModifier float64) (DropType, int64, error) {
 	if err != nil {
 		return DropTypeCoins, config.CoinsMin, err
 	}
-	return DropTypeCoins, config.CoinsMin + extra, nil
+	// Дроп кратен 5 (правило цифр); границы тиров кратны 50, клэмп на всякий случай.
+	value := RoundToStep(config.CoinsMin+extra, 5)
+	if value > config.CoinsMax {
+		value = config.CoinsMax
+	}
+	return DropTypeCoins, value, nil
 }
 
 // cryptoRandInt — безопасное случайное число в диапазоне [0, max)

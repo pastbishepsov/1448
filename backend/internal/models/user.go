@@ -49,10 +49,22 @@ type User struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// RoundToStep — округляет неотрицательное число к ближайшему кратному step.
+// Правило цифр (DESIGN.md): всё, что видит игрок, кратно 5, пороги уровней — 100.
+// Округляем в момент начисления, а не при показе — иначе разойдётся с балансом.
+func RoundToStep(v, step int64) int64 {
+	if step <= 0 || v < 0 {
+		return v
+	}
+	return (v + step/2) / step * step
+}
+
 // XPForNextLevel — сколько XP нужно для перехода на следующий уровень.
-// Формула: XP(n) = 1000 * n^1.4
+// Формула: XP(n) = 1000 * n^1.4, округлённая до 100: пороги выглядят аккуратно
+// (1000, 2600, 4700, 7000...), кривая роста сохраняется.
 func XPForNextLevel(level int) int64 {
-	return int64(1000 * math.Pow(float64(level), 1.4))
+	raw := 1000 * math.Pow(float64(level), 1.4)
+	return int64(math.Round(raw/100)) * 100
 }
 
 // BeforeCreate — устанавливает UUID перед созданием
