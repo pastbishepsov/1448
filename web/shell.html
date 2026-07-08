@@ -114,12 +114,12 @@
   .sec-h h2{font-size:19px}
   .sec-h .cnt{color:var(--dim); font-size:13px}
   /* каталог-папки: платформы и «Приложения» */
-  .folders{display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:16px; margin-bottom:30px}
-  .folder{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:20px 14px 15px;
+  .folders{display:grid; grid-template-columns:repeat(auto-fill,minmax(164px,1fr)); gap:14px; margin-bottom:30px}
+  .folder{background:var(--card); border:1px solid rgba(255,255,255,.055); border-radius:15px; padding:18px 14px 14px;
     display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer;
     transition:transform .2s var(--spring), border-color .2s, box-shadow .2s}
   .folder:hover{border-color:var(--acc); transform:translateY(-3px); box-shadow:var(--glow)}
-  .folder .f-icon{color:var(--txt)} .folder .f-icon svg{width:42px; height:42px; display:block}
+  .folder .f-icon{color:var(--txt)} .folder .f-icon svg{width:40px; height:40px; display:block}
   .folder:hover .f-icon{color:var(--acc)}
   .folder .f-prev{display:flex; gap:7px; min-height:16px; color:var(--dim); align-items:center}
   .folder .f-prev svg{width:15px; height:15px; display:block} .folder .f-prev b{font-size:10px; letter-spacing:.04em}
@@ -140,18 +140,20 @@
   .plat-btn svg{width:15px; height:15px}
   .plat-btn.right{margin-left:auto}
   .game.client .s{color:var(--acc); font-weight:700}
-  .games{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:16px; margin-bottom:30px}
-  .game{position:relative; border-radius:18px; overflow:hidden; cursor:pointer; border:1px solid var(--line);
-        aspect-ratio:16/9.5; display:flex; align-items:flex-end; transition:.18s}
+  .games{display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:14px; margin-bottom:30px}
+  .game{position:relative; border-radius:14px; overflow:hidden; cursor:pointer; border:1px solid rgba(255,255,255,.055);
+        aspect-ratio:2/3; display:flex; align-items:flex-end; transition:.18s}
   .game:hover{transform:translateY(-3px); border-color:var(--acc); box-shadow:0 12px 30px rgba(0,0,0,.45)}
   .game .art{position:absolute; inset:0}
-  .game .tag{position:absolute; top:12px; left:14px; font-weight:900; font-size:26px; letter-spacing:1px;
-             color:rgba(255,255,255,.92); text-shadow:0 2px 12px rgba(0,0,0,.5)}
-  .game .meta{position:relative; width:100%; padding:11px 14px; background:linear-gradient(transparent,rgba(5,7,11,.88) 45%)}
-  .game .meta .n{font-weight:800; font-size:15px}
-  .game .meta .s{font-size:12px; color:#c6cbd8}
-  .apps{display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:12px; margin-bottom:30px}
-  .app{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 10px;
+  .game .tag{position:absolute; inset:0 0 30px 0; display:flex; align-items:center; justify-content:center;
+             font-weight:900; font-size:clamp(26px,2.6vw,42px); letter-spacing:2px; line-height:1;
+             background:linear-gradient(180deg,#fff 20%,#6f6f78 115%);
+             -webkit-background-clip:text; background-clip:text; color:transparent}
+  .game .meta{position:relative; width:100%; padding:30px 13px 10px; background:linear-gradient(transparent,rgba(4,4,6,.92) 58%); z-index:1}
+  .game .meta .n{font-weight:800; font-size:13.5px}
+  .game .meta .s{font-size:11px; color:var(--dim); margin-top:1px}
+  .apps{display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:11px; margin-bottom:30px}
+  .app{background:var(--card); border:1px solid rgba(255,255,255,.055); border-radius:13px; padding:15px 8px 12px;
        display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; transition:.15s}
   .app:hover{border-color:var(--acc); transform:translateY(-2px)}
   .app .em{font-size:32px}
@@ -296,20 +298,25 @@
   .game::after{content:""; position:absolute; inset:0; opacity:0; transition:opacity .25s; pointer-events:none;
     background:radial-gradient(300px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.18), transparent 60%)}
   .game:hover::after{opacity:1}
-  .game .art{background:radial-gradient(130% 130% at 78% 12%, rgba(255,39,64,.18), transparent 44%), linear-gradient(160deg,#170a0d,#0b0b0d)}
-  .game .tag{transition:transform .18s var(--smooth); color:#f4f2f4; text-shadow:0 2px 14px rgba(0,0,0,.6)}
+  .game .art{background:linear-gradient(168deg,#16161b 0%,#0b0b0e 90%)} /* Д2: сюда ляжет обложка (background-image) */
+  .game .tag{transition:transform .18s var(--smooth); filter:drop-shadow(0 3px 14px rgba(0,0,0,.55))}
   .game:hover{border-color:var(--acc); box-shadow:0 12px 30px rgba(0,0,0,.5), var(--glow)}
-  .game:hover .tag{transform:translateZ(30px); color:var(--acc)}
+  .game:hover .tag{transform:translateZ(30px); background:linear-gradient(180deg,var(--acc) 10%,#7a1020 130%);
+    -webkit-background-clip:text; background-clip:text}
   /* — крупные эмблемы игр — */
-  .gemblem{position:absolute; inset:0 0 34px 0; display:flex; align-items:center; justify-content:center;
-    color:#f4f2f4; font-weight:900; font-size:28px; letter-spacing:1px;
-    filter:drop-shadow(0 3px 12px rgba(0,0,0,.55)); transition:color .18s, transform .2s var(--smooth); z-index:1}
-  .gemblem svg{width:60px; height:60px}
-  .game:hover .gemblem{color:var(--acc); transform:translateZ(34px) scale(1.06)}
+  .gemblem{position:absolute; top:11px; right:11px; color:var(--dim); z-index:1;
+    transition:color .18s, transform .2s var(--smooth)}
+  .gemblem svg{width:18px; height:18px; display:block}
+  .game:hover .gemblem{color:var(--acc); transform:scale(1.15)}
+  /* клиент платформы: обложки нет — крупное лого по центру */
+  .game.client .gemblem{inset:0 0 30px 0; display:flex; align-items:center;
+    justify-content:center; color:#f4f2f4; filter:drop-shadow(0 3px 12px rgba(0,0,0,.55))}
+  .game.client .gemblem svg{width:54px; height:54px}
+  .game.client:hover .gemblem{color:var(--acc); transform:translateZ(30px) scale(1.05)}
   /* — иконки приложений/системы — */
   .aicon{display:flex; align-items:center; justify-content:center; height:34px; color:#e6e4ea;
     transition:color .18s, transform .18s var(--smooth)}
-  .aicon svg{width:30px; height:30px}
+  .aicon svg{width:27px; height:27px}
   .aicon .em{font-size:30px; line-height:1}
   .app:hover .aicon{color:var(--acc); transform:translateY(-1px)}
   .app{background:var(--glass); border:1px solid var(--glass-brd); transition:transform .2s var(--spring), border-color .2s, box-shadow .2s}
@@ -965,7 +972,8 @@ function renderCatalog(){
   const gameTile = ({g,i}) => `
     <div class="game" onclick="launch('games',${i})">
       <div class="art"></div>
-      <div class="gemblem">${ICONS[g.id] || esc(g.tag)}</div>
+      <span class="tag">${esc(g.tag || g.name[0])}</span>
+      <div class="gemblem">${ICONS[g.id] || ''}</div>
       <div class="meta"><div class="n">${esc(g.name)}</div><div class="s">${esc(g.sub)}</div></div>
     </div>`;
   const appTile = (cat,a,i) => `
