@@ -58,11 +58,11 @@
 
   /* ═══ AUTH ═══ */
   #authView{height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:26px}
-  .authcard{width:400px; background:var(--panel); border:1px solid var(--line); border-radius:24px; padding:34px}
+  .authcard{width:400px; background:var(--panel); border:1px solid var(--hair); border-radius:24px; padding:34px}
   .logo{font-weight:800; letter-spacing:2px; font-size:44px; text-align:center}
   .logo b{color:var(--acc)}
   .slogan{text-align:center; color:var(--dim); margin-top:6px}
-  .tabs{display:flex; background:#0c1017; border-radius:12px; padding:4px; margin:24px 0 18px}
+  .tabs{display:flex; background:#0e0d10; border-radius:12px; padding:4px; margin:24px 0 18px}
   .tabs button{flex:1; border:0; background:transparent; color:var(--dim); padding:10px; border-radius:9px; font-weight:700; cursor:pointer; font-size:14px}
   .tabs button.on{background:var(--acc); color:#fff}
   .input{width:100%; background:#0e0d10; border:1px solid var(--hair); color:var(--txt);
@@ -144,7 +144,7 @@
   .plat-h h3{font-size:15px; letter-spacing:.02em}
   .plat-h .cnt{color:var(--dim); font-size:12px}
   .plat-btn{display:flex; align-items:center; gap:7px; background:var(--card2);
-    border:1px solid var(--line); color:var(--dim); border-radius:10px; padding:7px 12px;
+    border:1px solid var(--hair); color:var(--dim); border-radius:10px; padding:7px 12px;
     font-size:12.5px; font-weight:700; cursor:pointer; transition:color .2s, border-color .2s, transform .2s}
   .plat-btn:hover{color:var(--txt); border-color:var(--acc); transform:translateY(-1px)}
   .plat-btn svg{width:15px; height:15px}
@@ -204,7 +204,7 @@
   .tal .inv{border:0; background:var(--acc); color:#fff; border-radius:9px; padding:7px 13px; font-weight:800; cursor:pointer; font-size:13px}
   .tal .inv:disabled{background:var(--card2); color:var(--dim); cursor:default}
   .tal.locked{opacity:.5}
-  .talbar{height:6px; background:#0c1017; border-radius:5px; overflow:hidden; margin-top:8px}
+  .talbar{height:6px; background:#0e0d10; border-radius:5px; overflow:hidden; margin-top:8px}
   .talbar i{display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2))}
 
   .ach{display:flex; gap:11px; align-items:flex-start}
@@ -285,7 +285,7 @@
   @keyframes shimmer{0%{left:-60%}100%{left:130%}}
   .btn.ghost{background:var(--glass-2); box-shadow:none; border:1px solid var(--glass-brd)}
   .btn.ghost:hover{border-color:var(--acc); box-shadow:var(--glow)}
-  .btn.danger{background:linear-gradient(135deg,#ef4444,#fb7185); box-shadow:0 0 22px rgba(248,113,113,.4)}
+  .btn.danger{background:linear-gradient(135deg,#ef4444,#b91c1c); box-shadow:0 0 22px rgba(239,68,68,.35)}
   .btn.gold{background:linear-gradient(135deg,#c00e26,var(--acc)); color:#fff; box-shadow:0 0 22px rgba(255,39,64,.4)}
 
   /* — inputs — */
@@ -417,12 +417,12 @@
   .rank-row{display:flex; align-items:center; gap:12px; background:var(--glass-2); border:1px solid var(--glass-brd);
     border-radius:14px; padding:12px 14px; transition:border-color .2s, opacity .2s}
   .rank-row .rk-em{width:44px; height:44px; flex:0 0 44px; border-radius:12px; display:flex; align-items:center; justify-content:center;
-    font-size:22px; background:#0c0c0e; border:1px solid var(--line); color:var(--dim)}
+    font-size:22px; background:#0c0c0e; border:1px solid var(--hair); color:var(--dim)}
   .rank-row .rk-body{flex:1; min-width:0}
   .rank-row .rk-name{font-weight:800; font-size:15px}
   .rank-row .rk-hours{font-size:12px; color:var(--dim)}
   .rank-row .rk-perks{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px}
-  .rank-row .perk{font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:8px; background:#0c0c0e; border:1px solid var(--line); color:var(--dim); white-space:nowrap}
+  .rank-row .perk{font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:8px; background:#0c0c0e; border:1px solid var(--hair); color:var(--dim); white-space:nowrap}
   .rank-row.reached{border-color:rgba(255,39,64,.35)}
   .rank-row.reached .rk-em{border-color:var(--acc); color:var(--acc); background:rgba(255,39,64,.1)}
   .rank-row.reached .perk{color:var(--txt)}
@@ -448,7 +448,7 @@
   .mouse-row.ok{border-color:rgba(52,211,153,.35)} .mouse-row.ok span{color:var(--green)}
   .mouse-row.bad{border-color:var(--acc)} .mouse-row.bad span{color:var(--acc)}
   .mouse-row.warn{border-color:rgba(251,146,60,.4)} .mouse-row.warn span{color:#fb923c}
-  .sg-row{display:flex; align-items:center; gap:8px; padding:9px 4px; border-bottom:1px solid var(--line); font-size:13.5px}
+  .sg-row{display:flex; align-items:center; gap:8px; padding:9px 4px; border-bottom:1px solid var(--hair); font-size:13.5px}
   .sg-row:last-child{border:0}
   .sg-row .sg-name{flex:1; font-weight:700}
   .sg-row .sg-sens{font-variant-numeric:tabular-nums; color:var(--acc); font-size:15px}
@@ -469,6 +469,7 @@
   .tb-sens.active{background:var(--aurora); color:#fff; animation:none; box-shadow:var(--glow)}
   @keyframes sensPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,39,64,.4)}50%{box-shadow:0 0 14px 2px rgba(255,39,64,.35)}}
   body.perf-lite .tb-sens{animation:none}
+  body.perf-lite .logo b, body.perf-lite .tb-logo b, body.perf-lite .clock b, body.perf-lite .lock-clock b{animation:none}
 </style>
 </head>
 <body>
@@ -643,16 +644,16 @@ const FALLBACK_CATALOG = {
     {id:'faceit',    name:'FACEIT',     em:'🎯', launch:{type:'url', uri:'https://www.faceit.com'}},
   ],
   games: [
-    {id:'cs2',      name:'Counter-Strike 2', sub:'Steam',      tag:'CS2',  g:['#f59e0b','#ef4444'], launch:{type:'proto', uri:'steam://rungameid/730'}},
-    {id:'dota2',    name:'Dota 2',           sub:'Steam',      tag:'DOTA', g:['#ef4444','#7c5cff'], launch:{type:'proto', uri:'steam://rungameid/570'}},
-    {id:'gta5',     name:'GTA V',            sub:'Steam',      tag:'GTA',  g:['#34d399','#0f766e'], launch:{type:'proto', uri:'steam://rungameid/271590'}},
-    {id:'apex',     name:'Apex Legends',     sub:'Steam',      tag:'APEX', g:['#f87171','#7f1d1d'], launch:{type:'proto', uri:'steam://rungameid/1172470'}},
-    {id:'pubg',     name:'PUBG',             sub:'Steam',      tag:'PUBG', g:['#fbbf24','#92400e'], launch:{type:'proto', uri:'steam://rungameid/578080'}},
-    {id:'rivals',   name:'Marvel Rivals',    sub:'Steam',      tag:'MR',   g:['#a78bfa','#4c1d95'], launch:{type:'proto', uri:'steam://rungameid/2767030'}},
-    {id:'valorant', name:'Valorant',         sub:'Riot Games', tag:'VAL',  g:['#fb7185','#be123c'], launch:{type:'agent'}},
-    {id:'lol',      name:'League of Legends',sub:'Riot Games', tag:'LoL',  g:['#fbbf24','#0ea5e9'], launch:{type:'agent'}},
-    {id:'fortnite', name:'Fortnite',         sub:'Epic Games', tag:'FN',   g:['#22d3ee','#6366f1'], launch:{type:'proto', uri:'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true'}},
-    {id:'ow2',      name:'Overwatch 2',      sub:'Battle.net', tag:'OW2',  g:['#fb923c','#9a3412'], launch:{type:'proto', uri:'battlenet://Pro'}},
+    {id:'cs2',      name:'Counter-Strike 2', sub:'Steam',      tag:'CS2',  launch:{type:'proto', uri:'steam://rungameid/730'}},
+    {id:'dota2',    name:'Dota 2',           sub:'Steam',      tag:'DOTA', launch:{type:'proto', uri:'steam://rungameid/570'}},
+    {id:'gta5',     name:'GTA V',            sub:'Steam',      tag:'GTA',  launch:{type:'proto', uri:'steam://rungameid/271590'}},
+    {id:'apex',     name:'Apex Legends',     sub:'Steam',      tag:'APEX', launch:{type:'proto', uri:'steam://rungameid/1172470'}},
+    {id:'pubg',     name:'PUBG',             sub:'Steam',      tag:'PUBG', launch:{type:'proto', uri:'steam://rungameid/578080'}},
+    {id:'rivals',   name:'Marvel Rivals',    sub:'Steam',      tag:'MR',   launch:{type:'proto', uri:'steam://rungameid/2767030'}},
+    {id:'valorant', name:'Valorant',         sub:'Riot Games', tag:'VAL',  launch:{type:'agent'}},
+    {id:'lol',      name:'League of Legends',sub:'Riot Games', tag:'LoL',  launch:{type:'agent'}},
+    {id:'fortnite', name:'Fortnite',         sub:'Epic Games', tag:'FN',   launch:{type:'proto', uri:'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true'}},
+    {id:'ow2',      name:'Overwatch 2',      sub:'Battle.net', tag:'OW2',  launch:{type:'proto', uri:'battlenet://Pro'}},
   ],
   apps: [ // sub — папка приложения (пусто = «Другие»)
     {id:'discord',   name:'Discord',      sub:'Коммуникация', em:'💬', launch:{type:'proto', uri:'discord://'}},
