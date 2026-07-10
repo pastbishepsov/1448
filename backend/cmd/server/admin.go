@@ -6,6 +6,7 @@ package main
 //   UPDATE users SET role='admin' WHERE nickname='<ник>';
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -80,6 +81,12 @@ func setUserStatus(c *gin.Context, status models.UserStatus) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	action := "unban"
+	if status == models.UserStatusBanned {
+		action = "ban"
+	}
+	target := user.ID
+	logAdminAction(c, action, &target, "")
 	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "status": status})
 }
 
@@ -238,6 +245,9 @@ func handleAdminEndSession(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	target := session.UserID
+	logAdminAction(c, "session_end", &target,
+		fmt.Sprintf("%d мин, +%d XP, +%d монет", res.Minutes, res.XPGained, res.CoinsGained))
 	c.JSON(http.StatusOK, finishResponse(res))
 }
 
@@ -317,6 +327,11 @@ func handleAdminSetComputerStatus(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	action := "pc_available"
+	if req.Status == models.ComputerStatusMaintenance {
+		action = "pc_maintenance"
+	}
+	logAdminAction(c, action, nil, pc.Name)
 	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "name": pc.Name, "status": req.Status})
 }
 
@@ -335,6 +350,8 @@ func handleAdminCancelBooking(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	target := booking.UserID
+	logAdminAction(c, "booking_cancel", &target, "на "+booking.StartTime.Format("02.01 15:04"))
 	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusCancelled})
 }
 
@@ -419,6 +436,9 @@ func handleAdminCreateBooking(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	target := user.ID
+	logAdminAction(c, "booking_create", &target,
+		fmt.Sprintf("%s · %s · %d мин", pick.Name, start.Format("02.01 15:04"), req.DurationMin))
 	c.JSON(http.StatusCreated, gin.H{
 		"booking_id": booking.ID, "nickname": user.Nickname, "computer": pick.Name,
 		"start_time": booking.StartTime, "duration_min": booking.DurationMin,
@@ -453,5 +473,7 @@ func handleAdminRestoreBooking(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	target := booking.UserID
+	logAdminAction(c, "booking_restore", &target, "на "+booking.StartTime.Format("02.01 15:04"))
 	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusConfirmed})
 }

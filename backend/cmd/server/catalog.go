@@ -114,6 +114,7 @@ func handleAdminCatalogUpsert(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	logAdminAction(c, "catalog_upsert", nil, app.ID)
 	c.JSON(http.StatusOK, gin.H{"id": app.ID, "ok": true})
 }
 
@@ -124,11 +125,17 @@ func handleAdminCatalogToggle(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "app_not_found", "message": "Приложение не найдено"})
 		return
 	}
-	if err := db.Model(&app).Update("enabled", !app.Enabled).Error; err != nil {
+	newEnabled := !app.Enabled
+	if err := db.Model(&app).Update("enabled", newEnabled).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": app.ID, "enabled": !app.Enabled})
+	state := "выключено"
+	if newEnabled {
+		state = "включено"
+	}
+	logAdminAction(c, "catalog_toggle", nil, app.ID+" — "+state)
+	c.JSON(http.StatusOK, gin.H{"id": app.ID, "enabled": newEnabled})
 }
 
 // DELETE /admin/catalog/:id — удалить приложение из каталога.
@@ -142,5 +149,6 @@ func handleAdminCatalogDelete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "app_not_found", "message": "Приложение не найдено"})
 		return
 	}
+	logAdminAction(c, "catalog_delete", nil, c.Param("id"))
 	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "deleted": true})
 }

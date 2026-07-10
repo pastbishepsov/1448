@@ -271,7 +271,20 @@
       </section>
 
       <section id="s-grants" class="hidden">
-        <div class="tablewrap" id="grantsTable"><div class="empty">Загрузка…</div></div>
+        <div class="toolrow">
+          <div class="segs">
+            <button class="on" onclick="audKindSet('all',this)">Все</button>
+            <button onclick="audKindSet('money',this)">Деньги</button>
+            <button onclick="audKindSet('grant',this)">Начисления</button>
+            <button onclick="audKindSet('users',this)">Баны</button>
+            <button onclick="audKindSet('sessions',this)">Сессии</button>
+            <button onclick="audKindSet('bookings',this)">Брони</button>
+            <button onclick="audKindSet('pc',this)">ПК</button>
+            <button onclick="audKindSet('catalog',this)">Каталог</button>
+          </div>
+          <input id="audQ" class="input" placeholder="Ник гостя или админа…" autocomplete="off" style="min-width:200px">
+        </div>
+        <div class="tablewrap" id="auditTable"><div class="empty">Загрузка…</div></div>
       </section>
 
       <section id="s-stats" class="hidden">
@@ -305,7 +318,9 @@
    депозит/XP/кейс вместо prompt, бан arm-confirm, undo-тосты «Вернуть».
    А3: брони — фильтры, walk-in за гостя (POST /admin/bookings), отмена с undo
    (restore); каталог — drawer-форма с предпросмотром плитки 2:3, тумблеры,
-   порядок ↑↓; confirm() в интерфейсе больше нет. */
+   порядок ↑↓; confirm() в интерфейсе больше нет.
+   А4: журнал → единый аудит (GET /admin/audit: гранты + депозиты + admin_actions,
+   миграция 016), фильтры по типу и нику, относительное время. */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
@@ -422,7 +437,7 @@ async function refresh(){
     if (curTab === 'hall') await renderHall();
     if (curTab === 'users') await renderUsersTable();
     if (curTab === 'bookings') await renderBookings();
-    if (curTab === 'grants') await renderGrants();
+    if (curTab === 'grants') await renderAudit();
     // каталог не обновляем по таймеру — там форма редактирования
     lastSync = Date.now();
   }catch(e){
@@ -952,18 +967,57 @@ async function toggleApp(id){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
-/* ── Журнал ручных начислений ── */
-async function renderGrants(){
-  const d = await api('/admin/grants');
-  setHTML('grantsTable', d.count === 0
-    ? '<div class="empty">Ручных начислений ещё не было</div>'
-    : `<table><tr><th>Когда</th><th>Кому</th><th>Что</th><th>Причина</th><th>Админ</th></tr>
-  ${d.grants.map(g => `<tr>
-    <td class="muted">${fmtTime(g.created_at)}</td>
-    <td><b>${esc(g.nickname||'—')}</b></td>
-    <td>${g.type === 'xp' ? '<span data-ic="xp"></span> +'+(g.amount||0).toLocaleString('ru-RU')+' XP' : '<span data-ic="chest"></span> кейс '+esc(g.case_tier||'')}</td>
-    <td>${esc(g.reason)}</td>
-    <td class="muted">${esc(g.admin||'—')}</td>
+/* ── Журнал-аудит (А4): единая лента — начисления, депозиты, действия ── */
+let audKind = 'all', audQ = '', audData = [];
+const AUD_GROUPS = {
+  money: ['deposit'],
+  grant: ['grant'],
+  users: ['ban','unban'],
+  sessions: ['session_end'],
+  bookings: ['booking_create','booking_cancel','booking_restore'],
+  pc: ['pc_maintenance','pc_available'],
+  catalog: ['catalog_upsert','catalog_toggle','catalog_delete'],
+};
+const AUD_LABEL = {
+  deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
+  session_end:'стоп сессии', pc_maintenance:'ПК в ремонт', pc_available:'ПК в строй',
+  booking_create:'бронь', booking_cancel:'отмена брони', booking_restore:'возврат брони',
+  catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
+};
+const AUD_ICON = {
+  deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
+  pc_maintenance:'wrench', pc_available:'check', booking_create:'cal',
+  booking_cancel:'cross', booking_restore:'cal',
+  catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
+};
+function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
+function relTime(iso){
+  const s = Math.floor((Date.now() - new Date(iso))/1000);
+  if (s < 60) return 'только что';
+  if (s < 3600) return Math.floor(s/60) + ' мин назад';
+  if (s < 86400) return Math.floor(s/3600) + ' ч назад';
+  return fmtTime(iso);
+}
+async function renderAudit(useCache){
+  if (!useCache){
+    const d = await api('/admin/audit');
+    audData = d.items || [];
+  }
+  const q = audQ.toLowerCase();
+  const rows = audData.filter(x => {
+    if (audKind !== 'all' && !(AUD_GROUPS[audKind] || []).includes(x.kind)) return false;
+    if (q && !((x.nickname||'').toLowerCase().includes(q) || (x.admin||'').toLowerCase().includes(q))) return false;
+    return true;
+  });
+  setHTML('auditTable', rows.length === 0
+    ? '<div class="empty">Событий по этому фильтру нет</div>'
+    : `<table><tr><th>Когда</th><th>Событие</th><th>Гость</th><th>Детали</th><th>Админ</th></tr>
+  ${rows.map(x => `<tr>
+    <td class="muted" title="${fmtTime(x.created_at)}">${relTime(x.created_at)}</td>
+    <td style="white-space:nowrap"><span data-ic="${AUD_ICON[x.kind]||'scroll'}"></span> ${AUD_LABEL[x.kind]||esc(x.kind)}</td>
+    <td>${x.nickname ? '<b>'+esc(x.nickname)+'</b>' : '<span class="muted">—</span>'}</td>
+    <td style="white-space:normal">${esc(x.text||'')}</td>
+    <td class="muted">${esc(x.admin||'—')}</td>
   </tr>`).join('')}</table>`);
 }
 
@@ -1086,6 +1140,13 @@ function toastUndo(){
   });
   uq.addEventListener('keydown', e => {
     if (e.key === 'Enter'){ clearTimeout(deb); userQuery = uq.value.trim(); renderUsersTable(); }
+  });
+  // фильтр журнала — тоже живой, но по кэшу (без запроса)
+  const aq = document.getElementById('audQ');
+  let adeb = null;
+  aq.addEventListener('input', () => {
+    clearTimeout(adeb);
+    adeb = setTimeout(() => { audQ = aq.value.trim(); renderAudit(true); }, 250);
   });
 })();
 

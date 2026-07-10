@@ -124,6 +124,7 @@ func main() {
 		adm.POST("/users/:id/deposit", handleAdminDeposit)
 		adm.POST("/users/:id/grant", handleAdminGrant)
 		adm.GET("/grants", handleAdminGrants)
+		adm.GET("/audit", handleAdminAudit) // единая лента действий (спринт А4)
 		adm.GET("/computers", handleAdminComputers)
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
 		adm.GET("/sessions/active", handleAdminActiveSessions)
