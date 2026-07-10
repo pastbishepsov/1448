@@ -186,7 +186,7 @@ func handleAdminBookings(c *gin.Context) {
 		row := gin.H{
 			"id": b.ID, "status": b.Status, "start_time": b.StartTime,
 			"duration_min": b.DurationMin, "nickname": nick[b.UserID.String()],
-			"prepaid": b.Prepaid,
+			"prepaid": b.Prepaid, "computer_id": b.ComputerID, // id — для метки «скоро бронь» на карте зала
 		}
 		if b.Computer != nil {
 			row["computer"] = b.Computer.Name
@@ -197,6 +197,46 @@ func handleAdminBookings(c *gin.Context) {
 		out = append(out, row)
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "bookings": out})
+}
+
+// canSetComputerStatus — чистое правило смены статуса ПК из админки (тест в
+// admin_test.go). Разрешено только available ⇄ maintenance: занятые и
+// зарезервированные ПК статусом руками не трогаем.
+func canSetComputerStatus(cur, next models.ComputerStatus) bool {
+	if next != models.ComputerStatusAvailable && next != models.ComputerStatusMaintenance {
+		return false
+	}
+	if cur == next {
+		return true // идемпотентно
+	}
+	return (cur == models.ComputerStatusAvailable && next == models.ComputerStatusMaintenance) ||
+		(cur == models.ComputerStatusMaintenance && next == models.ComputerStatusAvailable)
+}
+
+// PATCH /admin/computers/:id/status — перевод ПК в ремонт и обратно (спринт А1).
+func handleAdminSetComputerStatus(c *gin.Context) {
+	var req struct {
+		Status models.ComputerStatus `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil ||
+		(req.Status != models.ComputerStatusAvailable && req.Status != models.ComputerStatusMaintenance) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_status", "message": "status: available или maintenance"})
+		return
+	}
+	var pc models.Computer
+	if err := db.First(&pc, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "computer_not_found", "message": "ПК не найден"})
+		return
+	}
+	if !canSetComputerStatus(pc.Status, req.Status) {
+		c.JSON(http.StatusConflict, gin.H{"code": "status_conflict", "message": "Сначала завершите сессию на этом ПК"})
+		return
+	}
+	if err := db.Model(&pc).Update("status", req.Status).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "name": pc.Name, "status": req.Status})
 }
 
 // POST /admin/bookings/:id/cancel — отменить бронь (любую живую).

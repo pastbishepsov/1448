@@ -90,6 +90,32 @@
   .kpi{background:rgba(255,255,255,.045); border-radius:12px; padding:9px 14px;
        font-size:13px; color:var(--dim); font-weight:700; white-space:nowrap}
   .kpi b{color:var(--txt); font-size:15px; margin-left:7px; font-variant-numeric:tabular-nums}
+  .kpi{cursor:pointer; border:1px solid transparent; transition:border-color .15s}
+  .kpi:hover{border-color:var(--acc)}
+
+  /* ── карта зала (А1): плитки ПК по зонам ── */
+  .pcgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(122px,1fr)); gap:10px; margin-bottom:8px}
+  .pc{background:var(--panel); border:1px solid var(--hair); border-radius:13px; padding:11px 12px;
+      cursor:pointer; display:flex; flex-direction:column; gap:5px; min-height:74px;
+      transition:border-color .15s, background .15s}
+  .pc:hover{border-color:var(--acc)}
+  .pc .nm{font-weight:800; font-size:13.5px}
+  .pc .info{font-size:11.5px; color:var(--dim); font-weight:700; display:flex; align-items:center; gap:5px;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums}
+  .pc.busy{background:rgba(255,39,64,.13); border-color:rgba(255,39,64,.33)}
+  .pc.busy .info{color:var(--acc3)}
+  .pc.maint{border-color:rgba(251,146,60,.45)}
+  .pc.maint .info{color:var(--orange)}
+  .pc.off{border-style:dashed; opacity:.8}
+  .pc .soon{font-size:11px; color:var(--neu); font-weight:700; display:flex; align-items:center; gap:4px}
+  .pcdot{display:inline-block; width:7px; height:7px; border-radius:50%; flex:none}
+
+  /* пары ключ-значение в drawer */
+  .kv{width:100%; border-collapse:collapse; background:transparent; border:0; font-variant-numeric:tabular-nums}
+  .kv td{padding:7px 2px; border-bottom:1px solid var(--hair); font-size:14px; background:transparent; white-space:normal}
+  .kv tr:last-child td{border-bottom:0}
+  .kv td:last-child{text-align:right}
+  .dsub{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px; font-weight:800; margin:18px 0 6px}
   .sect{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px;
         font-weight:800; margin:20px 2px 9px}
   .sect:first-child{margin-top:0}
@@ -168,15 +194,12 @@
     <main class="content">
       <section id="s-hall">
         <div class="kpis" id="kpis">
-          <div class="kpi">Гостей <b id="kUsers">—</b></div>
-          <div class="kpi">Сессий идёт <b id="kSessions">—</b></div>
-          <div class="kpi">ПК свободно <b id="kPCs">—</b></div>
-          <div class="kpi">Броней впереди <b id="kBookings">—</b></div>
+          <div class="kpi" onclick="nav('users')">Гостей <b id="kUsers">—</b></div>
+          <div class="kpi" onclick="nav('hall')">Сессий идёт <b id="kSessions">—</b></div>
+          <div class="kpi" onclick="nav('hall')">ПК свободно <b id="kPCs">—</b></div>
+          <div class="kpi" onclick="nav('bookings')">Броней впереди <b id="kBookings">—</b></div>
         </div>
-        <div class="sect">ПК</div>
-        <div class="tablewrap" id="hallPCs"><div class="empty">Загрузка…</div></div>
-        <div class="sect">Активные сессии</div>
-        <div class="tablewrap" id="hallSessions"><div class="empty">Загрузка…</div></div>
+        <div id="hallMap"><div class="empty">Загрузка…</div></div>
       </section>
 
       <section id="s-users" class="hidden">
@@ -225,11 +248,11 @@
 <div id="toast" class="toast"></div>
 
 <script>
-/* ═══ Админка 14:48 — спринт А0 (каркас Noir), план: ADMIN.md ═══
-   Логика API/авторизации не менялась (спринт 3б + бэклог).
-   Новое в А0: rail-навигация, иконки Phosphor duotone (механика data-ic из
-   shell.html), drawer-контейнер, живой поиск с debounce, точечная перерисовка
-   (инпуты не пересоздаются), хоткеи 1–7 / «/» / Esc, live-индикатор. */
+/* ═══ Админка 14:48 — трек А (А0 каркас Noir, А1 Зал), план: ADMIN.md ═══
+   А0: rail-навигация, иконки Phosphor duotone (механика data-ic из shell.html),
+   drawer, живой поиск с debounce, точечная перерисовка, хоткеи 1–7 / «/» / Esc.
+   А1: карта ПК по зонам вместо таблиц, drawer ПК (сессия arm-confirm, ремонт),
+   KPI кликабельны, метка «скоро бронь» (нужен computer_id из /admin/bookings). */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
@@ -343,7 +366,7 @@ async function refresh(){
     setText('kSessions', ov.active_sessions);
     setText('kPCs', ov.computers_free + '/' + ov.computers_total);
     setText('kBookings', ov.upcoming_bookings);
-    if (curTab === 'hall'){ await renderPCs(); await renderSessions(); }
+    if (curTab === 'hall') await renderHall();
     if (curTab === 'users') await renderUsersTable();
     if (curTab === 'bookings') await renderBookings();
     if (curTab === 'grants') await renderGrants();
@@ -371,6 +394,12 @@ setInterval(() => {
   const s = Math.round((Date.now() - lastSync)/1000);
   live.classList.toggle('bad', s > 20);
   txt.textContent = 'обновлено ' + s + ' с назад';
+  // живой таймер сессии в открытом drawer ПК
+  const el = document.getElementById('dElapsed');
+  if (el && drawerPCId){
+    const pc = hallData.find(p => p.id === drawerPCId);
+    if (pc && pc.session) el.textContent = elapsed(pc.session.started_at);
+  }
 }, 1000);
 
 /* ── формат ── */
@@ -386,34 +415,116 @@ function elapsed(iso){
 }
 function esc(s){ const d = document.createElement('div'); d.textContent = s??''; return d.innerHTML; }
 
-/* ── Зал: ПК + активные сессии (слияние в карту зон — спринт А1) ── */
-async function renderPCs(){
-  const d = await api('/admin/computers');
-  setHTML('hallPCs', `
-  <table><tr><th>ПК</th><th>Клуб</th><th>Зона</th><th>Статус</th><th>Shell</th><th>Сейчас играет</th><th></th></tr>
-  ${d.computers.map(pc => `<tr>
-    <td><b>${esc(pc.name)}</b></td>
-    <td>${esc(pc.club)}</td>
-    <td>${esc(pc.zone||'—')}</td>
-    <td><span class="st ${pc.status}">${pc.status}</span></td>
-    <td>${pc.shell_online ? '<span class="dot" style="background:var(--green)"></span>online' : '<span class="dot" style="background:var(--card2)"></span><span class="muted">offline</span>'}</td>
-    <td>${pc.session ? esc(pc.session.nickname)+' · '+elapsed(pc.session.started_at) : '<span class="muted">—</span>'}</td>
-    <td>${pc.session ? `<button class="btn danger mini" onclick="endSession('${pc.session.id}','${esc(pc.session.nickname)}')"><span data-ic="power"></span>Завершить</button>` : ''}</td>
-  </tr>`).join('')}</table>`);
+/* ── Зал (А1): карта ПК по зонам. Клик по плитке — drawer с действиями ── */
+let hallData = [];      // последний ответ /admin/computers (для drawer)
+let drawerPCId = null;  // id ПК, открытого в drawer
+
+async function renderHall(){
+  const [pcs, bk] = await Promise.all([api('/admin/computers'), api('/admin/bookings')]);
+  hallData = pcs.computers;
+  // «скоро бронь»: ближайшая живая бронь ПК в окне 60 минут
+  const soon = {};
+  const now = Date.now();
+  (bk.bookings || []).forEach(b => {
+    if (b.status !== 'pending' && b.status !== 'confirmed') return;
+    if (!b.computer_id) return;
+    const dt = new Date(b.start_time) - now;
+    if (dt < 0 || dt > 60*60*1000) return;
+    if (!soon[b.computer_id] || new Date(b.start_time) < new Date(soon[b.computer_id]))
+      soon[b.computer_id] = b.start_time;
+  });
+  const zones = {};
+  hallData.forEach(pc => { const z = pc.zone || 'Без зоны'; (zones[z] = zones[z] || []).push(pc); });
+  document.getElementById('hallMap').innerHTML = hallData.length === 0
+    ? '<div class="empty">ПК не заведены</div>'
+    : Object.keys(zones).sort().map(z => `
+      <div class="sect">Зона: ${esc(z)}</div>
+      <div class="pcgrid">${zones[z].map(pc => pcTile(pc, soon[pc.id])).join('')}</div>`).join('');
+  mountIcons(document.getElementById('hallMap'));
+  if (drawerPCId) renderPCDrawer(drawerPCId); // обновить открытый drawer свежими данными
 }
 
-async function renderSessions(){
-  const d = await api('/admin/sessions/active');
-  setHTML('hallSessions', d.count === 0
-    ? '<div class="empty">Активных сессий нет</div>'
-    : `<table><tr><th>Гость</th><th>ПК</th><th>Начало</th><th>Идёт</th><th></th></tr>
-  ${d.sessions.map(s => `<tr>
-    <td><b>${esc(s.nickname)}</b></td>
-    <td>${esc(s.computer||'—')}</td>
-    <td>${fmtTime(s.started_at)}</td>
-    <td>${elapsed(s.started_at)}</td>
-    <td><button class="btn danger mini" onclick="endSession('${s.id}','${esc(s.nickname)}')"><span data-ic="power"></span>Завершить</button></td>
-  </tr>`).join('')}</table>`);
+function pcTile(pc, soonAt){
+  const off = !pc.shell_online;
+  let cls = 'free', info = '<span class="pcdot" style="background:var(--green)"></span>своб.';
+  if (pc.session){ cls = 'busy'; info = esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at); }
+  else if (pc.status === 'maintenance'){ cls = 'maint'; info = '<span data-ic="wrench"></span>ремонт'; }
+  else if (pc.status === 'reserved'){ info = '<span class="pcdot" style="background:var(--neu)"></span>резерв'; }
+  else if (off){ info = '<span class="muted">offline</span>'; }
+  const soonHtml = (!pc.session && soonAt)
+    ? `<div class="soon"><span data-ic="clock"></span>бронь ${hhmm(soonAt)}</div>` : '';
+  return `<div class="pc ${cls}${off?' off':''}" onclick="openPCDrawer('${pc.id}')">
+    <div class="nm">${esc(pc.name)}</div>
+    <div class="info">${info}</div>${soonHtml}</div>`;
+}
+function hhmm(iso){ const d = new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+
+/* drawer ПК: инфо + завершение сессии (arm-confirm) + ремонт */
+function openPCDrawer(id){ drawerPCId = id; renderPCDrawer(id); }
+function renderPCDrawer(id){
+  const pc = hallData.find(p => p.id === id);
+  if (!pc){ drawerPCId = null; closeDrawer(); return; }
+  let body = `<table class="kv">
+    <tr><td class="muted">Клуб</td><td>${esc(pc.club)}</td></tr>
+    <tr><td class="muted">Зона</td><td>${esc(pc.zone||'—')}</td></tr>
+    <tr><td class="muted">Статус</td><td><span class="st ${pc.status}">${pc.status}</span></td></tr>
+    <tr><td class="muted">Shell</td><td>${pc.shell_online
+      ? '<span class="dot" style="background:var(--green)"></span>online'
+      : '<span class="dot" style="background:var(--card2)"></span><span class="muted">offline</span>'}</td></tr>
+  </table>`;
+  if (pc.session){
+    body += `<div class="dsub">Сессия</div>
+    <table class="kv">
+      <tr><td class="muted">Гость</td><td><b>${esc(pc.session.nickname)}</b></td></tr>
+      <tr><td class="muted">Начало</td><td>${fmtTime(pc.session.started_at)}</td></tr>
+      <tr><td class="muted">Идёт</td><td id="dElapsed">${elapsed(pc.session.started_at)}</td></tr>
+    </table>
+    <button class="btn danger" style="width:100%; justify-content:center; margin-top:14px"
+      onclick="armEndSession(this,'${pc.session.id}','${esc(pc.session.nickname)}','${pc.session.started_at}')">
+      <span data-ic="power"></span>Завершить сессию</button>
+    <div class="muted" style="margin-top:8px; text-align:center">XP и монеты начислятся за фактическое время</div>`;
+  } else if (pc.status === 'maintenance'){
+    body += `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:16px"
+      onclick="setPCStatus('${pc.id}','available')"><span data-ic="check"></span>Из ремонта — в строй</button>`;
+  } else if (pc.status === 'available'){
+    body += `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:16px"
+      onclick="setPCStatus('${pc.id}','maintenance')"><span data-ic="wrench"></span>В ремонт</button>`;
+  }
+  openDrawer(pc.name, body);
+}
+
+/* arm-confirm: первый клик взводит кнопку, второй (в течение 4с) — выполняет */
+function armEndSession(btn, id, nick, startedAt){
+  if (btn.dataset.armed !== '1'){
+    btn.dataset.armed = '1';
+    const min = Math.max(1, Math.round((Date.now() - new Date(startedAt))/60000));
+    btn.innerHTML = '<span data-ic="power"></span>Ещё раз — завершить (' + min + ' мин)';
+    mountIcons(btn);
+    btn._t = setTimeout(() => {
+      btn.dataset.armed = '';
+      btn.innerHTML = '<span data-ic="power"></span>Завершить сессию';
+      mountIcons(btn);
+    }, 4000);
+    return;
+  }
+  clearTimeout(btn._t);
+  endSessionNow(id, nick);
+}
+
+async function endSessionNow(id, nick){
+  try{
+    const d = await api('/admin/sessions/'+id+'/end', {method:'POST', body:'{}'});
+    toast('⏹ '+nick+': +'+d.xp_earned+' XP, +'+d.coins_earned+' монет ('+d.minutes+' мин)');
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+async function setPCStatus(id, status){
+  try{
+    await api('/admin/computers/'+id+'/status', {method:'PATCH', body:JSON.stringify({status})});
+    toast(status === 'maintenance' ? '🔧 ПК отправлен в ремонт' : '✓ ПК снова в строю');
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* ── Гости: живой поиск (debounce 300мс), инпут не пересоздаётся ── */
@@ -568,14 +679,6 @@ async function renderGrants(){
 }
 
 /* ── действия (prompt/confirm уйдут в А2 — формы в drawer) ── */
-async function endSession(id, nick){
-  if (!confirm('Завершить сессию гостя «'+nick+'»? XP и монеты будут начислены за фактическое время.')) return;
-  try{
-    const d = await api('/admin/sessions/'+id+'/end', {method:'POST', body:'{}'});
-    toast('⏹ Сессия завершена: +'+d.xp_earned+' XP, +'+d.coins_earned+' монет ('+d.minutes+' мин)');
-    refresh();
-  }catch(e){ toast('⚠ ' + e.message); }
-}
 async function ban(id, nick){
   if (!confirm('Забанить «'+nick+'»?')) return;
   try{ await api('/admin/users/'+id+'/ban', {method:'POST', body:'{}'}); toast('🚫 '+nick+' забанен'); renderUsersTable(); }
@@ -639,6 +742,7 @@ function openDrawer(title, html){
   mountIcons(d);
 }
 function closeDrawer(){
+  drawerPCId = null;
   const d = document.getElementById('drawer');
   d.classList.remove('open'); d.setAttribute('aria-hidden','true');
 }
