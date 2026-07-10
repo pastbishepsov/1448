@@ -133,6 +133,25 @@
   .hist{width:100%; border-collapse:collapse; background:transparent; border:0; font-variant-numeric:tabular-nums}
   .hist td{padding:7px 4px; border-bottom:1px solid var(--hair); font-size:12.5px; background:transparent; white-space:normal}
   .hist tr:last-child td{border-bottom:0}
+
+  /* ── А3: тумблер каталога и превью плитки 2:3 ── */
+  .switch{display:inline-flex; width:34px; height:20px; border-radius:12px; background:var(--card2);
+          border:1px solid var(--hair); cursor:pointer; padding:2px; transition:background .15s, border-color .15s}
+  .switch .knob{width:14px; height:14px; border-radius:50%; background:var(--dim); transition:transform .15s, background .15s}
+  .switch.on{background:rgba(255,39,64,.35); border-color:rgba(255,39,64,.5)}
+  .switch.on .knob{transform:translateX(14px); background:#fff}
+  .tprev{position:relative; width:158px; aspect-ratio:2/3; border-radius:14px; overflow:hidden;
+         border:1px solid var(--hair); margin:0 auto; background:var(--card)}
+  .tp-art{position:absolute; inset:0; background-size:cover; background-position:center}
+  .tp-tag{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+          font-weight:900; font-size:24px; letter-spacing:1px; text-align:center; padding:10px;
+          background:linear-gradient(135deg,#fff,#ffb3bc 60%,var(--acc));
+          -webkit-background-clip:text; background-clip:text; color:transparent}
+  .tprev.hasart .tp-tag{display:none}
+  .tp-meta{position:absolute; left:0; right:0; bottom:0; padding:24px 10px 9px;
+           background:linear-gradient(transparent, rgba(0,0,0,.82))}
+  .tp-meta b{display:block; font-size:12.5px; line-height:1.25}
+  .tp-meta span{font-size:10.5px; color:var(--dim)}
   .sect{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px;
         font-weight:800; margin:20px 2px 9px}
   .sect:first-child{margin-top:0}
@@ -228,6 +247,18 @@
       </section>
 
       <section id="s-bookings" class="hidden">
+        <div class="toolrow">
+          <button class="btn mini" onclick="newBookingDrawer()"><span data-ic="plus"></span>Новая бронь</button>
+          <div class="segs">
+            <button class="on" onclick="bkDaySet('today',this)">Сегодня</button>
+            <button onclick="bkDaySet('tomorrow',this)">Завтра</button>
+            <button onclick="bkDaySet('all',this)">Все дни</button>
+          </div>
+          <div class="segs">
+            <button class="on" onclick="bkStSet('live',this)">Живые</button>
+            <button onclick="bkStSet('all',this)">Все статусы</button>
+          </div>
+        </div>
         <div class="tablewrap" id="bookingsTable"><div class="empty">Загрузка…</div></div>
       </section>
 
@@ -236,7 +267,6 @@
           <button class="btn mini" onclick="editApp('')"><span data-ic="plus"></span>Добавить</button>
           <span class="muted">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
         </div>
-        <div id="appFormWrap"></div>
         <div class="tablewrap" id="catalogTable"><div class="empty">Загрузка…</div></div>
       </section>
 
@@ -272,7 +302,10 @@
    А1: карта ПК по зонам вместо таблиц, drawer ПК (сессия arm-confirm, ремонт),
    KPI кликабельны, метка «скоро бронь» (нужен computer_id из /admin/bookings).
    А2: карточка гостя (GET /admin/users/:id — профиль+сводка+история), формы
-   депозит/XP/кейс вместо prompt, бан arm-confirm, undo-тосты «Вернуть». */
+   депозит/XP/кейс вместо prompt, бан arm-confirm, undo-тосты «Вернуть».
+   А3: брони — фильтры, walk-in за гостя (POST /admin/bookings), отмена с undo
+   (restore); каталог — drawer-форма с предпросмотром плитки 2:3, тумблеры,
+   порядок ↑↓; confirm() в интерфейсе больше нет. */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
@@ -743,13 +776,28 @@ async function renderUsersTable(){
   </tr>`).join('')}</table>`);
 }
 
-/* ── Брони ── */
+/* ── Брони (А3): фильтры сегодня/завтра/все и живые/все ── */
+let bkDay = 'today', bkSt = 'live';
+function segOn(btn){ [...btn.parentElement.children].forEach(b => b.classList.toggle('on', b === btn)); }
+function bkDaySet(v, btn){ bkDay = v; segOn(btn); renderBookings(); }
+function bkStSet(v, btn){ bkSt = v; segOn(btn); renderBookings(); }
+
 async function renderBookings(){
   const d = await api('/admin/bookings');
-  setHTML('bookingsTable', d.count === 0
-    ? '<div class="empty">Броней впереди нет</div>'
+  const rows = (d.bookings || []).filter(b => {
+    if (bkSt === 'live' && b.status !== 'pending' && b.status !== 'confirmed') return false;
+    if (bkDay !== 'all'){
+      const t = new Date(b.start_time), now = new Date();
+      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (bkDay === 'tomorrow' ? 1 : 0));
+      const to = new Date(from); to.setDate(to.getDate() + 1);
+      if (t < from || t >= to) return false;
+    }
+    return true;
+  });
+  setHTML('bookingsTable', rows.length === 0
+    ? '<div class="empty">Броней по этому фильтру нет</div>'
     : `<table><tr><th>Когда</th><th>Гость</th><th>ПК</th><th>Клуб</th><th>Мин</th><th>Предопл.</th><th>Статус</th><th></th></tr>
-  ${d.bookings.map(b => `<tr>
+  ${rows.map(b => `<tr>
     <td><b>${fmtTime(b.start_time)}</b></td>
     <td>${esc(b.nickname||'—')}</td>
     <td>${esc(b.computer||'—')}</td>
@@ -773,51 +821,107 @@ async function renderCatalogTab(){
   setHTML('catalogTable', `
   <table><tr><th>#</th><th>id</th><th>Название</th><th>Категория</th><th>Запуск (target)</th><th>Вкл</th><th></th></tr>
   ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}">
-    <td>${a.sort}</td>
+    <td class="muted">${a.sort}</td>
     <td><b>${esc(a.id)}</b></td>
     <td>${a.tag?'['+esc(a.tag)+'] ':''}${esc(a.name)}</td>
     <td>${cat[a.category]||a.category}</td>
     <td class="muted" style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(a.target||'—')}</td>
-    <td>${a.enabled?'<span data-ic="check"></span>':'<span class="muted">—</span>'}</td>
+    <td><span class="switch ${a.enabled?'on':''}" onclick="toggleApp('${a.id}')" title="${a.enabled?'Выключить':'Включить'}"><span class="knob"></span></span></td>
     <td style="white-space:nowrap">
+      <button class="btn ghost mini" onclick="moveApp('${a.id}',-1)" title="Выше в списке">↑</button>
+      <button class="btn ghost mini" onclick="moveApp('${a.id}',1)" title="Ниже в списке">↓</button>
       <button class="btn ghost mini" onclick="editApp('${a.id}')"><span data-ic="edit"></span></button>
-      <button class="btn ghost mini" onclick="toggleApp('${a.id}')">${a.enabled?'Выкл':'Вкл'}</button>
-      <button class="btn danger mini" onclick="deleteApp('${a.id}')"><span data-ic="cross"></span></button>
+      <button class="btn danger mini" onclick="armDeleteApp(this,'${a.id}')"><span data-ic="cross"></span></button>
     </td>
   </tr>`).join('')}</table>`);
 }
 
+/* порядок ↑↓: обмен sort с соседом внутри категории (А3) */
+function catUpsert(a){
+  return api('/admin/catalog', {method:'POST', body:JSON.stringify({
+    id: a.id, name: a.name, category: a.category, sort: a.sort,
+    subtitle: a.subtitle || null, tag: a.tag || null, emoji: a.emoji || null,
+    color_a: a.color_a || null, color_b: a.color_b || null,
+    target: a.target || null, args: a.args || null,
+  })});
+}
+async function moveApp(id, dir){
+  const a = catApps.find(x => x.id === id);
+  if (!a) return;
+  const sameCat = catApps.filter(x => x.category === a.category);
+  const i = sameCat.findIndex(x => x.id === id), j = i + dir;
+  if (j < 0 || j >= sameCat.length) return;
+  const b = sameCat[j];
+  try{
+    if (a.sort !== b.sort){
+      await catUpsert({...a, sort: b.sort});
+      await catUpsert({...b, sort: a.sort});
+    } else {
+      await catUpsert({...a, sort: b.sort + dir});
+    }
+    renderCatalogTab();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armDeleteApp(btn, id){
+  armButton(btn, 'Точно?', async () => {
+    try{
+      await api('/admin/catalog/'+id, {method:'DELETE'});
+      toast('✕ Удалено: ' + id);
+      renderCatalogTab();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+
+/* форма приложения в drawer + живой предпросмотр плитки 2:3 (А3/и4) */
 function editApp(id){
   const a = catApps.find(x => x.id === id) || {category:'game', sort:100};
   const isNew = !a.id;
-  const w = document.getElementById('appFormWrap');
-  w.innerHTML = `
-  <div style="background:var(--panel); border:1px solid var(--acc); border-radius:14px; padding:16px; margin-bottom:14px">
-    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px">
-      <input id="f_id" class="input" placeholder="id (лат., напр. cs2)" value="${esc(a.id||'')}" ${isNew?'':'disabled'}>
-      <input id="f_name" class="input" placeholder="Название" value="${esc(a.name||'')}">
-      <select id="f_category" class="input">
-        <option value="game" ${a.category==='game'?'selected':''}>игра</option>
-        <option value="platform" ${a.category==='platform'?'selected':''}>платформа (Steam, Riot...)</option>
-        <option value="app" ${a.category==='app'?'selected':''}>приложение</option>
-        <option value="system" ${a.category==='system'?'selected':''}>система</option>
-      </select>
-      <input id="f_sort" class="input" placeholder="Порядок (меньше = выше)" value="${a.sort??100}">
-      <input id="f_subtitle" class="input" placeholder="Подпись: игре — платформа (Steam), прилож. — группа" value="${esc(a.subtitle||'')}">
-      <input id="f_tag" class="input" placeholder="TAG на тайле (CS2)" value="${esc(a.tag||'')}">
-      <input id="f_emoji" class="input" placeholder="Эмодзи (для прил.)" value="${esc(a.emoji||'')}">
-      <input id="f_colors" class="input" placeholder="Цвета: #f59e0b,#ef4444" value="${esc((a.color_a||'')+(a.color_b?','+a.color_b:''))}">
-    </div>
-    <input id="f_target" class="input" style="margin-top:10px; width:100%" placeholder="target: steam://rungameid/730 или C:\\путь\\игра.exe" value="${esc(a.target||'')}">
-    <input id="f_args" class="input" style="margin-top:10px; width:100%" placeholder='args (JSON): ["--flag=1"]' value="${esc(a.args||'')}">
-    <div style="display:flex; gap:10px; margin-top:12px">
+  drawerPCId = null; drawerUserId = null;
+  openDrawer(isNew ? 'Новое приложение' : a.id, `
+  <div id="catPrevWrap"></div>
+  <div class="uform" style="margin-top:14px">
+    <input id="f_id" class="input" placeholder="id (лат., напр. cs2)" value="${esc(a.id||'')}" ${isNew?'':'disabled'} oninput="updateCatPreview()">
+    <input id="f_name" class="input" placeholder="Название" value="${esc(a.name||'')}" oninput="updateCatPreview()">
+    <select id="f_category" class="input" onchange="updateCatPreview()">
+      <option value="game" ${a.category==='game'?'selected':''}>игра</option>
+      <option value="platform" ${a.category==='platform'?'selected':''}>платформа (Steam, Riot...)</option>
+      <option value="app" ${a.category==='app'?'selected':''}>приложение</option>
+      <option value="system" ${a.category==='system'?'selected':''}>система</option>
+    </select>
+    <input id="f_sort" class="input" placeholder="Порядок (меньше = выше)" value="${a.sort??100}">
+    <input id="f_subtitle" class="input" placeholder="Подпись: игре — платформа (Steam), прилож. — группа" value="${esc(a.subtitle||'')}" oninput="updateCatPreview()">
+    <input id="f_tag" class="input" placeholder="TAG на тайле (CS2)" value="${esc(a.tag||'')}" oninput="updateCatPreview()">
+    <input id="f_emoji" class="input" placeholder="Эмодзи (для прил.)" value="${esc(a.emoji||'')}">
+    <input id="f_colors" class="input" placeholder="Цвета: #f59e0b,#ef4444" value="${esc((a.color_a||'')+(a.color_b?','+a.color_b:''))}" oninput="updateCatPreview()">
+    <input id="f_target" class="input" placeholder="target: steam://rungameid/730 или C:\\путь\\игра.exe" value="${esc(a.target||'')}">
+    <input id="f_args" class="input" placeholder='args (JSON): ["--flag=1"]' value="${esc(a.args||'')}">
+    <div style="display:flex; gap:10px">
       <button class="btn mini" onclick="saveApp()"><span data-ic="save"></span>Сохранить</button>
-      <button class="btn ghost mini" onclick="closeAppForm()">Отмена</button>
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
     </div>
-  </div>`;
-  mountIcons(w);
+  </div>`);
+  updateCatPreview();
 }
-function closeAppForm(){ document.getElementById('appFormWrap').innerHTML = ''; }
+
+function updateCatPreview(){
+  const w = document.getElementById('catPrevWrap');
+  if (!w) return;
+  const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
+  const id = v('f_id'), name = v('f_name') || 'Название', tag = v('f_tag'), sub = v('f_subtitle');
+  const colors = v('f_colors').split(',').map(s => s.trim()).filter(Boolean);
+  const ca = colors[0] || '#3d0b13', cb = colors[1] || '#12070a';
+  w.innerHTML = `<div class="tprev" id="tprev">
+    <div class="tp-art" style="background-image:${id ? "url('covers/" + id + ".jpg'), " : ''}linear-gradient(160deg,${ca},${cb})"></div>
+    <div class="tp-tag">${esc(tag || name)}</div>
+    <div class="tp-meta"><b>${esc(name)}</b><span>${esc(sub || '')}</span></div>
+  </div>
+  <div class="muted" style="text-align:center; margin-top:7px">так плитку видит гость (обложка — web/covers/${esc(id || 'id')}.jpg)</div>`;
+  if (id){
+    const img = new Image();
+    img.onload = () => { const t = document.getElementById('tprev'); if (t) t.classList.add('hasart'); };
+    img.src = 'covers/' + id + '.jpg';
+  }
+}
 
 async function saveApp(){
   const v = id => document.getElementById(id).value.trim();
@@ -837,7 +941,7 @@ async function saveApp(){
   try{
     await api('/admin/catalog', {method:'POST', body:JSON.stringify(body)});
     toast('✓ Сохранено: ' + body.id);
-    closeAppForm();
+    closeDrawer();
     renderCatalogTab();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -846,11 +950,6 @@ async function toggleApp(id){
   try{ const d = await api('/admin/catalog/'+id+'/toggle', {method:'POST', body:'{}'});
     toast((d.enabled?'✅ Включено: ':'⬜ Выключено: ') + id); renderCatalogTab();
   }catch(e){ toast('⚠ ' + e.message); }
-}
-async function deleteApp(id){
-  if (!confirm('Удалить «'+id+'» из каталога?')) return;
-  try{ await api('/admin/catalog/'+id, {method:'DELETE'}); toast('✕ Удалено: '+id); renderCatalogTab(); }
-  catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* ── Журнал ручных начислений ── */
@@ -868,11 +967,77 @@ async function renderGrants(){
   </tr>`).join('')}</table>`);
 }
 
-/* ── прочие действия (брони/каталог переедут в drawer в А3) ── */
+/* ── брони: отмена с undo («Вернуть» → restore), walk-in форма (А3) ── */
 async function cancelBooking(id){
-  if (!confirm('Отменить бронь?')) return;
-  try{ await api('/admin/bookings/'+id+'/cancel', {method:'POST', body:'{}'}); toast('📅 Бронь отменена'); renderBookings(); }
-  catch(e){ toast('⚠ ' + e.message); }
+  try{
+    await api('/admin/bookings/'+id+'/cancel', {method:'POST', body:'{}'});
+    toast('📅 Бронь отменена', () => restoreBooking(id));
+    renderBookings();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function restoreBooking(id){
+  try{
+    await api('/admin/bookings/'+id+'/restore', {method:'POST', body:'{}'});
+    toast('✓ Бронь возвращена');
+    renderBookings();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+let bDur = 60;
+function dtLocal(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+    +'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function newBookingDrawer(){
+  drawerPCId = null; drawerUserId = null;
+  bDur = 60;
+  openDrawer('Новая бронь', `
+  <div class="uform" style="margin-top:0">
+    <input id="b_nick" class="input" placeholder="Ник гостя">
+    <select id="b_pc" class="input"><option value="">Первый свободный ПК</option></select>
+    <input id="b_time" class="input" type="datetime-local">
+    <div class="segs">
+      <button onclick="bDur=30; segOn(this)">30 мин</button>
+      <button class="on" onclick="bDur=60; segOn(this)">1 ч</button>
+      <button onclick="bDur=120; segOn(this)">2 ч</button>
+      <button onclick="bDur=180; segOn(this)">3 ч</button>
+    </div>
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitBooking()">Забронировать</button>
+    <div class="muted">Бронь сразу подтверждена; оплата на месте (без предоплаты)</div>
+  </div>`);
+  const t = new Date(Date.now() + 30*60000);
+  t.setMinutes(t.getMinutes() - t.getMinutes()%15, 0, 0);
+  document.getElementById('b_time').value = dtLocal(t);
+  fillBookingPCs();
+}
+async function fillBookingPCs(){
+  try{
+    const d = await api('/admin/computers');
+    const sel = document.getElementById('b_pc');
+    if (!sel) return;
+    d.computers.forEach(pc => {
+      if (pc.status === 'maintenance') return;
+      const o = document.createElement('option');
+      o.value = pc.id;
+      o.textContent = pc.name + (pc.zone ? ' · ' + pc.zone : '');
+      sel.appendChild(o);
+    });
+  }catch(e){}
+}
+async function submitBooking(){
+  const nick = document.getElementById('b_nick').value.trim();
+  const tval = document.getElementById('b_time').value;
+  if (!nick){ toast('⚠ Нужен ник гостя'); return; }
+  if (!tval){ toast('⚠ Нужно время начала'); return; }
+  const body = {nickname: nick, duration_min: bDur, start_time: new Date(tval).toISOString()};
+  const pc = document.getElementById('b_pc').value;
+  if (pc) body.computer_id = pc;
+  try{
+    const d = await api('/admin/bookings', {method:'POST', body:JSON.stringify(body)});
+    toast('📅 Бронь: ' + d.nickname + ' · ' + (d.computer||'') + ' · ' + fmtTime(d.start_time));
+    closeDrawer();
+    renderBookings();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* ── drawer (инфраструктура; наполнение — А1/А2/А3) ── */
@@ -931,7 +1096,6 @@ document.addEventListener('keydown', e => {
   const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
   if (e.key === 'Escape'){
     if (document.getElementById('drawer').classList.contains('open')) closeDrawer();
-    else if (document.getElementById('appFormWrap').innerHTML) closeAppForm();
     else if (typing) e.target.blur();
     return;
   }

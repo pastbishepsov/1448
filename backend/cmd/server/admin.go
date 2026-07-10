@@ -337,3 +337,121 @@ func handleAdminCancelBooking(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusCancelled})
 }
+
+// POST /admin/bookings — walk-in бронь за гостя (спринт А3): по нику, на
+// конкретный ПК или первый свободный. Сразу confirmed, prepaid=false —
+// оплата на месте. Время/длительность проверяет validateBookingTime,
+// пересечения — bookingOverlaps (те же правила, что у брони игрока).
+func handleAdminCreateBooking(c *gin.Context) {
+	var req struct {
+		Nickname    string  `json:"nickname" binding:"required"`
+		ComputerID  *string `json:"computer_id"`
+		StartTime   string  `json:"start_time" binding:"required"` // RFC3339
+		DurationMin int     `json:"duration_min"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		return
+	}
+	if req.DurationMin == 0 {
+		req.DurationMin = 60
+	}
+	start, err := time.Parse(time.RFC3339, req.StartTime)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_time", "message": "start_time — в формате RFC3339"})
+		return
+	}
+	if ok, code := validateBookingTime(start, req.DurationMin, time.Now()); !ok {
+		msg := map[string]string{
+			"bad_duration": "Длительность брони: от 30 минут до 8 часов",
+			"in_past":      "Бронь в прошлом невозможна",
+			"too_far":      "Бронь возможна максимум за 30 дней",
+		}[code]
+		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": msg})
+		return
+	}
+
+	var user models.User
+	if err := db.First(&user, "nickname = ? AND role = ?", req.Nickname, models.UserRolePlayer).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость с таким ником не найден"})
+		return
+	}
+
+	dur := time.Duration(req.DurationMin) * time.Minute
+	var candidates []models.Computer
+	q := db.Where("status <> ?", models.ComputerStatusMaintenance).Order("name")
+	if req.ComputerID != nil && *req.ComputerID != "" {
+		q = q.Where("id = ?", *req.ComputerID)
+	}
+	if err := q.Find(&candidates).Error; err != nil || len(candidates) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": "no_computer", "message": "Подходящий ПК не найден"})
+		return
+	}
+
+	var existing []models.Booking
+	db.Where("status IN ? AND start_time BETWEEN ? AND ?",
+		[]models.BookingStatus{models.BookingStatusPending, models.BookingStatusConfirmed},
+		start.Add(-24*time.Hour), start.Add(24*time.Hour)).Find(&existing)
+	busy := map[string]bool{}
+	for _, b := range existing {
+		if bookingOverlaps(start, dur, b.StartTime, time.Duration(b.DurationMin)*time.Minute) {
+			busy[b.ComputerID.String()] = true
+		}
+	}
+	var pick *models.Computer
+	for i := range candidates {
+		if !busy[candidates[i].ID.String()] {
+			pick = &candidates[i]
+			break
+		}
+	}
+	if pick == nil {
+		c.JSON(http.StatusConflict, gin.H{"code": "slot_busy", "message": "На это время всё занято — выбери другое время"})
+		return
+	}
+
+	booking := models.Booking{
+		UserID: user.ID, ComputerID: pick.ID, ClubID: pick.ClubID,
+		Status: models.BookingStatusConfirmed, StartTime: start,
+		DurationMin: req.DurationMin, Prepaid: false,
+	}
+	if err := db.Create(&booking).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"booking_id": booking.ID, "nickname": user.Nickname, "computer": pick.Name,
+		"start_time": booking.StartTime, "duration_min": booking.DurationMin,
+	})
+}
+
+// POST /admin/bookings/:id/restore — вернуть отменённую бронь (undo из тоста).
+// Перед возвратом заново проверяем пересечения по этому ПК.
+func handleAdminRestoreBooking(c *gin.Context) {
+	var booking models.Booking
+	if err := db.First(&booking, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "booking_not_found", "message": "Бронь не найдена"})
+		return
+	}
+	if booking.Status != models.BookingStatusCancelled {
+		c.JSON(http.StatusConflict, gin.H{"code": "not_restorable", "message": "Вернуть можно только отменённую бронь"})
+		return
+	}
+	dur := time.Duration(booking.DurationMin) * time.Minute
+	var existing []models.Booking
+	db.Where("computer_id = ? AND status IN ? AND start_time BETWEEN ? AND ?",
+		booking.ComputerID,
+		[]models.BookingStatus{models.BookingStatusPending, models.BookingStatusConfirmed},
+		booking.StartTime.Add(-24*time.Hour), booking.StartTime.Add(24*time.Hour)).Find(&existing)
+	for _, b := range existing {
+		if bookingOverlaps(booking.StartTime, dur, b.StartTime, time.Duration(b.DurationMin)*time.Minute) {
+			c.JSON(http.StatusConflict, gin.H{"code": "slot_busy", "message": "Время уже занято другой бронью"})
+			return
+		}
+	}
+	if err := db.Model(&booking).Update("status", models.BookingStatusConfirmed).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusConfirmed})
+}
