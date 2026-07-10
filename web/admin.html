@@ -6,74 +6,141 @@
 <title>14:48 — Админка</title>
 <style>
   :root{
-    --bg:#07090e; --panel:#10141d; --card:#151a24; --card2:#1d2330; --line:#2a3140;
-    --txt:#e8ebf2; --dim:#8a93a6; --acc:#7c5cff; --acc2:#22d3ee;
-    --gold:#fbbf24; --green:#34d399; --red:#f87171; --orange:#fb923c;
+    /* ── 14:48 Noir (см. DESIGN.md): чёрная база, красный — единственный акцент.
+       Семантика статусов (зелёный/оранжевый) сохранена — админке важна скорость чтения. ── */
+    --bg:#070708; --panel:#0f0f12; --card:#141417; --card2:#1c1c21;
+    --txt:#f2f0f2; --dim:#8d8d97;
+    --acc:#ff2740; --acc3:#ff5563;
+    --hair:rgba(255,255,255,.055);
+    --green:#34d399; --orange:#fb923c; --gold:#fbbf24; --neu:#c9ccd6;
+    --smooth:cubic-bezier(.4,0,.2,1);
   }
   *{box-sizing:border-box}
-  body{margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; min-height:100vh}
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--txt);
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
   h1,h2,h3{margin:0}
+  button{font-family:inherit}
   .muted{color:var(--dim); font-size:13px}
   .hidden{display:none!important}
-  button{font-family:inherit}
+  .isvg{width:1em; height:1em; display:inline-block; vertical-align:-.125em; flex:none}
+  :focus-visible{outline:2px solid var(--acc); outline-offset:2px; border-radius:6px}
+
   .logo{font-weight:800; letter-spacing:1px}
-  .logo b{color:var(--acc)}
+  .logo b{color:var(--acc); animation:colon 2.2s ease-in-out infinite}
+  @keyframes colon{0%,100%{opacity:1}50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){ .logo b{animation:none} }
+
   .btn{border:0; border-radius:11px; padding:10px 16px; font-size:14px; font-weight:700;
-       background:linear-gradient(135deg,var(--acc),#9d7bff); color:#fff; cursor:pointer}
+       background:linear-gradient(135deg,var(--acc),#c11226); color:#fff; cursor:pointer;
+       box-shadow:0 4px 18px rgba(255,39,64,.22); transition:.15s;
+       display:inline-flex; align-items:center; gap:7px}
+  .btn:active{transform:scale(.98)}
   .btn:disabled{opacity:.5; cursor:default}
-  .btn.ghost{background:var(--card2); color:var(--txt)}
-  .btn.danger{background:linear-gradient(135deg,#ef4444,#f87171)}
-  .btn.mini{padding:6px 11px; font-size:12.5px; border-radius:9px}
-  .input{background:#0c1017; border:1px solid var(--line); color:var(--txt); padding:12px 14px; border-radius:11px; font-size:15px}
+  .btn.ghost{background:rgba(255,255,255,.06); color:var(--txt); box-shadow:none}
+  .btn.danger{background:linear-gradient(135deg,#ef4444,#b91c1c)}
+  .btn.mini{padding:6px 11px; font-size:12.5px; border-radius:9px; gap:6px}
+  .input{background:#0e0d10; border:1px solid var(--hair); color:var(--txt);
+         padding:12px 14px; border-radius:11px; font-size:15px}
   .input:focus{outline:none; border-color:var(--acc)}
 
-  /* login */
-  #loginView{min-height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:22px}
-  .logincard{width:380px; background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:30px; display:flex; flex-direction:column; gap:10px}
-  .err{color:var(--red); font-size:14px; min-height:18px}
+  /* ═══ LOGIN ═══ */
+  #loginView{min-height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:24px}
+  .logincard{width:380px; max-width:calc(100vw - 40px); background:var(--panel);
+             border:1px solid var(--hair); border-radius:22px; padding:32px;
+             display:flex; flex-direction:column; gap:10px}
+  .err{color:var(--acc3); font-size:14px; min-height:18px}
 
-  /* app */
-  .topbar{display:flex; align-items:center; gap:14px; padding:14px 24px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap}
-  .chips{display:flex; gap:10px; margin-left:auto; flex-wrap:wrap}
-  .chip{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:7px 13px; font-weight:800; font-size:13px; white-space:nowrap}
-  .chip b{color:var(--acc2)}
-  .tabs{display:flex; gap:4px; padding:12px 24px 0}
-  .tabs button{background:transparent; border:0; color:var(--dim); padding:11px 18px; cursor:pointer; font-weight:700; font-size:14.5px;
-               border-bottom:2px solid transparent}
-  .tabs button.on{color:var(--txt); border-bottom-color:var(--acc)}
-  .content{padding:18px 24px 40px}
-  table{width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden}
-  th,td{padding:11px 14px; text-align:left; font-size:14px; border-bottom:1px solid var(--line)}
-  th{color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.8px; background:var(--card)}
-  tr:last-child td{border-bottom:0}
-  .st{font-size:12px; padding:3px 10px; border-radius:9px; font-weight:800; white-space:nowrap}
-  .st.available{background:rgba(52,211,153,.15); color:var(--green)}
-  .st.in_session{background:rgba(124,92,255,.18); color:#b5a2ff}
-  .st.maintenance{background:rgba(251,146,60,.15); color:var(--orange)}
-  .st.reserved{background:rgba(34,211,238,.15); color:var(--acc2)}
-  .st.active{background:rgba(52,211,153,.15); color:var(--green)}
-  .st.banned{background:rgba(248,113,113,.18); color:var(--red)}
-  .st.suspended{background:rgba(251,146,60,.15); color:var(--orange)}
-  .st.confirmed{background:rgba(52,211,153,.15); color:var(--green)}
-  .st.pending{background:rgba(251,191,36,.15); color:var(--gold)}
-  .st.cancelled,.st.no_show{background:rgba(138,147,166,.15); color:var(--dim)}
-  .st.completed{background:rgba(34,211,238,.12); color:var(--acc2)}
-  .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px}
+  /* ═══ КАРКАС: топбар + rail + контент + drawer ═══ */
+  #appView{height:100vh; display:flex; flex-direction:column}
+  .topbar{display:flex; align-items:center; gap:16px; padding:11px 20px;
+          background:var(--panel); border-bottom:1px solid var(--hair); flex-wrap:wrap}
+  .live{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); font-weight:700; margin-left:auto}
+  .live .dot{width:7px; height:7px; border-radius:50%; background:var(--green)}
+  .live.bad .dot{background:var(--acc)}
+  .who{font-size:13px; color:var(--dim); font-weight:700}
+  .who b{color:var(--txt)}
+
+  .shellrow{flex:1; display:flex; min-height:0}
+  .rail{width:198px; flex:none; display:flex; flex-direction:column; gap:2px;
+        padding:12px 10px; border-right:1px solid var(--hair); background:var(--panel)}
+  .rail button{display:flex; align-items:center; gap:11px; width:100%; padding:10px 13px;
+        border:0; border-radius:11px; background:transparent; color:var(--dim);
+        font-weight:700; font-size:13.5px; cursor:pointer; text-align:left; white-space:nowrap;
+        transition:background .15s,color .15s}
+  .rail button:hover{color:var(--txt)}
+  .rail button.on{background:rgba(255,39,64,.13); color:var(--txt)}
+  .rail button .isvg{width:19px; height:19px}
+  .rail .sep{height:1px; background:var(--hair); margin:9px 4px}
+  .rail .grow{flex:1}
+  .content{flex:1; overflow-y:auto; padding:20px 24px 44px; min-width:0}
+
+  /* drawer (инфраструктура А0; формы переедут сюда в А2–А3) */
+  #drawer{position:fixed; top:0; right:0; bottom:0; width:400px; max-width:100vw; z-index:50;
+          background:var(--panel); border-left:1px solid var(--hair);
+          transform:translateX(105%); transition:transform .25s var(--smooth);
+          display:flex; flex-direction:column}
+  #drawer.open{transform:none}
+  #drawer .dhead{display:flex; align-items:center; gap:10px; padding:16px 18px; border-bottom:1px solid var(--hair)}
+  #drawer .dhead h3{font-size:16px; flex:1}
+  #drawer .dbody{flex:1; overflow-y:auto; padding:18px}
+
+  /* ═══ КОНТЕНТ ═══ */
+  .kpis{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px}
+  .kpi{background:rgba(255,255,255,.045); border-radius:12px; padding:9px 14px;
+       font-size:13px; color:var(--dim); font-weight:700; white-space:nowrap}
+  .kpi b{color:var(--txt); font-size:15px; margin-left:7px; font-variant-numeric:tabular-nums}
+  .sect{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px;
+        font-weight:800; margin:20px 2px 9px}
+  .sect:first-child{margin-top:0}
   .toolrow{display:flex; gap:10px; margin-bottom:14px; align-items:center; flex-wrap:wrap}
-  .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:24px; background:#101622; border:1px solid var(--acc);
-         border-radius:13px; padding:13px 20px; opacity:0; transition:.3s; pointer-events:none; z-index:60; font-weight:600}
+  .tablewrap{overflow-x:auto}
+  table{width:100%; border-collapse:collapse; background:var(--panel);
+        border:1px solid var(--hair); border-radius:14px; overflow:hidden;
+        font-variant-numeric:tabular-nums}
+  th,td{padding:11px 14px; text-align:left; font-size:14px; border-bottom:1px solid var(--hair); white-space:nowrap}
+  th{color:var(--dim); font-size:11.5px; text-transform:uppercase; letter-spacing:.8px; background:var(--card)}
+  tr:last-child td{border-bottom:0}
+  .empty{color:var(--dim); padding:34px; text-align:center; font-size:14px}
+
+  .st{font-size:12px; padding:3px 10px; border-radius:9px; font-weight:800; white-space:nowrap}
+  .st.available,.st.active,.st.confirmed{background:rgba(52,211,153,.13); color:var(--green)}
+  .st.in_session{background:rgba(255,39,64,.15); color:var(--acc3)}
+  .st.maintenance,.st.suspended{background:rgba(251,146,60,.14); color:var(--orange)}
+  .st.reserved,.st.completed{background:rgba(201,204,214,.1); color:var(--neu)}
+  .st.banned{background:rgba(255,39,64,.16); color:var(--acc3)}
+  .st.pending{background:rgba(251,191,36,.13); color:var(--gold)}
+  .st.cancelled,.st.no_show{background:rgba(141,141,151,.12); color:var(--dim)}
+  .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px}
+
+  .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:24px; z-index:60;
+         background:#131014; border:1px solid var(--acc); border-radius:13px;
+         padding:13px 20px; opacity:0; transition:.3s; pointer-events:none; font-weight:600}
   .toast.show{opacity:1}
+
+  /* ═══ АДАПТИВ: узкий экран — rail сжимается в иконки ═══ */
+  @media (max-width:960px){
+    .rail{width:56px; padding:12px 8px}
+    .rail button{justify-content:center; padding:10px 0}
+    .rail .rlabel{display:none}
+    .content{padding:14px 14px 40px}
+    .topbar{padding:10px 14px; gap:10px}
+  }
+  @media (max-width:640px){
+    .who .role{display:none}
+    th,td{padding:9px 10px; font-size:13px}
+  }
 </style>
 </head>
 <body>
 
 <div id="loginView">
-  <div class="logo" style="font-size:38px">14<b>:</b>48 <span class="muted" style="font-size:16px">ADMIN</span></div>
+  <div class="logo" style="font-size:40px">14<b>:</b>48 <span class="muted" style="font-size:16px">ADMIN</span></div>
   <div class="logincard">
     <input id="nick" class="input" placeholder="Никнейм администратора" autocomplete="off">
     <input id="pass" class="input" type="password" placeholder="Пароль" onkeydown="if(event.key==='Enter')login()">
     <div id="loginErr" class="err"></div>
-    <button class="btn" onclick="login()">Войти</button>
+    <button class="btn" style="justify-content:center" onclick="login()">Войти</button>
     <div class="muted" style="text-align:center">только для персонала клуба</div>
   </div>
 </div>
@@ -81,26 +148,119 @@
 <div id="appView" class="hidden">
   <div class="topbar">
     <div class="logo" style="font-size:20px">14<b>:</b>48 <span class="muted">ADMIN</span></div>
-    <div class="muted" id="who"></div>
-    <div class="chips" id="chips"></div>
-    <button class="btn ghost mini" onclick="logout()">⏻ Выйти</button>
+    <div class="live" id="live"><span class="dot"></span><span id="liveTxt">подключение…</span></div>
+    <div class="who" id="who"></div>
   </div>
-  <div class="tabs">
-    <button id="t-computers" class="on" onclick="tab('computers')">🖥 ПК</button>
-    <button id="t-sessions" onclick="tab('sessions')">⏱ Сессии</button>
-    <button id="t-users" onclick="tab('users')">👥 Гости</button>
-    <button id="t-bookings" onclick="tab('bookings')">📅 Брони</button>
-    <button id="t-catalog" onclick="tab('catalog')">🎮 Каталог</button>
-    <button id="t-grants" onclick="tab('grants')">📜 Журнал</button>
+  <div class="shellrow">
+    <nav class="rail" id="rail">
+      <button id="r-hall" class="on" onclick="nav('hall')"><span data-ic="monitor"></span><span class="rlabel">Зал</span></button>
+      <button id="r-users" onclick="nav('users')"><span data-ic="users"></span><span class="rlabel">Гости</span></button>
+      <button id="r-bookings" onclick="nav('bookings')"><span data-ic="cal"></span><span class="rlabel">Брони</span></button>
+      <button id="r-catalog" onclick="nav('catalog')"><span data-ic="apps"></span><span class="rlabel">Каталог</span></button>
+      <button id="r-grants" onclick="nav('grants')"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
+      <div class="sep ownerOnly hidden"></div>
+      <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')"><span data-ic="chart"></span><span class="rlabel">Статистика</span></button>
+      <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')"><span data-ic="gear"></span><span class="rlabel">Настройки</span></button>
+      <div class="grow"></div>
+      <button onclick="logout()"><span data-ic="out"></span><span class="rlabel">Выйти</span></button>
+    </nav>
+
+    <main class="content">
+      <section id="s-hall">
+        <div class="kpis" id="kpis">
+          <div class="kpi">Гостей <b id="kUsers">—</b></div>
+          <div class="kpi">Сессий идёт <b id="kSessions">—</b></div>
+          <div class="kpi">ПК свободно <b id="kPCs">—</b></div>
+          <div class="kpi">Броней впереди <b id="kBookings">—</b></div>
+        </div>
+        <div class="sect">ПК</div>
+        <div class="tablewrap" id="hallPCs"><div class="empty">Загрузка…</div></div>
+        <div class="sect">Активные сессии</div>
+        <div class="tablewrap" id="hallSessions"><div class="empty">Загрузка…</div></div>
+      </section>
+
+      <section id="s-users" class="hidden">
+        <div class="toolrow">
+          <input id="uq" class="input" placeholder="Поиск по нику…" autocomplete="off" style="min-width:230px">
+        </div>
+        <div class="tablewrap" id="usersTable"><div class="empty">Загрузка…</div></div>
+      </section>
+
+      <section id="s-bookings" class="hidden">
+        <div class="tablewrap" id="bookingsTable"><div class="empty">Загрузка…</div></div>
+      </section>
+
+      <section id="s-catalog" class="hidden">
+        <div class="toolrow">
+          <button class="btn mini" onclick="editApp('')"><span data-ic="plus"></span>Добавить</button>
+          <span class="muted">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
+        </div>
+        <div id="appFormWrap"></div>
+        <div class="tablewrap" id="catalogTable"><div class="empty">Загрузка…</div></div>
+      </section>
+
+      <section id="s-grants" class="hidden">
+        <div class="tablewrap" id="grantsTable"><div class="empty">Загрузка…</div></div>
+      </section>
+
+      <section id="s-stats" class="hidden">
+        <div class="empty">Статистика появится в спринте А5: выручка, загрузка по часам, топ гостей.</div>
+      </section>
+
+      <section id="s-settings" class="hidden">
+        <div class="empty">Настройки появятся в спринте А5: тарифы, курс монет, XP/мин.</div>
+      </section>
+    </main>
   </div>
-  <div class="content" id="content"></div>
 </div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dhead">
+    <h3 id="drawerTitle"></h3>
+    <button class="btn ghost mini" onclick="closeDrawer()"><span data-ic="cross"></span></button>
+  </div>
+  <div class="dbody" id="drawerBody"></div>
+</aside>
 
 <div id="toast" class="toast"></div>
 
 <script>
+/* ═══ Админка 14:48 — спринт А0 (каркас Noir), план: ADMIN.md ═══
+   Логика API/авторизации не менялась (спринт 3б + бэклог).
+   Новое в А0: rail-навигация, иконки Phosphor duotone (механика data-ic из
+   shell.html), drawer-контейнер, живой поиск с debounce, точечная перерисовка
+   (инпуты не пересоздаются), хоткеи 1–7 / «/» / Esc, live-индикатор. */
+
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
-let curTab = 'computers', refreshIv = null, me = null;
+const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
+let curTab = 'hall', refreshIv = null, me = null, lastSync = 0;
+
+/* ── иконки: Phosphor duotone, второй тон var(--acc) (см. DESIGN.md) ── */
+const UI = {
+  monitor: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,64V176a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V64A16,16,0,0,1,48,48H208A16,16,0,0,1,224,64Z" fill="var(--acc)" opacity=".45"/><path d="M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8Zm-48,48a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,224Z"/></svg>`,
+  cal: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,48V88H40V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z" fill="var(--acc)" opacity=".45"/><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Zm-68-76a12,12,0,1,1-12-12A12,12,0,0,1,140,132Zm44,0a12,12,0,1,1-12-12A12,12,0,0,1,184,132ZM96,172a12,12,0,1,1-12-12A12,12,0,0,1,96,172Zm44,0a12,12,0,1,1-12-12A12,12,0,0,1,140,172Zm44,0a12,12,0,1,1-12-12A12,12,0,0,1,184,172Z"/></svg>`,
+  apps: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z" fill="var(--acc)" opacity=".45"/><path d="M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z"/></svg>`,
+  gear: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z" fill="var(--acc)" opacity=".45"/><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z"/></svg>`,
+  coins: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M240,132c0,19.88-35.82,36-80,36-19.6,0-37.56-3.17-51.47-8.44h0C146.76,156.85,176,142,176,124V96.72h0C212.52,100.06,240,114.58,240,132ZM176,84c0-19.88-35.82-36-80-36S16,64.12,16,84s35.82,36,80,36S176,103.88,176,84Z" fill="var(--acc)" opacity=".45"/><path d="M184,89.57V84c0-25.08-37.83-44-88-44S8,58.92,8,84v40c0,20.89,26.25,37.49,64,42.46V172c0,25.08,37.83,44,88,44s88-18.92,88-44V132C248,111.3,222.58,94.68,184,89.57ZM232,132c0,13.22-30.79,28-72,28-3.73,0-7.43-.13-11.08-.37C170.49,151.77,184,139,184,124V105.74C213.87,110.19,232,122.27,232,132ZM72,150.25V126.46A183.74,183.74,0,0,0,96,128a183.74,183.74,0,0,0,24-1.54v23.79A163,163,0,0,1,96,152,163,163,0,0,1,72,150.25Zm96-40.32V124c0,8.39-12.41,17.4-32,22.87V123.5C148.91,120.37,159.84,115.71,168,109.93ZM96,56c41.21,0,72,14.78,72,28s-30.79,28-72,28S24,97.22,24,84,54.79,56,96,56ZM24,124V109.93c8.16,5.78,19.09,10.44,32,13.57v23.37C36.41,141.4,24,132.39,24,124Zm64,48v-4.17c2.63.1,5.29.17,8,.17,3.88,0,7.67-.13,11.39-.35A121.92,121.92,0,0,0,120,171.41v23.46C100.41,189.4,88,180.39,88,172Zm48,26.25V174.4a179.48,179.48,0,0,0,24,1.6,183.74,183.74,0,0,0,24-1.54v23.79a165.45,165.45,0,0,1-48,0Zm64-3.38V171.5c12.91-3.13,23.84-7.79,32-13.57V172C232,180.39,219.59,189.4,200,194.87Z"/></svg>`,
+  xp: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M96,240l16-80L48,136,160,16,144,96l64,24Z" fill="var(--acc)" opacity=".45"/><path d="M215.79,118.17a8,8,0,0,0-5-5.66L153.18,90.9l14.66-73.33a8,8,0,0,0-13.69-7l-112,120a8,8,0,0,0,3,13l57.63,21.61L88.16,238.43a8,8,0,0,0,13.69,7l112-120A8,8,0,0,0,215.79,118.17ZM109.37,214l10.47-52.38a8,8,0,0,0-5-9.06L62,132.71l84.62-90.66L136.16,94.43a8,8,0,0,0,5,9.06l52.8,19.8Z"/></svg>`,
+  chest: `<svg class="isvg" viewBox="0 0 512 512" fill="currentColor"><path d="M146.857 20.842c-12.535-.036-24.268 2.86-37.285 9.424h.004C61.356 54.6 19.966 120.734 17.982 175.91l41.848 14.236c4.33-61.89 47.057-128.37 101.527-155.86h.002c4.423-2.23 8.822-4.162 13.185-5.8l-22.26-7.45c-1.83-.123-3.637-.19-5.428-.194zm59.34 20.19c-10.478-.09-22.832 3.093-36.424 9.943l.004-.004c-48.23 24.34-89.625 90.513-91.548 145.436l156.485 53.24c3.865-62.22 46.797-129.372 101.613-157.035h.002l.002-.003c4.303-2.168 8.584-4.056 12.832-5.666l-134.54-45.036c-2.652-.542-5.458-.847-8.427-.873zm174.97 58.323c-10.476-.09-22.83 3.092-36.42 9.94l-.005.002c-48.577 24.518-90.225 91.473-91.586 146.623l46.205 15.72c3.914-62.188 46.825-129.274 101.607-156.92 4.522-2.283 9.04-4.258 13.53-5.91l-26.544-8.884c-2.164-.35-4.423-.55-6.785-.57zm63.554 22.014c-10.267.093-22.094 3.353-35.333 10.034-47.158 23.8-87.777 87.587-91.362 141.75l174.55-73.726c-.404-39.01-10.754-61.304-24.415-71.082-2.347-1.68-4.867-3.057-7.55-4.137l-.01.034-4.735-1.584c-3.48-.887-7.195-1.327-11.144-1.29zM17.9 195.622l-.035 187.484L59.46 397.58V209.764L17.9 195.624zM78.15 216.12v187.962l156.282 54.37V269.288l-29.053-9.886v119.43l-101.054-34.082V225.025L78.15 216.12zm414.22 3.683L318.433 293.27v189.236l173.935-73.504v-189.2zm-369.354 11.582v99.947l63.675 21.477v-99.763l-63.674-21.662zm31.306 28.797c9.705 0 17.573 7.867 17.573 17.572 0 6.34-3.37 11.88-8.407 14.97v28.53h-18.69v-28.746c-4.838-3.13-8.048-8.562-8.048-14.754 0-9.705 7.867-17.572 17.572-17.572zm98.797 15.464v189.307l46.626 16.22V291.51l-46.627-15.864z"/><path d="M80.39 38.55c1.28 1.5 2.5 3.13 3.61 4.91l9.36 14.71c5.11 8.17 7.14 16.75 6.61 24.51 9.73 1.32 19.73 7.43 26.63 18.42l9.3 14.7c6 9.2 7.7 19.1 6.3 27.6 7.3 2.4 14.3 7.5 19.7 15.2h188.2c5.5-7.7 12.4-12.8 19.7-15.2-1.5-8.5.4-18.4 6.3-27.6l9.2-14.7c7-10.99 17-17.1 26.8-18.42-.6-7.87 1.5-16.39 6.6-24.58l9.3-14.73c1.2-1.74 2.3-3.34 3.4-4.82zM456 44.12c-3 .52-7 3.04-11.4 9.76l-9.3 14.71c-7.4 11.8-4 17.15-.5 19.22 3.4 2.2 9.7 3.07 16.9-8.52l4.3-6.66zm-399.97.11v28.4l4.15 6.66c7.33 11.59 13.66 10.72 17.05 8.52 3.39-2.07 6.89-7.42-.55-19.12l-9.29-14.72c-4.33-6.74-8.24-9.27-11.36-9.79zm41.34 57.47c-1.4 0-3.19.5-4.32 1.3-3.52 2.1-7 7.4.52 19.1l9.23 14.7c6.3 10 12 10.8 15.7 9.3.7-.5 1.6-1 2.3-1.5 2.9-2.4 5.2-7.9-1.5-18.4l-9.2-14.7c-5-7.6-9.4-9.8-12.73-9.8zm317.13 0c-3.3 0-7.6 2.2-12.5 9.8l-9.3 14.7c-6.6 10.5-4.5 16-1.6 18.4 1 .6 1.7 1 2.4 1.5 3.6 1.5 9.3.7 15.7-9.3l9.3-14.7c7.4-11.7 3.9-17 .5-19.1-1.4-.9-2.9-1.2-4.5-1.3zm-358.47 1v55.9h40.44c-3.72-2.9-7.37-6.6-10.31-11.2l-9.25-14.9c-5.14-8.1-7.22-16.7-6.67-24.4-4.81-.6-9.68-2.5-14.21-5.4zm399.97 0c-4.7 2.9-9.4 4.8-14.2 5.4.5 7.7-1.6 16.3-6.7 24.4l-9.3 14.9c-3 4.6-6.5 8.3-10.2 11.2H456zM90.99 178.3v271.8l12.01-9.5c8.1-6.6 17-9.4 25.3-9.4 1.1-8.8 6-18.1 15-25.2l13.8-10.7c7.8-6.3 16.4-9.1 24.2-9.3 4.5 0 8.6.8 12.5 2.3V283.9c-11.3.6-23.8-5.7-31.9-18.5l-9.4-14.9c-5.6-8.7-7.3-17.8-6.5-26-8.6-2.1-17.3-7.9-23.4-17.8l-9.3-14.7c-2.8-4.6-4.7-9.1-5.8-13.7zm37.11 0c.5 1 1.2 2.2 1.9 3.2l9.2 14.9c7.4 11.5 13.6 10.5 17 8.4 3.4-2.1 6.9-7.4-.6-19.1l-4.5-7.4zm46.1 0c4.1 7.8 5.4 15.8 4.7 23 8.6 2 17.2 8 23.4 17.6l9.2 14.9c6.5 10 8 20.8 5.9 29.8h77.3c-2.2-9-.6-19.8 5.8-29.8l9.2-14.9c6.2-9.6 14.8-15.6 23.4-17.6-.7-7.2.5-15.2 4.7-23zm186.7 0l-4.6 7.4c-7.4 11.7-3.9 17-.5 19.1 3.4 2.1 9.5 3.1 17-8.4l9.3-14.9c.6-1 1.4-2.2 1.9-3.2zm43.6 0c-1 4.6-2.9 9.1-5.8 13.7l-9.3 14.7c-6 9.9-14.7 15.7-23.3 17.8.9 8.2-1.1 17.3-6.6 26l-9.4 14.9c-8.2 12.8-20.6 19.1-31.8 18.5v104.4c3.7-1.5 7.9-2.3 12.5-2.3 7.9.2 16.5 3 24.3 9.3l13.6 10.7c9 7.1 13.9 16.4 15.1 25.2 8.3 0 17.1 2.8 25.2 9.4l12 9.5V178.3zm-231.3 41.3c-1.8 0-3.4.7-4.6 1.4-3.3 2-6.8 7.5.6 19.1l9.2 14.7c6.4 9.9 11.7 10.8 15.4 9.4l1.6-.8c3.4-2.1 7-7.5-.5-19.2l-9.2-14.7c-4.9-7.7-9.4-9.9-12.5-9.9zm165.8 0c-3.3 0-7.6 2.2-12.6 9.9l-9.3 14.7c-7.5 11.7-4 17.1-.6 19.2l1.8.8c3.5 1.4 9.1.5 15.2-9.4l9.5-14.7c7.3-11.6 3.9-17.1.5-19.1-1.7-.8-3-1.3-4.5-1.4zm-125.5 63.7V386h85.1V283.3zm42.7 16.3c9.7.2 17.2 7.9 17.2 17.5 0 5.2-2.2 10.3-6.4 13.7l6.4 38.7h-34.9l6.7-38.7c-4.2-3.3-6.7-8.3-6.7-13.7 0-9.7 8-17.6 17.7-17.5zm-74.3 105.2c-3.2 0-7.3 1.6-12.6 5.9l-13.8 10.8c-7 5.7-8.8 10.2-8.3 13.6.1 1.4.8 3.1 1.8 4.2 2.3 3.1 8.1 6.1 18.8-2.6l13.7-10.9c10.7-8.5 9.2-14.6 6.6-17.8-1.2-1.5-3.1-3.1-6.2-3.2zm148.2 0c-2.9.1-5.1 1.7-6.2 3.2-2.6 3.2-4.1 9.3 6.7 17.8l13.6 10.9c10.9 8.7 16.5 5.7 19 2.6 1-1.4 1.4-2.8 1.6-4.2.4-3.4-1.2-7.9-8.4-13.6l-13.5-10.8c-5.5-4.3-9.7-5.9-12.8-5.9zm-121.7.8c2.8 11.4-2 25.6-14.6 35.7L180 452c-8.1 6.6-17 9.5-25.2 9.5-.5 3.9-1.6 8-3.9 11.9h210.2c-2.1-3.9-3.4-8-3.9-11.9-8.2 0-17.1-2.9-25.2-9.5l-13.7-10.7c-12.7-10.1-17.5-24.3-14.6-35.7zm-80.6 44.6c-3 0-7.2 1.3-12.6 5.7l-13.7 10.8c-2.93 2.4-4.93 4.7-6.33 6.7h29.63l2.7-2.2c10.7-8.7 9.2-14.8 6.7-17.8-1.2-1.7-3.2-3.1-6.4-3.2zm256.4 0c-3.2.1-5.1 1.5-6.3 3.2-2.5 3-4.2 9.1 6.6 17.8l2.8 2.2h29.4c-1.2-2-3.2-4.3-6.2-6.7l-13.8-10.8c-5.3-4.4-9.4-5.7-12.5-5.7z"/><path d="M256 23c-75.556 0-137 61.444-137 137v.008c.038 42.262 19.614 82.002 52.756 107.857L116.473 489h279.054l-55.35-221.402c33.076-25.838 52.76-65.38 52.823-107.584V160c0-75.556-61.444-137-137-137zm0 18c65.824 0 118.993 53.164 119 118.986-.06 38.516-18.74 74.6-50.154 96.88l-5.016 3.56L372.473 471H139.527l52.625-210.504-5.013-3.558C155.712 234.64 137.036 198.53 137 160v-.008C137.004 94.168 190.174 41 256 41zm14.508 44.69c-1.983-.01-3.966-.003-5.95.03-30.615.485-61.19 6.227-91.69 16.77-3.66 5.217-6.824 10.77-9.378 16.608-1.183 2.468-2.232 4.98-3.166 7.523 30.858-12.783 61.51-20.36 91.987-22.376-25.746 5.47-45.19 28.43-45.19 55.756 0 31.374 25.627 57 57 57 31.375 0 57-25.626 57-57 0-28.278-20.82-51.876-47.9-56.26 24.755.443 49.475 4.616 74.22 12.733-4.17-8.416-9.554-16.247-15.872-23.258-20.307-4.896-40.67-7.39-61.06-7.524zM264.12 121c21.647 0 39 17.354 39 39s-17.353 39-39 39c-21.645 0-39-17.354-39-39 0-4.494.76-8.8 2.14-12.807.83.772 1.705 1.465 2.597 2.037 4.008 2.572 8.673 3.77 13.676 3.77s9.67-1.198 13.676-3.77C261.215 146.66 265 142 265 136s-3.784-10.66-7.79-13.23c-.484-.31-.978-.597-1.48-.868 2.702-.585 5.507-.902 8.39-.902zm-102.915 72.994c3.308 9.103 7.833 17.772 13.428 25.645 36.963 15.02 72.75 24.08 107.156 25.694 10.122.475 20.12.278 29.972-.613 8.763-5.944 16.48-13.31 22.963-21.65-16.736 3.786-34.09 5.127-52.092 4.284-37.77-1.77-78.5-13.594-121.428-33.36z"/><path d="M494 12.973L208.54 169.975 35.65 97.938a121.168 121.168 0 0 0-1.716 14.103l174.302 101.68L494 64.212zm-68.223 6.12S346.247 35.15 320 48c-45.024 22.044-98.655 84.697-98.655 84.697C288.43 88.467 344.922 48 425.777 19.092zm-319.953 6.063c-19.304 0-36.98 9.903-50.3 26.918-6.275 8.02-11.472 17.613-15.233 28.297l137.866 57.444c1.29-35.483-7.338-63.638-20.734-82.76-13.84-19.758-32.403-29.898-51.598-29.898zm-71.422 108c3.352 30.315 17.906 56.833 38.366 70.74l4.677 3.176L62.23 309.137l99.247 19.83-17.54-117.656a81.96 81.96 0 0 0 10.15-8.34zm300.895 57.03c-50.015 39.164-126.724 78.674-165.047 43.546 11.574 23.1 24.986 42.545 51.31 38.317 37.69-6.055 92.397-52.364 113.737-81.863zM59.572 326.962l-2.035 13.65L494 430.653v-16.888zm-4.7 31.513l-2.038 13.687L494 489.967v-17.55zm-4.71 31.605l-15.055 100.98H185.64l-10.06-67.49z"/><path d="M269.03 14.47c-110.473 1.825-290.752 92.88-243.5 450.5 0-210.674 118.628-315.626 181.814-315.626 41.72 0 70.595 34.945 73.812 102.75h-40.592l7.218 13.687 114.94 218.283 8.25 15.687 8.28-15.688 114.938-218.28 7.218-13.688H441.97C438.38 104.607 361.12 15.24 274.25 14.47c-1.717-.017-3.465-.03-5.22 0zm-4.592 44.593c85.555-1.117 146.173 75.667 148.687 211.718h57.313L371 459.657 271.53 270.78h65.595c-2.322-140.208-60.25-201.84-171.72-180.25 35.16-20.848 68.674-31.07 99.032-31.468z"/></svg>`,
+  cross: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M160,128a32,32,0,1,1-32-32A32,32,0,0,1,160,128Z" fill="var(--acc)" opacity=".45"/><path d="M232,120h-8.34A96.14,96.14,0,0,0,136,32.34V24a8,8,0,0,0-16,0v8.34A96.14,96.14,0,0,0,32.34,120H24a8,8,0,0,0,0,16h8.34A96.14,96.14,0,0,0,120,223.66V232a8,8,0,0,0,16,0v-8.34A96.14,96.14,0,0,0,223.66,136H232a8,8,0,0,0,0-16Zm-96,87.6V200a8,8,0,0,0-16,0v7.6A80.15,80.15,0,0,1,48.4,136H56a8,8,0,0,0,0-16H48.4A80.15,80.15,0,0,1,120,48.4V56a8,8,0,0,0,16,0V48.4A80.15,80.15,0,0,1,207.6,120H200a8,8,0,0,0,0,16h7.6A80.15,80.15,0,0,1,136,207.6ZM128,88a40,40,0,1,0,40,40A40,40,0,0,0,128,88Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,152Z"/></svg>`,
+  check: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg>`,
+  save: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,83.31V208a8,8,0,0,1-8,8H176V152a8,8,0,0,0-8-8H88a8,8,0,0,0-8,8v64H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H172.69a8,8,0,0,1,5.65,2.34l35.32,35.32A8,8,0,0,1,216,83.31Z" fill="var(--acc)" opacity=".45"/><path d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"/></svg>`,
+  users: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M168,144a40,40,0,1,1-40-40A40,40,0,0,1,168,144ZM64,56A32,32,0,1,0,96,88,32,32,0,0,0,64,56Zm128,0a32,32,0,1,0,32,32A32,32,0,0,0,192,56Z" fill="var(--acc)" opacity=".45"/><path d="M244.8,150.4a8,8,0,0,1-11.2-1.6A51.6,51.6,0,0,0,192,128a8,8,0,0,1,0-16,24,24,0,1,0-23.24-30,8,8,0,1,1-15.5-4A40,40,0,1,1,219,117.51a67.94,67.94,0,0,1,27.43,21.68A8,8,0,0,1,244.8,150.4ZM190.92,212a8,8,0,1,1-13.85,8,57,57,0,0,0-98.15,0,8,8,0,1,1-13.84-8,72.06,72.06,0,0,1,33.74-29.92,48,48,0,1,1,58.36,0A72.06,72.06,0,0,1,190.92,212ZM128,176a32,32,0,1,0-32-32A32,32,0,0,0,128,176ZM72,120a8,8,0,0,0-8-8A24,24,0,1,1,87.24,82a8,8,0,1,0,15.5-4A40,40,0,1,0,37,117.51,67.94,67.94,0,0,0,9.6,139.19a8,8,0,1,0,12.8,9.61A51.6,51.6,0,0,1,64,128,8,8,0,0,0,72,120Z"/></svg>`,
+  scroll: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M200,176H104s8,6,8,16a24,24,0,0,1-48,0V64A24,24,0,0,0,40,40H176a24,24,0,0,1,24,24Z" fill="var(--acc)" opacity=".45"/><path d="M96,104a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H104A8,8,0,0,1,96,104Zm8,40h64a8,8,0,0,0,0-16H104a8,8,0,0,0,0,16Zm128,48a32,32,0,0,1-32,32H88a32,32,0,0,1-32-32V64a16,16,0,0,0-32,0c0,5.74,4.83,9.62,4.88,9.66h0A8,8,0,0,1,24,88a7.89,7.89,0,0,1-4.79-1.61h0C18.05,85.54,8,77.61,8,64A32,32,0,0,1,40,32H176a32,32,0,0,1,32,32V168h8a8,8,0,0,1,4.8,1.6C222,170.46,232,178.39,232,192ZM96.26,173.48A8.07,8.07,0,0,1,104,168h88V64a16,16,0,0,0-16-16H67.69A31.71,31.71,0,0,1,72,64V192a16,16,0,0,0,32,0c0-5.74-4.83-9.62-4.88-9.66A7.82,7.82,0,0,1,96.26,173.48ZM216,192a12.58,12.58,0,0,0-3.23-8h-94a26.92,26.92,0,0,1,1.21,8,31.82,31.82,0,0,1-4.29,16H200A16,16,0,0,0,216,192Z"/></svg>`,
+  chart: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,40V208H152V40Z" fill="var(--acc)" opacity=".45"/><path d="M224,200h-8V40a8,8,0,0,0-8-8H152a8,8,0,0,0-8,8V80H96a8,8,0,0,0-8,8v40H48a8,8,0,0,0-8,8v64H32a8,8,0,0,0,0,16H224a8,8,0,0,0,0-16ZM160,48h40V200H160ZM104,96h40V200H104ZM56,144H88v56H56Z"/></svg>`,
+  out: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,56V200a16,16,0,0,1-16,16H48V40H208A16,16,0,0,1,224,56Z" fill="var(--acc)" opacity=".45"/><path d="M120,216a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V40a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H56V208h56A8,8,0,0,1,120,216Zm109.66-93.66-40-40a8,8,0,0,0-11.32,11.32L204.69,120H112a8,8,0,0,0,0,16h92.69l-26.35,26.34a8,8,0,0,0,11.32,11.32l40-40A8,8,0,0,0,229.66,122.34Z"/></svg>`,
+  search: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M192,112a80,80,0,1,1-80-80A80,80,0,0,1,192,112Z" fill="var(--acc)" opacity=".45"/><path d="M229.66,218.34,179.6,168.28a88.21,88.21,0,1,0-11.32,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>`,
+  ban: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>`,
+  unban: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,128a88,88,0,1,1-88-88A88,88,0,0,1,216,128Z" fill="var(--acc)" opacity=".45"/><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>`,
+  power: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,128a88,88,0,1,1-88-88A88,88,0,0,1,216,128Z" fill="var(--acc)" opacity=".45"/><path d="M120,128V48a8,8,0,0,1,16,0v80a8,8,0,0,1-16,0Zm60.37-78.7a8,8,0,0,0-8.74,13.4C194.74,77.77,208,101.57,208,128a80,80,0,0,1-160,0c0-26.43,13.26-50.23,36.37-65.3a8,8,0,0,0-8.74-13.4C47.9,67.38,32,96.06,32,128a96,96,0,0,0,192,0C224,96.06,208.1,67.38,180.37,49.3Z"/></svg>`,
+  edit: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z" fill="var(--acc)" opacity=".45"/><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg>`,
+  plus: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z"/></svg>`,
+  wrench: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,96a64,64,0,0,1-94.94,56L73,217A24,24,0,0,1,39,183L104,126.94a64,64,0,0,1,80-90.29L144,80l5.66,26.34L176,112l43.35-40A63.8,63.8,0,0,1,224,96Z" fill="var(--acc)" opacity=".45"/><path d="M226.76,69a8,8,0,0,0-12.84-2.88l-40.3,37.19-17.23-3.7-3.7-17.23,37.19-40.3A8,8,0,0,0,187,29.24,72,72,0,0,0,88,96,72.34,72.34,0,0,0,94,124.94L33.79,177c-.15.12-.29.26-.43.39a32,32,0,0,0,45.26,45.26c.13-.13.27-.28.39-.42L131.06,162A72,72,0,0,0,232,96,71.56,71.56,0,0,0,226.76,69ZM160,152a56.14,56.14,0,0,1-27.07-7,8,8,0,0,0-9.92,1.77L67.11,211.51a16,16,0,0,1-22.62-22.62L109.18,133a8,8,0,0,0,1.77-9.93,56,56,0,0,1,58.36-82.31l-31.2,33.81a8,8,0,0,0-1.94,7.1L141.83,108a8,8,0,0,0,6.14,6.14l26.35,5.66a8,8,0,0,0,7.1-1.94l33.81-31.2A56.06,56.06,0,0,1,160,152Z"/></svg>`,
+  clock: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>`,
+};
+function mountIcons(root){ (root||document).querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = UI[el.dataset.ic] || ''; }); }
 
 /* ── auth (отдельные ключи от гостевого экрана) ── */
 function tokens(){ return {a: localStorage.getItem('1448a_access'), r: localStorage.getItem('1448a_refresh')}; }
@@ -147,6 +307,7 @@ function logout(){
     body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null;
   if (refreshIv) clearInterval(refreshIv);
+  closeDrawer();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
 }
@@ -154,37 +315,65 @@ function logout(){
 function enter(){
   document.getElementById('loginView').classList.add('hidden');
   document.getElementById('appView').classList.remove('hidden');
-  document.getElementById('who').textContent = me.nickname + ' · ' + me.role;
+  document.getElementById('who').innerHTML = '<b>' + esc(me.nickname) + '</b> <span class="role">· ' + esc(me.role) + '</span>';
+  document.querySelectorAll('.ownerOnly').forEach(el => el.classList.toggle('hidden', me.role !== 'owner'));
+  mountIcons();
   refresh();
   if (refreshIv) clearInterval(refreshIv);
   refreshIv = setInterval(refresh, 7000);
 }
 
-function tab(t){
+/* ── навигация ── */
+function nav(t){
+  if ((t === 'stats' || t === 'settings') && (!me || me.role !== 'owner')) return;
   curTab = t;
-  ['computers','sessions','users','bookings','catalog','grants'].forEach(x =>
-    document.getElementById('t-'+x).classList.toggle('on', x===t));
+  SECTIONS.forEach(x => {
+    const btn = document.getElementById('r-' + x);
+    if (btn) btn.classList.toggle('on', x === t);
+    document.getElementById('s-' + x).classList.toggle('hidden', x !== t);
+  });
   if (t === 'catalog') renderCatalogTab(); else refresh();
 }
 
-/* ── рендер ── */
+/* ── обновление (7с). Перерисовываются только таблицы — тулбары и инпуты живут своей жизнью ── */
 async function refresh(){
   try{
     const ov = await api('/admin/overview');
-    document.getElementById('chips').innerHTML =
-      `<div class="chip">Гостей <b>${ov.users}</b></div>
-       <div class="chip">Сессий идёт <b>${ov.active_sessions}</b></div>
-       <div class="chip">ПК свободно <b>${ov.computers_free}/${ov.computers_total}</b></div>
-       <div class="chip">Броней впереди <b>${ov.upcoming_bookings}</b></div>`;
-    if (curTab === 'computers') await renderComputers();
-    if (curTab === 'sessions') await renderSessions();
-    if (curTab === 'users') await renderUsers();
+    setText('kUsers', ov.users);
+    setText('kSessions', ov.active_sessions);
+    setText('kPCs', ov.computers_free + '/' + ov.computers_total);
+    setText('kBookings', ov.upcoming_bookings);
+    if (curTab === 'hall'){ await renderPCs(); await renderSessions(); }
+    if (curTab === 'users') await renderUsersTable();
     if (curTab === 'bookings') await renderBookings();
     if (curTab === 'grants') await renderGrants();
     // каталог не обновляем по таймеру — там форма редактирования
-  }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
+    lastSync = Date.now();
+  }catch(e){
+    lastSync = -1;
+    if (e.message !== 'unauthorized') toast('⚠ ' + e.message);
+  }
 }
 
+function setText(id, v){ document.getElementById(id).textContent = v; }
+function setHTML(id, html){
+  const el = document.getElementById(id);
+  el.innerHTML = html;
+  mountIcons(el);
+}
+
+/* live-индикатор в топбаре */
+setInterval(() => {
+  if (!me) return;
+  const live = document.getElementById('live'), txt = document.getElementById('liveTxt');
+  if (lastSync === -1){ live.classList.add('bad'); txt.textContent = 'нет связи'; return; }
+  if (!lastSync){ txt.textContent = 'подключение…'; return; }
+  const s = Math.round((Date.now() - lastSync)/1000);
+  live.classList.toggle('bad', s > 20);
+  txt.textContent = 'обновлено ' + s + ' с назад';
+}, 1000);
+
+/* ── формат ── */
 function fmtTime(iso){
   const d = new Date(iso);
   return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+' '+
@@ -197,45 +386,43 @@ function elapsed(iso){
 }
 function esc(s){ const d = document.createElement('div'); d.textContent = s??''; return d.innerHTML; }
 
-async function renderComputers(){
+/* ── Зал: ПК + активные сессии (слияние в карту зон — спринт А1) ── */
+async function renderPCs(){
   const d = await api('/admin/computers');
-  document.getElementById('content').innerHTML = `
+  setHTML('hallPCs', `
   <table><tr><th>ПК</th><th>Клуб</th><th>Зона</th><th>Статус</th><th>Shell</th><th>Сейчас играет</th><th></th></tr>
   ${d.computers.map(pc => `<tr>
     <td><b>${esc(pc.name)}</b></td>
     <td>${esc(pc.club)}</td>
     <td>${esc(pc.zone||'—')}</td>
     <td><span class="st ${pc.status}">${pc.status}</span></td>
-    <td>${pc.shell_online ? '<span class="dot" style="background:var(--green)"></span>online' : '<span class="dot" style="background:var(--line)"></span><span class="muted">offline</span>'}</td>
+    <td>${pc.shell_online ? '<span class="dot" style="background:var(--green)"></span>online' : '<span class="dot" style="background:var(--card2)"></span><span class="muted">offline</span>'}</td>
     <td>${pc.session ? esc(pc.session.nickname)+' · '+elapsed(pc.session.started_at) : '<span class="muted">—</span>'}</td>
-    <td>${pc.session ? `<button class="btn danger mini" onclick="endSession('${pc.session.id}','${esc(pc.session.nickname)}')">Завершить</button>` : ''}</td>
-  </tr>`).join('')}</table>`;
+    <td>${pc.session ? `<button class="btn danger mini" onclick="endSession('${pc.session.id}','${esc(pc.session.nickname)}')"><span data-ic="power"></span>Завершить</button>` : ''}</td>
+  </tr>`).join('')}</table>`);
 }
 
 async function renderSessions(){
   const d = await api('/admin/sessions/active');
-  document.getElementById('content').innerHTML = d.count === 0
-    ? '<div class="muted" style="padding:30px; text-align:center">Активных сессий нет</div>'
+  setHTML('hallSessions', d.count === 0
+    ? '<div class="empty">Активных сессий нет</div>'
     : `<table><tr><th>Гость</th><th>ПК</th><th>Начало</th><th>Идёт</th><th></th></tr>
   ${d.sessions.map(s => `<tr>
     <td><b>${esc(s.nickname)}</b></td>
     <td>${esc(s.computer||'—')}</td>
     <td>${fmtTime(s.started_at)}</td>
     <td>${elapsed(s.started_at)}</td>
-    <td><button class="btn danger mini" onclick="endSession('${s.id}','${esc(s.nickname)}')">Завершить</button></td>
-  </tr>`).join('')}</table>`;
+    <td><button class="btn danger mini" onclick="endSession('${s.id}','${esc(s.nickname)}')"><span data-ic="power"></span>Завершить</button></td>
+  </tr>`).join('')}</table>`);
 }
 
+/* ── Гости: живой поиск (debounce 300мс), инпут не пересоздаётся ── */
 let userQuery = '';
-async function renderUsers(){
+async function renderUsersTable(){
   const d = await api('/admin/users' + (userQuery ? '?q='+encodeURIComponent(userQuery) : ''));
-  document.getElementById('content').innerHTML = `
-  <div class="toolrow">
-    <input id="uq" class="input" placeholder="Поиск по нику…" value="${esc(userQuery)}"
-      onkeydown="if(event.key==='Enter'){userQuery=this.value.trim(); renderUsers();}">
-    <button class="btn ghost mini" onclick="userQuery=document.getElementById('uq').value.trim(); renderUsers()">Найти</button>
-  </div>
-  <table><tr><th>Ник</th><th>LVL</th><th>XP</th><th>Монеты</th><th>Роль</th><th>Статус</th><th>Был активен</th><th></th></tr>
+  setHTML('usersTable', d.users.length === 0
+    ? '<div class="empty">Никого не нашлось</div>'
+    : `<table><tr><th>Ник</th><th>LVL</th><th>XP</th><th>Монеты</th><th>Роль</th><th>Статус</th><th>Был активен</th><th></th></tr>
   ${d.users.map(u => `<tr>
     <td><b>${esc(u.nickname)}</b></td>
     <td>${u.level}</td>
@@ -246,19 +433,20 @@ async function renderUsers(){
     <td class="muted">${fmtTime(u.last_active_at)}</td>
     <td style="white-space:nowrap">${u.role === 'player'
         ? (u.status === 'banned'
-          ? `<button class="btn ghost mini" onclick="unban('${u.id}','${esc(u.nickname)}')">Разбанить</button>`
-          : `<button class="btn mini" onclick="deposit('${u.id}','${esc(u.nickname)}')">💰 Депозит</button>
-             <button class="btn ghost mini" onclick="grantXP('${u.id}','${esc(u.nickname)}')">⚡ XP</button>
-             <button class="btn ghost mini" onclick="grantCase('${u.id}','${esc(u.nickname)}')">🎁 Кейс</button>
-             <button class="btn danger mini" onclick="ban('${u.id}','${esc(u.nickname)}')">Бан</button>`)
+          ? `<button class="btn ghost mini" onclick="unban('${u.id}','${esc(u.nickname)}')"><span data-ic="unban"></span>Разбанить</button>`
+          : `<button class="btn mini" onclick="deposit('${u.id}','${esc(u.nickname)}')"><span data-ic="coins"></span>Депозит</button>
+             <button class="btn ghost mini" onclick="grantXP('${u.id}','${esc(u.nickname)}')"><span data-ic="xp"></span>XP</button>
+             <button class="btn ghost mini" onclick="grantCase('${u.id}','${esc(u.nickname)}')"><span data-ic="chest"></span>Кейс</button>
+             <button class="btn danger mini" onclick="ban('${u.id}','${esc(u.nickname)}')"><span data-ic="ban"></span>Бан</button>`)
         : ''}</td>
-  </tr>`).join('')}</table>`;
+  </tr>`).join('')}</table>`);
 }
 
+/* ── Брони ── */
 async function renderBookings(){
   const d = await api('/admin/bookings');
-  document.getElementById('content').innerHTML = d.count === 0
-    ? '<div class="muted" style="padding:30px; text-align:center">Броней впереди нет</div>'
+  setHTML('bookingsTable', d.count === 0
+    ? '<div class="empty">Броней впереди нет</div>'
     : `<table><tr><th>Когда</th><th>Гость</th><th>ПК</th><th>Клуб</th><th>Мин</th><th>Предопл.</th><th>Статус</th><th></th></tr>
   ${d.bookings.map(b => `<tr>
     <td><b>${fmtTime(b.start_time)}</b></td>
@@ -266,49 +454,45 @@ async function renderBookings(){
     <td>${esc(b.computer||'—')}</td>
     <td>${esc(b.club||'—')}</td>
     <td>${b.duration_min}</td>
-    <td>${b.prepaid===false ? '✨ нет' : '💳 да'}</td>
+    <td>${b.prepaid===false ? '<span class="muted">нет</span>' : 'да'}</td>
     <td><span class="st ${b.status}">${b.status}</span></td>
     <td>${(b.status==='pending'||b.status==='confirmed')
-        ? `<button class="btn danger mini" onclick="cancelBooking('${b.id}')">Отменить</button>` : ''}</td>
-  </tr>`).join('')}</table>`;
+        ? `<button class="btn danger mini" onclick="cancelBooking('${b.id}')"><span data-ic="cross"></span>Отменить</button>` : ''}</td>
+  </tr>`).join('')}</table>`);
 }
 
-/* ── каталог приложений ── */
+/* ── Каталог приложений (форма переедет в drawer в А3) ── */
 let catApps = [];
 async function renderCatalogTab(){
   try{
     const d = await api('/admin/catalog');
     catApps = d.apps || [];
   }catch(e){ toast('⚠ ' + e.message); return; }
-  const cat = {game:'🎮 игра', platform:'🚀 платформа', app:'🧩 приложение', system:'⚙️ система'};
-  document.getElementById('content').innerHTML = `
-  <div class="toolrow">
-    <button class="btn mini" onclick="editApp('')">+ Добавить</button>
-    <span class="muted">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
-  </div>
-  <div id="appFormWrap"></div>
+  const cat = {game:'игра', platform:'платформа', app:'приложение', system:'система'};
+  setHTML('catalogTable', `
   <table><tr><th>#</th><th>id</th><th>Название</th><th>Категория</th><th>Запуск (target)</th><th>Вкл</th><th></th></tr>
   ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}">
     <td>${a.sort}</td>
     <td><b>${esc(a.id)}</b></td>
-    <td>${a.tag?'['+esc(a.tag)+'] ':''}${a.emoji?esc(a.emoji)+' ':''}${esc(a.name)}</td>
+    <td>${a.tag?'['+esc(a.tag)+'] ':''}${esc(a.name)}</td>
     <td>${cat[a.category]||a.category}</td>
     <td class="muted" style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(a.target||'—')}</td>
-    <td>${a.enabled?'✅':'⬜'}</td>
+    <td>${a.enabled?'<span data-ic="check"></span>':'<span class="muted">—</span>'}</td>
     <td style="white-space:nowrap">
-      <button class="btn ghost mini" onclick="editApp('${a.id}')">✎</button>
+      <button class="btn ghost mini" onclick="editApp('${a.id}')"><span data-ic="edit"></span></button>
       <button class="btn ghost mini" onclick="toggleApp('${a.id}')">${a.enabled?'Выкл':'Вкл'}</button>
-      <button class="btn danger mini" onclick="deleteApp('${a.id}')">✕</button>
+      <button class="btn danger mini" onclick="deleteApp('${a.id}')"><span data-ic="cross"></span></button>
     </td>
-  </tr>`).join('')}</table>`;
+  </tr>`).join('')}</table>`);
 }
 
 function editApp(id){
   const a = catApps.find(x => x.id === id) || {category:'game', sort:100};
   const isNew = !a.id;
-  document.getElementById('appFormWrap').innerHTML = `
+  const w = document.getElementById('appFormWrap');
+  w.innerHTML = `
   <div style="background:var(--panel); border:1px solid var(--acc); border-radius:14px; padding:16px; margin-bottom:14px">
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px">
       <input id="f_id" class="input" placeholder="id (лат., напр. cs2)" value="${esc(a.id||'')}" ${isNew?'':'disabled'}>
       <input id="f_name" class="input" placeholder="Название" value="${esc(a.name||'')}">
       <select id="f_category" class="input">
@@ -318,19 +502,21 @@ function editApp(id){
         <option value="system" ${a.category==='system'?'selected':''}>система</option>
       </select>
       <input id="f_sort" class="input" placeholder="Порядок (меньше = выше)" value="${a.sort??100}">
-      <input id="f_subtitle" class="input" placeholder="Подпись: игре — платформа (Steam), прилож. — группа (Коммуникация)" value="${esc(a.subtitle||'')}">
+      <input id="f_subtitle" class="input" placeholder="Подпись: игре — платформа (Steam), прилож. — группа" value="${esc(a.subtitle||'')}">
       <input id="f_tag" class="input" placeholder="TAG на тайле (CS2)" value="${esc(a.tag||'')}">
       <input id="f_emoji" class="input" placeholder="Эмодзи (для прил.)" value="${esc(a.emoji||'')}">
       <input id="f_colors" class="input" placeholder="Цвета: #f59e0b,#ef4444" value="${esc((a.color_a||'')+(a.color_b?','+a.color_b:''))}">
     </div>
-    <input id="f_target" class="input" style="margin-top:10px" placeholder="target: steam://rungameid/730 или C:\\путь\\игра.exe" value="${esc(a.target||'')}">
-    <input id="f_args" class="input" style="margin-top:10px" placeholder='args (JSON): ["--flag=1"]' value="${esc(a.args||'')}">
+    <input id="f_target" class="input" style="margin-top:10px; width:100%" placeholder="target: steam://rungameid/730 или C:\\путь\\игра.exe" value="${esc(a.target||'')}">
+    <input id="f_args" class="input" style="margin-top:10px; width:100%" placeholder='args (JSON): ["--flag=1"]' value="${esc(a.args||'')}">
     <div style="display:flex; gap:10px; margin-top:12px">
-      <button class="btn mini" onclick="saveApp()">Сохранить</button>
-      <button class="btn ghost mini" onclick="document.getElementById('appFormWrap').innerHTML=''">Отмена</button>
+      <button class="btn mini" onclick="saveApp()"><span data-ic="save"></span>Сохранить</button>
+      <button class="btn ghost mini" onclick="closeAppForm()">Отмена</button>
     </div>
   </div>`;
+  mountIcons(w);
 }
+function closeAppForm(){ document.getElementById('appFormWrap').innerHTML = ''; }
 
 async function saveApp(){
   const v = id => document.getElementById(id).value.trim();
@@ -350,6 +536,7 @@ async function saveApp(){
   try{
     await api('/admin/catalog', {method:'POST', body:JSON.stringify(body)});
     toast('✓ Сохранено: ' + body.id);
+    closeAppForm();
     renderCatalogTab();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -365,7 +552,22 @@ async function deleteApp(id){
   catch(e){ toast('⚠ ' + e.message); }
 }
 
-/* ── действия ── */
+/* ── Журнал ручных начислений ── */
+async function renderGrants(){
+  const d = await api('/admin/grants');
+  setHTML('grantsTable', d.count === 0
+    ? '<div class="empty">Ручных начислений ещё не было</div>'
+    : `<table><tr><th>Когда</th><th>Кому</th><th>Что</th><th>Причина</th><th>Админ</th></tr>
+  ${d.grants.map(g => `<tr>
+    <td class="muted">${fmtTime(g.created_at)}</td>
+    <td><b>${esc(g.nickname||'—')}</b></td>
+    <td>${g.type === 'xp' ? '<span data-ic="xp"></span> +'+(g.amount||0).toLocaleString('ru-RU')+' XP' : '<span data-ic="chest"></span> кейс '+esc(g.case_tier||'')}</td>
+    <td>${esc(g.reason)}</td>
+    <td class="muted">${esc(g.admin||'—')}</td>
+  </tr>`).join('')}</table>`);
+}
+
+/* ── действия (prompt/confirm уйдут в А2 — формы в drawer) ── */
 async function endSession(id, nick){
   if (!confirm('Завершить сессию гостя «'+nick+'»? XP и монеты будут начислены за фактическое время.')) return;
   try{
@@ -376,11 +578,11 @@ async function endSession(id, nick){
 }
 async function ban(id, nick){
   if (!confirm('Забанить «'+nick+'»?')) return;
-  try{ await api('/admin/users/'+id+'/ban', {method:'POST', body:'{}'}); toast('🚫 '+nick+' забанен'); renderUsers(); }
+  try{ await api('/admin/users/'+id+'/ban', {method:'POST', body:'{}'}); toast('🚫 '+nick+' забанен'); renderUsersTable(); }
   catch(e){ toast('⚠ ' + e.message); }
 }
 async function unban(id, nick){
-  try{ await api('/admin/users/'+id+'/unban', {method:'POST', body:'{}'}); toast('✓ '+nick+' разбанен'); renderUsers(); }
+  try{ await api('/admin/users/'+id+'/unban', {method:'POST', body:'{}'}); toast('✓ '+nick+' разбанен'); renderUsersTable(); }
   catch(e){ toast('⚠ ' + e.message); }
 }
 async function grantXP(id, nick){
@@ -394,10 +596,9 @@ async function grantXP(id, nick){
     const d = await api('/admin/users/'+id+'/grant', {method:'POST',
       body:JSON.stringify({type:'xp', amount, reason})});
     toast('⚡ '+nick+': +'+amount+' XP' + (d.levels_gained > 0 ? ' → LVL '+d.level+' 🎉' : ''));
-    renderUsers();
+    renderUsersTable();
   }catch(e){ toast('⚠ ' + e.message); }
 }
-
 async function grantCase(id, nick){
   const tier = prompt('Тир кейса для «'+nick+'»: light / medium / heavy / titan / gods', 'light');
   if (tier === null) return;
@@ -409,21 +610,6 @@ async function grantCase(id, nick){
     toast('🎁 '+nick+': кейс ' + tier.trim().toLowerCase());
   }catch(e){ toast('⚠ ' + e.message); }
 }
-
-async function renderGrants(){
-  const d = await api('/admin/grants');
-  document.getElementById('content').innerHTML = d.count === 0
-    ? '<div class="muted" style="padding:30px; text-align:center">Ручных начислений ещё не было</div>'
-    : `<table><tr><th>Когда</th><th>Кому</th><th>Что</th><th>Причина</th><th>Админ</th></tr>
-  ${d.grants.map(g => `<tr>
-    <td class="muted">${fmtTime(g.created_at)}</td>
-    <td><b>${esc(g.nickname||'—')}</b></td>
-    <td>${g.type === 'xp' ? '⚡ +'+(g.amount||0).toLocaleString('ru-RU')+' XP' : '🎁 кейс '+esc(g.case_tier||'')}</td>
-    <td>${esc(g.reason)}</td>
-    <td class="muted">${esc(g.admin||'—')}</td>
-  </tr>`).join('')}</table>`;
-}
-
 async function deposit(id, nick){
   const raw = prompt('Пополнение для «'+nick+'» — сумма в злотых (курс: 1 zł = 10 монет):', '50');
   if (raw === null) return;
@@ -435,24 +621,73 @@ async function deposit(id, nick){
     toast('💰 '+nick+': +'+d.coins_granted+' монет'
       + (d.bonus_coins > 0 ? ' (+'+d.bonus_coins+' бонус таланта)' : '')
       + (d.case_granted ? ' + кейс за депозит 🎁' : ''));
-    renderUsers();
+    renderUsersTable();
   }catch(e){ toast('⚠ ' + e.message); }
 }
-
 async function cancelBooking(id){
   if (!confirm('Отменить бронь?')) return;
   try{ await api('/admin/bookings/'+id+'/cancel', {method:'POST', body:'{}'}); toast('📅 Бронь отменена'); renderBookings(); }
   catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* ── drawer (инфраструктура; наполнение — А1/А2/А3) ── */
+function openDrawer(title, html){
+  document.getElementById('drawerTitle').textContent = title;
+  document.getElementById('drawerBody').innerHTML = html;
+  const d = document.getElementById('drawer');
+  d.classList.add('open'); d.setAttribute('aria-hidden','false');
+  mountIcons(d);
+}
+function closeDrawer(){
+  const d = document.getElementById('drawer');
+  d.classList.remove('open'); d.setAttribute('aria-hidden','true');
+}
+
+/* ── toast ── */
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 3500);
 }
 
+/* ── живой поиск гостей: debounce 300мс, Enter — сразу ── */
+(function(){
+  const uq = document.getElementById('uq');
+  let deb = null;
+  uq.addEventListener('input', () => {
+    clearTimeout(deb);
+    deb = setTimeout(() => { userQuery = uq.value.trim(); renderUsersTable(); }, 300);
+  });
+  uq.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ clearTimeout(deb); userQuery = uq.value.trim(); renderUsersTable(); }
+  });
+})();
+
+/* ── хоткеи: 1–7 разделы, «/» — поиск гостя, Esc — закрыть drawer/форму ── */
+document.addEventListener('keydown', e => {
+  if (!me) return;
+  const tag = (e.target.tagName||'').toLowerCase();
+  const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
+  if (e.key === 'Escape'){
+    if (document.getElementById('drawer').classList.contains('open')) closeDrawer();
+    else if (document.getElementById('appFormWrap').innerHTML) closeAppForm();
+    else if (typing) e.target.blur();
+    return;
+  }
+  if (typing) return;
+  if (e.key === '/'){
+    e.preventDefault();
+    nav('users');
+    document.getElementById('uq').focus();
+    return;
+  }
+  const i = parseInt(e.key) - 1;
+  if (i >= 0 && i < SECTIONS.length) nav(SECTIONS[i]);
+});
+
 /* ── старт ── */
 (async function init(){
+  mountIcons();
   if (tokens().a || tokens().r){
     try{
       const u = await api('/me');
