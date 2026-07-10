@@ -118,6 +118,7 @@ func main() {
 		adm.Use(authMiddleware(), adminMiddleware())
 		adm.GET("/overview", handleAdminOverview)
 		adm.GET("/users", handleAdminUsers)
+		adm.GET("/users/:id", handleAdminUserCard) // карточка гостя (спринт А2)
 		adm.POST("/users/:id/ban", handleAdminBan)
 		adm.POST("/users/:id/unban", handleAdminUnban)
 		adm.POST("/users/:id/deposit", handleAdminDeposit)

@@ -116,6 +116,23 @@
   .kv tr:last-child td{border-bottom:0}
   .kv td:last-child{text-align:right}
   .dsub{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px; font-weight:800; margin:18px 0 6px}
+
+  /* ── карточка гостя (А2): действия, формы, мини-вкладки, история ── */
+  .actrow{display:flex; gap:8px; flex-wrap:wrap}
+  .uform{background:var(--card); border:1px solid var(--hair); border-radius:12px; padding:12px;
+         margin-top:10px; display:flex; flex-direction:column; gap:9px}
+  .uform .input{width:100%}
+  .segs{display:flex; gap:6px; flex-wrap:wrap}
+  .segs button{border:1px solid var(--hair); background:transparent; color:var(--dim); border-radius:9px;
+               padding:7px 12px; font-weight:700; font-size:12.5px; cursor:pointer}
+  .segs button.on{border-color:var(--acc); color:var(--txt); background:rgba(255,39,64,.13)}
+  .minitabs{display:flex; gap:4px; margin-bottom:10px}
+  .minitabs button{border:0; background:transparent; color:var(--dim); padding:7px 11px; font-weight:700;
+                   font-size:12.5px; cursor:pointer; border-bottom:2px solid transparent}
+  .minitabs button.on{color:var(--txt); border-bottom-color:var(--acc)}
+  .hist{width:100%; border-collapse:collapse; background:transparent; border:0; font-variant-numeric:tabular-nums}
+  .hist td{padding:7px 4px; border-bottom:1px solid var(--hair); font-size:12.5px; background:transparent; white-space:normal}
+  .hist tr:last-child td{border-bottom:0}
   .sect{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px;
         font-weight:800; margin:20px 2px 9px}
   .sect:first-child{margin-top:0}
@@ -141,8 +158,9 @@
 
   .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:24px; z-index:60;
          background:#131014; border:1px solid var(--acc); border-radius:13px;
-         padding:13px 20px; opacity:0; transition:.3s; pointer-events:none; font-weight:600}
-  .toast.show{opacity:1}
+         padding:13px 20px; opacity:0; transition:.3s; pointer-events:none; font-weight:600;
+         display:flex; align-items:center}
+  .toast.show{opacity:1; pointer-events:auto}
 
   /* ═══ АДАПТИВ: узкий экран — rail сжимается в иконки ═══ */
   @media (max-width:960px){
@@ -248,11 +266,13 @@
 <div id="toast" class="toast"></div>
 
 <script>
-/* ═══ Админка 14:48 — трек А (А0 каркас Noir, А1 Зал), план: ADMIN.md ═══
+/* ═══ Админка 14:48 — трек А (А0 каркас, А1 Зал, А2 Гости), план: ADMIN.md ═══
    А0: rail-навигация, иконки Phosphor duotone (механика data-ic из shell.html),
    drawer, живой поиск с debounce, точечная перерисовка, хоткеи 1–7 / «/» / Esc.
    А1: карта ПК по зонам вместо таблиц, drawer ПК (сессия arm-confirm, ремонт),
-   KPI кликабельны, метка «скоро бронь» (нужен computer_id из /admin/bookings). */
+   KPI кликабельны, метка «скоро бронь» (нужен computer_id из /admin/bookings).
+   А2: карточка гостя (GET /admin/users/:id — профиль+сводка+история), формы
+   депозит/XP/кейс вместо prompt, бан arm-confirm, undo-тосты «Вернуть». */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
@@ -494,21 +514,22 @@ function renderPCDrawer(id){
 }
 
 /* arm-confirm: первый клик взводит кнопку, второй (в течение 4с) — выполняет */
-function armEndSession(btn, id, nick, startedAt){
+function armButton(btn, armedHTML, fn){
   if (btn.dataset.armed !== '1'){
     btn.dataset.armed = '1';
-    const min = Math.max(1, Math.round((Date.now() - new Date(startedAt))/60000));
-    btn.innerHTML = '<span data-ic="power"></span>Ещё раз — завершить (' + min + ' мин)';
+    btn._orig = btn.innerHTML;
+    btn.innerHTML = armedHTML;
     mountIcons(btn);
-    btn._t = setTimeout(() => {
-      btn.dataset.armed = '';
-      btn.innerHTML = '<span data-ic="power"></span>Завершить сессию';
-      mountIcons(btn);
-    }, 4000);
+    btn._t = setTimeout(() => { btn.dataset.armed = ''; btn.innerHTML = btn._orig; mountIcons(btn); }, 4000);
     return;
   }
   clearTimeout(btn._t);
-  endSessionNow(id, nick);
+  btn.dataset.armed = '';
+  fn();
+}
+function armEndSession(btn, id, nick, startedAt){
+  const min = Math.max(1, Math.round((Date.now() - new Date(startedAt))/60000));
+  armButton(btn, '<span data-ic="power"></span>Ещё раз — завершить (' + min + ' мин)', () => endSessionNow(id, nick));
 }
 
 async function endSessionNow(id, nick){
@@ -527,6 +548,180 @@ async function setPCStatus(id, status){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* ── Карточка гостя (А2): профиль + действия формами + история ── */
+let drawerUserId = null, uData = null, uTab = 'sessions', uForm = null;
+let depMethod = 'cash', caseTier = 'light';
+
+async function openUserDrawer(id, form){
+  drawerPCId = null;
+  drawerUserId = id;
+  uForm = form || null;
+  await loadUserDrawer();
+}
+async function loadUserDrawer(){
+  try{ uData = await api('/admin/users/' + drawerUserId); }
+  catch(e){ toast('⚠ ' + e.message); return; }
+  renderUserDrawer();
+}
+
+function fmtDate(iso){
+  const d = new Date(iso);
+  return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+String(d.getFullYear()).slice(2);
+}
+
+function renderUserDrawer(){
+  if (!drawerUserId || !uData) return;
+  const u = uData.user, s = uData.stats;
+  let body = `<table class="kv">
+    <tr><td class="muted">Уровень</td><td><b>${u.level}</b> · ${(u.xp_total||0).toLocaleString('ru-RU')} XP</td></tr>
+    <tr><td class="muted">Монеты</td><td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td></tr>
+    <tr><td class="muted">Роль · статус</td><td>${u.role} · <span class="st ${u.status}">${u.status}</span></td></tr>
+    <tr><td class="muted">Наиграно</td><td>${s.hours_played} ч · сессий ${s.sessions_count}</td></tr>
+    <tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>
+    <tr><td class="muted">Был активен</td><td>${fmtTime(u.last_active_at)}</td></tr>
+    <tr><td class="muted">Аккаунт с</td><td>${fmtDate(u.created_at)}</td></tr>
+  </table>`;
+  if (u.role === 'player'){
+    body += `<div class="dsub">Действия</div>
+    <div class="actrow">
+      <button class="btn mini ${uForm==='deposit'?'':'ghost'}" onclick="uFormToggle('deposit')"><span data-ic="coins"></span>Депозит</button>
+      <button class="btn mini ${uForm==='xp'?'':'ghost'}" onclick="uFormToggle('xp')"><span data-ic="xp"></span>XP</button>
+      <button class="btn mini ${uForm==='case'?'':'ghost'}" onclick="uFormToggle('case')"><span data-ic="chest"></span>Кейс</button>
+      ${u.status === 'banned'
+        ? `<button class="btn ghost mini" onclick="unbanNow('${u.id}','${esc(u.nickname)}')"><span data-ic="unban"></span>Разбанить</button>`
+        : `<button class="btn danger mini" onclick="armBan(this,'${u.id}','${esc(u.nickname)}')"><span data-ic="ban"></span>Бан</button>`}
+    </div>
+    <div id="uFormWrap">${uFormHtml()}</div>`;
+  }
+  body += `<div class="dsub">История</div>
+  <div class="minitabs">
+    <button class="${uTab==='sessions'?'on':''}" onclick="uTabSet('sessions')">Сессии</button>
+    <button class="${uTab==='deposits'?'on':''}" onclick="uTabSet('deposits')">Депозиты</button>
+    <button class="${uTab==='grants'?'on':''}" onclick="uTabSet('grants')">Начисления</button>
+  </div>
+  <div id="uHist">${uHistHtml()}</div>`;
+  openDrawer(u.nickname, body);
+}
+
+function uFormToggle(f){ uForm = (uForm === f) ? null : f; renderUserDrawer(); }
+function uTabSet(t){ uTab = t; renderUserDrawer(); }
+
+function uFormHtml(){
+  if (!uForm) return '';
+  if (uForm === 'deposit') return `<div class="uform">
+    <input id="d_sum" class="input" type="number" min="1" step="1" placeholder="Сумма, zł" value="50">
+    <div class="segs">
+      <button class="${depMethod==='cash'?'on':''}" onclick="depMethod='cash'; renderUserDrawer()">Нал</button>
+      <button class="${depMethod==='card'?'on':''}" onclick="depMethod='card'; renderUserDrawer()">Карта</button>
+      <button class="${depMethod==='blik'?'on':''}" onclick="depMethod='blik'; renderUserDrawer()">BLIK</button>
+    </div>
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitDeposit()">Оформить депозит</button>
+    <div class="muted">1 zł = 10 монет · кейс за депозит от 20 zł</div>
+  </div>`;
+  if (uForm === 'xp') return `<div class="uform">
+    <input id="g_xp" class="input" type="number" min="1" step="5" placeholder="Сколько XP (1–100000)" value="500">
+    <input id="g_xp_r" class="input" placeholder="Причина (обязательно, попадёт в журнал)">
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitXP()">Начислить XP</button>
+  </div>`;
+  return `<div class="uform">
+    <div class="segs">${['light','medium','heavy','titan','gods'].map(t =>
+      `<button class="${caseTier===t?'on':''}" onclick="caseTier='${t}'; renderUserDrawer()">${t}</button>`).join('')}</div>
+    <input id="g_case_r" class="input" placeholder="Причина (обязательно, попадёт в журнал)">
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitCase()">Выдать кейс</button>
+  </div>`;
+}
+
+function uHistHtml(){
+  if (uTab === 'sessions'){
+    const rows = uData.sessions || [];
+    if (!rows.length) return '<div class="empty">Сессий не было</div>';
+    return `<table class="hist">${rows.map(x => `<tr>
+      <td class="muted">${fmtTime(x.started_at)}</td>
+      <td>${esc(x.computer||'—')}</td>
+      <td>${x.status === 'active' ? '<span class="st active">идёт</span>' : x.minutes + ' мин'}</td>
+      <td>+${x.xp_earned} XP · +${x.coins_earned}</td>
+    </tr>`).join('')}</table>`;
+  }
+  if (uTab === 'deposits'){
+    const rows = uData.deposits || [];
+    if (!rows.length) return '<div class="empty">Депозитов не было</div>';
+    return `<table class="hist">${rows.map(x => `<tr>
+      <td class="muted">${fmtTime(x.created_at)}</td>
+      <td><b>${(+x.amount_pln).toLocaleString('ru-RU')} zł</b></td>
+      <td>+${x.coins_granted}${x.bonus_coins > 0 ? ' (+' + x.bonus_coins + ')' : ''}</td>
+      <td class="muted">${esc(x.method)}</td>
+    </tr>`).join('')}</table>`;
+  }
+  const rows = uData.grants || [];
+  if (!rows.length) return '<div class="empty">Начислений не было</div>';
+  return `<table class="hist">${rows.map(x => `<tr>
+    <td class="muted">${fmtTime(x.created_at)}</td>
+    <td>${x.type === 'xp' ? '+' + (x.amount||0) + ' XP' : 'кейс ' + esc(x.case_tier||'')}</td>
+    <td>${esc(x.reason)}</td>
+    <td class="muted">${esc(x.admin||'—')}</td>
+  </tr>`).join('')}</table>`;
+}
+
+/* действия карточки */
+async function submitDeposit(){
+  const amount = parseFloat(String(document.getElementById('d_sum').value).replace(',', '.'));
+  if (!amount || amount <= 0){ toast('⚠ Нужна сумма больше нуля'); return; }
+  try{
+    const d = await api('/admin/users/'+drawerUserId+'/deposit', {method:'POST',
+      body:JSON.stringify({amount_pln: amount, method: depMethod})});
+    toast('💰 +' + d.coins_granted + ' монет'
+      + (d.bonus_coins > 0 ? ' (+' + d.bonus_coins + ' бонус таланта)' : '')
+      + (d.case_granted ? ' + кейс за депозит 🎁' : ''));
+    uForm = null;
+    await loadUserDrawer();
+    renderUsersTable();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function submitXP(){
+  const amount = parseInt(document.getElementById('g_xp').value);
+  const reason = document.getElementById('g_xp_r').value.trim();
+  if (!amount || amount < 1){ toast('⚠ Нужно целое число больше нуля'); return; }
+  if (!reason){ toast('⚠ Причина обязательна'); return; }
+  try{
+    const d = await api('/admin/users/'+drawerUserId+'/grant', {method:'POST',
+      body:JSON.stringify({type:'xp', amount, reason})});
+    toast('⚡ +' + amount + ' XP' + (d.levels_gained > 0 ? ' → LVL ' + d.level + ' 🎉' : ''));
+    uForm = null;
+    await loadUserDrawer();
+    renderUsersTable();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function submitCase(){
+  const reason = document.getElementById('g_case_r').value.trim();
+  if (!reason){ toast('⚠ Причина обязательна'); return; }
+  try{
+    await api('/admin/users/'+drawerUserId+'/grant', {method:'POST',
+      body:JSON.stringify({type:'case', case_tier: caseTier, reason})});
+    toast('🎁 Кейс ' + caseTier + ' выдан');
+    uForm = null;
+    await loadUserDrawer();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armBan(btn, id, nick){
+  armButton(btn, '<span data-ic="ban"></span>Точно забанить?', () => banNow(id, nick));
+}
+async function banNow(id, nick){
+  try{
+    await api('/admin/users/'+id+'/ban', {method:'POST', body:'{}'});
+    toast('🚫 ' + nick + ' забанен', () => unbanNow(id, nick));
+    if (drawerUserId === id) await loadUserDrawer();
+    renderUsersTable();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function unbanNow(id, nick){
+  try{
+    await api('/admin/users/'+id+'/unban', {method:'POST', body:'{}'});
+    toast('✓ ' + nick + ' разбанен', () => banNow(id, nick));
+    if (drawerUserId === id) await loadUserDrawer();
+    renderUsersTable();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 /* ── Гости: живой поиск (debounce 300мс), инпут не пересоздаётся ── */
 let userQuery = '';
 async function renderUsersTable(){
@@ -534,7 +729,7 @@ async function renderUsersTable(){
   setHTML('usersTable', d.users.length === 0
     ? '<div class="empty">Никого не нашлось</div>'
     : `<table><tr><th>Ник</th><th>LVL</th><th>XP</th><th>Монеты</th><th>Роль</th><th>Статус</th><th>Был активен</th><th></th></tr>
-  ${d.users.map(u => `<tr>
+  ${d.users.map(u => `<tr onclick="openUserDrawer('${u.id}')" style="cursor:pointer">
     <td><b>${esc(u.nickname)}</b></td>
     <td>${u.level}</td>
     <td>${(u.xp_total||0).toLocaleString('ru-RU')}</td>
@@ -542,13 +737,8 @@ async function renderUsersTable(){
     <td>${u.role}</td>
     <td><span class="st ${u.status}">${u.status}</span></td>
     <td class="muted">${fmtTime(u.last_active_at)}</td>
-    <td style="white-space:nowrap">${u.role === 'player'
-        ? (u.status === 'banned'
-          ? `<button class="btn ghost mini" onclick="unban('${u.id}','${esc(u.nickname)}')"><span data-ic="unban"></span>Разбанить</button>`
-          : `<button class="btn mini" onclick="deposit('${u.id}','${esc(u.nickname)}')"><span data-ic="coins"></span>Депозит</button>
-             <button class="btn ghost mini" onclick="grantXP('${u.id}','${esc(u.nickname)}')"><span data-ic="xp"></span>XP</button>
-             <button class="btn ghost mini" onclick="grantCase('${u.id}','${esc(u.nickname)}')"><span data-ic="chest"></span>Кейс</button>
-             <button class="btn danger mini" onclick="ban('${u.id}','${esc(u.nickname)}')"><span data-ic="ban"></span>Бан</button>`)
+    <td>${u.role === 'player' && u.status !== 'banned'
+        ? `<button class="btn mini" onclick="event.stopPropagation(); openUserDrawer('${u.id}','deposit')"><span data-ic="coins"></span>Депозит</button>`
         : ''}</td>
   </tr>`).join('')}</table>`);
 }
@@ -678,55 +868,7 @@ async function renderGrants(){
   </tr>`).join('')}</table>`);
 }
 
-/* ── действия (prompt/confirm уйдут в А2 — формы в drawer) ── */
-async function ban(id, nick){
-  if (!confirm('Забанить «'+nick+'»?')) return;
-  try{ await api('/admin/users/'+id+'/ban', {method:'POST', body:'{}'}); toast('🚫 '+nick+' забанен'); renderUsersTable(); }
-  catch(e){ toast('⚠ ' + e.message); }
-}
-async function unban(id, nick){
-  try{ await api('/admin/users/'+id+'/unban', {method:'POST', body:'{}'}); toast('✓ '+nick+' разбанен'); renderUsersTable(); }
-  catch(e){ toast('⚠ ' + e.message); }
-}
-async function grantXP(id, nick){
-  const raw = prompt('Сколько XP начислить «'+nick+'»? (1–100000)', '500');
-  if (raw === null) return;
-  const amount = parseInt(raw);
-  if (!amount || amount < 1){ toast('⚠ Нужно целое число больше нуля'); return; }
-  const reason = prompt('Причина начисления (обязательно, попадёт в журнал):', '');
-  if (reason === null) return;
-  try{
-    const d = await api('/admin/users/'+id+'/grant', {method:'POST',
-      body:JSON.stringify({type:'xp', amount, reason})});
-    toast('⚡ '+nick+': +'+amount+' XP' + (d.levels_gained > 0 ? ' → LVL '+d.level+' 🎉' : ''));
-    renderUsersTable();
-  }catch(e){ toast('⚠ ' + e.message); }
-}
-async function grantCase(id, nick){
-  const tier = prompt('Тир кейса для «'+nick+'»: light / medium / heavy / titan / gods', 'light');
-  if (tier === null) return;
-  const reason = prompt('Причина начисления (обязательно, попадёт в журнал):', '');
-  if (reason === null) return;
-  try{
-    await api('/admin/users/'+id+'/grant', {method:'POST',
-      body:JSON.stringify({type:'case', case_tier: tier.trim().toLowerCase(), reason})});
-    toast('🎁 '+nick+': кейс ' + tier.trim().toLowerCase());
-  }catch(e){ toast('⚠ ' + e.message); }
-}
-async function deposit(id, nick){
-  const raw = prompt('Пополнение для «'+nick+'» — сумма в злотых (курс: 1 zł = 10 монет):', '50');
-  if (raw === null) return;
-  const amount = parseFloat(String(raw).replace(',', '.'));
-  if (!amount || amount <= 0){ toast('⚠ Нужна сумма больше нуля'); return; }
-  try{
-    const d = await api('/admin/users/'+id+'/deposit', {method:'POST',
-      body:JSON.stringify({amount_pln: amount, method: 'cash'})});
-    toast('💰 '+nick+': +'+d.coins_granted+' монет'
-      + (d.bonus_coins > 0 ? ' (+'+d.bonus_coins+' бонус таланта)' : '')
-      + (d.case_granted ? ' + кейс за депозит 🎁' : ''));
-    renderUsersTable();
-  }catch(e){ toast('⚠ ' + e.message); }
-}
+/* ── прочие действия (брони/каталог переедут в drawer в А3) ── */
 async function cancelBooking(id){
   if (!confirm('Отменить бронь?')) return;
   try{ await api('/admin/bookings/'+id+'/cancel', {method:'POST', body:'{}'}); toast('📅 Бронь отменена'); renderBookings(); }
@@ -743,15 +885,30 @@ function openDrawer(title, html){
 }
 function closeDrawer(){
   drawerPCId = null;
+  drawerUserId = null; uData = null; uForm = null;
   const d = document.getElementById('drawer');
   d.classList.remove('open'); d.setAttribute('aria-hidden','true');
 }
 
-/* ── toast ── */
-function toast(msg){
+/* ── toast (второй аргумент — функция undo, добавляет кнопку «Вернуть») ── */
+function toast(msg, undoFn){
   const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 3500);
+  if (undoFn){
+    t.innerHTML = esc(msg) + '<button class="btn ghost mini" style="margin-left:12px" onclick="toastUndo()">Вернуть</button>';
+    t._undo = undoFn;
+  } else {
+    t.textContent = msg;
+    t._undo = null;
+  }
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.classList.remove('show'); t._undo = null; }, undoFn ? 6000 : 3500);
+}
+function toastUndo(){
+  const t = document.getElementById('toast');
+  const f = t._undo; t._undo = null;
+  t.classList.remove('show');
+  if (f) f();
 }
 
 /* ── живой поиск гостей: debounce 300мс, Enter — сразу ── */

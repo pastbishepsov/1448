@@ -86,6 +86,87 @@ func setUserStatus(c *gin.Context, status models.UserStatus) {
 func handleAdminBan(c *gin.Context)   { setUserStatus(c, models.UserStatusBanned) }
 func handleAdminUnban(c *gin.Context) { setUserStatus(c, models.UserStatusActive) }
 
+// GET /admin/users/:id — карточка гостя одним заходом (спринт А2):
+// профиль + сводка + последние 20 сессий/депозитов/начислений.
+func handleAdminUserCard(c *gin.Context) {
+	var user models.User
+	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+
+	var sessions []models.Session
+	db.Preload("Computer").Where("user_id = ?", user.ID).
+		Order("started_at DESC").Limit(20).Find(&sessions)
+
+	var deposits []models.Deposit
+	db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(20).Find(&deposits)
+
+	var grants []models.AdminGrant
+	db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(20).Find(&grants)
+
+	// сводка за всё время
+	var agg struct {
+		Cnt     int64
+		Minutes int64
+	}
+	db.Model(&models.Session{}).
+		Select("COUNT(*) AS cnt, COALESCE(SUM(minutes_used),0) AS minutes").
+		Where("user_id = ?", user.ID).Scan(&agg)
+	var depSum float64
+	db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
+		Where("user_id = ?", user.ID).Scan(&depSum)
+
+	// ники админов для журнала начислений
+	adminIDs := map[string]bool{}
+	for _, g := range grants {
+		adminIDs[g.AdminID.String()] = true
+	}
+	nick := map[string]string{}
+	if len(adminIDs) > 0 {
+		ids := make([]string, 0, len(adminIDs))
+		for id := range adminIDs {
+			ids = append(ids, id)
+		}
+		var admins []models.User
+		db.Where("id IN ?", ids).Find(&admins)
+		for _, a := range admins {
+			nick[a.ID.String()] = a.Nickname
+		}
+	}
+
+	sesOut := make([]gin.H, 0, len(sessions))
+	for _, s := range sessions {
+		row := gin.H{
+			"started_at": s.StartedAt, "status": s.Status, "minutes": s.MinutesUsed,
+			"xp_earned": s.XPEarned, "coins_earned": s.CoinsEarned,
+		}
+		if s.Computer != nil {
+			row["computer"] = s.Computer.Name
+		}
+		sesOut = append(sesOut, row)
+	}
+	grOut := make([]gin.H, 0, len(grants))
+	for _, g := range grants {
+		grOut = append(grOut, gin.H{
+			"created_at": g.CreatedAt, "type": g.GrantType, "amount": g.Amount,
+			"case_tier": g.CaseTier, "reason": g.Reason, "admin": nick[g.AdminID.String()],
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"user": user,
+		"stats": gin.H{
+			"sessions_count": agg.Cnt,
+			"hours_played":   agg.Minutes / 60,
+			"deposited_pln":  depSum,
+		},
+		"sessions": sesOut,
+		"deposits": deposits,
+		"grants":   grOut,
+	})
+}
+
 // GET /admin/computers — все ПК + кто сейчас играет.
 func handleAdminComputers(c *gin.Context) {
 	var computers []models.Computer
