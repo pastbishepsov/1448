@@ -152,6 +152,15 @@
            background:linear-gradient(transparent, rgba(0,0,0,.82))}
   .tp-meta b{display:block; font-size:12.5px; line-height:1.25}
   .tp-meta span{font-size:10.5px; color:var(--dim)}
+
+  /* ── А5: столбики статистики, подписи формы настроек ── */
+  .bars{display:flex; align-items:flex-end; gap:4px; height:130px; background:var(--panel);
+        border:1px solid var(--hair); border-radius:14px; padding:14px 14px 10px}
+  .bars .bar{flex:1; min-height:2px; background:rgba(255,39,64,.5); border-radius:3px 3px 0 0;
+             transition:background .15s}
+  .bars .bar:hover{background:var(--acc)}
+  .barlabels{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin:6px 6px 0}
+  .uform label{font-size:12px; font-weight:700; margin-bottom:-4px}
   .sect{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px;
         font-weight:800; margin:20px 2px 9px}
   .sect:first-child{margin-top:0}
@@ -288,11 +297,27 @@
       </section>
 
       <section id="s-stats" class="hidden">
-        <div class="empty">Статистика появится в спринте А5: выручка, загрузка по часам, топ гостей.</div>
+        <div class="kpis" id="statKpis"></div>
+        <div class="sect">Выручка по дням · 14 дней</div>
+        <div id="statRevenue"><div class="empty">Загрузка…</div></div>
+        <div class="sect">Загрузка по часам суток · за 14 дней</div>
+        <div id="statLoad"><div class="empty">Загрузка…</div></div>
+        <div class="sect">Топ гостей · за 14 дней</div>
+        <div class="tablewrap" id="statTop"><div class="empty">Загрузка…</div></div>
       </section>
 
       <section id="s-settings" class="hidden">
-        <div class="empty">Настройки появятся в спринте А5: тарифы, курс монет, XP/мин.</div>
+        <div class="sect">Экономика клуба</div>
+        <div class="uform" style="max-width:420px; margin-top:0">
+          <label class="muted" for="set_xp">XP за минуту игры</label>
+          <input id="set_xp" class="input" type="number" min="1" max="1000">
+          <label class="muted" for="set_coins">Монет за минуту игры</label>
+          <input id="set_coins" class="input" type="number" min="0" max="1000">
+          <label class="muted" for="set_rate">Монет за 1 zł депозита</label>
+          <input id="set_rate" class="input" type="number" min="1" max="100">
+          <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
+          <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал</div>
+        </div>
       </section>
     </main>
   </div>
@@ -320,7 +345,10 @@
    (restore); каталог — drawer-форма с предпросмотром плитки 2:3, тумблеры,
    порядок ↑↓; confirm() в интерфейсе больше нет.
    А4: журнал → единый аудит (GET /admin/audit: гранты + депозиты + admin_actions,
-   миграция 016), фильтры по типу и нику, относительное время. */
+   миграция 016), фильтры по типу и нику, относительное время.
+   А5: owner-разделы — Статистика (выручка по дням, загрузка по часам, топ
+   гостей) и Настройки экономики (XP/мин, монеты/мин, курс — таблица settings,
+   миграция 017; движок читает из БД). */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
@@ -423,7 +451,10 @@ function nav(t){
     if (btn) btn.classList.toggle('on', x === t);
     document.getElementById('s-' + x).classList.toggle('hidden', x !== t);
   });
-  if (t === 'catalog') renderCatalogTab(); else refresh();
+  if (t === 'catalog') renderCatalogTab();
+  else if (t === 'stats') renderStats();
+  else if (t === 'settings') renderSettings();
+  else refresh();
 }
 
 /* ── обновление (7с). Перерисовываются только таблицы — тулбары и инпуты живут своей жизнью ── */
@@ -664,7 +695,7 @@ function uFormHtml(){
       <button class="${depMethod==='blik'?'on':''}" onclick="depMethod='blik'; renderUserDrawer()">BLIK</button>
     </div>
     <button class="btn" style="width:100%; justify-content:center" onclick="submitDeposit()">Оформить депозит</button>
-    <div class="muted">1 zł = 10 монет · кейс за депозит от 20 zł</div>
+    <div class="muted">Монеты — по курсу клуба (Настройки) · кейс за депозит от 20 zł</div>
   </div>`;
   if (uForm === 'xp') return `<div class="uform">
     <input id="g_xp" class="input" type="number" min="1" step="5" placeholder="Сколько XP (1–100000)" value="500">
@@ -983,12 +1014,14 @@ const AUD_LABEL = {
   session_end:'стоп сессии', pc_maintenance:'ПК в ремонт', pc_available:'ПК в строй',
   booking_create:'бронь', booking_cancel:'отмена брони', booking_restore:'возврат брони',
   catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
+  settings_update:'настройки',
 };
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
   pc_maintenance:'wrench', pc_available:'check', booking_create:'cal',
   booking_cancel:'cross', booking_restore:'cal',
   catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
+  settings_update:'gear',
 };
 function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
 function relTime(iso){
@@ -1091,6 +1124,68 @@ async function submitBooking(){
     toast('📅 Бронь: ' + d.nickname + ' · ' + (d.computer||'') + ' · ' + fmtTime(d.start_time));
     closeDrawer();
     renderBookings();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* ── Статистика владельца (А5): выручка, загрузка, топ гостей ── */
+function fmtPLN(v){ return (+v || 0).toLocaleString('ru-RU'); }
+function lblDate(d){ return d ? d.date.slice(8,10)+'.'+d.date.slice(5,7) : ''; }
+
+async function renderStats(){
+  try{
+    const [rev, load] = await Promise.all([
+      api('/admin/stats/revenue?days=14'),
+      api('/admin/stats/load?days=14'),
+    ]);
+    document.getElementById('statKpis').innerHTML =
+      `<div class="kpi">Сегодня <b>${fmtPLN(rev.today_pln)} zł</b></div>
+       <div class="kpi">7 дней <b>${fmtPLN(rev.week_pln)} zł</b></div>
+       <div class="kpi">14 дней <b>${fmtPLN(rev.total_pln)} zł</b></div>`;
+    const days = rev.days || [];
+    const maxP = Math.max(1, ...days.map(d => d.pln));
+    document.getElementById('statRevenue').innerHTML =
+      `<div class="bars">${days.map(d =>
+        `<div class="bar" style="height:${Math.max(2, Math.round(d.pln/maxP*100))}%" title="${lblDate(d)} · ${fmtPLN(d.pln)} zł · депозитов: ${d.count}"></div>`).join('')}</div>
+       <div class="barlabels"><span>${lblDate(days[0])}</span><span>${lblDate(days[days.length-1])}</span></div>`;
+    const hours = load.hours || [];
+    const maxM = Math.max(1, ...hours.map(h => h.minutes));
+    document.getElementById('statLoad').innerHTML =
+      `<div class="bars">${hours.map(h =>
+        `<div class="bar" style="height:${Math.max(2, Math.round(h.minutes/maxM*100))}%" title="${h.hour}:00 · ${Math.round(h.minutes/60)} ч игры · сессий: ${h.sessions}"></div>`).join('')}</div>
+       <div class="barlabels"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>`;
+    setHTML('statTop', (load.top || []).length === 0
+      ? '<div class="empty">Пока пусто — нужны сессии</div>'
+      : `<table><tr><th>Гость</th><th>Наиграно</th><th>Внесено</th></tr>
+    ${load.top.map(t => `<tr onclick="openUserDrawer('${t.user_id}')" style="cursor:pointer">
+      <td><b>${esc(t.nickname||'—')}</b></td>
+      <td>${Math.floor(t.minutes/60)} ч ${t.minutes%60} м</td>
+      <td>${fmtPLN(t.deposited_pln)} zł</td>
+    </tr>`).join('')}</table>`);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* ── Настройки экономики (А5, только owner) ── */
+async function renderSettings(){
+  try{
+    const d = await api('/admin/settings');
+    document.getElementById('set_xp').value = d.settings.xp_per_min;
+    document.getElementById('set_coins').value = d.settings.coins_per_min;
+    document.getElementById('set_rate').value = d.settings.coins_per_pln;
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function saveSettings(){
+  const body = {
+    xp_per_min: parseInt(document.getElementById('set_xp').value),
+    coins_per_min: parseInt(document.getElementById('set_coins').value),
+    coins_per_pln: parseInt(document.getElementById('set_rate').value),
+  };
+  for (const k in body){
+    if (!Number.isInteger(body[k]) || body[k] < 0){ toast('⚠ Нужны целые неотрицательные числа'); return; }
+  }
+  try{
+    await api('/admin/settings', {method:'PUT', body:JSON.stringify(body)});
+    toast('✓ Настройки сохранены — действуют на новые начисления');
+    renderSettings();
   }catch(e){ toast('⚠ ' + e.message); }
 }
 

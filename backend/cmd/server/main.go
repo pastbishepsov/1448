@@ -137,6 +137,14 @@ func main() {
 		adm.POST("/catalog", handleAdminCatalogUpsert)
 		adm.POST("/catalog/:id/toggle", handleAdminCatalogToggle)
 		adm.DELETE("/catalog/:id", handleAdminCatalogDelete)
+
+		// Owner-only: статистика и настройки экономики (спринт А5)
+		own := adm.Group("")
+		own.Use(ownerMiddleware())
+		own.GET("/stats/revenue", handleAdminStatsRevenue)
+		own.GET("/stats/load", handleAdminStatsLoad)
+		own.GET("/settings", handleAdminSettingsGet)
+		own.PUT("/settings", handleAdminSettingsPut)
 	}
 
 	port := getenv("SERVER_PORT", "8080")

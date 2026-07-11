@@ -14,7 +14,8 @@ import (
 	"github.com/pastbishepsov/1448/backend/internal/websocket"
 )
 
-// Параметры начисления. Простые на старте — позже вынесем в конфиг/Admin Panel.
+// Дефолты начисления. Рабочие значения владелец задаёт в админке —
+// таблица settings (миграция 017), чтение через settingInt64 (спринт А5).
 const (
 	xpPerMinute    int64 = 10
 	coinsPerMinute int64 = 2
@@ -231,10 +232,14 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 	// Ранг аккаунта (по наигранным часам) множит XP/coins и бустит кейсы.
 	rank, _ := accountRankFor(userHoursPlayed(userID))
 
+	// Ставки начисления — из настроек клуба (settings, спринт А5).
+	xpRate := settingInt64("xp_per_min", xpPerMinute)
+	coinRate := settingInt64("coins_per_min", coinsPerMinute)
+
 	// XP: базовый × (1 + xp_boost) × множитель ранга. Итог кратен 5 (правило цифр).
-	xpGained := models.RoundToStep(int64(math.Round(float64(boostedXP(int64(minutes)*xpPerMinute, talentEffect(userID, "xp_boost")))*rank.XPMult)), 5)
+	xpGained := models.RoundToStep(int64(math.Round(float64(boostedXP(int64(minutes)*xpRate, talentEffect(userID, "xp_boost")))*rank.XPMult)), 5)
 	// coins: базовый × множитель ранга. Итог кратен 5.
-	coinsGained := models.RoundToStep(int64(math.Round(float64(int64(minutes)*coinsPerMinute)*rank.CoinMult)), 5)
+	coinsGained := models.RoundToStep(int64(math.Round(float64(int64(minutes)*coinRate)*rank.CoinMult)), 5)
 
 	// Первый визит за день: +50 XP (фиксировано, без модификаторов — ТЗ 4.1).
 	dailyBonusXP := int64(0)

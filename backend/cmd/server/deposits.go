@@ -30,9 +30,10 @@ const (
 )
 
 // depositCoins — монеты за депозит: база по курсу + бонус таланта coin_mint.
-// Чистая функция (тестируется отдельно). Оба значения кратны 5 (правило цифр).
-func depositCoins(amountPLN, mintEffect float64) (base, bonus int64) {
-	base = models.RoundToStep(int64(math.Round(amountPLN*float64(coinsPerPLN))), 5)
+// Курс rate приходит из настроек клуба (settings, спринт А5), дефолт —
+// coinsPerPLN. Чистая функция (тест). Оба значения кратны 5 (правило цифр).
+func depositCoins(amountPLN, mintEffect float64, rate int64) (base, bonus int64) {
+	base = models.RoundToStep(int64(math.Round(amountPLN*float64(rate))), 5)
 	if mintEffect > 0 {
 		bonus = models.RoundToStep(int64(math.Round(float64(base)*mintEffect)), 5)
 	}
@@ -97,7 +98,8 @@ func handleAdminDeposit(c *gin.Context) {
 		return
 	}
 
-	base, bonus := depositCoins(req.AmountPLN, talentEffect(user.ID.String(), "coin_mint"))
+	base, bonus := depositCoins(req.AmountPLN, talentEffect(user.ID.String(), "coin_mint"),
+		settingInt64("coins_per_pln", coinsPerPLN))
 
 	var createdBy *uuid.UUID
 	if adminID, err := uuid.Parse(c.GetString("user_id")); err == nil {
