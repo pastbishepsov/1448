@@ -58,6 +58,7 @@
   .live{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); font-weight:700; margin-left:auto}
   .live .dot{width:7px; height:7px; border-radius:50%; background:var(--green)}
   .live.bad .dot{background:var(--acc)}
+  .live.bad{color:var(--acc3)}
   .who{font-size:13px; color:var(--dim); font-weight:700}
   .who b{color:var(--txt)}
 
@@ -208,9 +209,27 @@
     .hallrow{flex-direction:column}
     .feed{width:100%; max-height:240px}
   }
+  /* ═══ А7: телефон — нижняя навигация, таблицы карточками, drawer листом ═══ */
   @media (max-width:640px){
     .who .role{display:none}
     th,td{padding:9px 10px; font-size:13px}
+    .shellrow{flex-direction:column}
+    .rail{position:fixed; left:0; right:0; bottom:0; width:auto; z-index:40;
+          flex-direction:row; justify-content:space-around; gap:0;
+          border-right:0; border-top:1px solid var(--hair); padding:7px 4px calc(7px + env(safe-area-inset-bottom))}
+    .rail button{width:auto; padding:9px 11px}
+    .rail .sep,.rail .grow{display:none}
+    .content{padding:14px 12px 86px}
+    #drawer{width:100%}
+    .feed{max-height:200px}
+    /* таблицы разделов → карточки (шапка-строка скрывается) */
+    .tablewrap table,.tablewrap tbody{display:block}
+    .tablewrap table{border:0; background:transparent}
+    .tablewrap tr{display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center;
+          background:var(--panel); border:1px solid var(--hair); border-radius:13px;
+          padding:10px 12px; margin-bottom:8px}
+    .tablewrap tr:first-child{display:none}
+    .tablewrap td{display:inline-flex; align-items:center; border:0; padding:0; white-space:normal}
   }
 </style>
 </head>
@@ -219,7 +238,7 @@
 <div id="loginView">
   <div class="logo" style="font-size:40px">14<b>:</b>48 <span class="muted" style="font-size:16px">ADMIN</span></div>
   <div class="logincard">
-    <input id="nick" class="input" placeholder="Никнейм администратора" autocomplete="off">
+    <input id="nick" class="input" placeholder="Никнейм администратора" autocomplete="off" autofocus>
     <input id="pass" class="input" type="password" placeholder="Пароль" onkeydown="if(event.key==='Enter')login()">
     <div id="loginErr" class="err"></div>
     <button class="btn" style="justify-content:center" onclick="login()">Войти</button>
@@ -235,16 +254,16 @@
   </div>
   <div class="shellrow">
     <nav class="rail" id="rail">
-      <button id="r-hall" class="on" onclick="nav('hall')"><span data-ic="monitor"></span><span class="rlabel">Зал</span></button>
-      <button id="r-users" onclick="nav('users')"><span data-ic="users"></span><span class="rlabel">Гости</span></button>
-      <button id="r-bookings" onclick="nav('bookings')"><span data-ic="cal"></span><span class="rlabel">Брони</span></button>
-      <button id="r-catalog" onclick="nav('catalog')"><span data-ic="apps"></span><span class="rlabel">Каталог</span></button>
-      <button id="r-grants" onclick="nav('grants')"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
+      <button id="r-hall" class="on" onclick="nav('hall')" aria-label="Зал"><span data-ic="monitor"></span><span class="rlabel">Зал</span></button>
+      <button id="r-users" onclick="nav('users')" aria-label="Гости"><span data-ic="users"></span><span class="rlabel">Гости</span></button>
+      <button id="r-bookings" onclick="nav('bookings')" aria-label="Брони"><span data-ic="cal"></span><span class="rlabel">Брони</span></button>
+      <button id="r-catalog" onclick="nav('catalog')" aria-label="Каталог"><span data-ic="apps"></span><span class="rlabel">Каталог</span></button>
+      <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
       <div class="sep ownerOnly hidden"></div>
-      <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')"><span data-ic="chart"></span><span class="rlabel">Статистика</span></button>
-      <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')"><span data-ic="gear"></span><span class="rlabel">Настройки</span></button>
+      <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Статистика"><span data-ic="chart"></span><span class="rlabel">Статистика</span></button>
+      <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Настройки"><span data-ic="gear"></span><span class="rlabel">Настройки</span></button>
       <div class="grow"></div>
-      <button onclick="logout()"><span data-ic="out"></span><span class="rlabel">Выйти</span></button>
+      <button onclick="logout()" aria-label="Выйти"><span data-ic="out"></span><span class="rlabel">Выйти</span></button>
     </nav>
 
     <main class="content">
@@ -342,7 +361,7 @@
 <aside id="drawer" aria-hidden="true">
   <div class="dhead">
     <h3 id="drawerTitle"></h3>
-    <button class="btn ghost mini" onclick="closeDrawer()"><span data-ic="cross"></span></button>
+    <button class="btn ghost mini" onclick="closeDrawer()" aria-label="Закрыть"><span data-ic="cross"></span></button>
   </div>
   <div class="dbody" id="drawerBody"></div>
 </aside>
@@ -367,7 +386,9 @@
    миграция 017; движок читает из БД).
    А6: live-канал /ws/admin (токен в query): события session_start/end,
    shell_online/offline, deposit, booking → живая лента в Зале, точечные
-   обновления с debounce; при живом WS поллинг 30с, при разрыве — 7с. */
+   обновления с debounce; при живом WS поллинг 30с, при разрыве — 7с.
+   А7: телефон — rail снизу, таблицы карточками, drawer на весь экран;
+   пустые состояния-приглашения; раздел переживает перезагрузку; aria. */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
@@ -459,7 +480,10 @@ function enter(){
   document.getElementById('who').innerHTML = '<b>' + esc(me.nickname) + '</b> <span class="role">· ' + esc(me.role) + '</span>';
   document.querySelectorAll('.ownerOnly').forEach(el => el.classList.toggle('hidden', me.role !== 'owner'));
   mountIcons();
-  refresh();
+  // вернуться в раздел, где работали до перезагрузки (А7)
+  const saved = localStorage.getItem('1448a_tab') || 'hall';
+  nav((saved === 'stats' || saved === 'settings') && me.role !== 'owner' ? 'hall' : saved);
+  if (curTab === 'catalog' || curTab === 'stats' || curTab === 'settings') refresh(); // KPI в шапке
   setPolling(7000);
   connectWS();
 }
@@ -468,6 +492,7 @@ function enter(){
 function nav(t){
   if ((t === 'stats' || t === 'settings') && (!me || me.role !== 'owner')) return;
   curTab = t;
+  localStorage.setItem('1448a_tab', t); // раздел переживает перезагрузку (А7)
   SECTIONS.forEach(x => {
     const btn = document.getElementById('r-' + x);
     if (btn) btn.classList.toggle('on', x === t);
@@ -630,7 +655,7 @@ async function renderHall(){
   const zones = {};
   hallData.forEach(pc => { const z = pc.zone || 'Без зоны'; (zones[z] = zones[z] || []).push(pc); });
   document.getElementById('hallMap').innerHTML = hallData.length === 0
-    ? '<div class="empty">ПК не заведены</div>'
+    ? '<div class="empty">ПК ещё не заведены — добавь компьютеры клуба (seed_dev.sql), и карта оживёт</div>'
     : Object.keys(zones).sort().map(z => `
       <div class="sect">Зона: ${esc(z)}</div>
       <div class="pcgrid">${zones[z].map(pc => pcTile(pc, soon[pc.id])).join('')}</div>`).join('');
@@ -901,7 +926,9 @@ let userQuery = '';
 async function renderUsersTable(){
   const d = await api('/admin/users' + (userQuery ? '?q='+encodeURIComponent(userQuery) : ''));
   setHTML('usersTable', d.users.length === 0
-    ? '<div class="empty">Никого не нашлось</div>'
+    ? (userQuery
+      ? '<div class="empty">По запросу «' + esc(userQuery) + '» никого — проверь ник</div>'
+      : '<div class="empty">Гостей ещё нет — первый появится после регистрации на гостевом экране</div>')
     : `<table><tr><th>Ник</th><th>LVL</th><th>XP</th><th>Монеты</th><th>Роль</th><th>Статус</th><th>Был активен</th><th></th></tr>
   ${d.users.map(u => `<tr onclick="openUserDrawer('${u.id}')" style="cursor:pointer">
     <td><b>${esc(u.nickname)}</b></td>
@@ -936,7 +963,7 @@ async function renderBookings(){
     return true;
   });
   setHTML('bookingsTable', rows.length === 0
-    ? '<div class="empty">Броней по этому фильтру нет</div>'
+    ? '<div class="empty">Броней по этому фильтру нет — «Новая бронь» создаст первую</div>'
     : `<table><tr><th>Когда</th><th>Гость</th><th>ПК</th><th>Клуб</th><th>Мин</th><th>Предопл.</th><th>Статус</th><th></th></tr>
   ${rows.map(b => `<tr>
     <td><b>${fmtTime(b.start_time)}</b></td>
@@ -959,7 +986,9 @@ async function renderCatalogTab(){
     catApps = d.apps || [];
   }catch(e){ toast('⚠ ' + e.message); return; }
   const cat = {game:'игра', platform:'платформа', app:'приложение', system:'система'};
-  setHTML('catalogTable', `
+  setHTML('catalogTable', catApps.length === 0
+    ? '<div class="empty">Каталог пуст — «Добавить» заведёт первую игру или приложение</div>'
+    : `
   <table><tr><th>#</th><th>id</th><th>Название</th><th>Категория</th><th>Запуск (target)</th><th>Вкл</th><th></th></tr>
   ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}">
     <td class="muted">${a.sort}</td>
@@ -971,8 +1000,8 @@ async function renderCatalogTab(){
     <td style="white-space:nowrap">
       <button class="btn ghost mini" onclick="moveApp('${a.id}',-1)" title="Выше в списке">↑</button>
       <button class="btn ghost mini" onclick="moveApp('${a.id}',1)" title="Ниже в списке">↓</button>
-      <button class="btn ghost mini" onclick="editApp('${a.id}')"><span data-ic="edit"></span></button>
-      <button class="btn danger mini" onclick="armDeleteApp(this,'${a.id}')"><span data-ic="cross"></span></button>
+      <button class="btn ghost mini" onclick="editApp('${a.id}')" title="Редактировать"><span data-ic="edit"></span></button>
+      <button class="btn danger mini" onclick="armDeleteApp(this,'${a.id}')" title="Удалить из каталога"><span data-ic="cross"></span></button>
     </td>
   </tr>`).join('')}</table>`);
 }
@@ -1138,7 +1167,9 @@ async function renderAudit(useCache){
     return true;
   });
   setHTML('auditTable', rows.length === 0
-    ? '<div class="empty">Событий по этому фильтру нет</div>'
+    ? (audData.length === 0
+      ? '<div class="empty">Журнал пуст — действия персонала будут записываться сюда</div>'
+      : '<div class="empty">Событий по этому фильтру нет</div>')
     : `<table><tr><th>Когда</th><th>Событие</th><th>Гость</th><th>Детали</th><th>Админ</th></tr>
   ${rows.map(x => `<tr>
     <td class="muted" title="${fmtTime(x.created_at)}">${relTime(x.created_at)}</td>
