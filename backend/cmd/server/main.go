@@ -146,6 +146,11 @@ func main() {
 		own.GET("/stats/load", handleAdminStatsLoad)
 		own.GET("/settings", handleAdminSettingsGet)
 		own.PUT("/settings", handleAdminSettingsPut)
+		// Конструктор зала (спринт А8)
+		own.POST("/computers", handleAdminCreateComputer)
+		own.PATCH("/computers/:id", handleAdminUpdateComputer)
+		own.DELETE("/computers/:id", handleAdminDeleteComputer)
+		own.PATCH("/clubs/:id/layout", handleAdminClubLayout)
 	}
 
 	port := getenv("SERVER_PORT", "8080")

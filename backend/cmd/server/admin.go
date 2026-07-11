@@ -193,7 +193,9 @@ func handleAdminComputers(c *gin.Context) {
 	for _, pc := range computers {
 		row := gin.H{
 			"id": pc.ID, "name": pc.Name, "zone": pc.Zone, "status": pc.Status,
-			"club": pc.Club.Name, "shell_online": hub.IsConnected(pc.ID.String()),
+			"club": pc.Club.Name, "club_id": pc.ClubID,
+			"pos_x": pc.PosX, "pos_y": pc.PosY, // схема зала (спринт А8)
+			"shell_online": hub.IsConnected(pc.ID.String()),
 		}
 		if s, ok := byComputer[pc.ID.String()]; ok {
 			row["session"] = gin.H{
@@ -203,7 +205,18 @@ func handleAdminComputers(c *gin.Context) {
 		}
 		out = append(out, row)
 	}
-	c.JSON(http.StatusOK, gin.H{"count": len(out), "computers": out})
+
+	// Клубы с размерами схем — для позиционной карты (спринт А8).
+	var clubs []models.Club
+	db.Where("is_active = ?", true).Order("name").Find(&clubs)
+	clubsOut := make([]gin.H, 0, len(clubs))
+	for _, cl := range clubs {
+		clubsOut = append(clubsOut, gin.H{
+			"id": cl.ID, "name": cl.Name, "layout_w": cl.LayoutW, "layout_h": cl.LayoutH,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"count": len(out), "computers": out, "clubs": clubsOut})
 }
 
 func nicknameOf(u *models.User) string {

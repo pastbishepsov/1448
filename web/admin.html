@@ -163,6 +163,29 @@
   .barlabels{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin:6px 6px 0}
   .uform label{font-size:12px; font-weight:700; margin-bottom:-4px}
 
+  /* ── А8: схема зала — позиционная сетка и редактор ── */
+  .hallgridwrap{overflow-x:auto; padding-bottom:4px}
+  .hallgrid{display:grid; gap:6px; background:var(--panel); border:1px solid var(--hair);
+            border-radius:14px; padding:12px}
+  .hcell{aspect-ratio:1; border-radius:9px; border:1px dashed rgba(255,255,255,.045); min-width:54px}
+  .hcell.plus{display:flex; align-items:center; justify-content:center; color:var(--dim);
+              cursor:pointer; font-size:17px; font-weight:700; transition:color .15s, border-color .15s}
+  .hcell.plus:hover{color:var(--txt); border-color:var(--acc)}
+  .hpc{aspect-ratio:1; min-width:54px; border-radius:9px; background:var(--card); border:1px solid var(--hair);
+       display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+       cursor:pointer; overflow:hidden; padding:3px; transition:border-color .15s, background .15s}
+  .hpc:hover{border-color:var(--acc)}
+  .hpc .nm{font-weight:800; font-size:11.5px; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis}
+  .hpc .inf{font-size:10px; color:var(--dim); font-weight:700; white-space:nowrap; max-width:100%;
+            overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums}
+  .hpc.busy{background:rgba(255,39,64,.13); border-color:rgba(255,39,64,.33)}
+  .hpc.busy .inf{color:var(--acc3)}
+  .hpc.maint{border-color:rgba(251,146,60,.45)}
+  .hpc.maint .inf{color:var(--orange)}
+  .hpc.off{border-style:dashed; opacity:.8}
+  .hpc.sel,.pc.sel{outline:2px solid var(--acc); outline-offset:2px}
+  .editbar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px}
+
   /* ── А6: живая лента Зала ── */
   .hallrow{display:flex; gap:16px; align-items:flex-start}
   .feed{width:232px; flex:none; background:var(--panel); border:1px solid var(--hair);
@@ -273,6 +296,10 @@
           <div class="kpi" onclick="nav('hall')">Сессий идёт <b id="kSessions">—</b></div>
           <div class="kpi" onclick="nav('hall')">ПК свободно <b id="kPCs">—</b></div>
           <div class="kpi" onclick="nav('bookings')">Броней впереди <b id="kBookings">—</b></div>
+        </div>
+        <div class="toolrow ownerOnly hidden">
+          <button class="btn ghost mini" id="hallEditBtn" onclick="toggleHallEdit()"><span data-ic="edit"></span>Редактор зала</button>
+          <span class="muted hidden" id="hallEditHint">тапни ПК, потом клетку — переставить · повторный тап по ПК — карточка · «+» — новый ПК</span>
         </div>
         <div class="hallrow">
           <div id="hallMap" style="flex:1; min-width:0"><div class="empty">Загрузка…</div></div>
@@ -388,7 +415,11 @@
    shell_online/offline, deposit, booking → живая лента в Зале, точечные
    обновления с debounce; при живом WS поллинг 30с, при разрыве — 7с.
    А7: телефон — rail снизу, таблицы карточками, drawer на весь экран;
-   пустые состояния-приглашения; раздел переживает перезагрузку; aria. */
+   пустые состояния-приглашения; раздел переживает перезагрузку; aria.
+   А8: конструктор зала (owner): позиционная схема клуба (computers.pos_x/y,
+   clubs.layout_w/h — миграция 018), редактор тап-тап (переставить, добавить,
+   переименовать, удалить без истории, размер сетки ±); admin видит схему,
+   но не редактирует; fallback — прежняя группировка по зонам. */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
@@ -469,6 +500,7 @@ function logout(){
   clearTimeout(wsRetry);
   if (ws){ try{ ws.close(); }catch(e){} ws = null; }
   wsOpen = false; feed = [];
+  hallEdit = false; selPCId = null;
   closeDrawer();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
@@ -512,7 +544,7 @@ async function refresh(){
     setText('kSessions', ov.active_sessions);
     setText('kPCs', ov.computers_free + '/' + ov.computers_total);
     setText('kBookings', ov.upcoming_bookings);
-    if (curTab === 'hall') await renderHall();
+    if (curTab === 'hall' && !hallEdit) await renderHall(); // в редакторе не дёргаем схему
     if (curTab === 'users') await renderUsersTable();
     if (curTab === 'bookings') await renderBookings();
     if (curTab === 'grants') await renderAudit();
@@ -634,13 +666,16 @@ function elapsed(iso){
 }
 function esc(s){ const d = document.createElement('div'); d.textContent = s??''; return d.innerHTML; }
 
-/* ── Зал (А1): карта ПК по зонам. Клик по плитке — drawer с действиями ── */
-let hallData = [];      // последний ответ /admin/computers (для drawer)
+/* ── Зал (А1 + А8): позиционная схема клуба, редактор для owner,
+   fallback — группировка по зонам, пока никто не расставлен ── */
+let hallData = [], hallClub = null, hallSoon = {};
 let drawerPCId = null;  // id ПК, открытого в drawer
+let hallEdit = false, selPCId = null, newPCPos = null;
 
 async function renderHall(){
   const [pcs, bk] = await Promise.all([api('/admin/computers'), api('/admin/bookings')]);
   hallData = pcs.computers;
+  hallClub = (pcs.clubs || [])[0] || null;
   // «скоро бронь»: ближайшая живая бронь ПК в окне 60 минут
   const soon = {};
   const now = Date.now();
@@ -652,15 +687,198 @@ async function renderHall(){
     if (!soon[b.computer_id] || new Date(b.start_time) < new Date(soon[b.computer_id]))
       soon[b.computer_id] = b.start_time;
   });
-  const zones = {};
-  hallData.forEach(pc => { const z = pc.zone || 'Без зоны'; (zones[z] = zones[z] || []).push(pc); });
-  document.getElementById('hallMap').innerHTML = hallData.length === 0
-    ? '<div class="empty">ПК ещё не заведены — добавь компьютеры клуба (seed_dev.sql), и карта оживёт</div>'
-    : Object.keys(zones).sort().map(z => `
-      <div class="sect">Зона: ${esc(z)}</div>
-      <div class="pcgrid">${zones[z].map(pc => pcTile(pc, soon[pc.id])).join('')}</div>`).join('');
-  mountIcons(document.getElementById('hallMap'));
+  hallSoon = soon;
+  paintHall();
   if (drawerPCId) renderPCDrawer(drawerPCId); // обновить открытый drawer свежими данными
+}
+
+function paintHall(){
+  const el = document.getElementById('hallMap');
+  if (hallEdit){ paintHallEditor(el); mountIcons(el); return; }
+  const positioned = hallClub ? hallData.filter(p => p.pos_x != null && p.pos_y != null) : [];
+  if (positioned.length){
+    const off = hallData.filter(p => p.pos_x == null || p.pos_y == null);
+    el.innerHTML = hallGridHTML(positioned, false)
+      + (off.length ? '<div class="sect">Вне схемы</div><div class="pcgrid">'
+          + off.map(pc => pcTile(pc, hallSoon[pc.id])).join('') + '</div>' : '');
+  } else if (hallData.length === 0){
+    el.innerHTML = '<div class="empty">ПК ещё не заведены'
+      + (me && me.role === 'owner' ? ' — открой «Редактор зала» и расставь первые машины' : ' — попроси владельца собрать схему зала') + '</div>';
+  } else {
+    // fallback: группировка по зонам (координат ещё нет)
+    const zones = {};
+    hallData.forEach(pc => { const z = pc.zone || 'Без зоны'; (zones[z] = zones[z] || []).push(pc); });
+    el.innerHTML = Object.keys(zones).sort().map(z => `
+      <div class="sect">Зона: ${esc(z)}</div>
+      <div class="pcgrid">${zones[z].map(pc => pcTile(pc, hallSoon[pc.id])).join('')}</div>`).join('');
+  }
+  mountIcons(el);
+}
+
+/* сетка клуба: строки идут подряд, авторазмещение кладёт ровно W клеток в ряд */
+function hallGridHTML(positioned, edit){
+  const W = hallClub.layout_w, H = hallClub.layout_h;
+  const byCell = {};
+  positioned.forEach(pc => { byCell[pc.pos_x + ':' + pc.pos_y] = pc; });
+  let cells = '';
+  for (let y = 0; y < H; y++){
+    for (let x = 0; x < W; x++){
+      const pc = byCell[x + ':' + y];
+      if (pc) cells += hallPCCell(pc, edit);
+      else if (edit) cells += `<div class="hcell plus" onclick="hallCellClick(${x},${y})" title="клетка ${x+1}×${y+1}">+</div>`;
+      else cells += '<div class="hcell"></div>';
+    }
+  }
+  return `<div class="hallgridwrap"><div class="hallgrid" style="grid-template-columns:repeat(${W}, minmax(54px,1fr))">${cells}</div></div>`;
+}
+
+function hallPCCell(pc, edit){
+  const off = !pc.shell_online;
+  let cls = '', inf = 'своб.';
+  if (pc.session){ cls = ' busy'; inf = esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at); }
+  else if (pc.status === 'maintenance'){ cls = ' maint'; inf = 'ремонт'; }
+  else if (!edit && hallSoon[pc.id]){ inf = 'бронь ' + hhmm(hallSoon[pc.id]); }
+  else if (off){ inf = 'offline'; }
+  const sel = edit && selPCId === pc.id ? ' sel' : '';
+  const click = edit ? `hallPCClick('${pc.id}')` : `openPCDrawer('${pc.id}')`;
+  return `<div class="hpc${cls}${off ? ' off' : ''}${sel}" onclick="${click}">
+    <div class="nm">${esc(pc.name)}</div><div class="inf">${inf}</div></div>`;
+}
+
+/* ── редактор зала (А8, только owner) ── */
+function toggleHallEdit(){
+  if (!me || me.role !== 'owner') return;
+  hallEdit = !hallEdit;
+  selPCId = null;
+  const btn = document.getElementById('hallEditBtn');
+  btn.innerHTML = hallEdit ? '<span data-ic="check"></span>Готово' : '<span data-ic="edit"></span>Редактор зала';
+  mountIcons(btn);
+  document.getElementById('hallEditHint').classList.toggle('hidden', !hallEdit);
+  if (hallEdit) paintHall(); else renderHall();
+}
+
+function paintHallEditor(el){
+  if (!hallClub){ el.innerHTML = '<div class="empty">Активный клуб не найден</div>'; return; }
+  const positioned = hallData.filter(p => p.pos_x != null && p.pos_y != null);
+  const off = hallData.filter(p => p.pos_x == null || p.pos_y == null);
+  el.innerHTML = `
+  <div class="editbar">
+    <span class="muted">Схема ${hallClub.layout_w}×${hallClub.layout_h}</span>
+    <div class="segs">
+      <button onclick="layoutResize(-1,0)" title="Убрать столбец">−W</button>
+      <button onclick="layoutResize(1,0)" title="Добавить столбец">+W</button>
+      <button onclick="layoutResize(0,-1)" title="Убрать ряд">−H</button>
+      <button onclick="layoutResize(0,1)" title="Добавить ряд">+H</button>
+    </div>
+    <button class="btn ghost mini" onclick="openNewPCDrawer(null,null)"><span data-ic="plus"></span>ПК вне схемы</button>
+  </div>
+  ${hallData.length === 0 ? '<div class="muted" style="margin-bottom:10px">Пусто — тапни «+» на любой клетке и добавь первый ПК</div>' : ''}
+  ${hallGridHTML(positioned, true)}
+  ${off.length ? '<div class="sect">Вне схемы — тапни ПК, потом клетку</div><div class="pcgrid">'
+      + off.map(pc => `<div class="pc${selPCId === pc.id ? ' sel' : ''}" onclick="hallPCClick('${pc.id}')">
+        <div class="nm">${esc(pc.name)}</div><div class="info">${esc(pc.zone||'—')}</div></div>`).join('') + '</div>' : ''}`;
+}
+
+function hallPCClick(id){
+  if (selPCId === id){ selPCId = null; paintHall(); openPCEditDrawer(id); return; }
+  selPCId = id;
+  paintHall();
+}
+
+async function hallCellClick(x, y){
+  if (selPCId){
+    const id = selPCId;
+    selPCId = null;
+    try{
+      await api('/admin/computers/' + id, {method:'PATCH', body:JSON.stringify({pos_x:x, pos_y:y})});
+      await renderHall();
+    }catch(e){ toast('⚠ ' + e.message); paintHall(); }
+    return;
+  }
+  openNewPCDrawer(x, y);
+}
+
+async function layoutResize(dw, dh){
+  if (!hallClub) return;
+  try{
+    await api('/admin/clubs/' + hallClub.id + '/layout', {method:'PATCH',
+      body:JSON.stringify({layout_w: hallClub.layout_w + dw, layout_h: hallClub.layout_h + dh})});
+    await renderHall();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function openPCEditDrawer(id){
+  const pc = hallData.find(p => p.id === id);
+  if (!pc) return;
+  drawerPCId = null; drawerUserId = null;
+  openDrawer(pc.name, `
+  <div class="uform" style="margin-top:0">
+    <label class="muted" for="hpc_name">Имя ПК</label>
+    <input id="hpc_name" class="input" value="${esc(pc.name)}" maxlength="32">
+    <label class="muted" for="hpc_zone">Зона (подпись, необязательно)</label>
+    <input id="hpc_zone" class="input" value="${esc(pc.zone||'')}" maxlength="32">
+    <div class="muted">${pc.pos_x != null ? 'На схеме: клетка ' + (pc.pos_x+1) + '×' + (pc.pos_y+1) : 'Вне схемы'}</div>
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitPCEdit('${pc.id}')"><span data-ic="save"></span>Сохранить</button>
+    ${pc.pos_x != null ? `<button class="btn ghost" style="width:100%; justify-content:center" onclick="clearPCPos('${pc.id}')">Снять со схемы</button>` : ''}
+    <button class="btn danger" style="width:100%; justify-content:center" onclick="armDeletePC(this,'${pc.id}')"><span data-ic="cross"></span>Удалить ПК</button>
+    <div class="muted">Удалить можно только ПК без истории сессий и броней — иначе оставь его в ремонте</div>
+  </div>`);
+}
+async function submitPCEdit(id){
+  const name = document.getElementById('hpc_name').value.trim();
+  const zone = document.getElementById('hpc_zone').value.trim();
+  if (!name){ toast('⚠ Нужно имя ПК'); return; }
+  try{
+    await api('/admin/computers/' + id, {method:'PATCH', body:JSON.stringify({name, zone})});
+    toast('✓ Сохранено');
+    closeDrawer();
+    await renderHall();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function clearPCPos(id){
+  try{
+    await api('/admin/computers/' + id, {method:'PATCH', body:JSON.stringify({clear_pos:true})});
+    toast('✓ Снят со схемы');
+    closeDrawer();
+    await renderHall();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armDeletePC(btn, id){
+  armButton(btn, 'Точно удалить?', async () => {
+    try{
+      await api('/admin/computers/' + id, {method:'DELETE'});
+      toast('✕ ПК удалён');
+      closeDrawer();
+      await renderHall();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+function openNewPCDrawer(x, y){
+  drawerPCId = null; drawerUserId = null;
+  newPCPos = (x != null) ? {x: x, y: y} : null;
+  openDrawer('Новый ПК', `
+  <div class="uform" style="margin-top:0">
+    <label class="muted" for="hpc_name">Имя ПК</label>
+    <input id="hpc_name" class="input" placeholder="PC-07" maxlength="32">
+    <label class="muted" for="hpc_zone">Зона (подпись, необязательно)</label>
+    <input id="hpc_zone" class="input" placeholder="standard / bootcamp / vip" maxlength="32">
+    <div class="muted">${newPCPos ? 'Клетка ' + (x+1) + '×' + (y+1) : 'Вне схемы — расставишь потом'}</div>
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitNewPC()"><span data-ic="plus"></span>Добавить ПК</button>
+  </div>`);
+  document.getElementById('hpc_name').focus();
+}
+async function submitNewPC(){
+  const name = document.getElementById('hpc_name').value.trim();
+  const zone = document.getElementById('hpc_zone').value.trim();
+  if (!name){ toast('⚠ Нужно имя ПК'); return; }
+  const body = {name: name, zone: zone};
+  if (newPCPos){ body.pos_x = newPCPos.x; body.pos_y = newPCPos.y; }
+  try{
+    await api('/admin/computers', {method:'POST', body:JSON.stringify(body)});
+    toast('✓ ПК добавлен: ' + name);
+    closeDrawer();
+    await renderHall();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 function pcTile(pc, soonAt){
@@ -1130,7 +1348,7 @@ const AUD_GROUPS = {
   users: ['ban','unban'],
   sessions: ['session_end'],
   bookings: ['booking_create','booking_cancel','booking_restore'],
-  pc: ['pc_maintenance','pc_available'],
+  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete'],
 };
 const AUD_LABEL = {
@@ -1139,6 +1357,7 @@ const AUD_LABEL = {
   booking_create:'бронь', booking_cancel:'отмена брони', booking_restore:'возврат брони',
   catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
   settings_update:'настройки',
+  pc_create:'ПК добавлен', pc_update:'ПК изменён', pc_delete:'ПК удалён', layout_update:'схема зала',
 };
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
@@ -1146,6 +1365,7 @@ const AUD_ICON = {
   booking_cancel:'cross', booking_restore:'cal',
   catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
   settings_update:'gear',
+  pc_create:'plus', pc_update:'edit', pc_delete:'cross', layout_update:'monitor',
 };
 function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
 function relTime(iso){

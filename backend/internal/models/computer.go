@@ -24,6 +24,10 @@ type Computer struct {
 	LastSeen  time.Time      `json:"last_seen"`
 	CreatedAt time.Time      `json:"created_at"`
 
+	// Позиция на схеме зала (миграция 018, спринт А8). NULL — вне схемы.
+	PosX *int `json:"pos_x,omitempty" gorm:"column:pos_x"`
+	PosY *int `json:"pos_y,omitempty" gorm:"column:pos_y"`
+
 	Club Club `json:"club,omitempty" gorm:"foreignKey:ClubID"`
 }
 
@@ -41,6 +45,10 @@ type Club struct {
 	// Диапазон: 10–50 zł/час, средний ~23 zł/час
 	BaseRatePLN float64 `json:"base_rate_pln" gorm:"type:decimal(8,2);default:23.00"`
 	RTPModifier float64 `json:"rtp_modifier"  gorm:"type:decimal(4,2);default:1.00"`
+
+	// Размер схемы зала в клетках (миграция 018, спринт А8).
+	LayoutW int `json:"layout_w" gorm:"default:12"`
+	LayoutH int `json:"layout_h" gorm:"default:8"`
 
 	IsActive  bool      `json:"is_active"  gorm:"default:true"`
 	CreatedAt time.Time `json:"created_at"`
