@@ -139,6 +139,13 @@ func handleStartSession(c *gin.Context) {
 		"started_at": session.StartedAt,
 	})
 
+	// Live-событие в админку (спринт А6).
+	hub.AdminBroadcast("session_start", map[string]any{
+		"computer_id": computer.ID.String(),
+		"computer":    computer.Name,
+		"nickname":    user.Nickname,
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"session_id":         session.ID,
 		"started_at":         session.StartedAt,
@@ -323,6 +330,15 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 		"session_id":   session.ID,
 		"xp_earned":    xpGained,
 		"coins_earned": coinsGained,
+	})
+
+	// Live-событие в админку (спринт А6).
+	hub.AdminBroadcast("session_end", map[string]any{
+		"computer_id": session.ComputerID.String(),
+		"nickname":    user.Nickname,
+		"minutes":     minutes,
+		"xp":          xpGained,
+		"coins":       coinsGained,
 	})
 
 	return &finishResult{

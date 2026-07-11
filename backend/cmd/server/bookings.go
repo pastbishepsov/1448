@@ -148,6 +148,11 @@ func handleCreateBooking(c *gin.Context) {
 		return
 	}
 
+	// Live-событие в админку (спринт А6): гость создал бронь сам.
+	hub.AdminBroadcast("booking", map[string]any{
+		"kind": "create", "computer": pick.Name, "start_time": booking.StartTime,
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"booking_id": booking.ID, "status": booking.Status,
 		"computer": pick.Name, "club": club.Name,

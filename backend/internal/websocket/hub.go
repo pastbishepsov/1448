@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -73,12 +74,15 @@ func (c *Client) readPump() {
 	}
 }
 
-// Hub — менеджер всех подключённых PC Shell.
+// Hub — менеджер всех подключённых PC Shell + live-канал админки (А6).
 type Hub struct {
 	clients    map[string]*Client // computerID → client
 	register   chan *Client
 	unregister chan *Client
 	mu         sync.RWMutex
+
+	admins   map[*websocket.Conn]bool // подключённые админки (спринт А6)
+	adminsMu sync.Mutex
 }
 
 func NewHub() *Hub {
@@ -86,6 +90,7 @@ func NewHub() *Hub {
 		clients:    make(map[string]*Client),
 		register:   make(chan *Client, 64),
 		unregister: make(chan *Client, 64),
+		admins:     make(map[*websocket.Conn]bool),
 	}
 }
 
@@ -97,6 +102,7 @@ func (h *Hub) Run() {
 			h.clients[client.ComputerID] = client
 			h.mu.Unlock()
 			log.Printf("WS: PC Shell подключён (computer=%s, club=%s)", client.ComputerID, client.ClubID)
+			h.AdminBroadcast("shell_online", map[string]any{"computer_id": client.ComputerID})
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -106,6 +112,62 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 			log.Printf("WS: PC Shell отключён (computer=%s)", client.ComputerID)
+			h.AdminBroadcast("shell_offline", map[string]any{"computer_id": client.ComputerID})
+		}
+	}
+}
+
+// ── Админ-канал (спринт А6, ADMIN.md): live-события для админки ──
+
+// AdminEvent — обёртка события для админ-клиентов.
+type AdminEvent struct {
+	Type string         `json:"type"`
+	At   time.Time      `json:"at"`
+	Data map[string]any `json:"data,omitempty"`
+}
+
+// ServeAdmin — апгрейд соединения админки; read-loop нужен только для
+// обнаружения разрыва (админка ничего не шлёт).
+func (h *Hub) ServeAdmin(w http.ResponseWriter, r *http.Request) error {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return err
+	}
+	h.adminsMu.Lock()
+	h.admins[conn] = true
+	n := len(h.admins)
+	h.adminsMu.Unlock()
+	log.Printf("WS: админка подключена (всего: %d)", n)
+	go func() {
+		defer func() {
+			h.adminsMu.Lock()
+			delete(h.admins, conn)
+			h.adminsMu.Unlock()
+			conn.Close()
+			log.Printf("WS: админка отключена")
+		}()
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+// AdminBroadcast — рассылка события всем подключённым админкам (best-effort:
+// мёртвые соединения выбрасываются, ошибка никого не роняет).
+func (h *Hub) AdminBroadcast(evType string, data map[string]any) {
+	msg, err := json.Marshal(AdminEvent{Type: evType, At: time.Now(), Data: data})
+	if err != nil {
+		return
+	}
+	h.adminsMu.Lock()
+	defer h.adminsMu.Unlock()
+	for conn := range h.admins {
+		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			delete(h.admins, conn)
+			conn.Close()
 		}
 	}
 }

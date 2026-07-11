@@ -352,6 +352,7 @@ func handleAdminCancelBooking(c *gin.Context) {
 	}
 	target := booking.UserID
 	logAdminAction(c, "booking_cancel", &target, "на "+booking.StartTime.Format("02.01 15:04"))
+	hub.AdminBroadcast("booking", map[string]any{"kind": "cancel", "start_time": booking.StartTime})
 	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusCancelled})
 }
 
@@ -439,6 +440,9 @@ func handleAdminCreateBooking(c *gin.Context) {
 	target := user.ID
 	logAdminAction(c, "booking_create", &target,
 		fmt.Sprintf("%s · %s · %d мин", pick.Name, start.Format("02.01 15:04"), req.DurationMin))
+	hub.AdminBroadcast("booking", map[string]any{
+		"kind": "create", "nickname": user.Nickname, "computer": pick.Name, "start_time": booking.StartTime,
+	})
 	c.JSON(http.StatusCreated, gin.H{
 		"booking_id": booking.ID, "nickname": user.Nickname, "computer": pick.Name,
 		"start_time": booking.StartTime, "duration_min": booking.DurationMin,
@@ -475,5 +479,6 @@ func handleAdminRestoreBooking(c *gin.Context) {
 	}
 	target := booking.UserID
 	logAdminAction(c, "booking_restore", &target, "на "+booking.StartTime.Format("02.01 15:04"))
+	hub.AdminBroadcast("booking", map[string]any{"kind": "restore", "start_time": booking.StartTime})
 	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusConfirmed})
 }

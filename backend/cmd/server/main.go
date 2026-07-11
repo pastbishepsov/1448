@@ -111,6 +111,7 @@ func main() {
 		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
 		v1.GET("/ws/shell", handleShellWS) // ← настоящий
+		v1.GET("/ws/admin", handleAdminWS) // live-канал админки (спринт А6)
 		v1.GET("/catalog", handleGetCatalog) // ← настоящий (гостевой экран + агент)
 
 		// Админка (role=admin/owner из users.role, миграция 008)
@@ -301,6 +302,20 @@ func authMiddleware() gin.HandlerFunc {
 		role, _ := claims["role"].(string)
 		c.Set("user_role", role)
 		c.Next()
+	}
+}
+
+// handleAdminWS — live-канал админки (спринт А6). Браузерный WebSocket не
+// умеет заголовки, поэтому access-токен приходит query-параметром и
+// проверяется здесь вручную (typ=access + роль персонала).
+func handleAdminWS(c *gin.Context) {
+	claims, err := parseToken(c.Query("token"))
+	if err != nil || tokenType(claims) != "access" || !roleIsStaff(claimString(claims, "role")) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "unauthorized", "message": "Нужен access-токен персонала"})
+		return
+	}
+	if err := hub.ServeAdmin(c.Writer, c.Request); err != nil {
+		log.Printf("WS admin: ошибка апгрейда: %v", err)
 	}
 }
 

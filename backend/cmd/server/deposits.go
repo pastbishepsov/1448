@@ -142,6 +142,13 @@ func handleAdminDeposit(c *gin.Context) {
 		DepositCount: userDepositCount(uid),
 	})
 
+	// Live-событие в админку (спринт А6).
+	hub.AdminBroadcast("deposit", map[string]any{
+		"nickname":   user.Nickname,
+		"amount_pln": req.AmountPLN,
+		"coins":      base + bonus,
+	})
+
 	db.First(&user, "id = ?", user.ID) // свежий баланс
 	c.JSON(http.StatusCreated, gin.H{
 		"deposit_id":    dep.ID,

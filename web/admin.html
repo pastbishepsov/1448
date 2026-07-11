@@ -161,6 +161,14 @@
   .bars .bar:hover{background:var(--acc)}
   .barlabels{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin:6px 6px 0}
   .uform label{font-size:12px; font-weight:700; margin-bottom:-4px}
+
+  /* ── А6: живая лента Зала ── */
+  .hallrow{display:flex; gap:16px; align-items:flex-start}
+  .feed{width:232px; flex:none; background:var(--panel); border:1px solid var(--hair);
+        border-radius:14px; padding:12px 14px; max-height:70vh; overflow-y:auto}
+  .feed .fi{font-size:12px; line-height:1.5; padding:6px 0; border-bottom:1px solid var(--hair)}
+  .feed .fi:last-child{border-bottom:0}
+  .feed .ft{color:var(--dim); font-variant-numeric:tabular-nums; margin-right:6px}
   .sect{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px;
         font-weight:800; margin:20px 2px 9px}
   .sect:first-child{margin-top:0}
@@ -197,6 +205,8 @@
     .rail .rlabel{display:none}
     .content{padding:14px 14px 40px}
     .topbar{padding:10px 14px; gap:10px}
+    .hallrow{flex-direction:column}
+    .feed{width:100%; max-height:240px}
   }
   @media (max-width:640px){
     .who .role{display:none}
@@ -245,7 +255,13 @@
           <div class="kpi" onclick="nav('hall')">ПК свободно <b id="kPCs">—</b></div>
           <div class="kpi" onclick="nav('bookings')">Броней впереди <b id="kBookings">—</b></div>
         </div>
-        <div id="hallMap"><div class="empty">Загрузка…</div></div>
+        <div class="hallrow">
+          <div id="hallMap" style="flex:1; min-width:0"><div class="empty">Загрузка…</div></div>
+          <aside class="feed">
+            <div class="dsub" style="margin-top:0">Лента</div>
+            <div id="feedList" class="muted" style="font-size:12px">События появятся здесь</div>
+          </aside>
+        </div>
       </section>
 
       <section id="s-users" class="hidden">
@@ -348,7 +364,10 @@
    миграция 016), фильтры по типу и нику, относительное время.
    А5: owner-разделы — Статистика (выручка по дням, загрузка по часам, топ
    гостей) и Настройки экономики (XP/мин, монеты/мин, курс — таблица settings,
-   миграция 017; движок читает из БД). */
+   миграция 017; движок читает из БД).
+   А6: live-канал /ws/admin (токен в query): события session_start/end,
+   shell_online/offline, deposit, booking → живая лента в Зале, точечные
+   обновления с debounce; при живом WS поллинг 30с, при разрыве — 7с. */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
@@ -426,6 +445,9 @@ function logout(){
     body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null;
   if (refreshIv) clearInterval(refreshIv);
+  clearTimeout(wsRetry);
+  if (ws){ try{ ws.close(); }catch(e){} ws = null; }
+  wsOpen = false; feed = [];
   closeDrawer();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
@@ -438,8 +460,8 @@ function enter(){
   document.querySelectorAll('.ownerOnly').forEach(el => el.classList.toggle('hidden', me.role !== 'owner'));
   mountIcons();
   refresh();
-  if (refreshIv) clearInterval(refreshIv);
-  refreshIv = setInterval(refresh, 7000);
+  setPolling(7000);
+  connectWS();
 }
 
 /* ── навигация ── */
@@ -491,8 +513,8 @@ setInterval(() => {
   if (lastSync === -1){ live.classList.add('bad'); txt.textContent = 'нет связи'; return; }
   if (!lastSync){ txt.textContent = 'подключение…'; return; }
   const s = Math.round((Date.now() - lastSync)/1000);
-  live.classList.toggle('bad', s > 20);
-  txt.textContent = 'обновлено ' + s + ' с назад';
+  live.classList.toggle('bad', s > (wsOpen ? 45 : 20));
+  txt.textContent = wsOpen ? 'live' : ('обновлено ' + s + ' с назад');
   // живой таймер сессии в открытом drawer ПК
   const el = document.getElementById('dElapsed');
   if (el && drawerPCId){
@@ -500,6 +522,79 @@ setInterval(() => {
     if (pc && pc.session) el.textContent = elapsed(pc.session.started_at);
   }
 }, 1000);
+
+/* ── Live-канал (А6): /ws/admin. При живом WS обновления приходят
+   событиями, поллинг замедляется до страховочных 30с; при разрыве —
+   реконнект каждые 5с и fallback на прежний 7с-поллинг ── */
+let ws = null, wsOpen = false, wsRetry = null, refDeb = null;
+let feed = []; // последние события для ленты Зала (кап 30)
+const FEED_ICON = {session_start:'clock', session_end:'power', shell_online:'monitor',
+                   shell_offline:'monitor', deposit:'coins', booking:'cal'};
+
+function setPolling(ms){
+  if (refreshIv) clearInterval(refreshIv);
+  refreshIv = setInterval(refresh, ms);
+}
+function connectWS(){
+  if (!me) return;
+  try{ ws = new WebSocket(API.replace(/^http/, 'ws') + '/ws/admin?token=' + encodeURIComponent(tokens().a || '')); }
+  catch(e){ scheduleWSRetry(); return; }
+  ws.onopen = () => { wsOpen = true; setPolling(30000); refresh(); };
+  ws.onclose = () => {
+    wsOpen = false; ws = null;
+    if (!me) return;
+    setPolling(7000);
+    scheduleWSRetry();
+  };
+  ws.onerror = () => { try{ ws.close(); }catch(e){} };
+  ws.onmessage = ev => {
+    let m = null;
+    try{ m = JSON.parse(ev.data); }catch(e){ return; }
+    if (m && m.type) handleLiveEvent(m);
+  };
+}
+function scheduleWSRetry(){
+  clearTimeout(wsRetry);
+  wsRetry = setTimeout(connectWS, 5000);
+}
+
+function pcName(id){ const pc = hallData.find(p => p.id === id); return pc ? pc.name : 'ПК'; }
+function feedLine(m){
+  const d = m.data || {};
+  switch (m.type){
+    case 'session_start': return (d.nickname||'гость') + ' сел за ' + (d.computer || pcName(d.computer_id));
+    case 'session_end': return (d.nickname||'гость') + ': ' + (d.minutes||0) + ' мин, +' + (d.xp||0) + ' XP, +' + (d.coins||0);
+    case 'shell_online': return pcName(d.computer_id) + ' — shell online';
+    case 'shell_offline': return pcName(d.computer_id) + ' — shell offline';
+    case 'deposit': return (d.nickname||'гость') + ' внёс ' + (+d.amount_pln||0) + ' zł (+' + (d.coins||0) + ' монет)';
+    case 'booking': {
+      const k = {create:'бронь', cancel:'отмена брони', restore:'возврат брони'}[d.kind] || 'бронь';
+      return k + (d.nickname ? ': ' + d.nickname : '') + (d.computer ? ' · ' + d.computer : '')
+        + (d.start_time ? ' · на ' + hhmm(d.start_time) : '');
+    }
+  }
+  return m.type;
+}
+function paintFeed(){
+  const el = document.getElementById('feedList');
+  if (!el) return;
+  el.innerHTML = feed.length === 0
+    ? 'События появятся здесь'
+    : feed.map(m => `<div class="fi"><span class="ft">${hhmm(m.at)}</span><span data-ic="${FEED_ICON[m.type]||'scroll'}"></span> ${esc(feedLine(m))}</div>`).join('');
+  mountIcons(el);
+}
+function liveRefresh(){
+  clearTimeout(refDeb);
+  refDeb = setTimeout(refresh, 300); // события пачкой → одно обновление
+}
+function handleLiveEvent(m){
+  feed.unshift(m);
+  if (feed.length > 30) feed.pop();
+  paintFeed();
+  lastSync = Date.now();
+  if (m.type === 'deposit' && drawerUserId) loadUserDrawer(); // открытая карточка гостя
+  liveRefresh(); // точечно: refresh обновит KPI + текущий раздел (каталог не трогается)
+}
 
 /* ── формат ── */
 function fmtTime(iso){
