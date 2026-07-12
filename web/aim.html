@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>14:48 · АИМ-КАЛИБРАТОР</title>
+<style>
+  :root{
+    --bg:#07090b; --panel:#0b1014; --panel2:#10171c; --line:#1b262c;
+    --ink:#e8f1f0; --dim:#6d8085; --dimmer:#465458;
+    --cool:#33d6bf;        /* measurement / data ink */
+    --cool-soft:rgba(51,214,191,.12);
+    --warm:#ffb454;        /* the answer / optimum */
+    --warm-soft:rgba(255,180,84,.14);
+    --danger:#ff5f6e;
+    --grid:rgba(120,170,170,.045);
+    --mono:'JetBrains Mono','Cascadia Mono',Consolas,ui-monospace,monospace;
+    --disp:'Chakra Petch','Bahnschrift','Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--disp); -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+    background-image:
+      linear-gradient(var(--grid) 1px,transparent 1px),
+      linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:34px 34px;
+  }
+  button{font-family:var(--disp); cursor:pointer}
+  button:focus-visible, input:focus-visible, summary:focus-visible{outline:2px solid var(--cool); outline-offset:2px}
+  .screen{position:fixed; inset:0; display:none}
+  .screen.on{display:block}
+  .center{height:100%; display:flex; align-items:center; justify-content:center; padding:24px}
+
+  /* ---------- shared reticle mark ---------- */
+  .mark{width:30px;height:30px;flex:none;position:relative}
+  .mark::before,.mark::after{content:"";position:absolute;background:var(--cool)}
+  .mark::before{left:50%;top:0;bottom:0;width:1.5px;transform:translateX(-50%)}
+  .mark::after{top:50%;left:0;right:0;height:1.5px;transform:translateY(-50%)}
+  .mark span{position:absolute;inset:9px;border:1.5px solid var(--warm);border-radius:50%}
+
+  /* ---------- setup ---------- */
+  .card{
+    width:min(520px,100%); background:linear-gradient(180deg,var(--panel),#090d10);
+    border:1px solid var(--line); border-radius:14px; padding:30px 30px 26px;
+    box-shadow:0 24px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.02);
+  }
+  .head{display:flex;align-items:center;gap:14px;margin-bottom:4px}
+  .head h1{font-size:23px;font-weight:700;letter-spacing:.14em;margin:0}
+  .eyebrow{font-family:var(--mono);font-size:11px;color:var(--cool);letter-spacing:.32em;margin:0 0 18px 44px}
+  .lede{color:var(--dim);font-size:13.5px;line-height:1.55;margin:0 0 22px;max-width:46ch}
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:12px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-bottom:7px}
+  .field .sub{font-family:var(--mono);font-size:10.5px;color:var(--dimmer);letter-spacing:.04em;margin-top:5px;text-transform:none}
+  .row{display:flex;gap:14px}
+  .row .field{flex:1}
+  input[type=number]{
+    width:100%;background:#070a0c;border:1px solid var(--line);border-radius:8px;
+    color:var(--ink);font-family:var(--mono);font-size:18px;font-weight:500;
+    padding:11px 13px;transition:border-color .15s;
+  }
+  input[type=number]:hover{border-color:#2a3940}
+  input[type=number]:focus{border-color:var(--cool)}
+  select{
+    width:100%;background:#070a0c;border:1px solid var(--line);border-radius:8px;
+    color:var(--ink);font-family:var(--mono);font-size:13px;padding:12px 13px;
+    appearance:none;-webkit-appearance:none;cursor:pointer;
+    background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+    background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px;background-repeat:no-repeat;
+  }
+  select:hover{border-color:#2a3940} select:focus{border-color:var(--cool);outline:none}
+  .chk{display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:.04em;font-size:11px;color:var(--dimmer);font-family:var(--mono)}
+  .chk input{accent-color:var(--cool);width:13px;height:13px}
+  details{border-top:1px solid var(--line);margin-top:6px;padding-top:14px}
+  summary{font-size:11.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;list-style:none;display:flex;align-items:center;gap:8px;user-select:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"+";font-family:var(--mono);color:var(--cool);width:12px}
+  details[open] summary::before{content:"–"}
+  .adv{padding-top:18px}
+  .slider{margin-bottom:15px}
+  .slider .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .slider .top span:first-child{font-size:11.5px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
+  .slider .val{font-family:var(--mono);font-size:14px;color:var(--cool);font-weight:500}
+  input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:var(--line);border-radius:3px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--cool);cursor:pointer;border:3px solid var(--bg);box-shadow:0 0 0 1px var(--cool)}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--cool);cursor:pointer;border:3px solid var(--bg)}
+  .cta{
+    width:100%;margin-top:22px;padding:15px;border:none;border-radius:9px;
+    background:var(--cool);color:#04110e;font-size:14px;font-weight:700;letter-spacing:.2em;
+    transition:filter .15s,transform .05s;
+  }
+  .cta:hover{filter:brightness(1.08)}
+  .cta:active{transform:translateY(1px)}
+  .cta.ghost{background:transparent;border:1px solid var(--line);color:var(--dim);letter-spacing:.16em;font-weight:600;margin-top:12px;padding:12px}
+  .cta.ghost:hover{border-color:var(--cool);color:var(--cool)}
+  .notice{font-family:var(--mono);font-size:11px;color:var(--dimmer);line-height:1.6;margin-top:18px;border-left:2px solid var(--line);padding-left:12px}
+  .warnbox{background:rgba(255,95,110,.07);border:1px solid rgba(255,95,110,.25);border-radius:9px;padding:14px 16px;margin-bottom:18px;font-size:12.5px;color:#ffb3ba;line-height:1.5}
+
+  /* ---------- session ---------- */
+  #arena{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:none}
+  #session.on #arena{cursor:none}
+  .hud{position:absolute;inset:0;pointer-events:none;font-family:var(--mono)}
+  .hud .corner{position:absolute;padding:22px 26px}
+  .hud .tl{top:0;left:0}
+  .hud .tr{top:0;right:0;text-align:right}
+  .hud .label{font-size:10px;letter-spacing:.24em;color:var(--dimmer);text-transform:uppercase;margin-bottom:5px}
+  .hud .big{font-size:17px;color:var(--ink);letter-spacing:.08em}
+  .hud .phase{position:absolute;top:24px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--cool)}
+  .hud .phase.warm{color:var(--warm)}
+  .segbar{display:flex;gap:3px;margin-top:9px}
+  .seg{width:13px;height:4px;background:var(--line);border-radius:1px}
+  .seg.done{background:var(--cool)}
+  .seg.cur{background:var(--warm)}
+  .seg.ab{outline:1px solid rgba(255,180,84,.45);outline-offset:-1px}
+  .seg.ab.done{background:var(--warm)}
+  .prompt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+  .prompt .pulse{width:54px;height:54px;margin-bottom:26px;position:relative}
+  .prompt .pulse::before,.prompt .pulse::after{content:"";position:absolute;background:var(--ink);opacity:.55}
+  .prompt .pulse::before{left:50%;top:14px;bottom:14px;width:1.5px;transform:translateX(-50%)}
+  .prompt .pulse::after{top:50%;left:14px;right:14px;height:1.5px;transform:translateY(-50%)}
+  .prompt .ring{position:absolute;inset:0;border:1.5px solid var(--cool);border-radius:50%;animation:ping 2s ease-out infinite}
+  @keyframes ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.15);opacity:0}}
+  .prompt h2{font-size:24px;font-weight:600;letter-spacing:.16em;margin:0 0 12px}
+  .prompt p{font-family:var(--mono);font-size:12.5px;color:var(--dim);letter-spacing:.08em;margin:0;max-width:42ch;line-height:1.6}
+  .prompt.interrupt h2{color:var(--danger)}
+  .lockhelp{position:absolute;bottom:34px;left:50%;transform:translateX(-50%);background:rgba(255,95,110,.1);border:1px solid rgba(255,95,110,.3);border-radius:9px;padding:13px 18px;font-family:var(--mono);font-size:11.5px;color:#ffb3ba;max-width:440px;text-align:center;line-height:1.6;display:none}
+  @media (prefers-reduced-motion:reduce){.prompt .ring{animation:none;opacity:.4}}
+
+  /* ---------- results ---------- */
+  #results .wrap{height:100%;overflow-y:auto;padding:40px 24px 60px}
+  #results .inner{max-width:840px;margin:0 auto}
+  .rhead{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .rhead h1{font-size:20px;letter-spacing:.14em;margin:0}
+  .rsub{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.04em;margin:0 0 30px 44px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:30px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px}
+  .stat.hero{border-color:rgba(255,180,84,.4);background:linear-gradient(180deg,rgba(255,180,84,.05),var(--panel))}
+  .stat .k{font-size:10.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin-bottom:12px}
+  .stat .v{font-family:var(--mono);font-size:33px;font-weight:700;line-height:1;color:var(--ink)}
+  .stat.hero .v{color:var(--warm)}
+  .stat .u{font-family:var(--mono);font-size:13px;color:var(--dim);margin-left:6px;font-weight:400}
+  .stat .note{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px;line-height:1.5}
+  .stat .up{color:var(--cool)} .stat .dn{color:var(--warm)}
+  .stat.wide{grid-column:1/-1}
+  .stat.verdict{border-color:rgba(51,214,191,.35);background:linear-gradient(180deg,rgba(51,214,191,.05),var(--panel))}
+  .stat.verdict.tie{border-color:var(--line);background:var(--panel)}
+  .stat.verdict .v{font-size:22px;line-height:1.35}
+  .vsbar{display:flex;height:7px;border-radius:4px;overflow:hidden;margin-top:14px;border:1px solid var(--line)}
+  .vsbar i{display:block;height:100%}
+  .vsrow{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:7px}
+  .chartcard{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:22px 20px 14px;margin-bottom:24px}
+  .chartcard .ct{font-size:11.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
+  .chartcard .cd{font-family:var(--mono);font-size:11px;color:var(--dimmer);margin-bottom:14px}
+  .legend{display:flex;gap:20px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px}
+  .legend i{display:inline-block;width:18px;height:0;border-top-width:2px;border-top-style:solid;vertical-align:middle;margin-right:7px}
+  svg{display:block;width:100%;height:auto}
+  .caveats summary{padding:16px 0}
+  .caveats .body{font-size:13px;color:var(--dim);line-height:1.65;padding-bottom:8px}
+  .caveats .body b{color:var(--ink);font-weight:600}
+  .caveats .body p{margin:0 0 12px}
+  .rbtns{display:flex;gap:12px;margin-top:8px}
+  .rbtns button{flex:1;padding:13px;border-radius:9px;font-size:12.5px;letter-spacing:.16em;font-weight:600}
+  .rbtns .copy{background:var(--cool);color:#04110e;border:none}
+  .rbtns .redo{background:transparent;border:1px solid var(--line);color:var(--dim)}
+  .rbtns .redo:hover{border-color:var(--cool);color:var(--cool)}
+  .copied{color:var(--cool)!important}
+
+  /* ---------- calib overlay ---------- */
+  #calib{position:fixed;inset:0;background:rgba(5,7,9,.94);display:none;z-index:20;align-items:center;justify-content:center}
+  #calib.on{display:flex}
+  .calbox{width:min(460px,92%);background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:28px;text-align:center}
+  .calbox h3{font-size:16px;letter-spacing:.1em;margin:0 0 6px}
+  .calbox p{font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.65;margin:0 0 18px}
+  .calreadout{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--cool);margin:14px 0}
+  .calreadout small{font-size:13px;color:var(--dim);font-weight:400}
+  .calstep{display:none}.calstep.on{display:block}
+  .calbox input[type=number]{max-width:160px;margin:0 auto;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- ===================== SETUP ===================== -->
+<section id="setup" class="screen on">
+  <div class="center">
+    <div class="card">
+      <div class="head"><div class="mark"><span></span></div><h1>АИМ-КАЛИБРАТОР</h1></div>
+      <p class="eyebrow"><b style="color:#ff2740">14:48 LAB</b> · BAYESIAN SENS SEARCH · V2</p>
+      <p class="lede">Тренажёр вслепую проведёт тебя по чувствительностям на одном и том же наборе фликов, нормирует каждый флик по сложности (закон Фиттса), отделит реакцию от движения и байесовской моделью найдёт минимум. В конце — слепая A/B-проверка рекомендации против твоей текущей сенсы.</p>
+
+      <div id="gate" class="warnbox" style="display:none">Нужна мышь и десктоп-браузер. На тач-устройстве захват курсора и замер сенсы не работают.</div>
+
+      <div class="row">
+        <div class="field">
+          <label>DPI мыши</label>
+          <input id="dpi" type="number" value="800" min="100" max="32000" step="50">
+          <div class="sub">смотри в софте мыши</div>
+        </div>
+        <div class="field">
+          <label>Текущий sens в CS2</label>
+          <input id="sens" type="number" value="1.00" min="0.05" max="20" step="0.05">
+          <div class="sub">из настроек игры</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Разрешение в CS2</label>
+        <select id="aspect">
+          <option value="1.25" selected>1280×1024 · 5:4</option>
+          <option value="1.3333">4:3 · 1280×960 / 1024×768</option>
+          <option value="1.6">16:10</option>
+          <option value="1.7778">16:9 · нативное</option>
+        </select>
+        <div class="sub" style="margin-top:9px"><label class="chk"><input id="stretch" type="checkbox" checked> растянуто на весь экран (stretched)</label></div>
+      </div>
+
+      <details>
+        <summary>Параметры сессии</summary>
+        <div class="adv">
+          <div class="slider"><div class="top"><span>Раундов</span><span class="val" id="vRounds">14</span></div><input id="rounds" type="range" min="10" max="22" value="14"></div>
+          <div class="slider"><div class="top"><span>Выстрелов в раунде</span><span class="val" id="vFlicks">12</span></div><input id="flicks" type="range" min="8" max="18" value="12"></div>
+          <div class="slider"><div class="top"><span>Размер цели</span><span class="val" id="vTarget">2.2°</span></div><input id="target" type="range" min="12" max="40" value="22"></div>
+          <div class="slider"><div class="top"><span>A/B-раундов в конце</span><span class="val" id="vAb">4</span></div><input id="ab" type="range" min="0" max="6" step="2" value="4"></div>
+          <div class="slider"><div class="top"><span>Диапазон поиска</span><span class="val" id="vRange">×2.6</span></div><input id="range" type="range" min="18" max="30" value="26"></div>
+          <button class="cta ghost" id="calBtn">Точная калибровка свайпом · по желанию</button>
+          <div id="calStatus" class="sub" style="text-align:center;margin-top:8px">множитель не откалиброван — принят 1:1</div>
+        </div>
+      </details>
+
+      <button class="cta" id="startBtn">Начать сессию</button>
+      <p class="notice">Перед сессией отключи акселерацию мыши (Windows → «Повышенная точность установки указателя» снять галку). Студия сенсы 14:48 (кнопка «⌖ Сенса» на экране) умеет проверить и выключить её автоматически.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SESSION ===================== -->
+<section id="session" class="screen">
+  <canvas id="arena"></canvas>
+  <div class="hud">
+    <div class="corner tl">
+      <div class="label">Раунд</div>
+      <div class="big"><span id="hRound">01</span> / <span id="hTotal">14</span></div>
+      <div class="segbar" id="segbar"></div>
+    </div>
+    <div class="corner tr">
+      <div class="label">Точность · осталось</div>
+      <div class="big"><span id="hAcc">—</span> · <span id="hLeft">—</span></div>
+    </div>
+    <div class="phase" id="hPhase"></div>
+  </div>
+  <div class="prompt" id="prompt">
+    <div class="pulse"><div class="ring"></div></div>
+    <h2 id="pTitle">РАУНД 01</h2>
+    <p id="pSub">Кликни, чтобы начать. Чувствительность скрыта — целься по ощущению.</p>
+  </div>
+  <div class="lockhelp" id="lockhelp">Браузер не отдал захват курсора. Кликни по арене ещё раз; если не помогает — открой калибратор отдельным окном браузера.</div>
+</section>
+
+<!-- ===================== RESULTS ===================== -->
+<section id="results" class="screen">
+  <div class="wrap"><div class="inner" id="resultsInner"></div></div>
+</section>
+
+<!-- ===================== CALIB ===================== -->
+<div id="calib">
+  <div class="calbox">
+    <div class="calstep on" id="cs1">
+      <h3>Калибровка свайпом</h3>
+      <p>Поставь мышь к левому краю коврика. Нажми «Замер», одним движением проведи вправо на измеренное линейкой расстояние и нажми <b>Esc</b>.</p>
+      <button class="cta" id="calGo">Замер</button>
+      <button class="cta ghost" id="calCancel">Отмена</button>
+    </div>
+    <div class="calstep" id="cs2">
+      <h3>Веди вправо…</h3>
+      <p>Один ровный свайп. Закончишь — жми Esc.</p>
+      <div class="calreadout"><span id="calPx">0</span> <small>px пройдено</small></div>
+    </div>
+    <div class="calstep" id="cs3">
+      <h3>Сколько сантиметров?</h3>
+      <p>Введи длину свайпа, которую ты отмерил.</p>
+      <input id="calCm" type="number" value="20" min="3" max="80" step="0.5">
+      <div class="calreadout" style="font-size:15px;margin:16px 0 18px"><span id="calK">—</span></div>
+      <button class="cta" id="calApply">Применить</button>
+      <button class="cta ghost" id="calRetry">Заново</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const RAD=Math.PI/180, DEG=180/Math.PI;
+const SENS_CONST=360*2.54/0.022; // 41563.64 ; cm/360 = SENS_CONST/(sens*dpi)
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const wrap=d=>((d+180)%360+360)%360-180;
+const pad=n=>String(n).padStart(2,"0");
+const median=a=>{if(!a.length)return 0;const b=[...a].sort((x,y)=>x-y);const m=b.length>>1;return b.length%2?b[m]:(b[m-1]+b[m])/2;};
+const mad=a=>{const m=median(a);return median(a.map(v=>Math.abs(v-m)));};
+const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;};
+
+/* ---------------- GP (validated separately) ---------------- */
+function cholesky(A){const n=A.length,L=Array.from({length:n},()=>new Float64Array(n));
+  for(let i=0;i<n;i++)for(let j=0;j<=i;j++){let s=A[i][j];for(let k=0;k<j;k++)s-=L[i][k]*L[j][k];
+    if(i===j){if(s<=1e-12)s=1e-12;L[i][j]=Math.sqrt(s);}else L[i][j]=s/L[j][j];}return L;}
+function fwd(L,b){const n=L.length,y=new Float64Array(n);for(let i=0;i<n;i++){let s=b[i];for(let k=0;k<i;k++)s-=L[i][k]*y[k];y[i]=s/L[i][i];}return y;}
+function bwd(L,y){const n=L.length,x=new Float64Array(n);for(let i=n-1;i>=0;i--){let s=y[i];for(let k=i+1;k<n;k++)s-=L[k][i]*x[k];x[i]=s/L[i][i];}return x;}
+function cholSolve(L,b){return bwd(L,fwd(L,b));}
+function rbf(a,b,ell,sf2){const d=a-b;return sf2*Math.exp(-0.5*d*d/(ell*ell));}
+function fitGP(X,Y,ell,sf2,sn2){const n=X.length;
+  const ym=Y.reduce((a,b)=>a+b,0)/n;let yv=n>1?Y.reduce((a,b)=>a+(b-ym)*(b-ym),0)/(n-1):1;let ys=Math.sqrt(yv)||1;
+  const z=Y.map(v=>(v-ym)/ys);
+  // sn2: number (uniform) OR array of RAW per-point SE (same units as Y) -> normalized variance with floor/cap
+  const snArr=Array.isArray(sn2)?sn2.map(se=>clamp((se/ys)*(se/ys),0.02,1.5)):X.map(()=>sn2);
+  const K=Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>rbf(X[i],X[j],ell,sf2)+(i===j?snArr[i]+1e-9:0)));
+  const L=cholesky(K),alpha=cholSolve(L,z);
+  return {predict(xs){const k=X.map(xi=>rbf(xi,xs,ell,sf2));let mean=0;for(let i=0;i<n;i++)mean+=k[i]*alpha[i];
+    const v=cholSolve(L,k);let kk=sf2;for(let i=0;i<n;i++)kk-=k[i]*v[i];if(kk<1e-9)kk=1e-9;
+    return {mean:mean*ys+ym,sd:Math.sqrt(kk)*ys};}};}
+
+/* ---------------- optimizer controller ---------------- */
+class Optimizer{
+  constructor(base,range,rounds){
+    this.logMin=Math.log10(base/range); this.logMax=Math.log10(base*range);
+    this.rounds=rounds; this.X=[]; this.Y=[]; this.SE=[];
+    this.ell=(this.logMax-this.logMin)/3.2; this.sf2=1.0; this.sn2=0.12; this.kappa=1.9;
+    const G=220; this.grid=[]; for(let i=0;i<G;i++)this.grid.push(this.logMin+(this.logMax-this.logMin)*i/(G-1));
+    this.seeds=[this.logMax,this.logMin,(this.logMin+this.logMax)/2]; // bracket extremes, then middle
+  }
+  nextSens(){let lx; if(this.X.length<this.seeds.length)lx=this.seeds[this.X.length]; else lx=this._bo(); return Math.pow(10,lx);}
+  record(sens,cost,se){this.X.push(Math.log10(sens)); this.Y.push(cost); this.SE.push(se||0);}
+  _noise(){return this.SE.some(s=>s>0)?this.SE:this.sn2;}
+  /* learning detrend: fit GP -> residuals vs chronological order -> shrunk OLS slope ->
+     shift all rounds to end-of-session skill -> refit. Removes "you improve during the
+     session so early seed points look worse" bias. */
+  _fit(){
+    const n=this.X.length; let Y=this.Y.slice(), trend=0;
+    if(n>=6){
+      const t=Y.map((_,i)=>i/(n-1));
+      const gp0=fitGP(this.X,Y,this.ell,this.sf2,this._noise());
+      const r=Y.map((y,i)=>y-gp0.predict(this.X[i]).mean);
+      const tm=mean(t); let num=0,den=0;
+      for(let i=0;i<n;i++){num+=(t[i]-tm)*r[i];den+=(t[i]-tm)*(t[i]-tm);}
+      let b=den>1e-9?num/den:0; b*=0.8;
+      const span=Math.max(...Y)-Math.min(...Y)||1;
+      b=clamp(b,-0.6*span,0.6*span); trend=b;
+      Y=Y.map((y,i)=>y-b*(t[i]-1));
+    }
+    return {gp:fitGP(this.X,Y,this.ell,this.sf2,this._noise()),Yadj:Y,trend};
+  }
+  _bo(){const {gp}=this._fit();let best=null;
+    for(const g of this.grid){const p=gp.predict(g);const lcb=p.mean-this.kappa*p.sd;if(!best||lcb<best.lcb)best={x:g,lcb};}return best.x;}
+  posterior(){const {gp,Yadj,trend}=this._fit();
+    const curve=this.grid.map(g=>{const p=gp.predict(g);return {logs:g,sens:Math.pow(10,g),mean:p.mean,sd:p.sd};});
+    let rec=curve[0]; for(const c of curve)if(c.mean<rec.mean)rec=c;
+    // optimum interval: mean within rec.mean + 0.5*sd
+    const thr=rec.mean+Math.max(rec.sd*0.5,1e-6); let lo=rec.sens,hi=rec.sens;
+    for(const c of curve)if(c.mean<=thr){lo=Math.min(lo,c.sens);hi=Math.max(hi,c.sens);}
+    const samples=this.X.map((x,i)=>({sens:Math.pow(10,x),cost:Yadj[i],order:i+1}));
+    let yMin=Infinity,yMax=-Infinity; for(const c of curve){yMin=Math.min(yMin,c.mean-1.6*c.sd);yMax=Math.max(yMax,c.mean+1.6*c.sd);}
+    for(const s of samples){yMin=Math.min(yMin,s.cost);yMax=Math.max(yMax,s.cost);}
+    return {curve,rec,samples,lo,hi,yMin,yMax,trend};}
+}
+
+/* ---------------- config / state ---------------- */
+const VFOV=73.74; // CS2 vertical FOV, aspect-independent
+const cfg={dpi:800,sens:1,pxPerCm:800/2.54,rounds:14,flicks:12,warmup:3,targetRad:2.2,
+  aspect:1.25,aspectLabel:"1280×1024",stretch:true,range:2.6,abRounds:4};
+let opt=null;
+const st={mode:"idle",running:false,phase:"idle",roundIndex:0,testN:1,S:0.022,
+  warmupLeft:0,scoredLeft:0,flickLog:[],queue:[],flickIdx:-1,plannedD:0,actualD:0,
+  activeAt:0,moveT:0,moveAcc:0,hits:0,misses:0,spawnTime:0,endingNormally:false,
+  abMode:false,abQueue:[],abTotal:0,abData:[],
+  calSum:0,lockTimer:null,missFlash:0};
+const SESSION={set:[],rtAll:[],mtAll:[]};
+let yaw=0,pitch=0;
+let target={az:0,el:0};
+
+/* canonical flick set: same D/direction battery for EVERY round (blocked design) —
+   each sensitivity sits the same exam, so between-round luck cancels out */
+function buildFlickSet(n){
+  // widest flick must stay ON SCREEN for the chosen aspect: at 5:4 half-hFOV is only 43.15°
+  const halfH=Math.atan(Math.tan(VFOV*RAD/2)*cfg.aspect)*DEG;
+  const dMax=Math.min(50,halfH-cfg.targetRad-3);
+  const dMin=Math.min(11,dMax*0.35);
+  SESSION.dMax=dMax;
+  const set=[],half=Math.ceil(n/2);
+  for(let i=0;i<n;i++){
+    const side=i%2===0?1:-1;                 // balanced L/R
+    const rank=Math.floor(i/2)+0.5;
+    const d=dMin+(rank/half)*(dMax-dMin);    // evenly spread, always visible
+    const th=(((i*53)%19)-9);                // deterministic vertical tilt −9..+9°
+    set.push({d,side,th});
+  }
+  return set;
+}
+function totalRounds(){return cfg.rounds+st.abTotal;}
+
+/* sens <-> trainer rotation; under measured pxPerCm so the arena FEELS like CS2 */
+function sensToS(N){return 0.022*N*cfg.dpi/(cfg.pxPerCm*2.54);}
+function cm360(N){return SENS_CONST/(N*cfg.dpi);}
+
+/* ---------------- canvas / projection ---------------- */
+const canvas=$("arena"); const ctx=canvas.getContext("2d");
+let W=0,H=0,cx=0,cy=0,fx=400,fy=400,dpr=1,vp={x:0,y:0,w:0,h:0};
+/* CS2 renders vFOV=73.74° always; hFOV follows the game aspect ratio.
+   stretched: game hFOV is mapped across the FULL canvas width -> anamorphic fx≠fy,
+   exactly reproducing 4:3/5:4-stretched visuals (wider targets, faster horizontal flow).
+   not stretched: uniform projection inside a pillarboxed viewport. */
+function resize(){
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  W=canvas.clientWidth; H=canvas.clientHeight;
+  canvas.width=Math.round(W*dpr); canvas.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const hf=2*Math.atan(Math.tan(VFOV*RAD/2)*cfg.aspect);
+  let vw=W,vh=H,ox=0,oy=0;
+  if(!cfg.stretch){
+    vw=Math.min(W,H*cfg.aspect); vh=Math.min(H,W/cfg.aspect);
+    ox=(W-vw)/2; oy=(H-vh)/2;
+  }
+  vp={x:ox,y:oy,w:vw,h:vh};
+  fx=(vw/2)/Math.tan(hf/2); fy=(vh/2)/Math.tan(VFOV*RAD/2);
+  cx=ox+vw/2; cy=oy+vh/2;
+}
+window.addEventListener("resize",resize);
+function dir(az,el){const a=az*RAD,e=el*RAD;return [Math.cos(e)*Math.sin(a),Math.sin(e),Math.cos(e)*Math.cos(a)];}
+function cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+function norm(v){const l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l];}
+function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+function project(az,el){
+  const f=dir(yaw,pitch), v=dir(az,el);
+  const r=norm(cross([0,1,0],f)); const u=cross(f,r);
+  const zc=dot(v,f); if(zc<=0.05)return {vis:false};
+  const x=cx+fx*dot(v,r)/zc, y=cy-fy*dot(v,u)/zc;
+  return {x,y,zc,vis:x>vp.x-60&&x<vp.x+vp.w+60&&y>vp.y-60&&y<vp.y+vp.h+60};
+}
+function angDist(az,el){const d=clamp(dot(dir(yaw,pitch),dir(az,el)),-1,1);return Math.acos(d)*DEG;}
+
+function spawnWarm(){
+  const minOff=14, maxOff=SESSION.dMax||38;
+  let oa=(Math.random()*2-1)*maxOff; if(Math.abs(oa)<minOff)oa+=Math.sign(oa||1)*minOff;
+  let oe=(Math.random()*2-1)*maxOff*0.36;
+  target.az=yaw+oa; target.el=clamp(pitch+oe,-46,46);
+  armFlick();
+}
+function spawnScored(){
+  const fi=st.queue.pop(); const f=SESSION.set[fi];
+  let del=f.d*Math.sin(f.th*RAD);
+  if(Math.abs(pitch+del)>42)del=-del;             // keep pitch in play, same |D|
+  target.az=yaw+f.side*f.d*Math.cos(f.th*RAD);
+  target.el=clamp(pitch+del,-46,46);
+  st.flickIdx=fi; st.plannedD=f.d;
+  armFlick();
+}
+/* 120ms ghost: target visible but inert — hand settles from previous kill,
+   so movement onset (reaction split) is measured cleanly */
+function armFlick(){
+  const now=performance.now();
+  st.activeAt=now+120; st.spawnTime=st.activeAt;
+  st.moveT=0; st.moveAcc=0; st.actualD=0;
+}
+
+/* ---------------- render loop ---------------- */
+let raf=null;
+function loop(){
+  ctx.fillStyle="#07090b"; ctx.fillRect(0,0,W,H);
+  // world grid (motion cues)
+  ctx.lineWidth=1;
+  const yb=Math.round(yaw/10)*10;
+  for(let g=yb-80;g<=yb+80;g+=10){
+    const p1=project(g,pitch-46),p2=project(g,pitch+46);
+    if(p1.vis||p2.vis){ctx.strokeStyle="rgba(90,140,140,.10)";ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
+  }
+  const pb=Math.round(pitch/10)*10;
+  for(let g=pb-50;g<=pb+50;g+=10){
+    const p1=project(yaw-70,g),p2=project(yaw+70,g);
+    if(p1.vis||p2.vis){ctx.strokeStyle=g===0?"rgba(90,140,140,.20)":"rgba(90,140,140,.07)";ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
+  }
+  // target (ellipse: anamorphic projection stretches it exactly like stretched-res CS2)
+  if(st.running){
+    const p=project(target.az,target.el);
+    if(p.vis){
+      const t=Math.tan(cfg.targetRad*RAD)/p.zc;
+      let rx=fx*t, ry=fy*t;
+      if(ry<6){const s=6/ry;rx*=s;ry=6;}
+      const warm=st.phase==="warmup";
+      const ghost=performance.now()<st.activeAt;
+      ctx.save();
+      if(ghost)ctx.globalAlpha=0.32;
+      ctx.shadowBlur=18; ctx.shadowColor=warm?"rgba(109,128,133,.5)":"rgba(51,214,191,.55)";
+      ctx.fillStyle=warm?"rgba(120,140,145,.5)":"rgba(51,214,191,.9)";
+      ctx.beginPath();ctx.ellipse(p.x,p.y,rx,ry,0,0,7);ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.lineWidth=1.5;ctx.strokeStyle=warm?"rgba(150,170,175,.7)":"rgba(180,255,245,.9)";
+      ctx.beginPath();ctx.ellipse(p.x,p.y,rx+3,ry+3,0,0,7);ctx.stroke();
+      ctx.fillStyle="rgba(7,9,11,.85)";ctx.beginPath();ctx.ellipse(p.x,p.y,Math.max(2,rx*0.18),Math.max(2,ry*0.18),0,0,7);ctx.fill();
+      ctx.restore();
+    }
+  }
+  // pillarbox bars when not stretched
+  if(vp.w<W-1||vp.h<H-1){
+    ctx.fillStyle="#040607";
+    if(vp.x>0){ctx.fillRect(0,0,vp.x,H);ctx.fillRect(vp.x+vp.w,0,W-vp.x-vp.w,H);}
+    if(vp.y>0){ctx.fillRect(0,0,W,vp.y);ctx.fillRect(0,vp.y+vp.h,W,H-vp.y-vp.h);}
+    ctx.strokeStyle="rgba(120,170,170,.14)";ctx.lineWidth=1;
+    ctx.strokeRect(vp.x+.5,vp.y+.5,vp.w-1,vp.h-1);
+  }
+  // miss flash
+  if(st.missFlash>0){
+    const a=st.missFlash*0.25;
+    const grd=ctx.createRadialGradient(cx,cy,Math.min(W,H)*0.3,cx,cy,Math.max(W,H)*0.7);
+    grd.addColorStop(0,"rgba(255,95,110,0)");grd.addColorStop(1,"rgba(255,95,110,"+a+")");
+    ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
+    st.missFlash-=0.08;
+  }
+  // crosshair
+  const g=5,l=11;
+  ctx.lineWidth=1.5;ctx.strokeStyle="rgba(220,232,231,.85)";
+  ctx.beginPath();
+  ctx.moveTo(cx-g-l,cy);ctx.lineTo(cx-g,cy);ctx.moveTo(cx+g,cy);ctx.lineTo(cx+g+l,cy);
+  ctx.moveTo(cx,cy-g-l);ctx.lineTo(cx,cy-g);ctx.moveTo(cx,cy+g);ctx.lineTo(cx,cy+g+l);
+  ctx.stroke();
+  ctx.fillStyle="#ffb454";ctx.beginPath();ctx.arc(cx,cy,1.6,0,7);ctx.fill();
+  raf=requestAnimationFrame(loop);
+}
+
+/* ---------------- input ---------------- */
+document.addEventListener("mousemove",e=>{
+  if(document.pointerLockElement==null)return;
+  if(st.mode==="calib"){st.calSum+=Math.abs(e.movementX);$("calPx").textContent=Math.round(st.calSum);return;}
+  if(!st.running)return;
+  yaw+=e.movementX*st.S;
+  pitch=clamp(pitch-e.movementY*st.S,-70,70);
+  // movement onset: reaction ends, motor phase begins
+  if(st.phase==="scored"&&!st.moveT){
+    const now=performance.now();
+    if(now>=st.activeAt){
+      st.moveAcc+=Math.abs(e.movementX)+Math.abs(e.movementY);
+      if(st.moveAcc>=5){st.moveT=now;st.actualD=angDist(target.az,target.el);}
+    }
+  }
+});
+document.addEventListener("mousedown",e=>{
+  if(st.mode!=="game"||!st.running||document.pointerLockElement!==canvas)return;
+  if(e.button!==0)return;
+  const now=performance.now();
+  if(now<st.activeAt)return; // ghost period: clicks inert, no miss penalty
+  if(angDist(target.az,target.el)<=cfg.targetRad){
+    if(st.phase==="warmup"){
+      st.warmupLeft--;
+      if(st.warmupLeft<=0){st.phase="scored";spawnScored();}
+      else spawnWarm();
+    } else {
+      const mt=now-(st.moveT||st.spawnTime);
+      const rt=st.moveT?st.moveT-st.spawnTime:0;
+      const D=Math.max(4,st.actualD||st.plannedD);         // distance measured at movement onset
+      const id=Math.log2(D/(cfg.targetRad*2)+1);           // Fitts ID, bits
+      st.flickLog.push({mt,rt,id,fi:st.flickIdx});
+      st.hits++; st.scoredLeft--;
+      if(st.scoredLeft<=0){endRound();return;}
+      spawnScored();
+    }
+  } else {
+    if(st.phase==="scored")st.misses++;
+    st.missFlash=1;
+  }
+  updateHUD();
+});
+$("session").addEventListener("click",()=>{
+  if(st.mode==="game"&&!st.running) startRound();
+});
+
+/* ---------------- pointer lock ---------------- */
+document.addEventListener("pointerlockchange",()=>{
+  const locked=document.pointerLockElement!=null;
+  if(st.mode==="calib"){
+    if(!locked){ // user pressed Esc -> finalize swipe
+      if(st.calSum>40){showCalStep(3);} 
+    }
+    return;
+  }
+  if(locked){ // game round actually begins
+    clearTimeout(st.lockTimer); $("lockhelp").style.display="none";
+    st.running=true; st.endingNormally=false; armFlick();
+    setPhase(); $("prompt").style.display="none";
+  } else {
+    if(st.running && !st.endingNormally){ // interrupted mid-round
+      st.running=false; st.phase="interrupted";
+      showPrompt("ЗАХВАТ ПРЕРВАН","Кликни, чтобы начать раунд заново. Прогресс этого раунда сброшен.",true);
+      updateHUD();
+    }
+  }
+});
+
+/* ---------------- round lifecycle ---------------- */
+function startRound(){
+  if(st.roundIndex>=totalRounds()){showResults();return;}
+  st.abMode=st.roundIndex>=cfg.rounds;
+  st.testN=st.abMode?st.abQueue[st.roundIndex-cfg.rounds]:opt.nextSens();
+  st.S=sensToS(st.testN);
+  st.phase=cfg.warmup>0?"warmup":"scored";
+  st.warmupLeft=cfg.warmup; st.scoredLeft=cfg.flicks;
+  st.queue=shuffle(SESSION.set.map((_,i)=>i));
+  st.flickLog=[];st.hits=0;st.misses=0;st.missFlash=0;
+  yaw=0;pitch=0;
+  if(st.phase==="warmup")spawnWarm(); else spawnScored();
+  updateHUD(); $("prompt").style.display="none";
+  canvas.requestPointerLock();
+  clearTimeout(st.lockTimer);
+  st.lockTimer=setTimeout(()=>{if(document.pointerLockElement!==canvas)$("lockhelp").style.display="block";},700);
+}
+/* after BO rounds: decide whether a blind A/B validation block is worth running */
+function prepareAB(){
+  if(cfg.abRounds<2){st.abTotal=0;return;}
+  const P=opt.posterior();
+  const rec=P.rec.sens, cur=cfg.sens;
+  if(Math.abs(Math.log(rec/cur))<0.03){st.abTotal=0;return;} // <3% apart: nothing to verify
+  const pairs=cfg.abRounds/2, q=[];
+  for(let i=0;i<pairs;i++)q.push(rec,cur);
+  st.abQueue=shuffle(q); st.abTotal=st.abQueue.length; st.abRecN=rec;
+}
+function endRound(){
+  st.endingNormally=true; document.exitPointerLock(); st.running=false;
+  const per=st.flickLog.map(f=>f.mt/f.id);      // ms per bit (Fitts-normalized)
+  const cost=median(per);
+  const se=1.2533*1.4826*mad(per)/Math.sqrt(Math.max(1,per.length)); // SE of the median
+  for(const f of st.flickLog){if(f.rt>0)SESSION.rtAll.push(f.rt);SESSION.mtAll.push(f.mt);}
+  if(st.abMode){
+    st.abData.push({sens:st.testN,per,byFi:st.flickLog.map(f=>({fi:f.fi,c:f.mt/f.id}))});
+  } else {
+    opt.record(st.testN,cost,se);
+  }
+  st.roundIndex++; st.phase="done";
+  if(st.roundIndex===cfg.rounds)prepareAB();
+  updateHUD();
+  if(st.roundIndex>=totalRounds()){
+    showPrompt("СЕССИЯ ЗАВЕРШЕНА","Считаю кривую отклика…",false);
+    setTimeout(showResults,450);
+  } else if(st.roundIndex===cfg.rounds&&st.abTotal>0){
+    showPrompt("ФАЗА ПРОВЕРКИ · A/B","Поиск завершён. Дальше "+st.abTotal+" контрольных раунда: рекомендация против твоей текущей сенсы — вслепую и вперемешку. Кликни, чтобы начать.",false);
+  } else {
+    showPrompt("РАУНД "+pad(st.roundIndex)+" ЗАВЕРШЁН","Кликни, чтобы продолжить. Чувствительность снова скрыта.",false);
+  }
+}
+function showPrompt(t,s,interrupt){
+  $("prompt").style.display="flex";
+  $("prompt").classList.toggle("interrupt",!!interrupt);
+  $("pTitle").textContent=t; $("pSub").textContent=s;
+}
+function setPhase(){
+  const el=$("hPhase");
+  if(st.phase==="warmup"){el.textContent="разогрев";el.classList.remove("warm");}
+  else if(st.phase==="scored"){el.textContent="● замер";el.classList.add("warm");}
+  else el.textContent="";
+}
+function updateHUD(){
+  const total=totalRounds();
+  $("hRound").textContent=pad(Math.min(st.roundIndex+1,total));
+  $("hTotal").textContent=pad(total);
+  const acc=st.hits+st.misses>0?Math.round(st.hits/(st.hits+st.misses)*100)+"%":"—";
+  $("hAcc").textContent=st.running?acc:"—";
+  $("hLeft").textContent=st.running&&st.phase==="scored"?st.scoredLeft:(st.running?"разогрев":"—");
+  setPhase();
+  // segbar (amber-outlined segments = A/B validation block)
+  const sb=$("segbar"); sb.innerHTML="";
+  for(let i=0;i<total;i++){
+    const d=document.createElement("div");
+    d.className="seg"+(i>=cfg.rounds?" ab":"")+(i<st.roundIndex?" done":i===st.roundIndex&&st.running?" cur":"");
+    sb.appendChild(d);
+  }
+}
+
+/* ---------------- screens ---------------- */
+function showScreen(id){["setup","session","results"].forEach(s=>$(s).classList.toggle("on",s===id));}
+
+$("startBtn").addEventListener("click",()=>{
+  cfg.dpi=clamp(parseFloat($("dpi").value)||800,100,32000);
+  cfg.sens=clamp(parseFloat($("sens").value)||1,0.05,20);
+  cfg.rounds=parseInt($("rounds").value);
+  cfg.flicks=parseInt($("flicks").value);
+  cfg.targetRad=parseInt($("target").value)/10;
+  cfg.abRounds=parseInt($("ab").value);
+  cfg.aspect=parseFloat($("aspect").value);
+  cfg.aspectLabel=$("aspect").selectedOptions[0].text.split("·")[0].trim();
+  cfg.stretch=$("stretch").checked;
+  cfg.range=parseInt($("range").value)/10;
+  if(!cfg.calibrated) cfg.pxPerCm=cfg.dpi/2.54; // 1:1 assumption
+  opt=new Optimizer(cfg.sens,cfg.range,cfg.rounds);
+  SESSION.set=buildFlickSet(cfg.flicks);
+  SESSION.rtAll=[]; SESSION.mtAll=[];
+  st.mode="game"; st.running=false; st.phase="idle"; st.roundIndex=0;
+  st.abMode=false; st.abQueue=[]; st.abTotal=0; st.abData=[]; st.abRecN=0;
+  showScreen("session"); resize(); updateHUD();
+  showPrompt("РАУНД 01","Кликни, чтобы начать. Чувствительность скрыта — целься по ощущению.",false);
+  if(raf)cancelAnimationFrame(raf); loop();
+});
+
+/* ---------------- results ---------------- */
+function showResults(){
+  st.mode="idle"; if(document.pointerLockElement)document.exitPointerLock();
+  if(raf){cancelAnimationFrame(raf);raf=null;}
+  showScreen("results");
+  const P=opt.posterior();
+  const recN=st.abRecN||P.rec.sens, recCm=cm360(recN), curN=cfg.sens, curCm=cm360(curN);
+  try{localStorage.setItem("1448_aim_result",JSON.stringify({sens:+recN.toFixed(2),dpi:cfg.dpi,cm360:+recCm.toFixed(1),at:Date.now()}));}catch(e){}
+  const dPct=(recN-curN)/curN*100;
+  const dir2=dPct>=0?"up":"dn";
+  const dWord=Math.abs(dPct)<1.5?"практически как сейчас":(dPct>0?"выше":"ниже");
+  // confidence from posterior flatness
+  const rel=P.rec.sd/Math.max(1e-6,(P.yMax-P.yMin));
+  const conf=rel<0.07?"высокая":rel<0.16?"средняя":"низкая";
+  // reaction / motor split + throughput
+  const avgRT=SESSION.rtAll.length?Math.round(mean(SESSION.rtAll)):0;
+  const avgMT=SESSION.mtAll.length?Math.round(mean(SESSION.mtAll)):0;
+  const tp=P.rec.mean>0?(1000/P.rec.mean).toFixed(2):"—";
+  // learning trend note
+  const trendNote=Math.abs(P.trend)>3?`<span style="color:var(--cool)">поправка на обучение: ${P.trend<0?"−":"+"}${Math.abs(P.trend).toFixed(0)} мс/бит за сессию — учтена</span>`:"эффект обучения за сессию незначим";
+  // A/B verdict (paired across the fixed flick set)
+  let abHTML="";
+  if(st.abData.length>=2){
+    const grp={rec:[],cur:[]};
+    for(const d of st.abData){
+      const key=Math.abs(Math.log(d.sens/recN))<Math.abs(Math.log(d.sens/curN))?"rec":"cur";
+      grp[key].push(d);
+    }
+    if(grp.rec.length&&grp.cur.length){
+      const collect=g=>{const by={};for(const d of g)for(const x of d.byFi){(by[x.fi]=by[x.fi]||[]).push(x.c);}return by;};
+      const bR=collect(grp.rec), bC=collect(grp.cur);
+      let wins=0,pairs=0;
+      for(const fi in bR)if(bC[fi]){pairs++;if(mean(bR[fi])<mean(bC[fi]))wins++;}
+      const medR=median(grp.rec.flatMap(d=>d.per)), medC=median(grp.cur.flatMap(d=>d.per));
+      const gain=(medC-medR)/medC*100;
+      const share=pairs?wins/pairs:0.5;
+      let verdict,tie=false;
+      if(share>=0.7&&gain>2)verdict=`Рекомендация быстрее на <b>${gain.toFixed(1)}%</b>`;
+      else if(share>=0.58&&gain>0)verdict=`Рекомендация немного быстрее · +${gain.toFixed(1)}%`;
+      else if(share<=0.3&&gain<-2)verdict=`Твоя текущая сенса оказалась быстрее на <b>${(-gain).toFixed(1)}%</b> — честный результат, оставайся на ней`;
+      else {verdict="Значимой разницы не обнаружено — обе сенсы работают одинаково";tie=true;}
+      const pR=Math.round(share*100);
+      abHTML=`<div class="stat wide verdict${tie?" tie":""}">
+        <div class="k">Слепая проверка A/B · ${st.abData.length} раунда</div>
+        <div class="v">${verdict}</div>
+        <div class="vsbar"><i style="width:${pR}%;background:var(--warm)"></i><i style="flex:1;background:var(--line)"></i></div>
+        <div class="vsrow"><span>рекомендация ${recN.toFixed(2)} · ${medR.toFixed(0)} мс/бит · выиграла ${wins} из ${pairs} парных фликов</span><span>текущая ${curN.toFixed(2)} · ${medC.toFixed(0)} мс/бит</span></div>
+      </div>`;
+    }
+  }
+
+  $("resultsInner").innerHTML=`
+    <div class="rhead"><div class="mark"><span></span></div><h1>РЕЗУЛЬТАТ КАЛИБРОВКИ</h1></div>
+    <p class="rsub">${cfg.rounds} раундов поиска · ${cfg.aspectLabel}${cfg.stretch?" stretched":""} · DPI ${cfg.dpi} · цель ${cfg.targetRad.toFixed(1)}° · уверенность: ${conf} · ${trendNote}</p>
+    <div class="stats">
+      ${abHTML}
+      <div class="stat hero">
+        <div class="k">Рекомендуемый sens · CS2</div>
+        <div class="v">${recN.toFixed(2)}</div>
+        <div class="note">диапазон оптимума ${P.lo.toFixed(2)}–${P.hi.toFixed(2)}</div>
+      </div>
+      <div class="stat">
+        <div class="k">cm / 360°</div>
+        <div class="v">${recCm.toFixed(1)}<span class="u">см</span></div>
+        <div class="note">сейчас у тебя ${curCm.toFixed(1)} см</div>
+      </div>
+      <div class="stat">
+        <div class="k">Изменение</div>
+        <div class="v ${dir2}">${dPct>=0?"+":""}${dPct.toFixed(0)}<span class="u">%</span></div>
+        <div class="note">чувствительность ${dWord}</div>
+      </div>
+      <div class="stat wide" style="display:flex;gap:34px;flex-wrap:wrap;align-items:baseline">
+        <div><div class="k">Реакция</div><div class="v" style="font-size:22px">${avgRT||"—"}<span class="u">мс</span></div></div>
+        <div><div class="k">Движение</div><div class="v" style="font-size:22px">${avgMT||"—"}<span class="u">мс</span></div></div>
+        <div><div class="k">Пропускная способность</div><div class="v" style="font-size:22px">${tp}<span class="u">бит/с</span></div></div>
+        <div class="note" style="flex:1;min-width:200px;margin-top:0">реакция вынесена из метрики — оптимизировалось чистое движение, нормированное по сложности флика (закон Фиттса)</div>
+      </div>
+    </div>
+    <div class="chartcard">
+      <div class="ct">Кривая отклика</div>
+      <div class="cd">мс на бит сложности (Фиттс) против чувствительности · ниже = лучше · точки скорректированы на тренд обучения</div>
+      ${buildChart(P,recN,curN)}
+      <div class="legend">
+        <span><i style="border-color:var(--cool)"></i>модель (среднее)</span>
+        <span><i style="border-color:var(--cool);border-top-style:dotted;opacity:.6"></i>неопределённость</span>
+        <span><i style="border-color:var(--warm);border-top-style:dashed"></i>оптимум</span>
+        <span><i style="border-color:var(--dim);border-top-style:dashed"></i>текущая</span>
+      </div>
+    </div>
+    <details class="caveats">
+      <summary>Честно о точности этого числа</summary>
+      <div class="body">
+        <p><b>Как считалось.</b> Каждая сенса сдавала один и тот же экзамен: фиксированный набор фликов, перемешан только порядок. Каждый флик нормирован по сложности (закон Фиттса), реакция отделена от движения по онсету мыши, раунды взвешены по внутреннему разбросу, тренд обучения за сессию вычтен. Финал — слепой A/B против твоей текущей сенсы.</p>
+        <p><b>Адаптация.</b> Ты подстраиваешься под сенс на ходу. Оптимум — это лучшее под твою сегодняшнюю моторику; через недели тренировки на другом сенсе картина может сместиться.</p>
+        <p><b>Зависит от задачи.</b> Здесь меряются именно флики. Для трекинга/спрея оптимум обычно чуть ниже. Это число — отправная точка, а не догма.</p>
+        <p><b>Калибровка cm/360.</b> ${cfg.calibrated?"Множитель измерен свайпом — перевод в физические см точный.":"Перевод сделан в предположении 1:1 между движением в браузере и счётчиками мыши (Windows 6/11, акселерация выключена). Если она включена или чувствительность Windows не по центру — абсолютный cm/360 поплывёт, но относительный сдвиг sens останется верным. Для точности прогони калибровку свайпом."}</p>
+        <p><b>Что делать.</b> Поставь ${recN.toFixed(2)} в CS2, поиграй пару дней, при желании прогони сессию ещё раз — оптимум сойдётся точнее. Результат уже передан в студию сенсы 14:48 — там пересчёт во все игры и сохранение в аккаунт.</p>
+      </div>
+    </details>
+    <div class="rbtns">
+      <button class="copy" id="copyBtn">Скопировать sens ${recN.toFixed(2)}</button>
+      <button class="redo" id="redoBtn">Новая сессия</button>
+    </div>`;
+  $("copyBtn").addEventListener("click",e=>{
+    navigator.clipboard&&navigator.clipboard.writeText(recN.toFixed(2));
+    e.target.textContent="Скопировано ✓"; e.target.classList.add("copied");
+  });
+  $("redoBtn").addEventListener("click",()=>showScreen("setup"));
+}
+
+function buildChart(P,recN,curN){
+  const w=800,h=340,m={l:54,r:18,t:18,b:42};
+  const iw=w-m.l-m.r, ih=h-m.t-m.b;
+  const lx=v=>m.l+(Math.log10(v)-opt.logMin)/(opt.logMax-opt.logMin)*iw;
+  const pad=(P.yMax-P.yMin)*0.08||10;
+  const y0=P.yMin-pad, y1=P.yMax+pad;
+  const ly=v=>m.t+(1-(v-y0)/(y1-y0))*ih;
+  // band
+  let top="",bot="";
+  P.curve.forEach((c,i)=>{const x=lx(c.sens);top+=(i?"L":"M")+x.toFixed(1)+" "+ly(c.mean+1.6*c.sd).toFixed(1)+" ";});
+  for(let i=P.curve.length-1;i>=0;i--){const c=P.curve[i];const x=lx(c.sens);bot+="L"+x.toFixed(1)+" "+ly(c.mean-1.6*c.sd).toFixed(1)+" ";}
+  const band=top+bot+"Z";
+  // mean line
+  let mean=""; P.curve.forEach((c,i)=>{mean+=(i?"L":"M")+lx(c.sens).toFixed(1)+" "+ly(c.mean).toFixed(1)+" ";});
+  // x ticks
+  const ticks=[opt.logMin,Math.log10(curN),Math.log10(recN),opt.logMax].map(v=>Math.pow(10,v));
+  let xax="";
+  [...new Set(ticks.map(t=>t.toFixed(2)))].forEach(ts=>{const t=parseFloat(ts);const x=lx(t);
+    xax+=`<line x1="${x}" y1="${m.t}" x2="${x}" y2="${m.t+ih}" stroke="rgba(120,170,170,.05)"/>
+    <text x="${x}" y="${h-16}" fill="#6d8085" font-size="11" font-family="var(--mono)" text-anchor="middle">${ts}</text>`;});
+  // y ticks
+  let yax="";
+  for(let i=0;i<=3;i++){const v=y0+(y1-y0)*i/3;const y=ly(v);
+    yax+=`<line x1="${m.l}" y1="${y}" x2="${m.l+iw}" y2="${y}" stroke="rgba(120,170,170,.05)"/>
+    <text x="${m.l-9}" y="${y+4}" fill="#6d8085" font-size="11" font-family="var(--mono)" text-anchor="end">${Math.round(v)}</text>`;}
+  // samples
+  let pts="";
+  P.samples.forEach(s=>{const x=lx(s.sens),y=ly(s.cost);
+    pts+=`<g><line x1="${x-4}" y1="${y}" x2="${x+4}" y2="${y}" stroke="#8aa0a3" stroke-width="1.3"/>
+    <line x1="${x}" y1="${y-4}" x2="${x}" y2="${y+4}" stroke="#8aa0a3" stroke-width="1.3"/>
+    <text x="${x+7}" y="${y-6}" fill="#465458" font-size="9" font-family="var(--mono)">${s.order}</text></g>`;});
+  // current marker
+  const xc=lx(curN);
+  // optimum marker
+  const xo=lx(recN), yo=ly(P.rec.mean);
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="кривая отклика">
+    ${yax}${xax}
+    <path d="${band}" fill="rgba(51,214,191,.10)" stroke="none"/>
+    <path d="${mean}" fill="none" stroke="#33d6bf" stroke-width="2"/>
+    <line x1="${xc}" y1="${m.t}" x2="${xc}" y2="${m.t+ih}" stroke="#6d8085" stroke-width="1.2" stroke-dasharray="3 4"/>
+    <text x="${xc}" y="${m.t+12}" fill="#6d8085" font-size="10" font-family="var(--mono)" text-anchor="middle">сейчас</text>
+    <line x1="${xo}" y1="${m.t}" x2="${xo}" y2="${m.t+ih}" stroke="#ffb454" stroke-width="1.3" stroke-dasharray="5 4"/>
+    <circle cx="${xo}" cy="${yo}" r="5.5" fill="none" stroke="#ffb454" stroke-width="2"/>
+    <line x1="${xo-9}" y1="${yo}" x2="${xo+9}" y2="${yo}" stroke="#ffb454" stroke-width="1.3"/>
+    <line x1="${xo}" y1="${yo-9}" x2="${xo}" y2="${yo+9}" stroke="#ffb454" stroke-width="1.3"/>
+    <text x="${xo}" y="${m.t+ih+30}" fill="#ffb454" font-size="11" font-family="var(--mono)" font-weight="700" text-anchor="middle">оптимум ${recN.toFixed(2)}</text>
+    ${pts}
+  </svg>`;
+}
+
+/* ---------------- calibration ---------------- */
+function showCalStep(n){["cs1","cs2","cs3"].forEach((id,i)=>$(id).classList.toggle("on",i===n-1));
+  if(n===3){const cm=parseFloat($("calCm").value)||20;const k=(st.calSum/cm)/(cfg.dpi/2.54);$("calK").textContent="множитель ≈ "+k.toFixed(2)+" · "+Math.round(st.calSum)+" px / "+cm+" см";}}
+$("calBtn").addEventListener("click",e=>{e.preventDefault();$("calib").classList.add("on");showCalStep(1);});
+$("calCancel").addEventListener("click",()=>$("calib").classList.remove("on"));
+$("calGo").addEventListener("click",()=>{
+  cfg.dpi=clamp(parseFloat($("dpi").value)||800,100,32000);
+  st.mode="calib"; st.calSum=0; $("calPx").textContent="0"; showCalStep(2);
+  $("calib").requestPointerLock?$("calib").requestPointerLock():document.body.requestPointerLock();
+});
+$("calRetry").addEventListener("click",()=>{st.calSum=0;showCalStep(1);});
+$("calApply").addEventListener("click",()=>{
+  const cm=parseFloat($("calCm").value)||20;
+  cfg.pxPerCm=st.calSum/cm; cfg.calibrated=true;
+  const k=cfg.pxPerCm/(cfg.dpi/2.54);
+  $("calStatus").textContent="откалибровано · множитель "+k.toFixed(2);
+  st.mode="idle"; $("calib").classList.remove("on");
+});
+
+/* ---------------- live slider labels + gate ---------------- */
+const sl=(id,vid,fmt)=>{const i=$(id),o=$(vid);const u=()=>o.textContent=fmt(i.value);i.addEventListener("input",u);u();};
+sl("rounds","vRounds",v=>v);
+sl("flicks","vFlicks",v=>v);
+sl("target","vTarget",v=>(v/10).toFixed(1)+"°");
+sl("ab","vAb",v=>v==="0"||v===0?"выкл":v);
+sl("range","vRange",v=>"×"+(v/10).toFixed(1));
+if(!window.matchMedia("(pointer: fine)").matches){$("gate").style.display="block";}
+
+/* 14:48 мост: префилл из студии сенсы (aim.html?dpi=&sens=) */
+(function(){
+  const q=new URLSearchParams(location.search);
+  const d=parseFloat(q.get("dpi")), s=parseFloat(q.get("sens"));
+  if(d)$("dpi").value=d; if(s)$("sens").value=s;
+})();
+</script>
+</body>
+</html>

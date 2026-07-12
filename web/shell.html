@@ -1544,6 +1544,14 @@ function renderSens(){
     </div>
   </div>
 
+  <div class="card" style="border-color:rgba(255,39,64,.25)">
+    <div style="font-weight:800; margin-bottom:4px">🎯 AI-калибратор</div>
+    <div class="muted" style="font-size:12px; line-height:1.6; margin-bottom:10px">
+      Не знаешь свою идеальную сенсу? Постреляй по мишеням — байесовский поиск найдёт оптимум и проверит его слепым A/B. ~7 минут.${aimResultLine()}
+    </div>
+    <button class="btn slim" style="width:100%" onclick="openAimCal()">Подобрать стреляя</button>
+  </div>
+
   <div class="card">
     <div class="muted" style="font-size:12px; margin-bottom:8px"><b style="color:var(--acc)">Шаг 2.</b> Из какой игры переносим и куда</div>
     <div class="sens-row">
@@ -1714,6 +1722,29 @@ function sensSyncStatus(){
     return `<span style="color:var(--green)">✓ Синхронизировано${n?` · ${n} ${n===1?'игра':'игр(ы)'}`:''}.</span>`;
   }
   return '<span style="color:var(--dim)">Пока не сохранено.</span>';
+}
+
+/* — AI-калибратор (web/aim.html): подбор сенсы стрельбой, мост через localStorage — */
+function aimResult(){
+  try{
+    const r = JSON.parse(localStorage.getItem('1448_aim_result')||'null');
+    if (r && r.sens && Date.now()-r.at < 86400000) return r; // свежее суток
+  }catch(e){}
+  return null;
+}
+function aimResultLine(){
+  const r = aimResult();
+  return r ? `<br><b style="color:var(--acc)">Калибратор нашёл ${r.sens}</b> (CS2 · ${r.cm360} см/360) — <a href="#" onclick="aimApply();return false" style="color:var(--txt)">подставить</a>` : '';
+}
+function aimApply(){
+  const r = aimResult(); if (!r) return;
+  if (r.dpi) sensDPI = r.dpi;
+  sensFrom = 'cs2'; sensVal = r.sens;
+  sideTab('sens'); toast('Сенса калибратора подставлена: CS2 ' + r.sens);
+}
+function openAimCal(){
+  const w = window.open('aim.html?' + new URLSearchParams({dpi: sensDPI, sens: sensVal}), '_blank');
+  if (!w) toast('Браузер заблокировал окно — открой web/aim.html вручную');
 }
 
 async function sensSave(){
