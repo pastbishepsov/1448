@@ -83,6 +83,11 @@ type Hub struct {
 
 	admins   map[*websocket.Conn]bool // подключённые админки (спринт А6)
 	adminsMu sync.Mutex
+
+	// OnAdminCall — колбэк на admin_call от агента (спринт Б2): пакет
+	// websocket не знает о БД, main.go подставляет обработчик, который
+	// пишет вызов в чат и рассылает админкам.
+	OnAdminCall func(computerID string)
 }
 
 func NewHub() *Hub {
@@ -231,6 +236,9 @@ func (h *Hub) handleMessage(c *Client, msg Message) {
 		log.Printf("Heartbeat от computer=%s", c.ComputerID)
 	case MsgAdminCall:
 		log.Printf("Вызов администратора от computer=%s", c.ComputerID)
+		if h.OnAdminCall != nil {
+			h.OnAdminCall(c.ComputerID) // Б2: вызов идёт в чат и админкам
+		}
 	default:
 		log.Printf("Неизвестный тип сообщения: %s от computer=%s", msg.Type, c.ComputerID)
 	}

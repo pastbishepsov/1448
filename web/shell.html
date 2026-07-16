@@ -1095,6 +1095,17 @@ async function launch(cat, i){
 const BROWSER_PROTO = { sound:'ms-settings:sound', display:'ms-settings:display', mouse:'ms-settings:mousetouchpad' };
 
 async function adminCall(){
+  // Б2 (ADMIN.md): вызов идёт через чат-шину POST /me/chat {kind:call} —
+  // работает из браузера без агента; киоск/агент остаются fallback'ом.
+  try{
+    await api('/me/chat', {method:'POST', body:JSON.stringify({kind:'call'})});
+    toast('🛎 Администратор вызван — уже идёт');
+    return;
+  }catch(e){
+    if (e.code === 'too_fast'){ toast('🛎 ' + (e.message || 'Администратор уже позван')); return; }
+    if (e.message === 'unauthorized') return; // logout уже сработал
+    // сервер недоступен — пробуем локальные пути ниже
+  }
   if (NATIVE && nativePost({cmd:'admin_call'})){ toast('🛎 Администратор вызван'); return; }
   if (agentOnline){
     try{
@@ -1105,7 +1116,7 @@ async function adminCall(){
       return;
     }catch(e){ agentOnline = false; renderAgentDot(); }
   }
-  toast('🛎 Вызов админа работает через shell-agent — запусти backend/bin/shell-agent.exe');
+  toast('⚠ Нет связи с сервером — вызов не дошёл, подойди к стойке');
 }
 
 /* ═══════════════ НАТИВНЫЙ КИОСК (WebView2) ═══════════════ */

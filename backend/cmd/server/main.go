@@ -57,6 +57,7 @@ func main() {
 
 	// ── WebSocket Hub (PC Shell) ────────────────────────────────────────────
 	hub = websocket.NewHub()
+	hub.OnAdminCall = agentAdminCall // Б2: admin_call агента → чат + админки
 	go hub.Run()
 
 	// ── Роуты ───────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ func main() {
 		me.GET("/economy", handleGetEconomy)              // ← настоящий (калькулятор + ранг)
 		me.GET("/sensitivity", handleGetSensitivity)      // ← настоящий (профиль сенсы)
 		me.PUT("/sensitivity", handlePutSensitivity)      // ← настоящий
+		me.POST("/chat", handleGuestChatPost)             // чат/вызов админа (Б2)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
@@ -126,6 +128,8 @@ func main() {
 		adm.POST("/users/:id/grant", handleAdminGrant)
 		adm.GET("/grants", handleAdminGrants)
 		adm.GET("/audit", handleAdminAudit) // единая лента действий (спринт А4)
+		adm.GET("/chat/pending", handleAdminChatPending) // очередь вызовов/сообщений (Б2)
+		adm.POST("/chat/:id/ack", handleAdminChatAck)    // «принял» (Б2)
 		adm.GET("/computers", handleAdminComputers)
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
 		adm.GET("/sessions/active", handleAdminActiveSessions)
