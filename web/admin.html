@@ -56,9 +56,26 @@
   .topbar{display:flex; align-items:center; gap:16px; padding:11px 20px;
           background:var(--panel); border-bottom:1px solid var(--hair); flex-wrap:wrap}
   .live{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); font-weight:700; margin-left:auto}
-  .live .dot{width:7px; height:7px; border-radius:50%; background:var(--green)}
+  .live .dot{width:7px; height:7px; border-radius:50%; background:var(--dim)}
+  .live.ok .dot{background:var(--green)}
   .live.bad .dot{background:var(--acc)}
   .live.bad{color:var(--acc3)}
+
+  /* ── Б1: глобальный поиск в топбаре ── */
+  .gsearch{position:relative; display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.05);
+           border:1px solid var(--hair); border-radius:10px; padding:7px 11px; flex:1; min-width:170px; max-width:330px}
+  .gsearch:focus-within{border-color:var(--acc)}
+  .gsearch .isvg{color:var(--dim); flex:none}
+  .gsearch input{background:transparent; border:0; outline:none; color:var(--txt); font-size:13.5px; flex:1; min-width:0; font-family:inherit}
+  .gsearch kbd{font-family:inherit; font-size:10.5px; color:var(--dim); border:1px solid var(--hair); border-radius:5px; padding:1px 6px; flex:none}
+  .gqdrop{position:absolute; top:calc(100% + 8px); left:0; right:0; z-index:55; background:var(--panel);
+          border:1px solid var(--hair); border-radius:12px; padding:6px; max-height:330px; overflow-y:auto;
+          box-shadow:0 16px 36px rgba(0,0,0,.55)}
+  .gqdrop .sub{font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.8px; padding:6px 10px 2px; font-weight:800}
+  .gqdrop .gi{display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:8px; cursor:pointer; font-size:13px}
+  .gqdrop .gi:hover,.gqdrop .gi.sel{background:rgba(255,39,64,.13)}
+  .gqdrop .gi .isvg{color:var(--dim); flex:none}
+  .gqdrop .none{color:var(--dim); padding:10px; font-size:12.5px}
   .who{font-size:13px; color:var(--dim); font-weight:700}
   .who b{color:var(--txt)}
 
@@ -74,6 +91,12 @@
   .rail button .isvg{width:19px; height:19px}
   .rail .sep{height:1px; background:var(--hair); margin:9px 4px}
   .rail .grow{flex:1}
+  /* Б1: зоны рейла СМЕНА/КЛУБ + бэйдж броней */
+  .rail .rzone{font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px;
+               font-weight:800; padding:5px 13px 3px; opacity:.8}
+  .rail .rzone.zclub{border-top:1px solid var(--hair); margin-top:9px; padding-top:11px}
+  .rail .rbadge{margin-left:auto; background:rgba(255,39,64,.22); color:var(--acc3); border-radius:8px;
+                padding:1px 7px; font-size:11px; font-variant-numeric:tabular-nums}
   .content{flex:1; overflow-y:auto; padding:20px 24px 44px; min-width:0}
 
   /* drawer (инфраструктура А0; формы переедут сюда в А2–А3) */
@@ -226,9 +249,11 @@
   @media (max-width:960px){
     .rail{width:56px; padding:12px 8px}
     .rail button{justify-content:center; padding:10px 0}
-    .rail .rlabel{display:none}
+    .rail .rlabel,.rail .rzone,.rail .rbadge{display:none}
+    .rail .rzone.zclub{display:block; height:1px; padding:0; margin:9px 4px; overflow:hidden; opacity:1; background:var(--hair); font-size:0}
     .content{padding:14px 14px 40px}
     .topbar{padding:10px 14px; gap:10px}
+    .gsearch kbd{display:none}
     .hallrow{flex-direction:column}
     .feed{width:100%; max-height:240px}
   }
@@ -241,7 +266,7 @@
           flex-direction:row; justify-content:space-around; gap:0;
           border-right:0; border-top:1px solid var(--hair); padding:7px 4px calc(7px + env(safe-area-inset-bottom))}
     .rail button{width:auto; padding:9px 11px}
-    .rail .sep,.rail .grow{display:none}
+    .rail .sep,.rail .grow,.rail .rzone,.rail .rzone.zclub{display:none}
     .content{padding:14px 12px 86px}
     #drawer{width:100%}
     .feed{max-height:200px}
@@ -272,19 +297,26 @@
 <div id="appView" class="hidden">
   <div class="topbar">
     <div class="logo" style="font-size:20px">14<b>:</b>48 <span class="muted">ADMIN</span></div>
+    <div class="gsearch" id="gsearch">
+      <span data-ic="search"></span>
+      <input id="gq" placeholder="Гость или ПК…" autocomplete="off" aria-label="Глобальный поиск">
+      <kbd>/</kbd>
+      <div id="gqDrop" class="gqdrop hidden"></div>
+    </div>
     <div class="live" id="live"><span class="dot"></span><span id="liveTxt">подключение…</span></div>
     <div class="who" id="who"></div>
   </div>
   <div class="shellrow">
     <nav class="rail" id="rail">
+      <div class="rzone">Смена</div>
       <button id="r-hall" class="on" onclick="nav('hall')" aria-label="Зал"><span data-ic="monitor"></span><span class="rlabel">Зал</span></button>
       <button id="r-users" onclick="nav('users')" aria-label="Гости"><span data-ic="users"></span><span class="rlabel">Гости</span></button>
-      <button id="r-bookings" onclick="nav('bookings')" aria-label="Брони"><span data-ic="cal"></span><span class="rlabel">Брони</span></button>
+      <button id="r-bookings" onclick="nav('bookings')" aria-label="Брони"><span data-ic="cal"></span><span class="rlabel">Брони</span><span class="rbadge hidden" id="bkBadge"></span></button>
       <button id="r-catalog" onclick="nav('catalog')" aria-label="Каталог"><span data-ic="apps"></span><span class="rlabel">Каталог</span></button>
       <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
-      <div class="sep ownerOnly hidden"></div>
-      <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Статистика"><span data-ic="chart"></span><span class="rlabel">Статистика</span></button>
-      <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Настройки"><span data-ic="gear"></span><span class="rlabel">Настройки</span></button>
+      <div class="rzone zclub ownerOnly hidden">Клуб</div>
+      <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Деньги"><span data-ic="chart"></span><span class="rlabel">Деньги</span></button>
+      <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Экономика"><span data-ic="gear"></span><span class="rlabel">Экономика</span></button>
       <div class="grow"></div>
       <button onclick="logout()" aria-label="Выйти"><span data-ic="out"></span><span class="rlabel">Выйти</span></button>
     </nav>
@@ -292,10 +324,10 @@
     <main class="content">
       <section id="s-hall">
         <div class="kpis" id="kpis">
-          <div class="kpi" onclick="nav('users')">Гостей <b id="kUsers">—</b></div>
-          <div class="kpi" onclick="nav('hall')">Сессий идёт <b id="kSessions">—</b></div>
-          <div class="kpi" onclick="nav('hall')">ПК свободно <b id="kPCs">—</b></div>
-          <div class="kpi" onclick="nav('bookings')">Броней впереди <b id="kBookings">—</b></div>
+          <div class="kpi" onclick="navRev()">Выручка сегодня <b id="kRev">—</b></div>
+          <div class="kpi" onclick="nav('hall')">В зале <b id="kSessions">—</b></div>
+          <div class="kpi" onclick="nav('hall')">Свободно <b id="kPCs">—</b></div>
+          <div class="kpi" onclick="nav('bookings')">Броней сегодня <b id="kBookings">—</b></div>
         </div>
         <div class="toolrow ownerOnly hidden">
           <button class="btn ghost mini" id="hallEditBtn" onclick="toggleHallEdit()"><span data-ic="edit"></span>Редактор зала</button>
@@ -307,6 +339,13 @@
             <div class="dsub" style="margin-top:0">Лента</div>
             <div id="feedList" class="muted" style="font-size:12px">События появятся здесь</div>
           </aside>
+        </div>
+        <div class="muted" style="display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-top:10px; font-size:11.5px">
+          <span><span class="pcdot" style="background:var(--green); margin-right:5px"></span>свободен</span>
+          <span><span class="pcdot" style="background:var(--acc); margin-right:5px"></span>занят</span>
+          <span><span class="pcdot" style="background:var(--orange); margin-right:5px"></span>ремонт</span>
+          <span style="letter-spacing:1px">◌ shell offline</span>
+          <span style="display:inline-flex; align-items:center; gap:5px"><span data-ic="clock"></span>скоро бронь</span>
         </div>
       </section>
 
@@ -526,6 +565,8 @@ function enter(){
 }
 
 /* ── навигация ── */
+function navRev(){ nav(isOwner() ? 'stats' : 'grants'); } // выручка: owner — Деньги, admin — журнал дня
+
 function nav(t){
   if ((t === 'stats' || t === 'settings') && (!me || me.role !== 'owner')) return;
   curTab = t;
@@ -545,10 +586,13 @@ function nav(t){
 async function refresh(){
   try{
     const ov = await api('/admin/overview');
-    setText('kUsers', ov.users);
+    setText('kRev', (+ov.revenue_today_pln || 0).toLocaleString('ru-RU') + ' zł');
     setText('kSessions', ov.active_sessions);
     setText('kPCs', ov.computers_free + '/' + ov.computers_total);
-    setText('kBookings', ov.upcoming_bookings);
+    setText('kBookings', ov.bookings_today ?? ov.upcoming_bookings);
+    const bb = document.getElementById('bkBadge'), nb = ov.bookings_today | 0;
+    bb.textContent = nb;
+    bb.classList.toggle('hidden', !nb);
     if (curTab === 'hall' && !hallEdit) await renderHall(); // в редакторе не дёргаем схему
     if (curTab === 'users') await renderUsersTable();
     if (curTab === 'bookings') await renderBookings();
@@ -568,14 +612,16 @@ function setHTML(id, html){
   mountIcons(el);
 }
 
-/* live-индикатор в топбаре */
+/* live-индикатор в топбаре (Б1: точка серая до первого синка, зелёная — при живом обмене) */
 setInterval(() => {
   if (!me) return;
   const live = document.getElementById('live'), txt = document.getElementById('liveTxt');
-  if (lastSync === -1){ live.classList.add('bad'); txt.textContent = 'нет связи'; return; }
-  if (!lastSync){ txt.textContent = 'подключение…'; return; }
+  if (lastSync === -1){ live.classList.add('bad'); live.classList.remove('ok'); txt.textContent = 'нет связи'; return; }
+  if (!lastSync){ live.classList.remove('ok','bad'); txt.textContent = 'подключение…'; return; }
   const s = Math.round((Date.now() - lastSync)/1000);
-  live.classList.toggle('bad', s > (wsOpen ? 45 : 20));
+  const bad = s > (wsOpen ? 45 : 20);
+  live.classList.toggle('bad', bad);
+  live.classList.toggle('ok', !bad);
   txt.textContent = wsOpen ? 'live' : ('обновлено ' + s + ' с назад');
   // живой таймер сессии в открытом drawer ПК
   const el = document.getElementById('dElapsed');
@@ -681,6 +727,7 @@ let hallEdit = false, selPCId = null, newPCPos = null;
 async function renderHall(){
   const [pcs, bk] = await Promise.all([api('/admin/computers'), api('/admin/bookings')]);
   hallData = pcs.computers;
+  pcCache = hallData; // глобальный поиск ПК ест свежие данные зала (Б1)
   hallClub = (pcs.clubs || [])[0] || null;
   // «скоро бронь»: ближайшая живая бронь ПК в окне 60 минут
   const soon = {};
@@ -1000,7 +1047,7 @@ function renderUserDrawer(){
     <tr><td class="muted">Монеты</td><td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td></tr>
     <tr><td class="muted">Роль · статус</td><td>${u.role} · <span class="st ${u.status}">${u.status}</span></td></tr>
     <tr><td class="muted">Наиграно</td><td>${s.hours_played} ч · сессий ${s.sessions_count}</td></tr>
-    <tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>
+    ${s.deposited_pln !== undefined ? `<tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>` : ''}
     <tr><td class="muted">Был активен</td><td>${fmtTime(u.last_active_at)}</td></tr>
     <tr><td class="muted">Аккаунт с</td><td>${fmtDate(u.created_at)}</td></tr>
   </table>`;
@@ -1019,7 +1066,7 @@ function renderUserDrawer(){
   body += `<div class="dsub">История</div>
   <div class="minitabs">
     <button class="${uTab==='sessions'?'on':''}" onclick="uTabSet('sessions')">Сессии</button>
-    <button class="${uTab==='deposits'?'on':''}" onclick="uTabSet('deposits')">Депозиты</button>
+    <button class="${uTab==='deposits'?'on':''}" onclick="uTabSet('deposits')">${uData.money_scope==='today'?'Депозиты (сегодня)':'Депозиты'}</button>
     <button class="${uTab==='grants'?'on':''}" onclick="uTabSet('grants')">Начисления</button>
   </div>
   <div id="uHist">${uHistHtml()}</div>`;
@@ -1067,7 +1114,7 @@ function uHistHtml(){
   }
   if (uTab === 'deposits'){
     const rows = uData.deposits || [];
-    if (!rows.length) return '<div class="empty">Депозитов не было</div>';
+    if (!rows.length) return '<div class="empty">' + (uData.money_scope === 'today' ? 'Сегодня депозитов не было' : 'Депозитов не было') + '</div>';
     return `<table class="hist">${rows.map(x => `<tr>
       <td class="muted">${fmtTime(x.created_at)}</td>
       <td><b>${(+x.amount_pln).toLocaleString('ru-RU')} zł</b></td>
@@ -1585,6 +1632,75 @@ function toastUndo(){
   if (f) f();
 }
 
+/* ── глобальный поиск в топбаре (Б1-и2): гости + ПК, «/» — фокус,
+   стрелки — выбор, Enter — открыть карточку, Esc — закрыть ── */
+let gqItems = [], gqSel = -1, gqDeb = null, pcCache = [];
+const gq = document.getElementById('gq'), gqDrop = document.getElementById('gqDrop');
+gq.addEventListener('input', () => { clearTimeout(gqDeb); gqDeb = setTimeout(gqSearch, 250); });
+gq.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ e.stopPropagation(); gqHide(); gq.blur(); return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    e.preventDefault();
+    if (!gqItems.length) return;
+    gqSel = (gqSel + (e.key === 'ArrowDown' ? 1 : -1) + gqItems.length) % gqItems.length;
+    paintGqDrop();
+    return;
+  }
+  if (e.key === 'Enter' && gqItems.length) gqOpen(gqItems[Math.max(0, gqSel)]);
+});
+document.addEventListener('click', e => {
+  if (!document.getElementById('gsearch').contains(e.target)) gqHide();
+});
+
+async function gqSearch(){
+  const q = gq.value.trim();
+  if (!q){ gqHide(); return; }
+  try{
+    if (!pcCache.length){
+      const d = await api('/admin/computers');
+      pcCache = d.computers || [];
+    }
+    const u = await api('/admin/users?q=' + encodeURIComponent(q));
+    const lq = q.toLowerCase();
+    const pcs = pcCache.filter(p => (p.name || '').toLowerCase().includes(lq)).slice(0, 4);
+    gqItems = (u.users || []).slice(0, 6).map(x => ({
+      t:'user', id:x.id, name:x.nickname,
+      sub:'LVL ' + x.level + (x.status === 'banned' ? ' · бан' : ''),
+    })).concat(pcs.map(x => ({
+      t:'pc', id:x.id, name:x.name,
+      sub:x.session ? ('занят: ' + x.session.nickname) : (x.status === 'maintenance' ? 'ремонт' : 'свободен'),
+    })));
+    gqSel = gqItems.length ? 0 : -1;
+    paintGqDrop();
+  }catch(e){ /* поиск не критичен — молчим */ }
+}
+function paintGqDrop(){
+  if (!gqItems.length){
+    gqDrop.innerHTML = '<div class="none">Ничего не нашлось — проверь запрос</div>';
+  } else {
+    let html = '', lastT = '';
+    gqItems.forEach((it, i) => {
+      if (it.t !== lastT){ html += '<div class="sub">' + (it.t === 'user' ? 'Гости' : 'ПК') + '</div>'; lastT = it.t; }
+      html += `<div class="gi${i === gqSel ? ' sel' : ''}" onclick="gqOpen(gqItems[${i}])">
+        <span data-ic="${it.t === 'user' ? 'users' : 'monitor'}"></span><b>${esc(it.name)}</b>
+        <span class="muted" style="margin-left:auto">${esc(it.sub)}</span></div>`;
+    });
+    gqDrop.innerHTML = html;
+  }
+  mountIcons(gqDrop);
+  gqDrop.classList.remove('hidden');
+}
+function gqHide(){ gqDrop.classList.add('hidden'); gqItems = []; gqSel = -1; }
+async function gqOpen(it){
+  gqHide();
+  gq.value = '';
+  gq.blur();
+  if (it.t === 'user'){ openUserDrawer(it.id); return; }
+  nav('hall');
+  if (!hallData.find(p => p.id === it.id)) await renderHall();
+  openPCDrawer(it.id);
+}
+
 /* ── живой поиск гостей: debounce 300мс, Enter — сразу ── */
 (function(){
   const uq = document.getElementById('uq');
@@ -1605,28 +1721,28 @@ function toastUndo(){
   });
 })();
 
-/* ── хоткеи: 1–7 разделы, «/» — поиск гостя, Esc — закрыть drawer/форму ── */
+/* ── хоткеи: 1–7 разделы, «/» — глобальный поиск (Б1), Esc — закрыть drawer/форму ── */
 document.addEventListener('keydown', e => {
   if (!me) return;
   const tag = (e.target.tagName||'').toLowerCase();
   const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
   if (e.key === 'Escape'){
-    if (document.getElementById('drawer').classList.contains('open')) closeDrawer();
+    if (!gqDrop.classList.contains('hidden')) gqHide();
+    else if (document.getElementById('drawer').classList.contains('open')) closeDrawer();
     else if (typing) e.target.blur();
     return;
   }
   if (typing) return;
   if (e.key === '/'){
     e.preventDefault();
-    nav('users');
-    document.getElementById('uq').focus();
+    gq.focus();
     return;
   }
   const i = parseInt(e.key) - 1;
   if (i >= 0 && i < SECTIONS.length) nav(SECTIONS[i]);
 });
 
-/* ── старт ── */
+/* ── старт (Б1) ── */
 (async function init(){
   mountIcons();
   if (tokens().a || tokens().r){

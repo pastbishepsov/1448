@@ -80,6 +80,8 @@ func adminDayCapExceeded(used, add, cap float64) bool {
 }
 
 // GET /admin/overview — сводка для шапки админки.
+// Б1: + сегодняшний срез — брони сегодня (бэйдж и KPI) и выручка за день
+// (депозиты с полуночи; операции дня видны и роли admin — решение №3).
 func handleAdminOverview(c *gin.Context) {
 	var users, activeSessions, computersTotal, computersFree, upcomingBookings int64
 	db.Model(&models.User{}).Count(&users)
@@ -91,12 +93,25 @@ func handleAdminOverview(c *gin.Context) {
 			[]models.BookingStatus{models.BookingStatusPending, models.BookingStatusConfirmed}, time.Now()).
 		Count(&upcomingBookings)
 
+	today := startOfToday()
+	var bookingsToday int64
+	db.Model(&models.Booking{}).
+		Where("status IN ? AND start_time >= ? AND start_time < ?",
+			[]models.BookingStatus{models.BookingStatusPending, models.BookingStatusConfirmed},
+			today, today.Add(24*time.Hour)).
+		Count(&bookingsToday)
+	var revenueToday float64
+	db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
+		Where("created_at >= ?", today).Scan(&revenueToday)
+
 	c.JSON(http.StatusOK, gin.H{
 		"users":             users,
 		"active_sessions":   activeSessions,
 		"computers_total":   computersTotal,
 		"computers_free":    computersFree,
 		"upcoming_bookings": upcomingBookings,
+		"bookings_today":    bookingsToday,
+		"revenue_today_pln": revenueToday,
 	})
 }
 
@@ -150,26 +165,32 @@ func setUserStatus(c *gin.Context, status models.UserStatus) {
 func handleAdminBan(c *gin.Context)   { setUserStatus(c, models.UserStatusBanned) }
 func handleAdminUnban(c *gin.Context) { setUserStatus(c, models.UserStatusActive) }
 
-// GET /admin/users/:id — карточка гостя одним заходом (спринт А2):
-// профиль + сводка + последние 20 сессий/депозитов/начислений.
+// GET /admin/users/:id — карточка гостя одним заходом (спринт А2).
+// Деньги по ролям (Б1-и4, решение №3): owner видит всю историю депозитов и
+// «внесено всего»; admin — только депозиты текущего дня, без агрегата.
 func handleAdminUserCard(c *gin.Context) {
 	var user models.User
 	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
 		return
 	}
+	ownerView := c.GetString("user_role") == string(models.UserRoleOwner)
 
 	var sessions []models.Session
 	db.Preload("Computer").Where("user_id = ?", user.ID).
 		Order("started_at DESC").Limit(20).Find(&sessions)
 
 	var deposits []models.Deposit
-	db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(20).Find(&deposits)
+	depQ := db.Where("user_id = ?", user.ID)
+	if !ownerView {
+		depQ = depQ.Where("created_at >= ?", startOfToday())
+	}
+	depQ.Order("created_at DESC").Limit(20).Find(&deposits)
 
 	var grants []models.AdminGrant
 	db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(20).Find(&grants)
 
-	// сводка за всё время
+	// сводка за всё время (деньги — только owner)
 	var agg struct {
 		Cnt     int64
 		Minutes int64
@@ -178,8 +199,10 @@ func handleAdminUserCard(c *gin.Context) {
 		Select("COUNT(*) AS cnt, COALESCE(SUM(minutes_used),0) AS minutes").
 		Where("user_id = ?", user.ID).Scan(&agg)
 	var depSum float64
-	db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
-		Where("user_id = ?", user.ID).Scan(&depSum)
+	if ownerView {
+		db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
+			Where("user_id = ?", user.ID).Scan(&depSum)
+	}
 
 	// ники админов для журнала начислений
 	adminIDs := map[string]bool{}
@@ -218,16 +241,20 @@ func handleAdminUserCard(c *gin.Context) {
 		})
 	}
 
+	stats := gin.H{
+		"sessions_count": agg.Cnt,
+		"hours_played":   agg.Minutes / 60,
+	}
+	if ownerView {
+		stats["deposited_pln"] = depSum
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"user": user,
-		"stats": gin.H{
-			"sessions_count": agg.Cnt,
-			"hours_played":   agg.Minutes / 60,
-			"deposited_pln":  depSum,
-		},
-		"sessions": sesOut,
-		"deposits": deposits,
-		"grants":   grOut,
+		"user":        user,
+		"stats":       stats,
+		"sessions":    sesOut,
+		"deposits":    deposits,
+		"grants":      grOut,
+		"money_scope": map[bool]string{true: "all", false: "today"}[ownerView],
 	})
 }
 

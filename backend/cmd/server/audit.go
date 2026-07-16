@@ -9,10 +9,12 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -32,7 +34,21 @@ func logAdminAction(c *gin.Context, action string, targetUserID *uuid.UUID, deta
 
 // GET /admin/audit — лента событий: три источника сливаются по времени,
 // в ответ уходит максимум 100 свежих. Ники резолвятся одним запросом.
+// Роли (Б1-и4, решение №3): owner видит всё; admin — операции текущего дня
+// и без owner-событий (settings_update, staff_*).
 func handleAdminAudit(c *gin.Context) {
+	ownerView := c.GetString("user_role") == string(models.UserRoleOwner)
+	scope := func(q *gorm.DB) *gorm.DB {
+		if ownerView {
+			return q
+		}
+		return q.Where("created_at >= ?", startOfToday())
+	}
+	hiddenFromAdmin := func(action string) bool {
+		return !ownerView &&
+			(action == "settings_update" || strings.HasPrefix(action, "staff_"))
+	}
+
 	type item struct {
 		CreatedAt time.Time
 		Kind      string
@@ -43,7 +59,7 @@ func handleAdminAudit(c *gin.Context) {
 	items := []item{}
 
 	var grants []models.AdminGrant
-	db.Order("created_at DESC").Limit(100).Find(&grants)
+	scope(db.Order("created_at DESC").Limit(100)).Find(&grants)
 	for _, g := range grants {
 		text := g.Reason
 		if g.GrantType == "xp" && g.Amount != nil {
@@ -56,7 +72,7 @@ func handleAdminAudit(c *gin.Context) {
 	}
 
 	var deposits []models.Deposit
-	db.Order("created_at DESC").Limit(100).Find(&deposits)
+	scope(db.Order("created_at DESC").Limit(100)).Find(&deposits)
 	for _, d := range deposits {
 		adminID := uuid.Nil
 		if d.CreatedBy != nil {
@@ -68,8 +84,11 @@ func handleAdminAudit(c *gin.Context) {
 	}
 
 	var actions []models.AdminAction
-	db.Order("created_at DESC").Limit(100).Find(&actions)
+	scope(db.Order("created_at DESC").Limit(100)).Find(&actions)
 	for _, a := range actions {
+		if hiddenFromAdmin(a.Action) {
+			continue
+		}
 		items = append(items, item{a.CreatedAt, a.Action, a.AdminID, a.TargetUserID, a.Details})
 	}
 
