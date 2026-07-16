@@ -39,17 +39,22 @@ func settingInt64(key string, def int64) int64 {
 }
 
 // settingBounds — допустимые границы значений (валидация PUT).
+// Лимиты admin (Б0-и4, решение №6 в ADMIN.md): 0 = без лимита.
 var settingBounds = map[string][2]int64{
-	"xp_per_min":    {1, 1000},
-	"coins_per_min": {0, 1000},
-	"coins_per_pln": {1, 100},
+	"xp_per_min":                {1, 1000},
+	"coins_per_min":             {0, 1000},
+	"coins_per_pln":             {1, 100},
+	"admin_day_xp_cap":          {0, 10000000},
+	"admin_day_deposit_cap_pln": {0, 1000000},
 }
 
 func currentSettings() gin.H {
 	return gin.H{
-		"xp_per_min":    settingInt64("xp_per_min", xpPerMinute),
-		"coins_per_min": settingInt64("coins_per_min", coinsPerMinute),
-		"coins_per_pln": settingInt64("coins_per_pln", coinsPerPLN),
+		"xp_per_min":                settingInt64("xp_per_min", xpPerMinute),
+		"coins_per_min":             settingInt64("coins_per_min", coinsPerMinute),
+		"coins_per_pln":             settingInt64("coins_per_pln", coinsPerPLN),
+		"admin_day_xp_cap":          settingInt64("admin_day_xp_cap", 0),
+		"admin_day_deposit_cap_pln": settingInt64("admin_day_deposit_cap_pln", 0),
 	}
 }
 

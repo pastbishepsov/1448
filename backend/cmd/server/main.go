@@ -135,13 +135,15 @@ func main() {
 		adm.POST("/bookings/:id/cancel", handleAdminCancelBooking)
 		adm.POST("/bookings/:id/restore", handleAdminRestoreBooking) // undo отмены (спринт А3)
 		adm.GET("/catalog", handleAdminCatalog)
-		adm.POST("/catalog", handleAdminCatalogUpsert)
 		adm.POST("/catalog/:id/toggle", handleAdminCatalogToggle)
-		adm.DELETE("/catalog/:id", handleAdminCatalogDelete)
+		adm.POST("/catalog/:id/sort", handleAdminCatalogSort) // Б0-и3: admin — только порядок
 
 		// Owner-only: статистика и настройки экономики (спринт А5)
 		own := adm.Group("")
 		own.Use(ownerMiddleware())
+		// Каталог: правка/удаление — конфигурация запуска на гостевых ПК (Б0-и3)
+		own.POST("/catalog", handleAdminCatalogUpsert)
+		own.DELETE("/catalog/:id", handleAdminCatalogDelete)
 		own.GET("/stats/revenue", handleAdminStatsRevenue)
 		own.GET("/stats/load", handleAdminStatsLoad)
 		own.GET("/settings", handleAdminSettingsGet)

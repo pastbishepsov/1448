@@ -31,6 +31,54 @@ func adminMiddleware() gin.HandlerFunc {
 	}
 }
 
+// canTargetUser — чистый инвариант действий персонала над аккаунтом
+// (спринт Б0-и1, решение №4 в ADMIN.md; тест в admin_test.go):
+// цель — только гость (role=player) и не сам исполнитель.
+// Применяется к бану/разбану, депозиту и ручным начислениям.
+func canTargetUser(targetRole models.UserRole, targetID, actorID string) (ok bool, code string) {
+	if targetID != "" && targetID == actorID {
+		return false, "cannot_touch_self"
+	}
+	if targetRole != models.UserRolePlayer {
+		return false, "cannot_touch_staff"
+	}
+	return true, ""
+}
+
+// targetPlayer — находит цель действия по :id и применяет canTargetUser.
+// Ответ об ошибке пишет сам; вернул nil — обработчику выходить.
+func targetPlayer(c *gin.Context) *models.User {
+	var user models.User
+	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return nil
+	}
+	if ok, code := canTargetUser(user.Role, user.ID.String(), c.GetString("user_id")); !ok {
+		msg := map[string]string{
+			"cannot_touch_self":  "Нельзя применить действие к самому себе",
+			"cannot_touch_staff": "Действия персонала применимы только к гостям",
+		}[code]
+		c.JSON(http.StatusForbidden, gin.H{"code": code, "message": msg})
+		return nil
+	}
+	return &user
+}
+
+// startOfToday — полночь текущего дня (для дневных лимитов, Б0-и4).
+func startOfToday() time.Time {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+}
+
+// adminDayCapExceeded — превышен ли дневной потолок админа
+// (cap <= 0 — лимита нет; тест в admin_test.go).
+func adminDayCapExceeded(used, add, cap float64) bool {
+	if cap <= 0 {
+		return false
+	}
+	return used+add > cap
+}
+
 // GET /admin/overview — сводка для шапки админки.
 func handleAdminOverview(c *gin.Context) {
 	var users, activeSessions, computersTotal, computersFree, upcomingBookings int64
@@ -67,26 +115,35 @@ func handleAdminUsers(c *gin.Context) {
 }
 
 // setUserStatus — общий код бана/разбана.
+// Бан гасит активную сессию честно (Б0-и2, решение №5 в ADMIN.md):
+// finishSession начисляет за фактическое время, освобождает ПК и шлёт
+// session_end на Shell (агент лочит экран); в админ-ленту уходит «ban».
 func setUserStatus(c *gin.Context, status models.UserStatus) {
-	var user models.User
-	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+	user := targetPlayer(c)
+	if user == nil {
 		return
 	}
-	if user.Role != models.UserRolePlayer {
-		c.JSON(http.StatusForbidden, gin.H{"code": "cannot_touch_staff", "message": "Нельзя банить персонал"})
-		return
-	}
-	if err := db.Model(&user).Update("status", status).Error; err != nil {
+	if err := db.Model(user).Update("status", status).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
-	action := "unban"
+	action, details := "unban", ""
 	if status == models.UserStatusBanned {
 		action = "ban"
+		var s models.Session
+		if db.Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).
+			First(&s).Error == nil {
+			if res, err := finishSession(&s, nil); err == nil {
+				details = fmt.Sprintf("активная сессия завершена: %d мин, +%d XP, +%d монет",
+					res.Minutes, res.XPGained, res.CoinsGained)
+			} else {
+				details = "не удалось завершить активную сессию: " + err.Error()
+			}
+		}
+		hub.AdminBroadcast("ban", map[string]any{"nickname": user.Nickname})
 	}
 	target := user.ID
-	logAdminAction(c, action, &target, "")
+	logAdminAction(c, action, &target, details)
 	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "status": status})
 }
 

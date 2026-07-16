@@ -4,6 +4,7 @@ package main
 // каждая операция пишется в журнал admin_grants (позже попадёт в Owner Stats).
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -51,10 +52,11 @@ type grantRequest struct {
 }
 
 // POST /admin/users/:id/grant — начислить XP или кейс вручную.
+// Цель — только player и не сам себе (Б0-и1, targetPlayer); для роли admin
+// действует дневной потолок XP из настроек owner (Б0-и4).
 func handleAdminGrant(c *gin.Context) {
-	var user models.User
-	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+	user := targetPlayer(c)
+	if user == nil {
 		return
 	}
 
@@ -80,6 +82,21 @@ func handleAdminGrant(c *gin.Context) {
 		return
 	}
 
+	// Б0-и4: дневной потолок XP-начислений для роли admin (0 = без лимита).
+	if req.Type == "xp" && c.GetString("user_role") == string(models.UserRoleAdmin) {
+		if cap := settingInt64("admin_day_xp_cap", 0); cap > 0 {
+			var used int64
+			db.Model(&models.AdminGrant{}).Select("COALESCE(SUM(amount),0)").
+				Where("admin_id = ? AND grant_type = 'xp' AND created_at >= ?", adminID, startOfToday()).
+				Scan(&used)
+			if adminDayCapExceeded(float64(used), float64(req.Amount), float64(cap)) {
+				c.JSON(http.StatusForbidden, gin.H{"code": "day_cap",
+					"message": fmt.Sprintf("Дневной лимит XP-начислений админа: %d (уже начислено %d)", cap, used)})
+				return
+			}
+		}
+	}
+
 	entry := models.AdminGrant{
 		UserID: user.ID, AdminID: adminID,
 		GrantType: req.Type, Reason: strings.TrimSpace(req.Reason),
@@ -90,10 +107,10 @@ func handleAdminGrant(c *gin.Context) {
 
 	switch req.Type {
 	case "xp":
-		levelsGained = applyXP(&user, req.Amount)
+		levelsGained = applyXP(user, req.Amount)
 		entry.Amount = &req.Amount
 		err = db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Save(&user).Error; err != nil {
+			if err := tx.Save(user).Error; err != nil {
 				return err
 			}
 			return tx.Create(&entry).Error

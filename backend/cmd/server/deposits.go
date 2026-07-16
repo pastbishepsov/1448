@@ -11,6 +11,7 @@ package main
 //   - ачивка first_deposit (deposit_count) выдаётся через checkAchievements.
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"time"
@@ -69,10 +70,11 @@ type depositRequest struct {
 }
 
 // POST /admin/users/:id/deposit — оформить пополнение гостю.
+// Цель — только player и не сам себе (Б0-и1, targetPlayer); для роли admin
+// действует дневной потолок из настроек owner (Б0-и4).
 func handleAdminDeposit(c *gin.Context) {
-	var user models.User
-	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+	user := targetPlayer(c)
+	if user == nil {
 		return
 	}
 	if user.Status == models.UserStatusBanned {
@@ -96,6 +98,21 @@ func handleAdminDeposit(c *gin.Context) {
 	if method != "cash" && method != "card" && method != "blik" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_method", "message": "method: cash | card | blik"})
 		return
+	}
+
+	// Б0-и4: дневной потолок депозитов для роли admin (0 = без лимита).
+	if c.GetString("user_role") == string(models.UserRoleAdmin) {
+		if cap := settingInt64("admin_day_deposit_cap_pln", 0); cap > 0 {
+			var used float64
+			db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
+				Where("created_by = ? AND created_at >= ?", c.GetString("user_id"), startOfToday()).
+				Scan(&used)
+			if adminDayCapExceeded(used, req.AmountPLN, float64(cap)) {
+				c.JSON(http.StatusForbidden, gin.H{"code": "day_cap",
+					"message": fmt.Sprintf("Дневной лимит депозитов админа: %d zł (уже оформлено %.0f zł)", cap, used)})
+				return
+			}
+		}
 	}
 
 	base, bonus := depositCoins(req.AmountPLN, talentEffect(user.ID.String(), "coin_mint"),
@@ -149,7 +166,7 @@ func handleAdminDeposit(c *gin.Context) {
 		"coins":      base + bonus,
 	})
 
-	db.First(&user, "id = ?", user.ID) // свежий баланс
+	db.First(user, "id = ?", user.ID) // свежий баланс
 	c.JSON(http.StatusCreated, gin.H{
 		"deposit_id":    dep.ID,
 		"nickname":      user.Nickname,

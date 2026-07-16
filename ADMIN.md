@@ -83,18 +83,22 @@ tabular-nums; каждое действие — в журнал.
 
 ### Б0 — Права на сервере
 Инварианты вместо UI-вежливости. Ни одного нового экрана.
-- [ ] и1: **[go]** инвариант «цель — player и не self» в deposit и grant
-      (общий helper + тесты; ban/walk-in уже проверяют — выровнять код);
-- [ ] и2: **[go]** бан: если у гостя активная сессия — `finishSession`
-      (честное начисление) + `session_end` на Shell (лок) +
-      `AdminBroadcast("ban")`; тест правила;
-- [ ] и3: **[go]** каталог по ролям: `upsert`/`DELETE` → под ownerMiddleware,
-      новый `POST /admin/catalog/:id/sort` (admin, только порядок);
-      UI: admin видит тумблер и ↑↓, формы правки — owner;
-- [ ] и4: **[go]** лимиты admin: ключи `admin_day_xp_cap`,
-      `admin_day_deposit_cap_pln` в settings (0 = без лимита), проверка
-      per-admin per-day в grant/deposit (owner не ограничен), понятная
-      ошибка «дневной лимит», поля в разделе «Экономика», тест.
+Код готов 2026-07-16; спринт закрывается после проверки у стойки + коммита.
+- [x] и1: **[go]** инвариант «цель — player и не self» в deposit и grant:
+      чистая `canTargetUser` + helper `targetPlayer` (admin.go), применён в
+      ban/unban/deposit/grant; тест `TestCanTargetUser`;
+- [x] и2: **[go]** бан гасит активную сессию: `finishSession` (честное
+      начисление, ПК свободен, `session_end` на Shell = лок) +
+      `AdminBroadcast("ban")` + детали в аудит; лента знает событие `ban`;
+- [x] и3: **[go]** каталог по ролям: `POST /catalog` (upsert) и `DELETE` —
+      под ownerMiddleware, новый `POST /admin/catalog/:id/sort` (admin,
+      только порядок, действие `catalog_sort` в аудите); UI: admin — тумблер
+      и ↑↓, «Добавить»/правка/удаление — owner, подпись-подсказка;
+- [x] и4: **[go]** лимиты admin: `admin_day_xp_cap`,
+      `admin_day_deposit_cap_pln` в settings (0 = без лимита, границы в
+      settingBounds), проверка per-admin per-day в grant (SUM за день) и
+      deposit (SUM по created_by), owner не ограничен, ошибка `day_cap`;
+      поля в «Экономике»; тест `TestAdminDayCapExceeded`.
 
 ### Б1 — Навигация (каркас C+A)
 - [ ] и1: рейл двух зон СМЕНА/КЛУБ (admin не видит КЛУБ), «Статистика»→

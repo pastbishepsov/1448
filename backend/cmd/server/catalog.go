@@ -2,10 +2,13 @@ package main
 
 // Каталог приложений гостевого экрана (ТЗ 6.2: конфигурируется через Admin Panel).
 // GET /catalog — публичный (гостевой экран и shell-agent читают без токена; пути
-// запуска в LAN клуба не секрет). Изменение — только админом.
+// запуска в LAN клуба не секрет).
+// Права (Б0-и3, решение №2 в ADMIN.md): admin — вкл/выкл и порядок;
+// создание/правка/удаление (target/args = что запускается на гостевых ПК) — owner.
 // До пилота агент получит собственную аутентификацию (MAC+токен, см. STATUS).
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 
@@ -138,7 +141,30 @@ func handleAdminCatalogToggle(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": app.ID, "enabled": newEnabled})
 }
 
-// DELETE /admin/catalog/:id — удалить приложение из каталога.
+// POST /admin/catalog/:id/sort — только порядок (Б0-и3). Единственная
+// правка каталога, доступная роли admin помимо тумблера; формы — у owner.
+func handleAdminCatalogSort(c *gin.Context) {
+	var app models.CatalogApp
+	if err := db.First(&app, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "app_not_found", "message": "Приложение не найдено"})
+		return
+	}
+	var req struct {
+		Sort *int `json:"sort" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужно поле sort (целое)"})
+		return
+	}
+	if err := db.Model(&app).Update("sort", *req.Sort).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	logAdminAction(c, "catalog_sort", nil, fmt.Sprintf("%s → %d", app.ID, *req.Sort))
+	c.JSON(http.StatusOK, gin.H{"id": app.ID, "sort": *req.Sort})
+}
+
+// DELETE /admin/catalog/:id — удалить приложение из каталога (owner).
 func handleAdminCatalogDelete(c *gin.Context) {
 	res := db.Delete(&models.CatalogApp{}, "id = ?", c.Param("id"))
 	if res.Error != nil {

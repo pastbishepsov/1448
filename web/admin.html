@@ -335,8 +335,8 @@
 
       <section id="s-catalog" class="hidden">
         <div class="toolrow">
-          <button class="btn mini" onclick="editApp('')"><span data-ic="plus"></span>Добавить</button>
-          <span class="muted">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
+          <button class="btn mini ownerOnly hidden" onclick="editApp('')"><span data-ic="plus"></span>Добавить</button>
+          <span class="muted" id="catHint">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
         </div>
         <div class="tablewrap" id="catalogTable"><div class="empty">Загрузка…</div></div>
       </section>
@@ -377,8 +377,12 @@
           <input id="set_coins" class="input" type="number" min="0" max="1000">
           <label class="muted" for="set_rate">Монет за 1 zł депозита</label>
           <input id="set_rate" class="input" type="number" min="1" max="100">
+          <label class="muted" for="set_xpcap">Дневной лимит XP-начислений на админа (0 — без лимита)</label>
+          <input id="set_xpcap" class="input" type="number" min="0" max="10000000">
+          <label class="muted" for="set_depcap">Дневной лимит депозитов на админа, zł (0 — без лимита)</label>
+          <input id="set_depcap" class="input" type="number" min="0" max="1000000">
           <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
-          <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал</div>
+          <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал. Лимиты не касаются владельца</div>
         </div>
       </section>
     </main>
@@ -451,6 +455,7 @@ const UI = {
   clock: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>`,
 };
 function mountIcons(root){ (root||document).querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = UI[el.dataset.ic] || ''; }); }
+function isOwner(){ return !!me && me.role === 'owner'; }
 
 /* ── auth (отдельные ключи от гостевого экрана) ── */
 function tokens(){ return {a: localStorage.getItem('1448a_access'), r: localStorage.getItem('1448a_refresh')}; }
@@ -586,7 +591,7 @@ setInterval(() => {
 let ws = null, wsOpen = false, wsRetry = null, refDeb = null;
 let feed = []; // последние события для ленты Зала (кап 30)
 const FEED_ICON = {session_start:'clock', session_end:'power', shell_online:'monitor',
-                   shell_offline:'monitor', deposit:'coins', booking:'cal'};
+                   shell_offline:'monitor', deposit:'coins', booking:'cal', ban:'ban'};
 
 function setPolling(ms){
   if (refreshIv) clearInterval(refreshIv);
@@ -624,6 +629,7 @@ function feedLine(m){
     case 'shell_online': return pcName(d.computer_id) + ' — shell online';
     case 'shell_offline': return pcName(d.computer_id) + ' — shell offline';
     case 'deposit': return (d.nickname||'гость') + ' внёс ' + (+d.amount_pln||0) + ' zł (+' + (d.coins||0) + ' монет)';
+    case 'ban': return (d.nickname||'гость') + ' забанен';
     case 'booking': {
       const k = {create:'бронь', cancel:'отмена брони', restore:'возврат брони'}[d.kind] || 'бронь';
       return k + (d.nickname ? ': ' + d.nickname : '') + (d.computer ? ' · ' + d.computer : '')
@@ -1203,9 +1209,15 @@ async function renderCatalogTab(){
     const d = await api('/admin/catalog');
     catApps = d.apps || [];
   }catch(e){ toast('⚠ ' + e.message); return; }
+  // Б0-и3: admin — тумблер и порядок; формы правки/удаления — owner
+  const hint = document.getElementById('catHint');
+  if (hint) hint.textContent = (isOwner() ? '' : 'Правка и удаление — у владельца. ')
+    + 'Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)';
   const cat = {game:'игра', platform:'платформа', app:'приложение', system:'система'};
   setHTML('catalogTable', catApps.length === 0
-    ? '<div class="empty">Каталог пуст — «Добавить» заведёт первую игру или приложение</div>'
+    ? (isOwner()
+      ? '<div class="empty">Каталог пуст — «Добавить» заведёт первую игру или приложение</div>'
+      : '<div class="empty">Каталог пуст — наполняет владелец</div>')
     : `
   <table><tr><th>#</th><th>id</th><th>Название</th><th>Категория</th><th>Запуск (target)</th><th>Вкл</th><th></th></tr>
   ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}">
@@ -1218,20 +1230,16 @@ async function renderCatalogTab(){
     <td style="white-space:nowrap">
       <button class="btn ghost mini" onclick="moveApp('${a.id}',-1)" title="Выше в списке">↑</button>
       <button class="btn ghost mini" onclick="moveApp('${a.id}',1)" title="Ниже в списке">↓</button>
-      <button class="btn ghost mini" onclick="editApp('${a.id}')" title="Редактировать"><span data-ic="edit"></span></button>
-      <button class="btn danger mini" onclick="armDeleteApp(this,'${a.id}')" title="Удалить из каталога"><span data-ic="cross"></span></button>
+      ${isOwner() ? `<button class="btn ghost mini" onclick="editApp('${a.id}')" title="Редактировать"><span data-ic="edit"></span></button>
+      <button class="btn danger mini" onclick="armDeleteApp(this,'${a.id}')" title="Удалить из каталога"><span data-ic="cross"></span></button>` : ''}
     </td>
   </tr>`).join('')}</table>`);
 }
 
-/* порядок ↑↓: обмен sort с соседом внутри категории (А3) */
-function catUpsert(a){
-  return api('/admin/catalog', {method:'POST', body:JSON.stringify({
-    id: a.id, name: a.name, category: a.category, sort: a.sort,
-    subtitle: a.subtitle || null, tag: a.tag || null, emoji: a.emoji || null,
-    color_a: a.color_a || null, color_b: a.color_b || null,
-    target: a.target || null, args: a.args || null,
-  })});
+/* порядок ↑↓: обмен sort с соседом внутри категории.
+   Б0-и3: через /catalog/:id/sort — доступно admin'у, upsert больше не нужен */
+function setAppSort(id, sort){
+  return api('/admin/catalog/' + id + '/sort', {method:'POST', body:JSON.stringify({sort})});
 }
 async function moveApp(id, dir){
   const a = catApps.find(x => x.id === id);
@@ -1242,10 +1250,10 @@ async function moveApp(id, dir){
   const b = sameCat[j];
   try{
     if (a.sort !== b.sort){
-      await catUpsert({...a, sort: b.sort});
-      await catUpsert({...b, sort: a.sort});
+      await setAppSort(a.id, b.sort);
+      await setAppSort(b.id, a.sort);
     } else {
-      await catUpsert({...a, sort: b.sort + dir});
+      await setAppSort(a.id, b.sort + dir);
     }
     renderCatalogTab();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -1260,8 +1268,10 @@ function armDeleteApp(btn, id){
   });
 }
 
-/* форма приложения в drawer + живой предпросмотр плитки 2:3 (А3/и4) */
+/* форма приложения в drawer + живой предпросмотр плитки 2:3 (А3/и4).
+   Б0-и3: правка каталога — только owner (бэкенд тоже проверяет) */
 function editApp(id){
+  if (!isOwner()){ toast('Правка каталога — у владельца'); return; }
   const a = catApps.find(x => x.id === id) || {category:'game', sort:100};
   const isNew = !a.id;
   drawerPCId = null; drawerUserId = null;
@@ -1349,14 +1359,14 @@ const AUD_GROUPS = {
   sessions: ['session_end'],
   bookings: ['booking_create','booking_cancel','booking_restore'],
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update'],
-  catalog: ['catalog_upsert','catalog_toggle','catalog_delete'],
+  catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
 };
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
   session_end:'стоп сессии', pc_maintenance:'ПК в ремонт', pc_available:'ПК в строй',
   booking_create:'бронь', booking_cancel:'отмена брони', booking_restore:'возврат брони',
   catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
-  settings_update:'настройки',
+  catalog_sort:'каталог: порядок', settings_update:'настройки',
   pc_create:'ПК добавлен', pc_update:'ПК изменён', pc_delete:'ПК удалён', layout_update:'схема зала',
 };
 const AUD_ICON = {
@@ -1364,7 +1374,7 @@ const AUD_ICON = {
   pc_maintenance:'wrench', pc_available:'check', booking_create:'cal',
   booking_cancel:'cross', booking_restore:'cal',
   catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
-  settings_update:'gear',
+  catalog_sort:'apps', settings_update:'gear',
   pc_create:'plus', pc_update:'edit', pc_delete:'cross', layout_update:'monitor',
 };
 function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
@@ -1517,6 +1527,8 @@ async function renderSettings(){
     document.getElementById('set_xp').value = d.settings.xp_per_min;
     document.getElementById('set_coins').value = d.settings.coins_per_min;
     document.getElementById('set_rate').value = d.settings.coins_per_pln;
+    document.getElementById('set_xpcap').value = d.settings.admin_day_xp_cap;
+    document.getElementById('set_depcap').value = d.settings.admin_day_deposit_cap_pln;
   }catch(e){ toast('⚠ ' + e.message); }
 }
 async function saveSettings(){
@@ -1524,6 +1536,8 @@ async function saveSettings(){
     xp_per_min: parseInt(document.getElementById('set_xp').value),
     coins_per_min: parseInt(document.getElementById('set_coins').value),
     coins_per_pln: parseInt(document.getElementById('set_rate').value),
+    admin_day_xp_cap: parseInt(document.getElementById('set_xpcap').value),
+    admin_day_deposit_cap_pln: parseInt(document.getElementById('set_depcap').value),
   };
   for (const k in body){
     if (!Number.isInteger(body[k]) || body[k] < 0){ toast('⚠ Нужны целые неотрицательные числа'); return; }
