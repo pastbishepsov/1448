@@ -97,6 +97,18 @@
   .belldrop .none{color:var(--dim); padding:12px; font-size:12.5px; text-align:center}
   .pc.call,.hpc.call{border-color:var(--acc); box-shadow:0 0 0 1px var(--acc), 0 0 14px rgba(255,39,64,.3)}
   .pc.call .info,.hpc.call .inf{color:var(--acc3)}
+  .belldrop .bi.clickable{cursor:pointer}
+  .belldrop .bi.clickable:hover{background:rgba(255,255,255,.05)}
+
+  /* ── Б3: чат в карточке гостя ── */
+  .chlist{max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding:4px 0}
+  .chmsg{background:var(--card); border:1px solid var(--hair); border-radius:11px; padding:8px 11px;
+         font-size:13px; max-width:86%; align-self:flex-start; overflow-wrap:anywhere}
+  .chmsg.me{align-self:flex-end; background:rgba(255,39,64,.13); border-color:rgba(255,39,64,.3)}
+  .chmsg span{display:block; font-size:10.5px; color:var(--dim); margin-top:3px}
+  .chsys{text-align:center; font-size:11px; color:var(--dim); padding:2px 0}
+  .chrow{display:flex; gap:8px; margin-top:10px}
+  .chrow .input{flex:1; min-width:0}
   .who{font-size:13px; color:var(--dim); font-weight:700}
   .who b{color:var(--txt)}
 
@@ -733,16 +745,20 @@ function handleLiveEvent(m){
   paintFeed();
   lastSync = Date.now();
   if (m.type === 'deposit' && drawerUserId) loadUserDrawer(); // открытая карточка гостя
-  if (m.type === 'chat'){ // Б2: вызов/сообщение — в колокол, тост, плитку
+  if (m.type === 'chat'){ // Б2/Б3: вызов/сообщение — колокол, тост, плитка, открытый тред
     const d = m.data || {};
-    bellItems.unshift({id:d.id, kind:d.kind, text:d.text||'', nickname:d.nickname,
-      computer:d.computer, computer_id:d.computer_id, user_id:d.user_id, created_at:m.at});
-    if (bellItems.length > 50) bellItems.pop();
-    paintBell();
-    toast(d.kind === 'call'
-      ? '🛎 ' + (d.nickname || d.computer || 'Гость') + ' зовёт админа'
-      : '💬 ' + (d.nickname || 'гость') + ': ' + (d.text||''));
-    if (curTab === 'hall' && !hallEdit) paintHall();
+    const inOpenChat = d.user_id && drawerUserId === d.user_id && uTab === 'chat';
+    if (d.sender !== 'staff' && !inOpenChat){
+      bellItems.unshift({id:d.id, kind:d.kind, text:d.text||'', nickname:d.nickname,
+        computer:d.computer, computer_id:d.computer_id, user_id:d.user_id, created_at:m.at});
+      if (bellItems.length > 50) bellItems.pop();
+      paintBell();
+      toast(d.kind === 'call'
+        ? '🛎 ' + (d.nickname || d.computer || 'Гость') + ' зовёт админа'
+        : '💬 ' + (d.nickname || 'гость') + ': ' + (d.text||''));
+      if (curTab === 'hall' && !hallEdit) paintHall();
+    }
+    if (inOpenChat) loadUserChat();
   }
   liveRefresh(); // точечно: refresh обновит KPI + текущий раздел (каталог не трогается)
 }
@@ -771,13 +787,13 @@ function paintBellDrop(){
   const drop = document.getElementById('bellDrop');
   drop.innerHTML = bellItems.length === 0
     ? '<div class="none">Вызовов нет — в зале тихо</div>'
-    : bellItems.map(m => `<div class="bi${m.kind==='call'?' call':''}">
+    : bellItems.map(m => `<div class="bi${m.kind==='call'?' call':''}${m.user_id?' clickable':''}"${m.user_id ? ` onclick="openUserChat('${m.user_id}')" title="Открыть чат"` : ''}>
         <span data-ic="${m.kind==='call'?'bell':'scroll'}"></span>
         <div style="flex:1; min-width:0">
           <b>${esc(m.nickname || m.computer || 'гость')}</b>${m.computer && m.nickname ? ' <span class="muted">· ' + esc(m.computer) + '</span>' : ''}
           <div class="muted">${m.kind==='call' ? 'зовёт админа' : esc(m.text)} · ${hhmm(m.created_at)}</div>
         </div>
-        <button class="btn ghost mini" onclick="ackChat('${m.id}')">Принял</button>
+        <button class="btn ghost mini" onclick="event.stopPropagation(); ackChat('${m.id}')">Принял</button>
       </div>`).join('');
   mountIcons(drop);
 }
@@ -1121,6 +1137,7 @@ let depMethod = 'cash', caseTier = 'light';
 
 async function openUserDrawer(id, form){
   drawerPCId = null;
+  if (drawerUserId !== id) uChat = null; // Б3: чат прошлого гостя не показываем
   drawerUserId = id;
   uForm = form || null;
   await loadUserDrawer();
@@ -1165,13 +1182,65 @@ function renderUserDrawer(){
     <button class="${uTab==='sessions'?'on':''}" onclick="uTabSet('sessions')">Сессии</button>
     <button class="${uTab==='deposits'?'on':''}" onclick="uTabSet('deposits')">${uData.money_scope==='today'?'Депозиты (сегодня)':'Депозиты'}</button>
     <button class="${uTab==='grants'?'on':''}" onclick="uTabSet('grants')">Начисления</button>
+    ${u.role==='player' ? `<button class="${uTab==='chat'?'on':''}" onclick="uTabSet('chat')">Чат</button>` : ''}
   </div>
   <div id="uHist">${uHistHtml()}</div>`;
   openDrawer(u.nickname, body);
 }
 
 function uFormToggle(f){ uForm = (uForm === f) ? null : f; renderUserDrawer(); }
-function uTabSet(t){ uTab = t; renderUserDrawer(); }
+function uTabSet(t){
+  uTab = t;
+  renderUserDrawer();
+  if (t === 'chat') loadUserChat(); // Б3: подтянуть переписку (и пометить прочитанным)
+}
+
+/* ── Б3: чат в карточке гостя ── */
+let uChat = null;
+function chatListHtml(){
+  const rows = uChat || [];
+  return rows.length === 0
+    ? '<div class="empty">Сообщений ещё нет — напиши первым</div>'
+    : rows.map(m => m.kind === 'call'
+      ? `<div class="chsys">${hhmm(m.created_at)} · вызов админа</div>`
+      : `<div class="chmsg${m.sender === 'staff' ? ' me' : ''}">${esc(m.text)}
+          <span>${hhmm(m.created_at)}${m.sender === 'staff' && m.admin ? ' · ' + esc(m.admin) : ''}</span></div>`).join('');
+}
+async function loadUserChat(){
+  if (!drawerUserId) return;
+  try{
+    const d = await api('/admin/chats/' + drawerUserId);
+    uChat = d.messages || [];
+  }catch(e){ uChat = []; }
+  // тред открыт = прочитано: убрать этого гостя из колокола
+  const uid = drawerUserId;
+  const before = bellItems.length;
+  bellItems = bellItems.filter(m => m.user_id !== uid);
+  if (bellItems.length !== before) paintBell();
+  // точечно обновить список, не трогая форму (фокус ввода живёт)
+  const el = document.getElementById('uChatList');
+  if (el && uTab === 'chat'){
+    el.innerHTML = chatListHtml();
+    el.scrollTop = el.scrollHeight;
+  }
+}
+async function sendUserChat(){
+  const inp = document.getElementById('uChatText');
+  if (!inp) return;
+  const text = inp.value.trim();
+  if (!text) return;
+  try{
+    await api('/admin/chats/' + drawerUserId, {method:'POST', body:JSON.stringify({text})});
+    inp.value = '';
+    await loadUserChat();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function openUserChat(id){
+  document.getElementById('bellDrop').classList.add('hidden');
+  uTab = 'chat';
+  await openUserDrawer(id);
+  loadUserChat();
+}
 
 function uFormHtml(){
   if (!uForm) return '';
@@ -1199,6 +1268,13 @@ function uFormHtml(){
 }
 
 function uHistHtml(){
+  if (uTab === 'chat'){
+    return `<div class="chlist" id="uChatList">${chatListHtml()}</div>
+    <div class="chrow">
+      <input id="uChatText" class="input" placeholder="Ответ гостю…" maxlength="500" onkeydown="if(event.key==='Enter')sendUserChat()">
+      <button class="btn mini" onclick="sendUserChat()">Отправить</button>
+    </div>`;
+  }
   if (uTab === 'sessions'){
     const rows = uData.sessions || [];
     if (!rows.length) return '<div class="empty">Сессий не было</div>';
@@ -1703,7 +1779,7 @@ function openDrawer(title, html){
 }
 function closeDrawer(){
   drawerPCId = null;
-  drawerUserId = null; uData = null; uForm = null;
+  drawerUserId = null; uData = null; uForm = null; uChat = null;
   const d = document.getElementById('drawer');
   d.classList.remove('open'); d.setAttribute('aria-hidden','true');
 }

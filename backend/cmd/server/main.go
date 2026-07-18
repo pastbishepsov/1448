@@ -102,6 +102,8 @@ func main() {
 		me.GET("/sensitivity", handleGetSensitivity)      // ← настоящий (профиль сенсы)
 		me.PUT("/sensitivity", handlePutSensitivity)      // ← настоящий
 		me.POST("/chat", handleGuestChatPost)             // чат/вызов админа (Б2)
+		me.GET("/chat", handleGuestChatList)              // переписка, поллинг (Б3)
+		me.GET("/chat/unread", handleGuestChatUnread)     // бэйдж непрочитанного (Б3)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
@@ -130,6 +132,9 @@ func main() {
 		adm.GET("/audit", handleAdminAudit) // единая лента действий (спринт А4)
 		adm.GET("/chat/pending", handleAdminChatPending) // очередь вызовов/сообщений (Б2)
 		adm.POST("/chat/:id/ack", handleAdminChatAck)    // «принял» (Б2)
+		adm.GET("/chats", handleAdminChatThreads)        // треды чата (Б3)
+		adm.GET("/chats/:id", handleAdminChatThread)     // переписка с гостем (Б3)
+		adm.POST("/chats/:id", handleAdminChatPost)      // ответ гостю (Б3)
 		adm.GET("/computers", handleAdminComputers)
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
 		adm.GET("/sessions/active", handleAdminActiveSessions)

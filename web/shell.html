@@ -233,6 +233,29 @@
          border:1px solid var(--acc); border-radius:14px; padding:14px 22px; opacity:0; transition:.3s;
          pointer-events:none; z-index:60; font-weight:600; max-width:70vw}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+  /* ═══ Б3: панель связи с админом (зона связки, ADMIN.md) ═══ */
+  .chatpanel{position:fixed; right:18px; bottom:18px; width:330px; max-width:calc(100vw - 24px); z-index:38;
+             background:rgba(19,16,20,.94); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+             border:1px solid rgba(255,255,255,.09); border-radius:16px; display:flex; flex-direction:column;
+             overflow:hidden; box-shadow:0 18px 44px rgba(0,0,0,.55)}
+  .chatpanel.hidden{display:none}
+  .ch-head{display:flex; align-items:center; gap:8px; padding:12px 14px; font-weight:800; font-size:14px;
+           border-bottom:1px solid rgba(255,255,255,.07)}
+  .ch-head .isvg{color:var(--acc)}
+  .ch-list{overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:7px;
+           min-height:110px; max-height:44vh}
+  .ch-m{background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07); border-radius:11px;
+        padding:8px 11px; font-size:13px; max-width:86%; align-self:flex-start; overflow-wrap:anywhere}
+  .ch-m.mine{align-self:flex-end; background:rgba(255,39,64,.14); border-color:rgba(255,39,64,.3)}
+  .ch-m i{display:block; font-style:normal; font-size:10.5px; color:var(--dim); margin-top:3px}
+  .ch-sys{text-align:center; font-size:11px; color:var(--dim)}
+  .ch-row{display:flex; gap:8px; padding:10px 12px; border-top:1px solid rgba(255,255,255,.07)}
+  .ch-row input{flex:1; min-width:0; background:#0e0d10; border:1px solid rgba(255,255,255,.09);
+                color:var(--txt); border-radius:10px; padding:9px 11px; font-size:13px; font-family:inherit}
+  .ch-row input:focus{outline:none; border-color:var(--acc)}
+  .ch-badge{background:var(--acc); color:#fff; font-size:10px; border-radius:8px; padding:1px 5px;
+            margin-left:5px; font-weight:800; font-variant-numeric:tabular-nums}
   .overlay{position:fixed; inset:0; background:rgba(4,4,6,.85); display:none; align-items:center; justify-content:center; z-index:50}
   .overlay.show{display:flex}
   .modal{background:var(--panel); border:1px solid var(--hair); border-radius:24px; padding:30px; width:420px; max-width:92vw; text-align:center}
@@ -523,7 +546,7 @@
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M160,128a32,32,0,1,1-32-32A32,32,0,0,1,160,128Z" fill="var(--acc)" opacity=".45"/><path d="M232,120h-8.34A96.14,96.14,0,0,0,136,32.34V24a8,8,0,0,0-16,0v8.34A96.14,96.14,0,0,0,32.34,120H24a8,8,0,0,0,0,16h8.34A96.14,96.14,0,0,0,120,223.66V232a8,8,0,0,0,16,0v-8.34A96.14,96.14,0,0,0,223.66,136H232a8,8,0,0,0,0-16Zm-96,87.6V200a8,8,0,0,0-16,0v7.6A80.15,80.15,0,0,1,48.4,136H56a8,8,0,0,0,0-16H48.4A80.15,80.15,0,0,1,120,48.4V56a8,8,0,0,0,16,0V48.4A80.15,80.15,0,0,1,207.6,120H200a8,8,0,0,0,0,16h7.6A80.15,80.15,0,0,1,136,207.6ZM128,88a40,40,0,1,0,40,40A40,40,0,0,0,128,88Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,152Z"/></svg>
       <span>Сенса</span>
     </button>
-    <button class="iconbtn" onclick="adminCall()"><span data-ic="bell"></span> Админ</button>
+    <button class="iconbtn" onclick="toggleChat()"><span data-ic="bell"></span> Админ<span class="ch-badge hidden" id="chatBadge"></span></button>
     <button class="iconbtn" title="Выйти" onclick="logout()">⏻</button>
   </div>
 
@@ -551,6 +574,20 @@
 
 <!-- ═══════════ OVERLAYS ═══════════ -->
 <div id="toast" class="toast"></div>
+
+<!-- Б3 (ADMIN.md): панель связи с админом — вызов + переписка -->
+<div id="chatPanel" class="chatpanel hidden">
+  <div class="ch-head"><span data-ic="bell"></span> Связь с админом
+    <button class="iconbtn" style="margin-left:auto" onclick="toggleChat()" aria-label="Закрыть">✕</button>
+  </div>
+  <div class="ch-list" id="chatList"></div>
+  <div class="ch-row">
+    <button class="btn slim" style="padding:9px 12px" onclick="adminCall()" title="Позвать админа к ПК"><span data-ic="bell"></span></button>
+    <input id="chatText" maxlength="500" placeholder="Написать админу…"
+           onkeydown="if(event.key==='Enter')chatSend()">
+    <button class="btn slim" style="padding:9px 14px" onclick="chatSend()">➤</button>
+  </div>
+</div>
 
 <div id="caseOverlay" class="overlay">
   <div class="modal">
@@ -869,6 +906,8 @@ function logout(){
     body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null; activeSession = null;
   if (timerIv) clearInterval(timerIv);
+  chatOpen = false; chatMsgs = []; chatLastAt = null; chatUnread = 0; // Б3
+  document.getElementById('chatPanel').classList.add('hidden');
   document.getElementById('lockOverlay').classList.remove('show');
   document.getElementById('shellView').classList.add('hidden');
   document.getElementById('authView').classList.remove('hidden');
@@ -1100,6 +1139,7 @@ async function adminCall(){
   try{
     await api('/me/chat', {method:'POST', body:JSON.stringify({kind:'call'})});
     toast('🛎 Администратор вызван — уже идёт');
+    loadChat(); // вызов появится в переписке (Б3)
     return;
   }catch(e){
     if (e.code === 'too_fast'){ toast('🛎 ' + (e.message || 'Администратор уже позван')); return; }
@@ -1118,6 +1158,67 @@ async function adminCall(){
   }
   toast('⚠ Нет связи с сервером — вызов не дошёл, подойди к стойке');
 }
+
+/* ── Б3 (ADMIN.md, зона связки): панель чата с админом.
+   Поллинг: 10с при открытой панели, 15с фоном — бэйдж непрочитанного ── */
+let chatOpen = false, chatMsgs = [], chatLastAt = null, chatUnread = 0;
+
+function chHM(iso){ const d = new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function paintChatBadge(){
+  const b = document.getElementById('chatBadge');
+  if (!b) return;
+  b.textContent = chatUnread;
+  b.classList.toggle('hidden', !chatUnread || chatOpen);
+}
+function toggleChat(){
+  chatOpen = !chatOpen;
+  document.getElementById('chatPanel').classList.toggle('hidden', !chatOpen);
+  if (chatOpen){ chatUnread = 0; chatLastAt = null; loadChat(true); }
+  paintChatBadge();
+}
+function chRender(){
+  const el = document.getElementById('chatList');
+  if (!el) return;
+  el.innerHTML = chatMsgs.length === 0
+    ? '<div class="ch-sys">Напиши админу — или позови его кнопкой слева</div>'
+    : chatMsgs.map(m => m.kind === 'call'
+      ? `<div class="ch-sys">🛎 вызов отправлен · ${chHM(m.created_at)}</div>`
+      : `<div class="ch-m${m.sender === 'guest' ? ' mine' : ''}">${esc(m.text)}<i>${m.sender === 'staff' ? 'админ · ' : ''}${chHM(m.created_at)}</i></div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+async function loadChat(full){
+  if (!me) return;
+  try{
+    const q = (!full && chatLastAt) ? ('&after=' + encodeURIComponent(chatLastAt)) : '';
+    const d = await api('/me/chat?mark=1' + q);
+    const rows = d.messages || [];
+    if (full || !chatLastAt) chatMsgs = rows;
+    else if (rows.length) chatMsgs = chatMsgs.concat(rows);
+    if (chatMsgs.length) chatLastAt = chatMsgs[chatMsgs.length - 1].created_at;
+    if (full || rows.length) chRender();
+  }catch(e){}
+}
+async function chatSend(){
+  const inp = document.getElementById('chatText');
+  const text = inp.value.trim();
+  if (!text) return;
+  try{
+    await api('/me/chat', {method:'POST', body:JSON.stringify({kind:'text', text})});
+    inp.value = '';
+    await loadChat();
+  }catch(e){ toast('⚠ ' + (e.message || 'не отправилось')); }
+}
+setInterval(() => { if (me && chatOpen) loadChat(); }, 10000);
+setInterval(async () => {
+  if (!me || chatOpen) return;
+  try{
+    const d = await api('/me/chat/unread');
+    const n = d.count | 0;
+    if (n > chatUnread) toast('💬 Ответ администратора — открой «Админ»');
+    chatUnread = n;
+    paintChatBadge();
+  }catch(e){}
+}, 15000);
 
 /* ═══════════════ НАТИВНЫЙ КИОСК (WebView2) ═══════════════ */
 // Если страница открыта внутри Shell1448.App — запуск и вызов админа идут

@@ -233,6 +233,190 @@ func handleAdminChatPending(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "items": out})
 }
 
+// resolveNicknames — ники пачкой по множеству id (для чат-выдач).
+func resolveNicknames(idSet map[string]bool) map[string]string {
+	nick := map[string]string{}
+	if len(idSet) == 0 {
+		return nick
+	}
+	ids := make([]string, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	var users []models.User
+	db.Where("id IN ?", ids).Find(&users)
+	for _, u := range users {
+		nick[u.ID.String()] = u.Nickname
+	}
+	return nick
+}
+
+// GET /me/chat?after=&mark=1 — переписка гостя, старые сверху, до 100.
+// after — created_at последнего известного сообщения (RFC3339Nano);
+// mark=1 (панель открыта) помечает ответы персонала прочитанными (Б3).
+func handleGuestChatList(c *gin.Context) {
+	userID := c.GetString("user_id")
+	q := db.Where("user_id = ?", userID).Order("created_at ASC").Limit(100)
+	if after := c.Query("after"); after != "" {
+		if t, err := time.Parse(time.RFC3339Nano, after); err == nil {
+			q = q.Where("created_at > ?", t)
+		}
+	}
+	var msgs []models.ChatMessage
+	q.Find(&msgs)
+
+	if c.Query("mark") == "1" {
+		db.Model(&models.ChatMessage{}).
+			Where("user_id = ? AND sender = ? AND read_guest = ?", userID, models.ChatSenderStaff, false).
+			Update("read_guest", true)
+	}
+
+	adminIDs := map[string]bool{}
+	for _, m := range msgs {
+		if m.AdminID != nil {
+			adminIDs[m.AdminID.String()] = true
+		}
+	}
+	nick := resolveNicknames(adminIDs)
+
+	out := make([]gin.H, 0, len(msgs))
+	for _, m := range msgs {
+		row := gin.H{"id": m.ID, "sender": m.Sender, "kind": m.Kind, "text": m.Text, "created_at": m.CreatedAt}
+		if m.AdminID != nil {
+			row["admin"] = nick[m.AdminID.String()]
+		}
+		out = append(out, row)
+	}
+	c.JSON(http.StatusOK, gin.H{"count": len(out), "messages": out})
+}
+
+// GET /me/chat/unread — счётчик непрочитанных ответов персонала (для бэйджа).
+func handleGuestChatUnread(c *gin.Context) {
+	var n int64
+	db.Model(&models.ChatMessage{}).
+		Where("user_id = ? AND sender = ? AND read_guest = ?", c.GetString("user_id"), models.ChatSenderStaff, false).
+		Count(&n)
+	c.JSON(http.StatusOK, gin.H{"count": n})
+}
+
+// GET /admin/chats — треды по гостям: последнее сообщение + непрочитанное
+// (по последним 200 сообщениям — пилоту хватает).
+func handleAdminChatThreads(c *gin.Context) {
+	var msgs []models.ChatMessage
+	db.Where("user_id IS NOT NULL").Order("created_at DESC").Limit(200).Find(&msgs)
+
+	type thread struct {
+		last   models.ChatMessage
+		unread int
+	}
+	order := []string{}
+	byUser := map[string]*thread{}
+	userIDs := map[string]bool{}
+	for _, m := range msgs { // DESC: первое вхождение юзера = его последнее сообщение
+		uid := m.UserID.String()
+		t, ok := byUser[uid]
+		if !ok {
+			t = &thread{last: m}
+			byUser[uid] = t
+			order = append(order, uid)
+			userIDs[uid] = true
+		}
+		if m.Sender == models.ChatSenderGuest && !m.ReadStaff {
+			t.unread++
+		}
+	}
+	nick := resolveNicknames(userIDs)
+
+	out := make([]gin.H, 0, len(order))
+	for _, uid := range order {
+		t := byUser[uid]
+		out = append(out, gin.H{
+			"user_id": uid, "nickname": nick[uid],
+			"last_kind": t.last.Kind, "last_text": t.last.Text,
+			"last_at": t.last.CreatedAt, "unread": t.unread,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"count": len(out), "threads": out})
+}
+
+// GET /admin/chats/:id — переписка с гостем (старые сверху, до 100).
+// Открытие треда помечает гостевые сообщения прочитанными — они уходят
+// из колокола у всех админок при следующем pending.
+func handleAdminChatThread(c *gin.Context) {
+	var user models.User
+	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+	var msgs []models.ChatMessage
+	db.Where("user_id = ?", user.ID).Order("created_at ASC").Limit(100).Find(&msgs)
+
+	updates := map[string]any{"read_staff": true}
+	if adminID, err := uuid.Parse(c.GetString("user_id")); err == nil {
+		updates["admin_id"] = adminID
+	}
+	db.Model(&models.ChatMessage{}).
+		Where("user_id = ? AND sender = ? AND read_staff = ?", user.ID, models.ChatSenderGuest, false).
+		Updates(updates)
+
+	adminIDs := map[string]bool{}
+	for _, m := range msgs {
+		if m.AdminID != nil {
+			adminIDs[m.AdminID.String()] = true
+		}
+	}
+	nick := resolveNicknames(adminIDs)
+
+	out := make([]gin.H, 0, len(msgs))
+	for _, m := range msgs {
+		row := gin.H{"id": m.ID, "sender": m.Sender, "kind": m.Kind, "text": m.Text, "created_at": m.CreatedAt}
+		if m.AdminID != nil {
+			row["admin"] = nick[m.AdminID.String()]
+		}
+		out = append(out, row)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"user":     gin.H{"id": user.ID, "nickname": user.Nickname},
+		"messages": out,
+	})
+}
+
+// POST /admin/chats/:id — ответ персонала гостю (kind=text).
+func handleAdminChatPost(c *gin.Context) {
+	user := targetPlayer(c) // чат ведём только с гостями
+	if user == nil {
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if ok, code := validateChatMessage(models.ChatKindText, req.Text); !ok {
+		msg := map[string]string{
+			"empty_text": "Пустое сообщение",
+			"too_long":   "Сообщение длиннее 500 символов",
+		}[code]
+		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": msg})
+		return
+	}
+	adminID, err := uuid.Parse(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_user", "message": "Некорректный администратор"})
+		return
+	}
+	m := models.ChatMessage{
+		UserID: &user.ID, AdminID: &adminID,
+		Sender: models.ChatSenderStaff, Kind: models.ChatKindText,
+		Text: strings.TrimSpace(req.Text), ReadStaff: true,
+	}
+	if err := db.Create(&m).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	broadcastChat(&m, user.Nickname, "")
+	c.JSON(http.StatusCreated, gin.H{"id": m.ID, "created_at": m.CreatedAt})
+}
+
 // POST /admin/chat/:id/ack — «принял»: сообщение прочитано персоналом.
 func handleAdminChatAck(c *gin.Context) {
 	var m models.ChatMessage
