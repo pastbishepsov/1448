@@ -86,3 +86,27 @@ func TestLoadConfig(t *testing.T) {
 		t.Error("после битого JSON allowlist должен быть пуст")
 	}
 }
+
+func TestWolMagicPacket(t *testing.T) {
+	p, err := wolMagicPacket("AA:BB:CC:DD:EE:FF")
+	if err != nil {
+		t.Fatalf("валидный MAC не распарсился: %v", err)
+	}
+	if len(p) != 102 {
+		t.Errorf("magic-пакет должен быть 102 байта, получил %d", len(p))
+	}
+	for i := 0; i < 6; i++ {
+		if p[i] != 0xFF {
+			t.Errorf("байт %d префикса должен быть 0xFF", i)
+		}
+	}
+	if p[6] != 0xAA || p[11] != 0xFF || p[96] != 0xAA {
+		t.Error("MAC должен повторяться 16 раз после префикса")
+	}
+	if _, err := wolMagicPacket("не-мак"); err == nil {
+		t.Error("мусор вместо MAC должен давать ошибку")
+	}
+	if _, err := wolMagicPacket(""); err == nil {
+		t.Error("пустой MAC должен давать ошибку")
+	}
+}

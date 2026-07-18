@@ -28,6 +28,9 @@ type Computer struct {
 	PosX *int `json:"pos_x,omitempty" gorm:"column:pos_x"`
 	PosY *int `json:"pos_y,omitempty" gorm:"column:pos_y"`
 
+	// MAC для Wake-on-LAN (миграция 021, спринт Б8). NULL — WoL недоступен.
+	MAC *string `json:"mac,omitempty" gorm:"column:mac;size:17"`
+
 	Club Club `json:"club,omitempty" gorm:"foreignKey:ClubID"`
 }
 

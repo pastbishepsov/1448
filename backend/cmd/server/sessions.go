@@ -62,39 +62,41 @@ func handleStartSession(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_user", "message": "Некорректный пользователь"})
 		return
 	}
-
 	var req startSessionRequest
 	_ = c.ShouldBindJSON(&req) // тело необязательно
+	code, resp := startSessionFor(userID, req.ComputerID)
+	c.JSON(code, resp)
+}
 
+// startSessionFor — общий старт сессии (Б8): гость сам (/me/sessions/start)
+// или админ сажает его у стойки (/admin/computers/:id/session). Скидки и
+// таланты всегда гостя. Возвращает HTTP-код и готовое тело ответа.
+func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 	// Уже есть активная сессия?
 	var activeCount int64
 	db.Model(&models.Session{}).
 		Where("user_id = ? AND status = ?", userID, models.SessionStatusActive).
 		Count(&activeCount)
 	if activeCount > 0 {
-		c.JSON(http.StatusConflict, gin.H{"code": "session_active", "message": "У вас уже есть активная сессия"})
-		return
+		return http.StatusConflict, gin.H{"code": "session_active", "message": "У гостя уже есть активная сессия"}
 	}
 
 	// Выбрать компьютер: по id или первый свободный.
 	var computer models.Computer
 	query := db.Where("status = ?", models.ComputerStatusAvailable)
-	if req.ComputerID != nil && *req.ComputerID != "" {
-		query = db.Where("id = ?", *req.ComputerID)
+	if computerID != nil && *computerID != "" {
+		query = db.Where("id = ?", *computerID)
 	}
 	if err := query.First(&computer).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": "no_computer", "message": "Нет доступного компьютера"})
-		return
+		return http.StatusNotFound, gin.H{"code": "no_computer", "message": "Нет доступного компьютера"}
 	}
 	if computer.Status != models.ComputerStatusAvailable {
-		c.JSON(http.StatusConflict, gin.H{"code": "computer_busy", "message": "Компьютер занят"})
-		return
+		return http.StatusConflict, gin.H{"code": "computer_busy", "message": "Компьютер занят"}
 	}
 
 	var club models.Club
 	if err := db.First(&club, "id = ?", computer.ClubID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "club_missing", "message": "Клуб не найден"})
-		return
+		return http.StatusInternalServerError, gin.H{"code": "club_missing", "message": "Клуб не найден"}
 	}
 
 	// Скидка на тариф: кэшбек игрока (бустеры кейсов) + талант cashback_master;
@@ -120,7 +122,7 @@ func handleStartSession(c *gin.Context) {
 		EffectiveRatePLN: rate,
 	}
 
-	err = db.Transaction(func(tx *gorm.DB) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Omit("User", "Computer").Create(&session).Error; err != nil {
 			return err
 		}
@@ -129,8 +131,7 @@ func handleStartSession(c *gin.Context) {
 			Update("status", models.ComputerStatusInSession).Error
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
-		return
+		return http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()}
 	}
 
 	// Команда на ПК в реальном времени (если Shell подключён).
@@ -146,7 +147,7 @@ func handleStartSession(c *gin.Context) {
 		"nickname":    user.Nickname,
 	})
 
-	c.JSON(http.StatusCreated, gin.H{
+	return http.StatusCreated, gin.H{
 		"session_id":         session.ID,
 		"started_at":         session.StartedAt,
 		"computer":           computer.Name,
@@ -154,7 +155,7 @@ func handleStartSession(c *gin.Context) {
 		"rate_pln":           club.BaseRatePLN,
 		"effective_rate_pln": rate,
 		"discount_pct":       discountPct,
-	})
+	}
 }
 
 // POST /me/sessions/end — завершить активную сессию и начислить XP/coins.

@@ -7,7 +7,9 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -101,6 +103,7 @@ type computerPatchRequest struct {
 	PosX     *int    `json:"pos_x"`
 	PosY     *int    `json:"pos_y"`
 	ClearPos bool    `json:"clear_pos"` // true — снять ПК со схемы
+	MAC      *string `json:"mac"`       // Б8: для Wake-on-LAN; "" — стереть
 }
 
 // PATCH /admin/computers/:id — имя/зона/позиция (owner).
@@ -127,6 +130,18 @@ func handleAdminUpdateComputer(c *gin.Context) {
 	}
 	if req.Zone != nil {
 		updates["zone"] = *req.Zone
+	}
+	if req.MAC != nil { // Б8: MAC для WoL, пустая строка стирает
+		m := strings.ToUpper(strings.TrimSpace(*req.MAC))
+		if m == "" {
+			updates["mac"] = nil
+		} else {
+			if _, err := net.ParseMAC(m); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"code": "bad_mac", "message": "MAC вида AA:BB:CC:DD:EE:FF"})
+				return
+			}
+			updates["mac"] = m
+		}
 	}
 	if req.ClearPos {
 		updates["pos_x"] = nil

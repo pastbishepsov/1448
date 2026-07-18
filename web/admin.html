@@ -1022,6 +1022,8 @@ function openPCEditDrawer(id){
     <input id="hpc_name" class="input" value="${esc(pc.name)}" maxlength="32">
     <label class="muted" for="hpc_zone">Зона (подпись, необязательно)</label>
     <input id="hpc_zone" class="input" value="${esc(pc.zone||'')}" maxlength="32">
+    <label class="muted" for="hpc_mac">MAC для Wake-on-LAN (пусто — выключено)</label>
+    <input id="hpc_mac" class="input" value="${esc(pc.mac||'')}" placeholder="AA:BB:CC:DD:EE:FF" maxlength="17">
     <div class="muted">${pc.pos_x != null ? 'На схеме: клетка ' + (pc.pos_x+1) + '×' + (pc.pos_y+1) : 'Вне схемы'}</div>
     <button class="btn" style="width:100%; justify-content:center" onclick="submitPCEdit('${pc.id}')"><span data-ic="save"></span>Сохранить</button>
     ${pc.pos_x != null ? `<button class="btn ghost" style="width:100%; justify-content:center" onclick="clearPCPos('${pc.id}')">Снять со схемы</button>` : ''}
@@ -1032,9 +1034,10 @@ function openPCEditDrawer(id){
 async function submitPCEdit(id){
   const name = document.getElementById('hpc_name').value.trim();
   const zone = document.getElementById('hpc_zone').value.trim();
+  const mac = document.getElementById('hpc_mac').value.trim();
   if (!name){ toast('⚠ Нужно имя ПК'); return; }
   try{
-    await api('/admin/computers/' + id, {method:'PATCH', body:JSON.stringify({name, zone})});
+    await api('/admin/computers/' + id, {method:'PATCH', body:JSON.stringify({name, zone, mac})});
     toast('✓ Сохранено');
     closeDrawer();
     await renderHall();
@@ -1130,10 +1133,52 @@ function renderPCDrawer(id){
     body += `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:16px"
       onclick="setPCStatus('${pc.id}','available')"><span data-ic="check"></span>Из ремонта — в строй</button>`;
   } else if (pc.status === 'available'){
-    body += `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:16px"
+    body += `<div class="dsub">Посадить гостя</div>
+    <div class="uform" style="margin-top:0">
+      <input id="seatNick" class="input" placeholder="Ник гостя" autocomplete="off"
+             onkeydown="if(event.key==='Enter')seatGuest('${pc.id}')">
+      <button class="btn" style="width:100%; justify-content:center" onclick="seatGuest('${pc.id}')">
+        <span data-ic="clock"></span>Начать сессию</button>
+      <div class="muted">Без пароля гостя; тариф и таланты — его собственные</div>
+    </div>
+    <button class="btn ghost" style="width:100%; justify-content:center; margin-top:12px"
       onclick="setPCStatus('${pc.id}','maintenance')"><span data-ic="wrench"></span>В ремонт</button>`;
   }
+  // Б8: питание — WoL спящему, restart/shutdown живому без сессии
+  if (!pc.session){
+    body += `<div class="dsub">Питание</div><div class="actrow">`;
+    if (!pc.shell_online){
+      body += `<button class="btn ghost mini" onclick="pcPower('${pc.id}','on')"><span data-ic="power"></span>Включить (WoL)</button>`;
+    } else {
+      body += `<button class="btn ghost mini" onclick="armPower(this,'${pc.id}','restart','перезагрузить')"><span data-ic="power"></span>Перезагрузить</button>
+      <button class="btn danger mini" onclick="armPower(this,'${pc.id}','shutdown','выключить')"><span data-ic="power"></span>Выключить</button>`;
+    }
+    body += `</div>`;
+  }
   openDrawer(pc.name, body);
+}
+
+/* Б8: питание ПК и посадка гостя */
+async function pcPower(id, action){
+  try{
+    await api('/admin/computers/' + id + '/power', {method:'POST', body:JSON.stringify({action})});
+    toast(action === 'on' ? '🔌 WoL отправлен — ПК просыпается'
+        : (action === 'restart' ? '🔄 Перезагрузка пошла' : '⏹ Выключается'));
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armPower(btn, id, action, label){
+  armButton(btn, 'Ещё раз — ' + label, () => pcPower(id, action));
+}
+async function seatGuest(pcId){
+  const inp = document.getElementById('seatNick');
+  const nickname = inp ? inp.value.trim() : '';
+  if (!nickname){ toast('⚠ Нужен ник гостя'); return; }
+  try{
+    const d = await api('/admin/computers/' + pcId + '/session', {method:'POST', body:JSON.stringify({nickname})});
+    toast('▶ ' + nickname + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* arm-confirm: первый клик взводит кнопку, второй (в течение 4с) — выполняет */
@@ -1643,15 +1688,16 @@ const AUD_GROUPS = {
   money: ['deposit'],
   grant: ['grant'],
   users: ['ban','unban'],
-  sessions: ['session_end'],
+  sessions: ['session_end','session_start'],
   bookings: ['booking_create','booking_cancel','booking_restore'],
-  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update'],
+  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
   staff: ['staff_promote','staff_demote'],
 };
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
-  session_end:'стоп сессии', pc_maintenance:'ПК в ремонт', pc_available:'ПК в строй',
+  session_end:'стоп сессии', session_start:'старт сессии', pc_power:'питание ПК',
+  pc_maintenance:'ПК в ремонт', pc_available:'ПК в строй',
   booking_create:'бронь', booking_cancel:'отмена брони', booking_restore:'возврат брони',
   catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
   catalog_sort:'каталог: порядок', settings_update:'настройки',
@@ -1660,6 +1706,7 @@ const AUD_LABEL = {
 };
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
+  session_start:'clock', pc_power:'power',
   pc_maintenance:'wrench', pc_available:'check', booking_create:'cal',
   booking_cancel:'cross', booking_restore:'cal',
   catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
@@ -1898,7 +1945,7 @@ function closeDrawer(){
    только внутри транзиентного текста ── */
 const TOAST_IC = {'⚠':'cross','✓':'check','✕':'cross','🛎':'bell','💬':'bell','💰':'coins',
                   '⚡':'xp','🎁':'chest','📅':'cal','⏹':'power','🔧':'wrench','🚫':'ban',
-                  '✅':'check','⬜':'apps'};
+                  '✅':'check','⬜':'apps','🔌':'power','🔄':'power','▶':'clock'};
 function toast(msg, undoFn){
   const t = document.getElementById('toast');
   let ic = '';

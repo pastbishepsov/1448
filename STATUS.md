@@ -78,6 +78,8 @@
 | GET/POST | `/api/v1/admin/chats` · `/chats/:id` | треды чата, переписка, ответ гостю (Б3) | admin |
 | POST | `/api/v1/admin/catalog/:id/sort` | порядок каталога (admin; upsert/delete — owner, Б0) | admin |
 | GET/POST/DELETE | `/api/v1/admin/staff` | персонал: список, назначить, снять (Б5) | owner |
+| POST | `/api/v1/admin/computers/:id/power` | вкл (WoL через агента-соседа) / перезагрузка / выключение (Б8, миграция 021) | admin |
+| POST | `/api/v1/admin/computers/:id/session` | посадить гостя за ПК без его пароля (Б8) | admin |
 
 Роли: `users.role` (player/admin/owner, миграция 008) → JWT-claim `role` →
 `adminMiddleware`. Повысить аккаунт:
@@ -208,7 +210,10 @@ log-сетке сенс, каждый флик нормирован по зак�
 
 **Real-time / WebSocket** (мост к PC Shell):
 - ПК подключается к `/api/v1/ws/shell?computer_id=...`;
-- сервер шлёт команды: `session_start`, `session_end`, `xp_update` (для C#-оверлея);
+- сервер шлёт команды: `session_start`, `session_end`, `xp_update` (для
+  C#-оверлея), `pc_power` (restart|shutdown, Б8) и `wol` (агент — WoL-прокси:
+  будит соседа magic-пакетом по MAC из `computers.mac`, миграция 021;
+  WoL должен быть включён в BIOS машин);
 - ПК шлёт: `session_tick` (heartbeat), `admin_call` — с Б2 вызов пишется в
   чат (по активной сессии ПК) и мгновенно долетает до админок событием `chat`;
 - гостевой браузер WS не держит — связь поллингом: `/me/sessions` 10с (лок),
@@ -368,7 +373,7 @@ curl http://localhost:8080/api/v1/me/sessions -H "Authorization: Bearer $TOKEN"
 │   │   ├── models/          User, Session, Case, Computer, Club (+ формула XP, логика дропа кейсов)
 │   │   ├── api/             router/handlers/middleware (router пока не подключён, см. подводные камни)
 │   │   └── websocket/       Hub для PC Shell — подключён к /ws/shell
-│   ├── migrations/          20 SQL-миграций (все таблицы)
+│   ├── migrations/          21 SQL-миграция (все таблицы)
 │   └── seed_dev.sql         демо-клуб + компьютеры
 ├── mobile/                  Flutter (скелет: тема, i18n EN/PL/RU, навигация)
 ├── admin/                   React + Vite + shadcn/ui (скелет)

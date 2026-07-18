@@ -20,6 +20,8 @@ const (
 	MsgSessionEnd   MessageType = "session_end"   // сервер → shell: завершить
 	MsgXPUpdate     MessageType = "xp_update"      // сервер → shell: новый XP (для оверлея C#-киоска)
 	MsgAdminCall    MessageType = "admin_call"     // shell → сервер: кнопка вызова
+	MsgPCPower      MessageType = "pc_power"       // сервер → shell: restart|shutdown (Б8)
+	MsgWOL          MessageType = "wol"            // сервер → shell: разбудить соседа по MAC (Б8)
 	// force_unlock удалён (Б7-и3): сервер его никогда не слал — мёртвый тип.
 )
 
@@ -202,6 +204,19 @@ func (h *Hub) IsConnected(computerID string) bool {
 	defer h.mu.RUnlock()
 	_, ok := h.clients[computerID]
 	return ok
+}
+
+// AnyClientInClub — id любого живого агента клуба (Б8: WoL-прокси —
+// magic-пакет выключенному ПК шлёт сосед по LAN).
+func (h *Hub) AnyClientInClub(clubID string) (string, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for id, c := range h.clients {
+		if c.ClubID == clubID {
+			return id, true
+		}
+	}
+	return "", false
 }
 
 // Send — отправить сообщение конкретному компьютеру.

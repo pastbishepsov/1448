@@ -1372,13 +1372,20 @@ function renderLock(){
   if (me) document.getElementById('lockUser').textContent = 'Вошёл как ' + me.nickname + ' · LVL ' + me.level;
 }
 
-// Поллинг: если сессию завершили извне (админ/сервер) — экран блокируется сам.
+// Поллинг: сессию завершили извне — лок сам опустится; сессию НАЧАЛ админ
+// у стойки (Б8, зона связки) — лок сам поднимется.
 setInterval(async () => {
-  if (!activeSession || document.getElementById('shellView').classList.contains('hidden')) return;
+  if (!me || document.getElementById('shellView').classList.contains('hidden')) return;
   try{
     const ss = await api('/me/sessions');
-    const still = (ss.sessions||[]).find(s => s.id === activeSession.id && !s.ended_at);
-    if (!still){ toast('⏹ Сессия завершена'); await loadAll(); }
+    const rows = ss.sessions || [];
+    if (activeSession){
+      const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
+      if (!still){ toast('⏹ Сессия завершена'); await loadAll(); }
+    } else {
+      const started = rows.find(s => s.status === 'active');
+      if (started){ toast('▶ Сессия начата у стойки — играй!'); await loadAll(); }
+    }
   }catch(e){ /* тихо: сеть/токен обработает api() */ }
 }, 10000);
 

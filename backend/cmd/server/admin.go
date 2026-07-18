@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
+	"github.com/pastbishepsov/1448/backend/internal/websocket"
 )
 
 // roleIsStaff — чистая проверка роли (тестируется отдельно).
@@ -279,6 +280,7 @@ func handleAdminComputers(c *gin.Context) {
 			"id": pc.ID, "name": pc.Name, "zone": pc.Zone, "status": pc.Status,
 			"club": pc.Club.Name, "club_id": pc.ClubID,
 			"pos_x": pc.PosX, "pos_y": pc.PosY, // схема зала (спринт А8)
+			"mac":  pc.MAC,                     // WoL (Б8, редактор зала)
 			"shell_online": hub.IsConnected(pc.ID.String()),
 		}
 		if s, ok := byComputer[pc.ID.String()]; ok {
@@ -430,6 +432,110 @@ func handleAdminSetComputerStatus(c *gin.Context) {
 	}
 	logAdminAction(c, action, nil, pc.Name)
 	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "name": pc.Name, "status": req.Status})
+}
+
+// POST /admin/computers/:id/power {action: on|restart|shutdown} — Б8.
+// on — WoL через живого агента-соседа (бэкенд в докере до LAN-broadcast
+// не достаёт); restart/shutdown — адресно агенту ПК. При активной сессии —
+// 409: сначала заверши сессию, время гостя не сгорает.
+func handleAdminPCPower(c *gin.Context) {
+	var req struct {
+		Action string `json:"action"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil ||
+		(req.Action != "on" && req.Action != "restart" && req.Action != "shutdown") {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_action", "message": "action: on | restart | shutdown"})
+		return
+	}
+	var pc models.Computer
+	if err := db.First(&pc, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "computer_not_found", "message": "ПК не найден"})
+		return
+	}
+
+	if req.Action == "on" {
+		if pc.MAC == nil || *pc.MAC == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "no_mac",
+				"message": "У «" + pc.Name + "» нет MAC — владелец задаёт его в редакторе зала"})
+			return
+		}
+		proxyID, ok := hub.AnyClientInClub(pc.ClubID.String())
+		if !ok {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"code": "no_agents",
+				"message": "В клубе нет живых агентов — WoL послать некому"})
+			return
+		}
+		if err := hub.Send(proxyID, websocket.MsgWOL, gin.H{"mac": *pc.MAC}); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"code": "send_failed", "message": err.Error()})
+			return
+		}
+		logAdminAction(c, "pc_power", nil, pc.Name+" — включение (WoL)")
+		c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "status": "wol_sent"})
+		return
+	}
+
+	var active int64
+	db.Model(&models.Session{}).
+		Where("computer_id = ? AND status = ?", pc.ID, models.SessionStatusActive).Count(&active)
+	if active > 0 {
+		c.JSON(http.StatusConflict, gin.H{"code": "has_session",
+			"message": "На ПК идёт сессия — сначала заверши её"})
+		return
+	}
+	if !hub.IsConnected(pc.ID.String()) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": "shell_offline",
+			"message": "Shell оффлайн — команду доставить некому"})
+		return
+	}
+	if err := hub.Send(pc.ID.String(), websocket.MsgPCPower, gin.H{"action": req.Action}); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": "send_failed", "message": err.Error()})
+		return
+	}
+	label := map[string]string{"restart": "перезагрузка", "shutdown": "выключение"}[req.Action]
+	logAdminAction(c, "pc_power", nil, pc.Name+" — "+label)
+	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "status": req.Action})
+}
+
+// POST /admin/computers/:id/session {nickname} — посадить гостя за этот ПК
+// (Б8): без пароля гостя, тариф и таланты — его собственные (общий
+// startSessionFor). Инвариант цели тот же, что у депозита/гранта.
+func handleAdminSeatGuest(c *gin.Context) {
+	var pc models.Computer
+	if err := db.First(&pc, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "computer_not_found", "message": "ПК не найден"})
+		return
+	}
+	var req struct {
+		Nickname string `json:"nickname" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужен ник гостя"})
+		return
+	}
+	var user models.User
+	if err := db.First(&user, "nickname = ?", req.Nickname).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость с таким ником не найден"})
+		return
+	}
+	if ok, code := canTargetUser(user.Role, user.ID.String(), c.GetString("user_id")); !ok {
+		msg := map[string]string{
+			"cannot_touch_self":  "Нельзя применить действие к самому себе",
+			"cannot_touch_staff": "Действия персонала применимы только к гостям",
+		}[code]
+		c.JSON(http.StatusForbidden, gin.H{"code": code, "message": msg})
+		return
+	}
+	if user.Status == models.UserStatusBanned {
+		c.JSON(http.StatusConflict, gin.H{"code": "banned", "message": "Аккаунт заблокирован — сначала разбань"})
+		return
+	}
+	cid := pc.ID.String()
+	code, resp := startSessionFor(user.ID, &cid)
+	if code < 300 {
+		target := user.ID
+		logAdminAction(c, "session_start", &target, user.Nickname+" за "+pc.Name)
+	}
+	c.JSON(code, resp)
 }
 
 // POST /admin/bookings/:id/cancel — отменить бронь (любую живую).

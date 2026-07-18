@@ -138,6 +138,8 @@ func main() {
 		adm.POST("/chats/:id", handleAdminChatPost)      // ответ гостю (Б3)
 		adm.GET("/computers", handleAdminComputers)
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
+		adm.POST("/computers/:id/power", handleAdminPCPower)   // вкл/перезагрузка/выкл (Б8)
+		adm.POST("/computers/:id/session", handleAdminSeatGuest) // посадить гостя (Б8)
 		adm.GET("/sessions/active", handleAdminActiveSessions)
 		adm.POST("/sessions/:id/end", handleAdminEndSession)
 		adm.GET("/bookings", handleAdminBookings)

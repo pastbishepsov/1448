@@ -22,11 +22,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -200,6 +202,57 @@ func (a *agent) lookupApp(id string) (AppEntry, error) {
 	return AppEntry{}, fmt.Errorf("%w: %q", errUnknownApp, id)
 }
 
+// wolMagicPacket — magic-пакет Wake-on-LAN: 6×0xFF + 16×MAC
+// (чистая функция, тест в agent_test.go).
+func wolMagicPacket(mac string) ([]byte, error) {
+	hw, err := net.ParseMAC(strings.TrimSpace(mac))
+	if err != nil {
+		return nil, err
+	}
+	if len(hw) != 6 {
+		return nil, fmt.Errorf("нужен 48-битный MAC")
+	}
+	p := make([]byte, 0, 102)
+	for i := 0; i < 6; i++ {
+		p = append(p, 0xFF)
+	}
+	for i := 0; i < 16; i++ {
+		p = append(p, hw...)
+	}
+	return p, nil
+}
+
+// sendWOL — послать magic-пакет broadcast'ом в LAN (UDP :9).
+func sendWOL(mac string) error {
+	p, err := wolMagicPacket(mac)
+	if err != nil {
+		return err
+	}
+	conn, err := net.Dial("udp", "255.255.255.255:9")
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	_, err = conn.Write(p)
+	return err
+}
+
+// applyPCPower — перезагрузка/выключение (Б8): зашитые действия, только Windows.
+func applyPCPower(action string) {
+	if runtime.GOOS != "windows" {
+		log.Printf("pc_power %s: поддерживается только Windows", action)
+		return
+	}
+	switch action {
+	case "restart":
+		_ = exec.Command("shutdown", "/r", "/t", "0").Start()
+	case "shutdown":
+		_ = exec.Command("shutdown", "/s", "/t", "0").Start()
+	default:
+		log.Printf("pc_power: неизвестное действие %q", action)
+	}
+}
+
 // applyLockAction — реакция на конец сессии (настраивается в agent.json).
 func (a *agent) applyLockAction() {
 	switch a.cfg.LockAction {
@@ -296,6 +349,23 @@ func (a *agent) handleCommand(msg wsMessage) {
 		// Пробрасывать некуда: браузерный шелл живёт поллингом и
 		// уведомлениями (Б4); XP-оверлей — задача C#-киоска (shell/).
 		log.Printf("Команда: xp_update %s", string(msg.Payload))
+	case "pc_power": // Б8: только restart|shutdown, ничего другого
+		var p struct {
+			Action string `json:"action"`
+		}
+		_ = json.Unmarshal(msg.Payload, &p)
+		log.Printf("Команда: pc_power %s", p.Action)
+		applyPCPower(p.Action)
+	case "wol": // Б8: разбудить соседа по MAC (агент — WoL-прокси в LAN)
+		var p struct {
+			MAC string `json:"mac"`
+		}
+		_ = json.Unmarshal(msg.Payload, &p)
+		if err := sendWOL(p.MAC); err != nil {
+			log.Printf("wol: %v", err)
+		} else {
+			log.Printf("🔌 WoL отправлен: %s", p.MAC)
+		}
 	default:
 		log.Printf("Неизвестная команда: %s", msg.Type)
 	}
