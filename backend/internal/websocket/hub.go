@@ -18,9 +18,9 @@ const (
 	MsgSessionStart MessageType = "session_start" // сервер → shell: началась сессия
 	MsgSessionTick  MessageType = "session_tick"  // shell → сервер: heartbeat
 	MsgSessionEnd   MessageType = "session_end"   // сервер → shell: завершить
-	MsgXPUpdate     MessageType = "xp_update"      // сервер → shell: новый XP
+	MsgXPUpdate     MessageType = "xp_update"      // сервер → shell: новый XP (для оверлея C#-киоска)
 	MsgAdminCall    MessageType = "admin_call"     // shell → сервер: кнопка вызова
-	MsgForceUnlock  MessageType = "force_unlock"   // сервер → shell: разблокировать
+	// force_unlock удалён (Б7-и3): сервер его никогда не слал — мёртвый тип.
 )
 
 // Message — стандартная обёртка для всех WS-сообщений.

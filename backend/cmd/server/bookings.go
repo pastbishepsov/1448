@@ -129,10 +129,9 @@ func handleCreateBooking(c *gin.Context) {
 		return
 	}
 
-	// Талант priority_booking (Agility, LVL 20): бронь без предоплаты.
-	// Платежей пока нет, флаг информационный — админ видит его в бронях.
-	hasPriority := talentEffect(userID.String(), "priority_booking") > 0
-
+	// Б7-и1: предоплаты до Stripe/BLIK не существует — флаг честный:
+	// false у всех (как у walk-in). Талант priority_booking заиграет со
+	// спринтом 6 (платежи): будет освобождать от обязательной предоплаты.
 	booking := models.Booking{
 		UserID:      userID,
 		ComputerID:  pick.ID,
@@ -140,7 +139,7 @@ func handleCreateBooking(c *gin.Context) {
 		Status:      models.BookingStatusConfirmed,
 		StartTime:   start,
 		DurationMin: req.DurationMin,
-		Prepaid:     !hasPriority,
+		Prepaid:     false,
 		Notes:       req.Notes,
 	}
 	if err := db.Create(&booking).Error; err != nil {

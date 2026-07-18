@@ -6,7 +6,7 @@ package main
 //  1. HTTP на 127.0.0.1:1448 для гостевого экрана (web/shell.html):
 //     запуск программ по allowlist из agent.json и вызов администратора.
 //  2. WS-связь с бэкендом (/ws/shell): heartbeat session_tick, приём команд
-//     session_start / session_end / force_unlock (блокировка экрана — спринт 3).
+//     session_start / session_end (блокировка экрана — спринт 3).
 //
 // Безопасность: слушает ТОЛЬКО 127.0.0.1; выполняет ТОЛЬКО записи из
 // allowlist конфига — произвольные команды с экрана невозможны.
@@ -293,9 +293,9 @@ func (a *agent) handleCommand(msg wsMessage) {
 		log.Printf("Команда: session_end %s", string(msg.Payload))
 		a.applyLockAction()
 	case "xp_update":
+		// Пробрасывать некуда: браузерный шелл живёт поллингом и
+		// уведомлениями (Б4); XP-оверлей — задача C#-киоска (shell/).
 		log.Printf("Команда: xp_update %s", string(msg.Payload))
-	case "force_unlock":
-		log.Println("Команда: force_unlock")
 	default:
 		log.Printf("Неизвестная команда: %s", msg.Type)
 	}

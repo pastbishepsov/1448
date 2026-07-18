@@ -319,7 +319,8 @@
     .rail{position:fixed; left:0; right:0; bottom:0; width:auto; z-index:40;
           flex-direction:row; justify-content:space-around; gap:0;
           border-right:0; border-top:1px solid var(--hair); padding:7px 4px calc(7px + env(safe-area-inset-bottom))}
-    .rail button{width:auto; padding:9px 11px}
+    .rail button{width:auto; padding:9px 7px} /* Б7: owner-рейл из 9 кнопок влезает в 360px */
+    .rail button .isvg{width:18px; height:18px}
     .rail .sep,.rail .grow,.rail .rzone,.rail .rzone.zclub{display:none}
     .content{padding:14px 12px 86px}
     #drawer{width:100%}
