@@ -353,6 +353,7 @@
       <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
       <div class="rzone zclub ownerOnly hidden">Клуб</div>
       <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Деньги"><span data-ic="chart"></span><span class="rlabel">Деньги</span></button>
+      <button id="r-staff" class="ownerOnly hidden" onclick="nav('staff')" aria-label="Персонал"><span data-ic="users"></span><span class="rlabel">Персонал</span></button>
       <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Экономика"><span data-ic="gear"></span><span class="rlabel">Экономика</span></button>
       <div class="grow"></div>
       <button onclick="logout()" aria-label="Выйти"><span data-ic="out"></span><span class="rlabel">Выйти</span></button>
@@ -428,6 +429,7 @@
             <button onclick="audKindSet('bookings',this)">Брони</button>
             <button onclick="audKindSet('pc',this)">ПК</button>
             <button onclick="audKindSet('catalog',this)">Каталог</button>
+            <button class="ownerOnly hidden" onclick="audKindSet('staff',this)">Персонал</button>
           </div>
           <input id="audQ" class="input" placeholder="Ник гостя или админа…" autocomplete="off" style="min-width:200px">
         </div>
@@ -442,6 +444,16 @@
         <div id="statLoad"><div class="empty">Загрузка…</div></div>
         <div class="sect">Топ гостей · за 14 дней</div>
         <div class="tablewrap" id="statTop"><div class="empty">Загрузка…</div></div>
+      </section>
+
+      <section id="s-staff" class="hidden">
+        <div class="toolrow">
+          <input id="stNick" class="input" placeholder="Ник гостя → назначить админом" style="min-width:250px"
+                 autocomplete="off" onkeydown="if(event.key==='Enter')promoteStaff()">
+          <button class="btn mini" onclick="promoteStaff()"><span data-ic="plus"></span>Назначить</button>
+          <span class="muted">Роль вступает в силу после перелогина сотрудника</span>
+        </div>
+        <div class="tablewrap" id="staffTable"><div class="empty">Загрузка…</div></div>
       </section>
 
       <section id="s-settings" class="hidden">
@@ -502,7 +514,8 @@
    но не редактирует; fallback — прежняя группировка по зонам. */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
-const SECTIONS = ['hall','users','bookings','catalog','grants','stats','settings'];
+const SECTIONS = ['hall','users','bookings','catalog','grants','stats','staff','settings'];
+const OWNER_SECTIONS = ['stats','staff','settings'];
 let curTab = 'hall', refreshIv = null, me = null, lastSync = 0;
 
 /* ── иконки: Phosphor duotone, второй тон var(--acc) (см. DESIGN.md) ── */
@@ -598,8 +611,8 @@ function enter(){
   mountIcons();
   // вернуться в раздел, где работали до перезагрузки (А7)
   const saved = localStorage.getItem('1448a_tab') || 'hall';
-  nav((saved === 'stats' || saved === 'settings') && me.role !== 'owner' ? 'hall' : saved);
-  if (curTab === 'catalog' || curTab === 'stats' || curTab === 'settings') refresh(); // KPI в шапке
+  nav(OWNER_SECTIONS.includes(saved) && me.role !== 'owner' ? 'hall' : saved);
+  if (curTab === 'catalog' || OWNER_SECTIONS.includes(curTab)) refresh(); // KPI в шапке
   setPolling(7000);
   connectWS();
 }
@@ -608,7 +621,7 @@ function enter(){
 function navRev(){ nav(isOwner() ? 'stats' : 'grants'); } // выручка: owner — Деньги, admin — журнал дня
 
 function nav(t){
-  if ((t === 'stats' || t === 'settings') && (!me || me.role !== 'owner')) return;
+  if (OWNER_SECTIONS.includes(t) && !isOwner()) return;
   curTab = t;
   localStorage.setItem('1448a_tab', t); // раздел переживает перезагрузку (А7)
   SECTIONS.forEach(x => {
@@ -618,6 +631,7 @@ function nav(t){
   });
   if (t === 'catalog') renderCatalogTab();
   else if (t === 'stats') renderStats();
+  else if (t === 'staff') renderStaff();
   else if (t === 'settings') renderSettings();
   else refresh();
 }
@@ -638,6 +652,7 @@ async function refresh(){
     if (curTab === 'users') await renderUsersTable();
     if (curTab === 'bookings') await renderBookings();
     if (curTab === 'grants') await renderAudit();
+    if (curTab === 'staff') await renderStaff();
     // каталог не обновляем по таймеру — там форма редактирования
     lastSync = Date.now();
   }catch(e){
@@ -1583,6 +1598,7 @@ const AUD_GROUPS = {
   bookings: ['booking_create','booking_cancel','booking_restore'],
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
+  staff: ['staff_promote','staff_demote'],
 };
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
@@ -1591,6 +1607,7 @@ const AUD_LABEL = {
   catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
   catalog_sort:'каталог: порядок', settings_update:'настройки',
   pc_create:'ПК добавлен', pc_update:'ПК изменён', pc_delete:'ПК удалён', layout_update:'схема зала',
+  staff_promote:'персонал: назначен', staff_demote:'персонал: снят',
 };
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
@@ -1599,6 +1616,7 @@ const AUD_ICON = {
   catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
   catalog_sort:'apps', settings_update:'gear',
   pc_create:'plus', pc_update:'edit', pc_delete:'cross', layout_update:'monitor',
+  staff_promote:'users', staff_demote:'out',
 };
 function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
 function relTime(iso){
@@ -1741,6 +1759,45 @@ async function renderStats(){
       <td>${fmtPLN(t.deposited_pln)} zł</td>
     </tr>`).join('')}</table>`);
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* ── Б5: персонал (owner) — назначение и снятие админов ── */
+async function renderStaff(){
+  try{
+    const d = await api('/admin/staff');
+    setHTML('staffTable', (d.staff || []).length === 0
+      ? '<div class="empty">Персонала нет — назначь первого админа по нику</div>'
+      : `<table><tr><th>Ник</th><th>Роль</th><th>Действий сегодня</th><th>Был активен</th><th></th></tr>
+    ${d.staff.map(s => `<tr>
+      <td><b>${esc(s.nickname)}</b></td>
+      <td>${s.role === 'owner' ? '<span class="st active">owner</span>' : s.role}</td>
+      <td>${s.actions_today}</td>
+      <td class="muted">${fmtTime(s.last_active_at)}</td>
+      <td>${s.role === 'admin'
+        ? `<button class="btn danger mini" onclick="armDemote(this,'${s.id}','${esc(s.nickname)}')"><span data-ic="out"></span>Снять</button>`
+        : '<span class="muted">—</span>'}</td>
+    </tr>`).join('')}</table>`);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function promoteStaff(){
+  const inp = document.getElementById('stNick');
+  const nickname = inp.value.trim();
+  if (!nickname){ toast('⚠ Нужен ник гостя'); return; }
+  try{
+    const d = await api('/admin/staff', {method:'POST', body:JSON.stringify({nickname})});
+    toast('✓ ' + d.nickname + ' теперь админ — пусть перелогинится');
+    inp.value = '';
+    renderStaff();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armDemote(btn, id, nick){
+  armButton(btn, 'Точно снять?', async () => {
+    try{
+      await api('/admin/staff/' + id, {method:'DELETE'});
+      toast('✕ ' + nick + ' больше не админ');
+      renderStaff();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 
 /* ── Настройки экономики (А5, только owner) ── */

@@ -165,12 +165,16 @@ tabular-nums; каждое действие — в журнал.
       («начисление: ник +N XP / кейс tier»).
 
 ### Б5 — Персонал (owner)
-- [ ] и1: **[go]** `GET /admin/staff` (админы: ник, был активен, действий
-      сегодня) + `POST /admin/staff {nickname}` (player→admin) +
-      `DELETE /admin/staff/:id` (admin→player); нельзя owner и себя; в аудит
-      `staff_promote`/`staff_demote`; тест;
-- [ ] и2: раздел «Персонал» в зоне КЛУБ: список, назначение по нику,
-      снятие arm-confirm; подсказка «после смены роли — перелогин».
+Код готов 2026-07-16; спринт закрывается после проверки у стойки + коммита.
+- [x] и1: **[go]** чистая `canChangeStaffRole` (+тест `staff_test.go`);
+      `GET /admin/staff` (ник, роль, был активен, действий сегодня =
+      admin_actions + гранты + депозиты), `POST /admin/staff {nickname}`
+      (player→admin), `DELETE /admin/staff/:id` (admin→player); owner и
+      себя нельзя; аудит `staff_promote`/`staff_demote` (от admin скрыты
+      фильтром Б1);
+- [x] и2: раздел «Персонал» в зоне КЛУБ (рейл, хоткей 7): список, назначение
+      по нику (Enter), снятие arm-confirm, подсказка про перелогин; сегмент
+      «Персонал» в фильтре журнала (owner).
 
 ### Б6 — Дизайн
 - [ ] и1: глубина Noir: стекло топбара/рейла/drawer (лёгкий blur, без FX),

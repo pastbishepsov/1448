@@ -158,6 +158,10 @@ func main() {
 		own.GET("/stats/load", handleAdminStatsLoad)
 		own.GET("/settings", handleAdminSettingsGet)
 		own.PUT("/settings", handleAdminSettingsPut)
+		// Персонал (спринт Б5): назначение/снятие админов вместо SQL
+		own.GET("/staff", handleAdminStaffList)
+		own.POST("/staff", handleAdminStaffPromote)
+		own.DELETE("/staff/:id", handleAdminStaffDemote)
 		// Конструктор зала (спринт А8)
 		own.POST("/computers", handleAdminCreateComputer)
 		own.PATCH("/computers/:id", handleAdminUpdateComputer)
