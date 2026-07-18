@@ -167,6 +167,12 @@ func handleAdminDeposit(c *gin.Context) {
 	})
 
 	db.First(user, "id = ?", user.ID) // свежий баланс
+
+	// Б4: гостю — тост о пополнении (сумма, монеты, новый баланс)
+	notifyUser(user.ID, "deposit", map[string]any{
+		"amount_pln": req.AmountPLN, "coins": base + bonus, "balance": user.CoinsBalance,
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"deposit_id":    dep.ID,
 		"nickname":      user.Nickname,

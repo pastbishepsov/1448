@@ -433,9 +433,10 @@ func handleAdminSetComputerStatus(c *gin.Context) {
 }
 
 // POST /admin/bookings/:id/cancel — отменить бронь (любую живую).
+// Гость узнаёт тостом через /me/notifications (Б4).
 func handleAdminCancelBooking(c *gin.Context) {
 	var booking models.Booking
-	if err := db.First(&booking, "id = ?", c.Param("id")).Error; err != nil {
+	if err := db.Preload("Computer").First(&booking, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "booking_not_found", "message": "Бронь не найдена"})
 		return
 	}
@@ -449,6 +450,12 @@ func handleAdminCancelBooking(c *gin.Context) {
 	}
 	target := booking.UserID
 	logAdminAction(c, "booking_cancel", &target, "на "+booking.StartTime.Format("02.01 15:04"))
+	pcName := ""
+	if booking.Computer != nil {
+		pcName = booking.Computer.Name
+	}
+	notifyUser(booking.UserID, "booking_cancel",
+		map[string]any{"start_time": booking.StartTime, "computer": pcName})
 	hub.AdminBroadcast("booking", map[string]any{"kind": "cancel", "start_time": booking.StartTime})
 	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusCancelled})
 }
@@ -576,6 +583,7 @@ func handleAdminRestoreBooking(c *gin.Context) {
 	}
 	target := booking.UserID
 	logAdminAction(c, "booking_restore", &target, "на "+booking.StartTime.Format("02.01 15:04"))
+	notifyUser(booking.UserID, "booking_restore", map[string]any{"start_time": booking.StartTime}) // Б4
 	hub.AdminBroadcast("booking", map[string]any{"kind": "restore", "start_time": booking.StartTime})
 	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusConfirmed})
 }

@@ -148,9 +148,12 @@ func handleCreateBooking(c *gin.Context) {
 		return
 	}
 
-	// Live-событие в админку (спринт А6): гость создал бронь сам.
+	// Live-событие в админку (А6; Б4-и3 — теперь с ником гостя).
+	var creator models.User
+	db.First(&creator, "id = ?", userID)
 	hub.AdminBroadcast("booking", map[string]any{
-		"kind": "create", "computer": pick.Name, "start_time": booking.StartTime,
+		"kind": "create", "nickname": creator.Nickname,
+		"computer": pick.Name, "start_time": booking.StartTime,
 	})
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -172,9 +175,11 @@ func handleGetMyBookings(c *gin.Context) {
 }
 
 // DELETE /me/bookings/:id — отмена своей будущей брони.
+// Б4-и3: админ-лента узнаёт live (раньше гостевая отмена терялась).
 func handleCancelBooking(c *gin.Context) {
 	var booking models.Booking
-	if err := db.First(&booking, "id = ? AND user_id = ?", c.Param("id"), c.GetString("user_id")).Error; err != nil {
+	if err := db.Preload("Computer").
+		First(&booking, "id = ? AND user_id = ?", c.Param("id"), c.GetString("user_id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "booking_not_found", "message": "Бронь не найдена"})
 		return
 	}
@@ -186,5 +191,15 @@ func handleCancelBooking(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	var u models.User
+	db.First(&u, "id = ?", booking.UserID)
+	pcName := ""
+	if booking.Computer != nil {
+		pcName = booking.Computer.Name
+	}
+	hub.AdminBroadcast("booking", map[string]any{
+		"kind": "cancel", "nickname": u.Nickname,
+		"computer": pcName, "start_time": booking.StartTime,
+	})
 	c.JSON(http.StatusOK, gin.H{"booking_id": booking.ID, "status": models.BookingStatusCancelled})
 }

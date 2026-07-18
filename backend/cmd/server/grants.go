@@ -145,6 +145,22 @@ func handleAdminGrant(c *gin.Context) {
 		return
 	}
 
+	// Б4: гостю — тост о начислении, админкам — событие «grant» в ленту
+	// (раньше грант был виден только в аудите поллингом).
+	if req.Type == "xp" {
+		notifyUser(user.ID, "grant_xp", map[string]any{
+			"amount": req.Amount, "levels_gained": levelsGained, "level": user.Level,
+		})
+		hub.AdminBroadcast("grant", map[string]any{
+			"nickname": user.Nickname, "type": "xp", "amount": req.Amount,
+		})
+	} else {
+		notifyUser(user.ID, "grant_case", map[string]any{"tier": grantedTier})
+		hub.AdminBroadcast("grant", map[string]any{
+			"nickname": user.Nickname, "type": "case", "tier": grantedTier,
+		})
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"grant_id": entry.ID, "nickname": user.Nickname, "type": req.Type,
 		"amount": req.Amount, "case_tier": grantedTier,

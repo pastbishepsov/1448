@@ -104,6 +104,7 @@ func main() {
 		me.POST("/chat", handleGuestChatPost)             // чат/вызов админа (Б2)
 		me.GET("/chat", handleGuestChatList)              // переписка, поллинг (Б3)
 		me.GET("/chat/unread", handleGuestChatUnread)     // бэйдж непрочитанного (Б3)
+		me.GET("/notifications", handleGetMyNotifications) // тосты о действиях админа (Б4)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)

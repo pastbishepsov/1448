@@ -678,7 +678,8 @@ setInterval(() => {
 let ws = null, wsOpen = false, wsRetry = null, refDeb = null;
 let feed = []; // последние события для ленты Зала (кап 30)
 const FEED_ICON = {session_start:'clock', session_end:'power', shell_online:'monitor',
-                   shell_offline:'monitor', deposit:'coins', booking:'cal', ban:'ban', chat:'bell'};
+                   shell_offline:'monitor', deposit:'coins', booking:'cal', ban:'ban', chat:'bell',
+                   grant:'xp'};
 
 function setPolling(ms){
   if (refreshIv) clearInterval(refreshIv);
@@ -719,6 +720,8 @@ function feedLine(m){
     case 'ban': return (d.nickname||'гость') + ' забанен';
     case 'chat': return (d.nickname || d.computer || 'гость')
       + (d.kind === 'call' ? ' зовёт админа' : ': ' + (d.text||''));
+    case 'grant': return 'начисление: ' + (d.nickname||'гость')
+      + (d.type === 'case' ? ' · кейс ' + (d.tier||'') : ' +' + (d.amount||0) + ' XP');
     case 'booking': {
       const k = {create:'бронь', cancel:'отмена брони', restore:'возврат брони'}[d.kind] || 'бронь';
       return k + (d.nickname ? ': ' + d.nickname : '') + (d.computer ? ' · ' + d.computer : '')

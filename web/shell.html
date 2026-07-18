@@ -1209,6 +1209,40 @@ async function chatSend(){
   }catch(e){ toast('⚠ ' + (e.message || 'не отправилось')); }
 }
 setInterval(() => { if (me && chatOpen) loadChat(); }, 10000);
+
+/* ── Б4 (ADMIN.md, зона связки): уведомления о действиях админа.
+   Поллинг 12с; тосты очередью; loadAll с debounce — баланс/брони сами ── */
+let notifQ = [], notifPumping = false, notifReloadT = null;
+
+function notifText(n){
+  const p = n.payload || {};
+  switch (n.type){
+    case 'booking_cancel': return '📅 Админ отменил твою бронь' + (p.start_time ? ' на ' + chHM(p.start_time) : '') + (p.computer ? ' (' + p.computer + ')' : '');
+    case 'booking_restore': return '📅 Твоя бронь возвращена' + (p.start_time ? ' — ' + chHM(p.start_time) : '');
+    case 'deposit': return '💰 +' + (p.coins||0) + ' монет — депозит ' + (p.amount_pln||0) + ' zł';
+    case 'grant_xp': return '⚡ Тебе начислено +' + (p.amount||0) + ' XP' + (p.levels_gained > 0 ? ' → LVL ' + p.level + ' 🎉' : '');
+    case 'grant_case': return '🎁 Тебе выдан кейс ' + (p.tier||'');
+  }
+  return '🔔 Обновление аккаунта';
+}
+function pumpNotif(){
+  if (!notifQ.length){ notifPumping = false; return; }
+  notifPumping = true;
+  toast(notifQ.shift());
+  setTimeout(pumpNotif, 2700);
+}
+setInterval(async () => {
+  if (!me) return;
+  try{
+    const d = await api('/me/notifications');
+    const items = d.items || [];
+    if (!items.length) return;
+    notifQ.push(...items.map(notifText));
+    if (!notifPumping) pumpNotif();
+    clearTimeout(notifReloadT);
+    notifReloadT = setTimeout(loadAll, 500); // баланс, брони, кейсы — сами
+  }catch(e){}
+}, 12000);
 setInterval(async () => {
   if (!me || chatOpen) return;
   try{
