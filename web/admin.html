@@ -17,8 +17,14 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0; background:var(--bg); color:var(--txt);
-       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  body{margin:0; color:var(--txt);
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       /* Б6: статичная noir-подложка — стеклу есть что размывать (без FX) */
+       background:
+         radial-gradient(900px 520px at 88% -12%, rgba(255,39,64,.055), transparent 62%),
+         radial-gradient(760px 520px at -12% 112%, rgba(255,39,64,.04), transparent 62%),
+         var(--bg);
+       background-attachment:fixed}
   h1,h2,h3{margin:0}
   button{font-family:inherit}
   .muted{color:var(--dim); font-size:13px}
@@ -54,7 +60,8 @@
   /* ═══ КАРКАС: топбар + rail + контент + drawer ═══ */
   #appView{height:100vh; display:flex; flex-direction:column}
   .topbar{display:flex; align-items:center; gap:16px; padding:11px 20px;
-          background:var(--panel); border-bottom:1px solid var(--hair); flex-wrap:wrap}
+          background:rgba(15,15,18,.82); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+          border-bottom:1px solid var(--hair); flex-wrap:wrap}
   .live{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); font-weight:700}
   .live .dot{width:7px; height:7px; border-radius:50%; background:var(--dim)}
   .live.ok .dot{background:var(--green)}
@@ -114,7 +121,8 @@
 
   .shellrow{flex:1; display:flex; min-height:0}
   .rail{width:198px; flex:none; display:flex; flex-direction:column; gap:2px;
-        padding:12px 10px; border-right:1px solid var(--hair); background:var(--panel)}
+        padding:12px 10px; border-right:1px solid var(--hair);
+        background:rgba(15,15,18,.72); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px)}
   .rail button{display:flex; align-items:center; gap:11px; width:100%; padding:10px 13px;
         border:0; border-radius:11px; background:transparent; color:var(--dim);
         font-weight:700; font-size:13.5px; cursor:pointer; text-align:left; white-space:nowrap;
@@ -134,7 +142,8 @@
 
   /* drawer (инфраструктура А0; формы переедут сюда в А2–А3) */
   #drawer{position:fixed; top:0; right:0; bottom:0; width:400px; max-width:100vw; z-index:50;
-          background:var(--panel); border-left:1px solid var(--hair);
+          background:rgba(15,15,18,.9); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+          border-left:1px solid var(--hair);
           transform:translateX(105%); transition:transform .25s var(--smooth);
           display:flex; flex-direction:column}
   #drawer.open{transform:none}
@@ -147,7 +156,7 @@
   .kpi{background:rgba(255,255,255,.045); border-radius:12px; padding:9px 14px;
        font-size:13px; color:var(--dim); font-weight:700; white-space:nowrap}
   .kpi b{color:var(--txt); font-size:15px; margin-left:7px; font-variant-numeric:tabular-nums}
-  .kpi{cursor:pointer; border:1px solid transparent; transition:border-color .15s}
+  .kpi{cursor:pointer; border:1px solid var(--hair); transition:border-color .15s}
   .kpi:hover{border-color:var(--acc)}
 
   /* ── карта зала (А1): плитки ПК по зонам ── */
@@ -257,10 +266,21 @@
   table{width:100%; border-collapse:collapse; background:var(--panel);
         border:1px solid var(--hair); border-radius:14px; overflow:hidden;
         font-variant-numeric:tabular-nums}
-  th,td{padding:11px 14px; text-align:left; font-size:14px; border-bottom:1px solid var(--hair); white-space:nowrap}
+  th,td{padding:10px 13px; text-align:left; font-size:13.5px; border-bottom:1px solid var(--hair); white-space:nowrap}
   th{color:var(--dim); font-size:11.5px; text-transform:uppercase; letter-spacing:.8px; background:var(--card)}
   tr:last-child td{border-bottom:0}
+  td{transition:background .12s}
+  .tablewrap tr:hover td{background:rgba(255,255,255,.03)} /* Б6: живые строки разделов */
   .empty{color:var(--dim); padding:34px; text-align:center; font-size:14px}
+  .empty .isvg{width:34px; height:34px; display:block; margin:0 auto 10px; color:var(--dim); opacity:.8}
+  .empty .btn{margin-top:12px}
+
+  /* Б6: скелетоны загрузки вместо текста */
+  .skel{height:52px; border-radius:13px; margin-bottom:8px; border:1px solid var(--hair);
+        background:linear-gradient(100deg, var(--panel) 40%, var(--card2) 50%, var(--panel) 60%);
+        background-size:200% 100%; animation:skel 1.15s linear infinite}
+  @keyframes skel{to{background-position:-200% 0}}
+  @media (prefers-reduced-motion:reduce){ .skel{animation:none} }
 
   .st{font-size:12px; padding:3px 10px; border-radius:9px; font-weight:800; white-space:nowrap}
   .st.available,.st.active,.st.confirmed{background:rgba(52,211,153,.13); color:var(--green)}
@@ -277,6 +297,7 @@
          padding:13px 20px; opacity:0; transition:.3s; pointer-events:none; font-weight:600;
          display:flex; align-items:center}
   .toast.show{opacity:1; pointer-events:auto}
+  .toast .isvg{width:17px; height:17px; color:var(--acc3); margin-right:9px; flex:none}
 
   /* ═══ АДАПТИВ: узкий экран — rail сжимается в иконки ═══ */
   @media (max-width:960px){
@@ -372,7 +393,7 @@
           <span class="muted hidden" id="hallEditHint">тапни ПК, потом клетку — переставить · повторный тап по ПК — карточка · «+» — новый ПК</span>
         </div>
         <div class="hallrow">
-          <div id="hallMap" style="flex:1; min-width:0"><div class="empty">Загрузка…</div></div>
+          <div id="hallMap" style="flex:1; min-width:0"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
           <aside class="feed">
             <div class="dsub" style="margin-top:0">Лента</div>
             <div id="feedList" class="muted" style="font-size:12px">События появятся здесь</div>
@@ -391,7 +412,7 @@
         <div class="toolrow">
           <input id="uq" class="input" placeholder="Поиск по нику…" autocomplete="off" style="min-width:230px">
         </div>
-        <div class="tablewrap" id="usersTable"><div class="empty">Загрузка…</div></div>
+        <div class="tablewrap" id="usersTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-bookings" class="hidden">
@@ -407,7 +428,7 @@
             <button onclick="bkStSet('all',this)">Все статусы</button>
           </div>
         </div>
-        <div class="tablewrap" id="bookingsTable"><div class="empty">Загрузка…</div></div>
+        <div class="tablewrap" id="bookingsTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-catalog" class="hidden">
@@ -415,7 +436,7 @@
           <button class="btn mini ownerOnly hidden" onclick="editApp('')"><span data-ic="plus"></span>Добавить</button>
           <span class="muted" id="catHint">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
         </div>
-        <div class="tablewrap" id="catalogTable"><div class="empty">Загрузка…</div></div>
+        <div class="tablewrap" id="catalogTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-grants" class="hidden">
@@ -433,17 +454,17 @@
           </div>
           <input id="audQ" class="input" placeholder="Ник гостя или админа…" autocomplete="off" style="min-width:200px">
         </div>
-        <div class="tablewrap" id="auditTable"><div class="empty">Загрузка…</div></div>
+        <div class="tablewrap" id="auditTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-stats" class="hidden">
         <div class="kpis" id="statKpis"></div>
         <div class="sect">Выручка по дням · 14 дней</div>
-        <div id="statRevenue"><div class="empty">Загрузка…</div></div>
+        <div id="statRevenue"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
         <div class="sect">Загрузка по часам суток · за 14 дней</div>
-        <div id="statLoad"><div class="empty">Загрузка…</div></div>
+        <div id="statLoad"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
         <div class="sect">Топ гостей · за 14 дней</div>
-        <div class="tablewrap" id="statTop"><div class="empty">Загрузка…</div></div>
+        <div class="tablewrap" id="statTop"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-staff" class="hidden">
@@ -453,7 +474,7 @@
           <button class="btn mini" onclick="promoteStaff()"><span data-ic="plus"></span>Назначить</button>
           <span class="muted">Роль вступает в силу после перелогина сотрудника</span>
         </div>
-        <div class="tablewrap" id="staffTable"><div class="empty">Загрузка…</div></div>
+        <div class="tablewrap" id="staffTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-settings" class="hidden">
@@ -884,7 +905,7 @@ function paintHall(){
       + (off.length ? '<div class="sect">Вне схемы</div><div class="pcgrid">'
           + off.map(pc => pcTile(pc, hallSoon[pc.id])).join('') + '</div>' : '');
   } else if (hallData.length === 0){
-    el.innerHTML = '<div class="empty">ПК ещё не заведены'
+    el.innerHTML = '<div class="empty"><span data-ic="monitor"></span>ПК ещё не заведены'
       + (me && me.role === 'owner' ? ' — открой «Редактор зала» и расставь первые машины' : ' — попроси владельца собрать схему зала') + '</div>';
   } else {
     // fallback: группировка по зонам (координат ещё нет)
@@ -1389,8 +1410,8 @@ async function renderUsersTable(){
   const d = await api('/admin/users' + (userQuery ? '?q='+encodeURIComponent(userQuery) : ''));
   setHTML('usersTable', d.users.length === 0
     ? (userQuery
-      ? '<div class="empty">По запросу «' + esc(userQuery) + '» никого — проверь ник</div>'
-      : '<div class="empty">Гостей ещё нет — первый появится после регистрации на гостевом экране</div>')
+      ? '<div class="empty"><span data-ic="search"></span>По запросу «' + esc(userQuery) + '» никого — проверь ник</div>'
+      : '<div class="empty"><span data-ic="users"></span>Гостей ещё нет — первый появится после регистрации на гостевом экране</div>')
     : `<table><tr><th>Ник</th><th>LVL</th><th>XP</th><th>Монеты</th><th>Роль</th><th>Статус</th><th>Был активен</th><th></th></tr>
   ${d.users.map(u => `<tr onclick="openUserDrawer('${u.id}')" style="cursor:pointer">
     <td><b>${esc(u.nickname)}</b></td>
@@ -1412,9 +1433,11 @@ function segOn(btn){ [...btn.parentElement.children].forEach(b => b.classList.to
 function bkDaySet(v, btn){ bkDay = v; segOn(btn); renderBookings(); }
 function bkStSet(v, btn){ bkSt = v; segOn(btn); renderBookings(); }
 
+let bkData = [];
 async function renderBookings(){
   const d = await api('/admin/bookings');
-  const rows = (d.bookings || []).filter(b => {
+  bkData = d.bookings || [];
+  const rows = bkData.filter(b => {
     if (bkSt === 'live' && b.status !== 'pending' && b.status !== 'confirmed') return false;
     if (bkDay !== 'all'){
       const t = new Date(b.start_time), now = new Date();
@@ -1425,9 +1448,10 @@ async function renderBookings(){
     return true;
   });
   setHTML('bookingsTable', rows.length === 0
-    ? '<div class="empty">Броней по этому фильтру нет — «Новая бронь» создаст первую</div>'
+    ? `<div class="empty"><span data-ic="cal"></span>Броней по этому фильтру нет<br>
+       <button class="btn mini" onclick="newBookingDrawer()"><span data-ic="plus"></span>Новая бронь</button></div>`
     : `<table><tr><th>Когда</th><th>Гость</th><th>ПК</th><th>Клуб</th><th>Мин</th><th>Предопл.</th><th>Статус</th><th></th></tr>
-  ${rows.map(b => `<tr>
+  ${rows.map(b => `<tr onclick="openBookingDrawer('${b.id}')" style="cursor:pointer">
     <td><b>${fmtTime(b.start_time)}</b></td>
     <td>${esc(b.nickname||'—')}</td>
     <td>${esc(b.computer||'—')}</td>
@@ -1436,8 +1460,31 @@ async function renderBookings(){
     <td>${b.prepaid===false ? '<span class="muted">нет</span>' : 'да'}</td>
     <td><span class="st ${b.status}">${b.status}</span></td>
     <td>${(b.status==='pending'||b.status==='confirmed')
-        ? `<button class="btn danger mini" onclick="cancelBooking('${b.id}')"><span data-ic="cross"></span>Отменить</button>` : ''}</td>
+        ? `<button class="btn danger mini" onclick="event.stopPropagation(); cancelBooking('${b.id}')"><span data-ic="cross"></span>Отменить</button>` : ''}</td>
   </tr>`).join('')}</table>`);
+}
+
+/* Б6: drawer брони — детали + действия (клик по строке = drawer) */
+function openBookingDrawer(id){
+  const b = bkData.find(x => x.id === id);
+  if (!b) return;
+  drawerPCId = null; drawerUserId = null;
+  const live = b.status === 'pending' || b.status === 'confirmed';
+  const end = new Date(new Date(b.start_time).getTime() + b.duration_min * 60000);
+  openDrawer('Бронь · ' + fmtTime(b.start_time), `
+  <table class="kv">
+    <tr><td class="muted">Гость</td><td><b>${esc(b.nickname||'—')}</b></td></tr>
+    <tr><td class="muted">ПК</td><td>${esc(b.computer||'—')}</td></tr>
+    <tr><td class="muted">Клуб</td><td>${esc(b.club||'—')}</td></tr>
+    <tr><td class="muted">Начало</td><td>${fmtTime(b.start_time)}</td></tr>
+    <tr><td class="muted">Конец</td><td>${fmtTime(end.toISOString())} · ${b.duration_min} мин</td></tr>
+    <tr><td class="muted">Предоплата</td><td>${b.prepaid===false ? 'нет — оплата на месте' : 'да'}</td></tr>
+    <tr><td class="muted">Статус</td><td><span class="st ${b.status}">${b.status}</span></td></tr>
+  </table>
+  ${live ? `<button class="btn danger" style="width:100%; justify-content:center; margin-top:16px"
+      onclick="closeDrawer(); cancelBooking('${b.id}')"><span data-ic="cross"></span>Отменить бронь</button>` : ''}
+  ${b.status === 'cancelled' ? `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:16px"
+      onclick="closeDrawer(); restoreBooking('${b.id}')"><span data-ic="cal"></span>Вернуть бронь</button>` : ''}`);
 }
 
 /* ── Каталог приложений (форма переедет в drawer в А3) ── */
@@ -1454,22 +1501,23 @@ async function renderCatalogTab(){
   const cat = {game:'игра', platform:'платформа', app:'приложение', system:'система'};
   setHTML('catalogTable', catApps.length === 0
     ? (isOwner()
-      ? '<div class="empty">Каталог пуст — «Добавить» заведёт первую игру или приложение</div>'
-      : '<div class="empty">Каталог пуст — наполняет владелец</div>')
+      ? `<div class="empty"><span data-ic="apps"></span>Каталог пуст<br>
+         <button class="btn mini" onclick="editApp('')"><span data-ic="plus"></span>Добавить приложение</button></div>`
+      : '<div class="empty"><span data-ic="apps"></span>Каталог пуст — наполняет владелец</div>')
     : `
   <table><tr><th>#</th><th>id</th><th>Название</th><th>Категория</th><th>Запуск (target)</th><th>Вкл</th><th></th></tr>
-  ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}">
+  ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}${isOwner()?';cursor:pointer':''}"${isOwner()?` onclick="editApp('${a.id}')"`:''}>
     <td class="muted">${a.sort}</td>
     <td><b>${esc(a.id)}</b></td>
     <td>${a.tag?'['+esc(a.tag)+'] ':''}${esc(a.name)}</td>
     <td>${cat[a.category]||a.category}</td>
     <td class="muted" style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(a.target||'—')}</td>
-    <td><span class="switch ${a.enabled?'on':''}" onclick="toggleApp('${a.id}')" title="${a.enabled?'Выключить':'Включить'}"><span class="knob"></span></span></td>
+    <td><span class="switch ${a.enabled?'on':''}" onclick="event.stopPropagation(); toggleApp('${a.id}')" title="${a.enabled?'Выключить':'Включить'}"><span class="knob"></span></span></td>
     <td style="white-space:nowrap">
-      <button class="btn ghost mini" onclick="moveApp('${a.id}',-1)" title="Выше в списке">↑</button>
-      <button class="btn ghost mini" onclick="moveApp('${a.id}',1)" title="Ниже в списке">↓</button>
-      ${isOwner() ? `<button class="btn ghost mini" onclick="editApp('${a.id}')" title="Редактировать"><span data-ic="edit"></span></button>
-      <button class="btn danger mini" onclick="armDeleteApp(this,'${a.id}')" title="Удалить из каталога"><span data-ic="cross"></span></button>` : ''}
+      <button class="btn ghost mini" onclick="event.stopPropagation(); moveApp('${a.id}',-1)" title="Выше в списке">↑</button>
+      <button class="btn ghost mini" onclick="event.stopPropagation(); moveApp('${a.id}',1)" title="Ниже в списке">↓</button>
+      ${isOwner() ? `<button class="btn ghost mini" onclick="event.stopPropagation(); editApp('${a.id}')" title="Редактировать"><span data-ic="edit"></span></button>
+      <button class="btn danger mini" onclick="event.stopPropagation(); armDeleteApp(this,'${a.id}')" title="Удалить из каталога"><span data-ic="cross"></span></button>` : ''}
     </td>
   </tr>`).join('')}</table>`);
 }
@@ -1639,8 +1687,8 @@ async function renderAudit(useCache){
   });
   setHTML('auditTable', rows.length === 0
     ? (audData.length === 0
-      ? '<div class="empty">Журнал пуст — действия персонала будут записываться сюда</div>'
-      : '<div class="empty">Событий по этому фильтру нет</div>')
+      ? '<div class="empty"><span data-ic="scroll"></span>Журнал пуст — действия персонала будут записываться сюда</div>'
+      : '<div class="empty"><span data-ic="scroll"></span>Событий по этому фильтру нет</div>')
     : `<table><tr><th>Когда</th><th>Событие</th><th>Гость</th><th>Детали</th><th>Админ</th></tr>
   ${rows.map(x => `<tr>
     <td class="muted" title="${fmtTime(x.created_at)}">${relTime(x.created_at)}</td>
@@ -1751,7 +1799,7 @@ async function renderStats(){
         `<div class="bar" style="height:${Math.max(2, Math.round(h.minutes/maxM*100))}%" title="${h.hour}:00 · ${Math.round(h.minutes/60)} ч игры · сессий: ${h.sessions}"></div>`).join('')}</div>
        <div class="barlabels"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>`;
     setHTML('statTop', (load.top || []).length === 0
-      ? '<div class="empty">Пока пусто — нужны сессии</div>'
+      ? '<div class="empty"><span data-ic="chart"></span>Пока пусто — нужны сессии</div>'
       : `<table><tr><th>Гость</th><th>Наиграно</th><th>Внесено</th></tr>
     ${load.top.map(t => `<tr onclick="openUserDrawer('${t.user_id}')" style="cursor:pointer">
       <td><b>${esc(t.nickname||'—')}</b></td>
@@ -1766,7 +1814,7 @@ async function renderStaff(){
   try{
     const d = await api('/admin/staff');
     setHTML('staffTable', (d.staff || []).length === 0
-      ? '<div class="empty">Персонала нет — назначь первого админа по нику</div>'
+      ? '<div class="empty"><span data-ic="users"></span>Персонала нет — назначь первого админа по нику</div>'
       : `<table><tr><th>Ник</th><th>Роль</th><th>Действий сегодня</th><th>Был активен</th><th></th></tr>
     ${d.staff.map(s => `<tr>
       <td><b>${esc(s.nickname)}</b></td>
@@ -1844,16 +1892,24 @@ function closeDrawer(){
   d.classList.remove('open'); d.setAttribute('aria-hidden','true');
 }
 
-/* ── toast (второй аргумент — функция undo, добавляет кнопку «Вернуть») ── */
+/* ── toast (второй аргумент — функция undo, добавляет кнопку «Вернуть»).
+   Б6: эмодзи-префикс конвертируется в иконку data-ic — эмодзи остаются
+   только внутри транзиентного текста ── */
+const TOAST_IC = {'⚠':'cross','✓':'check','✕':'cross','🛎':'bell','💬':'bell','💰':'coins',
+                  '⚡':'xp','🎁':'chest','📅':'cal','⏹':'power','🔧':'wrench','🚫':'ban',
+                  '✅':'check','⬜':'apps'};
 function toast(msg, undoFn){
   const t = document.getElementById('toast');
-  if (undoFn){
-    t.innerHTML = esc(msg) + '<button class="btn ghost mini" style="margin-left:12px" onclick="toastUndo()">Вернуть</button>';
-    t._undo = undoFn;
-  } else {
-    t.textContent = msg;
-    t._undo = null;
+  let ic = '';
+  const first = [...String(msg)][0];
+  if (TOAST_IC[first]){
+    ic = `<span data-ic="${TOAST_IC[first]}"></span>`;
+    msg = String(msg).slice(first.length).trim();
   }
+  t.innerHTML = ic + esc(msg)
+    + (undoFn ? '<button class="btn ghost mini" style="margin-left:12px" onclick="toastUndo()">Вернуть</button>' : '');
+  t._undo = undoFn || null;
+  mountIcons(t);
   t.classList.add('show');
   clearTimeout(t._h);
   t._h = setTimeout(() => { t.classList.remove('show'); t._undo = null; }, undoFn ? 6000 : 3500);
