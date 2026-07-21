@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#070708">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="14:48">
+<link rel="manifest" href="/app.webmanifest">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<title>14:48 — клуб в кармане</title>
+<style>
+  :root{
+    /* ── 14:48 Noir — чёрная база, красный акцент ── */
+    --bg:#070708; --panel:#0f0f12; --card:#141417; --card2:#1c1c21; --line:#2b2b32;
+    --txt:#f2f0f2; --dim:#8d8d97;
+    --acc:#ff2740;   /* красный — единственный акцент, «то что выделяется» */
+    --acc2:#c9ccd6;  /* нейтральный светлый — вторичные данные (без цвета) */
+    --acc3:#ff5563;  /* светло-красный — вариации акцента */
+    --gold:#ff3b45; --green:#c9ccd6; --red:#ff2740; /* золото/зелёный убраны в гамму */
+    --t-light:#9aa0ad; --t-medium:#d1687a; --t-heavy:#e5334c; --t-titan:#ff2740; --t-gods:#ff1744;
+    /* glass */
+    --glass:rgba(20,20,24,.55); --glass-2:rgba(28,28,33,.5);
+    --glass-brd:rgba(255,255,255,.08); --glass-hi:rgba(255,60,80,.28);
+    --blur:14px;
+    /* фирменный градиент — оттенки красного */
+    --aurora:linear-gradient(120deg,#ff2740 0%,#ff5563 50%,#7a0f1c 100%);
+    --aurora-soft:linear-gradient(120deg,rgba(255,39,64,.9),rgba(255,85,99,.85),rgba(122,15,28,.9));
+    /* тени и свечения */
+    --sh-1:0 8px 30px rgba(0,0,0,.45); --sh-2:0 18px 50px rgba(0,0,0,.6);
+    --glow:0 0 24px rgba(255,39,64,.45); --glow-2:0 0 30px rgba(255,39,64,.35);
+    --hair:rgba(255,255,255,.055);
+    /* easing */
+    --spring:cubic-bezier(.22,1,.36,1); --smooth:cubic-bezier(.4,0,.2,1);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--txt);
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden;
+       touch-action:manipulation; overscroll-behavior:none; height:100vh}
+  @supports (height:100dvh){ body{height:100dvh} }
+
+  /* ═══ AURORA-ФОН (фирменный приём, как в shell.html; blob'ы крупнее под портрет) ═══ */
+  .aurora-bg{position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; background:var(--bg)}
+  .aurora-bg .blob{position:absolute; border-radius:50%; filter:blur(80px); opacity:.38; mix-blend-mode:screen; will-change:transform}
+  .aurora-bg .b1{width:88vw; height:88vw; left:-24vw; top:-18vw; background:radial-gradient(circle,#ff2740,transparent 65%); animation:drift1 26s var(--smooth) infinite alternate}
+  .aurora-bg .b2{width:80vw; height:80vw; right:-26vw; top:22vh; background:radial-gradient(circle,#8a0f1c,transparent 65%); animation:drift2 32s var(--smooth) infinite alternate}
+  .aurora-bg .b3{width:96vw; height:96vw; left:6vw; bottom:-38vw; background:radial-gradient(circle,#4a0a12,transparent 65%); animation:drift3 30s var(--smooth) infinite alternate}
+  .aurora-bg .grain{position:absolute; inset:0; opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  @keyframes drift1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(8vw,10vh) scale(1.18)}}
+  @keyframes drift2{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-9vw,12vh) scale(1.12)}}
+  @keyframes drift3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(6vw,-8vh) scale(1.22)}}
+  #authView,#appView{position:relative; z-index:1}
+  button{font-family:inherit}
+  .muted{color:var(--dim); font-size:13px}
+  .hidden{display:none!important}
+  .cnum{font-variant-numeric:tabular-nums}
+  .isvg{width:1em; height:1em; display:inline-block; vertical-align:-.125em; flex:none}
+
+  /* ═══ AUTH (= authView shell.html, тач-адаптация) ═══ */
+  #authView{height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:26px;
+            padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); overflow-y:auto}
+  .authcard{width:min(400px,100%); border-radius:24px; padding:30px 26px;
+            background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2);
+            position:relative; overflow:hidden;
+            backdrop-filter:blur(var(--blur)) saturate(1.2); -webkit-backdrop-filter:blur(var(--blur)) saturate(1.2)}
+  .authcard::before{content:""; position:absolute; inset:0 0 auto 0; height:1px;
+    background:linear-gradient(90deg,transparent,var(--glass-hi),transparent)}
+  .logo{font-weight:800; letter-spacing:2px; font-size:44px; text-align:center}
+  .slogan{text-align:center; color:var(--dim); margin-top:6px}
+  /* лого с пульсирующим двоеточием (мотив времени) — как в shell */
+  .logo,.tb-logo{background:var(--aurora); -webkit-background-clip:text; background-clip:text; color:transparent;
+    -webkit-text-fill-color:transparent}
+  .logo b,.tb-logo b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
+  @keyframes colonPulse{0%,100%{opacity:1; text-shadow:0 0 10px var(--acc3)}50%{opacity:.35; text-shadow:none}}
+  .tabs{display:flex; background:rgba(8,11,20,.6); border:1px solid var(--glass-brd); border-radius:12px; padding:4px; margin:0 0 18px}
+  .tabs button{flex:1; border:0; background:transparent; color:var(--dim); padding:11px; border-radius:9px; font-weight:700; cursor:pointer; font-size:14px; transition:color .2s; min-height:44px}
+  .tabs button.on{background:var(--aurora); color:#fff; box-shadow:var(--glow)}
+  .input{width:100%; background:rgba(8,11,20,.7); border:1px solid var(--glass-brd); color:var(--txt);
+         padding:14px; border-radius:12px; font-size:16px; margin-bottom:10px; min-height:48px;
+         transition:border-color .2s, box-shadow .2s}
+  .input:focus{outline:none; border-color:var(--acc); box-shadow:0 0 0 3px rgba(255,39,64,.18)}
+  .err{color:var(--red); font-size:14px; min-height:18px; margin:4px 2px}
+  .btn{width:100%; border:0; border-radius:14px; padding:15px; font-size:16px; font-weight:700; color:#fff; cursor:pointer;
+       position:relative; overflow:hidden; background:var(--aurora); background-size:200% 100%; box-shadow:var(--glow);
+       min-height:48px;
+       transition:transform .2s var(--spring), box-shadow .25s var(--smooth), background-position .6s var(--smooth); z-index:0}
+  .btn::after{content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; z-index:1;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent); transform:skewX(-18deg)}
+  .btn:active{transform:scale(.97)}
+  .btn:disabled{opacity:.5; cursor:default}
+  .btn.ghost{background:var(--glass-2); box-shadow:none; border:1px solid var(--glass-brd); color:var(--txt)}
+  @media (hover:hover){
+    .btn:hover{transform:translateY(-2px) scale(1.015); box-shadow:0 10px 30px rgba(255,39,64,.5), var(--glow-2); background-position:100% 0}
+    .btn:hover::after{animation:shimmer .9s var(--smooth)}
+    .btn.ghost:hover{border-color:var(--acc); box-shadow:var(--glow)}
+  }
+  @keyframes shimmer{0%{left:-60%}100%{left:130%}}
+
+  /* ═══ ПРИЛОЖЕНИЕ: топбар + контент + нижняя навигация ═══ */
+  #appView{height:100%; display:flex; flex-direction:column}
+  .topbar{flex:none; padding:calc(9px + env(safe-area-inset-top)) 14px 10px;
+          background:rgba(9,11,18,.72); border-bottom:1px solid var(--glass-brd);
+          backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px)}
+  .tb-row{display:flex; align-items:center; gap:11px}
+  .tb-logo{font-weight:800; font-size:20px; letter-spacing:1px}
+  .ava{width:38px; height:38px; border-radius:12px; background:linear-gradient(135deg,var(--acc),#7a1020); flex:none;
+       display:flex; align-items:center; justify-content:center; font-size:21px; user-select:none; -webkit-user-select:none}
+  .tb-user{flex:1; min-width:0; line-height:1.25}
+  .tb-user .nick{font-weight:800; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .tb-user .sub{font-size:11.5px; color:var(--dim); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .tb-user .sub b{color:var(--gold)}
+  .tb-user .sub .rk{color:var(--acc)}
+  .res{display:flex; gap:7px; align-items:center; background:var(--glass-2); border:1px solid var(--glass-brd);
+       border-radius:11px; padding:7px 12px; font-weight:800; font-size:14px; white-space:nowrap; flex:none}
+  .res .ic{font-size:15px; display:flex}
+  .gold-t{color:var(--gold)}
+  .xpzone{margin-top:9px}
+  .xpwrap{height:7px; background:rgba(255,255,255,.06); border-radius:6px; overflow:hidden}
+  .xpbar{height:100%; width:0; border-radius:6px; transition:width .8s cubic-bezier(.2,.8,.2,1);
+    background:linear-gradient(90deg,#7a0f1c,var(--acc),#ff6b78); background-size:200% 100%;
+    animation:xpFlow 3s linear infinite; box-shadow:0 0 12px rgba(255,39,64,.6)}
+  @keyframes xpFlow{0%{background-position:0 0}100%{background-position:200% 0}}
+  .xpnums{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:4px}
+
+  .content{flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:18px 16px}
+  .tabpane{display:none}
+  .tabpane.on{display:block}
+  .tabpane.swap{animation:tabSwap .4s var(--spring)}
+  @keyframes tabSwap{0%{opacity:0; transform:translateY(10px)}100%{opacity:1; transform:none}}
+  .empty{min-height:52vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center; padding:30px 18px}
+  .empty .eic{width:54px; height:54px; color:var(--dim); opacity:.9}
+  .empty .eic svg{width:100%; height:100%; display:block}
+  .empty .et{font-weight:800; font-size:17px}
+  .empty .es{color:var(--dim); font-size:13.5px; max-width:280px; line-height:1.5}
+
+  .nav{flex:none; display:flex; background:rgba(9,11,18,.85); border-top:1px solid var(--glass-brd);
+       backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+       padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+  .nav button{position:relative; flex:1; min-height:50px; border:0; background:transparent; color:var(--dim);
+       display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer;
+       font-weight:700; border-radius:12px; transition:color .2s, transform .15s var(--spring);
+       user-select:none; -webkit-user-select:none}
+  .nav button:active{transform:scale(.94)}
+  .nav .nic{width:24px; height:24px}
+  .nav .nic svg{width:100%; height:100%; display:block}
+  .nav .nlb{font-size:10.5px; letter-spacing:.2px}
+  .nav button.on{color:var(--acc)}
+  .nav button.on::after{content:""; position:absolute; left:24%; right:24%; top:0; height:2px; border-radius:2px;
+       background:var(--aurora); box-shadow:var(--glow)}
+  .nav .bub{position:absolute; top:3px; left:calc(50% + 7px); background:var(--acc); color:#fff; border-radius:9px;
+       font-size:10px; padding:1px 5px; font-weight:800; font-variant-numeric:tabular-nums}
+
+  /* ═══ ТОСТ (как в shell, поднят над навигацией) ═══ */
+  .toast{position:fixed; left:50%; transform:translateX(-50%) translateY(14px); bottom:calc(84px + env(safe-area-inset-bottom));
+         background:#131014; border:1px solid var(--acc); border-radius:14px; padding:14px 22px; opacity:0; transition:.3s;
+         pointer-events:none; z-index:60; font-weight:600; max-width:86vw}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+  /* ═══ RIPPLE (тач-замена click-spark, решение №6 MOBILE.md) ═══ */
+  .ripple{position:fixed; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
+          background:rgba(255,85,99,.35); pointer-events:none; z-index:70; animation:rippleOut .45s var(--smooth) forwards}
+  @keyframes rippleOut{to{opacity:0; transform:scale(6)}}
+
+  /* уважение к слабому железу / настройкам (перф-гарды как в shell) */
+  body.perf-lite .aurora-bg .blob{animation:none}
+  body.perf-lite .authcard,body.perf-lite .topbar,body.perf-lite .nav{backdrop-filter:none; -webkit-backdrop-filter:none}
+  body.perf-lite .authcard{background:var(--panel)}
+  body.perf-lite .xpbar{animation:none}
+  body.perf-lite .logo b, body.perf-lite .tb-logo b{animation:none}
+  @media (prefers-reduced-motion:reduce){
+    .aurora-bg .blob{animation:none}
+    *{animation-duration:.001ms!important; transition-duration:.05ms!important}
+  }
+</style>
+</head>
+<body>
+
+<!-- фирменный aurora-фон -->
+<div class="aurora-bg" id="auroraBg">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="grain"></div>
+</div>
+
+<!-- ═══════════ AUTH (= authView shell.html) ═══════════ -->
+<div id="authView" class="hidden">
+  <div>
+    <div class="logo">14<b>:</b>48</div>
+    <div class="slogan" data-str="slogan"></div>
+  </div>
+  <div class="authcard">
+    <div class="tabs">
+      <button id="tabLogin" class="on" onclick="setMode('login')" data-str="tab_login"></button>
+      <button id="tabReg" onclick="setMode('register')" data-str="tab_register"></button>
+    </div>
+    <input id="nick" class="input" data-str-ph="ph_nick" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <input id="pass" class="input" type="password" data-str-ph="ph_pass" autocomplete="current-password" enterkeyhint="go"
+           onkeydown="if(event.key==='Enter')submitAuth()">
+    <div id="authErr" class="err"></div>
+    <button id="authBtn" class="btn" onclick="submitAuth()" data-str="btn_login"></button>
+  </div>
+  <div class="muted"><span data-str="server"></span> <span id="srv"></span></div>
+</div>
+
+<!-- ═══════════ ПРИЛОЖЕНИЕ ═══════════ -->
+<div id="appView" class="hidden">
+  <header class="topbar">
+    <div class="tb-row">
+      <div class="tb-logo">14<b>:</b>48</div>
+      <div class="ava" id="ava">😎</div>
+      <div class="tb-user">
+        <div class="nick" id="hNick">—</div>
+        <div class="sub">LVL <b id="hLvl">1</b> · <span class="rk"><span id="rankEm">✦</span> <b id="rankName">—</b></span></div>
+      </div>
+      <div class="res"><span class="ic" data-ic="coins"></span><span class="gold-t cnum" id="coins">0</span></div>
+    </div>
+    <div class="xpzone">
+      <div class="xpwrap"><div class="xpbar" id="xpBar"></div></div>
+      <div class="xpnums"><span id="xpText">0 / 1000 XP</span><span id="xpLeft"></span></div>
+    </div>
+  </header>
+
+  <main class="content" id="content">
+    <!-- М0: четыре пустые вкладки; наполнение — спринты М1–М4 -->
+    <section class="tabpane on" id="tab-club">
+      <div class="empty">
+        <div class="eic" data-ic="nav-club"></div>
+        <div class="et" data-str="empty_club_t"></div>
+        <div class="es" data-str="empty_club_s"></div>
+      </div>
+    </section>
+    <section class="tabpane" id="tab-cases">
+      <div class="empty">
+        <div class="eic" data-ic="nav-cases"></div>
+        <div class="et" data-str="empty_cases_t"></div>
+        <div class="es" data-str="empty_cases_s"></div>
+      </div>
+    </section>
+    <section class="tabpane" id="tab-progress">
+      <div class="empty">
+        <div class="eic" data-ic="nav-progress"></div>
+        <div class="et" data-str="empty_progress_t"></div>
+        <div class="es" data-str="empty_progress_s"></div>
+        <button class="btn ghost" style="max-width:260px; margin-top:14px" onclick="logout()" data-str="logout"></button>
+      </div>
+    </section>
+    <section class="tabpane" id="tab-chat">
+      <div class="empty">
+        <div class="eic" data-ic="nav-chat"></div>
+        <div class="et" data-str="empty_chat_t"></div>
+        <div class="es" data-str="empty_chat_s"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="nav" id="nav">
+    <button data-tab="club" class="on"><span class="nic" data-ic="nav-club"></span><span class="nlb" data-str="nav_club"></span></button>
+    <button data-tab="cases"><span class="nic" data-ic="nav-cases"></span><span class="nlb" data-str="nav_cases"></span><span class="bub hidden" id="casesBub">0</span></button>
+    <button data-tab="progress"><span class="nic" data-ic="nav-progress"></span><span class="nlb" data-str="nav_progress"></span></button>
+    <button data-tab="chat"><span class="nic" data-ic="nav-chat"></span><span class="nlb" data-str="nav_chat"></span><span class="bub hidden" id="chatBub">0</span></button>
+  </nav>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ═══════════════ 14:48 — гостевое PWA (трек М, MOBILE.md) ═══════════════
+   Язык «14:48 Noir»: токены, иконки и api() перенесены из web/shell.html
+   (истина — shell.html). Правки — по тем же правилам верификации. */
+
+/* ═══ СЛОВАРЬ СТРОК (решение №9: язык v1 — русский, всё через STR под EN/PL) ═══ */
+const STR = {
+  title: '14:48 — клуб в кармане',
+  slogan: 'Твой клуб — это игра',
+  tab_login: 'Вход', tab_register: 'Регистрация',
+  ph_nick: 'Никнейм', ph_pass: 'Пароль (мин. 6)',
+  btn_login: 'Войти', btn_register: 'Создать аккаунт',
+  server: 'Сервер:',
+  err_generic: 'Ошибка',
+  nav_club: 'Клуб', nav_cases: 'Кейсы', nav_progress: 'Прогресс', nav_chat: 'Чат',
+  xp_of: '{a} / {b} XP',
+  xp_left: 'до уровня: {n} XP',
+  empty_club_t: 'Это твой клуб',
+  empty_club_s: 'Свободные ПК, брони и live-карточка сессии появятся здесь',
+  empty_cases_t: 'Кейсы',
+  empty_cases_s: 'Твои кейсы с таймерами и полноэкранным открытием переедут сюда',
+  empty_progress_t: 'Прогресс',
+  empty_progress_s: 'Уровень, ранг, таланты, ачивки и история — скоро на этом экране',
+  empty_chat_t: 'Чат с клубом',
+  empty_chat_s: 'Переписка с админом и уведомления появятся здесь',
+  logout: 'Выйти из аккаунта',
+  toast_err: '⚠ {m}',
+};
+function T(key, vars){ return (STR[key] || '').replace(/\{(\w+)\}/g, (_, n) => vars && vars[n] != null ? vars[n] : ''); }
+function applyStrings(){
+  document.querySelectorAll('[data-str]').forEach(el => { el.textContent = STR[el.dataset.str] || ''; });
+  document.querySelectorAll('[data-str-ph]').forEach(el => { el.placeholder = STR[el.dataset.strPh] || ''; });
+  document.title = STR.title;
+}
+
+/* ═══ КОНФИГ ═══ */
+/* PWA раздаётся самим бэкендом (/app) — API same-origin (решение №10).
+   Ключ 1448_api — тот же оверрайд, что в shell.html; file:// — dev-fоллбэк. */
+const API = localStorage.getItem('1448_api') ||
+  (location.protocol.startsWith('http') ? location.origin + '/api/v1' : 'http://localhost:8080/api/v1');
+
+const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁','🐨','🐵','🐙']; // avatar_id 1..12
+
+/* ═══ ИКОНКИ: Phosphor duotone, второй тон var(--acc) — система shell.html ═══ */
+const UI = {
+  coins: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M240,132c0,19.88-35.82,36-80,36-19.6,0-37.56-3.17-51.47-8.44h0C146.76,156.85,176,142,176,124V96.72h0C212.52,100.06,240,114.58,240,132ZM176,84c0-19.88-35.82-36-80-36S16,64.12,16,84s35.82,36,80,36S176,103.88,176,84Z" fill="var(--acc)" opacity=".45"/><path d="M184,89.57V84c0-25.08-37.83-44-88-44S8,58.92,8,84v40c0,20.89,26.25,37.49,64,42.46V172c0,25.08,37.83,44,88,44s88-18.92,88-44V132C248,111.3,222.58,94.68,184,89.57ZM232,132c0,13.22-30.79,28-72,28-3.73,0-7.43-.13-11.08-.37C170.49,151.77,184,139,184,124V105.74C213.87,110.19,232,122.27,232,132ZM72,150.25V126.46A183.74,183.74,0,0,0,96,128a183.74,183.74,0,0,0,24-1.54v23.79A163,163,0,0,1,96,152,163,163,0,0,1,72,150.25Zm96-40.32V124c0,8.39-12.41,17.4-32,22.87V123.5C148.91,120.37,159.84,115.71,168,109.93ZM96,56c41.21,0,72,14.78,72,28s-30.79,28-72,28S24,97.22,24,84,54.79,56,96,56ZM24,124V109.93c8.16,5.78,19.09,10.44,32,13.57v23.37C36.41,141.4,24,132.39,24,124Zm64,48v-4.17c2.63.1,5.29.17,8,.17,3.88,0,7.67-.13,11.39-.35A121.92,121.92,0,0,0,120,171.41v23.46C100.41,189.4,88,180.39,88,172Zm48,26.25V174.4a179.48,179.48,0,0,0,24,1.6,183.74,183.74,0,0,0,24-1.54v23.79a165.45,165.45,0,0,1-48,0Zm64-3.38V171.5c12.91-3.13,23.84-7.79,32-13.57V172C232,180.39,219.59,189.4,200,194.87Z"/></svg>`,
+  'nav-club': `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,120v96H152V152H104v64H40V120a8,8,0,0,1,2.34-5.66l80-80a8,8,0,0,1,11.32,0l80,80A8,8,0,0,1,216,120Z" fill="var(--acc)" opacity=".45"/><path d="M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V160h32v56a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68ZM208,208H160V152a8,8,0,0,0-8-8H104a8,8,0,0,0-8,8v56H48V120l80-80,80,80Z"/></svg>`,
+  'nav-cases': `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,129.09V232a8,8,0,0,1-3.84-1l-88-48.18a8,8,0,0,1-4.16-7V80.18a8,8,0,0,1,.7-3.25Z" fill="var(--acc)" opacity=".45"/><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32l80.34,44-29.77,16.3-80.35-44ZM128,120,47.66,76l33.9-18.56,80.34,44ZM40,90l80,43.78v85.79L40,175.82Zm176,85.78h0l-80,43.79V133.82l32-17.51V152a8,8,0,0,0,16,0V107.55L216,90v85.77Z"/></svg>`,
+  'nav-progress': `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M232,56v64L168,56Z" fill="var(--acc)" opacity=".45"/><path d="M232,48H168a8,8,0,0,0-5.66,13.66L188.69,88,136,140.69l-34.34-34.35a8,8,0,0,0-11.32,0l-72,72a8,8,0,0,0,11.32,11.32L96,123.31l34.34,34.35a8,8,0,0,0,11.32,0L200,99.31l26.34,26.35A8,8,0,0,0,240,120V56A8,8,0,0,0,232,48Zm-8,52.69L187.31,64H224Z"/></svg>`,
+  'nav-chat': `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,128A96,96,0,0,1,79.93,211.11h0L42.54,223.58a8,8,0,0,1-10.12-10.12l12.47-37.39h0A96,96,0,1,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-4-1.08,7.85,7.85,0,0,0-2.53.42L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm12-88a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm-44,0a12,12,0,1,1-12-12A12,12,0,0,1,96,128Zm88,0a12,12,0,1,1-12-12A12,12,0,0,1,184,128Z"/></svg>`,
+};
+function mountIcons(root){ (root||document).querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = UI[el.dataset.ic] || ''; }); }
+
+/* ═══ ТОКЕНЫ И API — перенесено из shell.html как есть (решение №3) ═══ */
+function tokens(){ return {a: localStorage.getItem('1448_access'), r: localStorage.getItem('1448_refresh')}; }
+function setTokens(a, r){ localStorage.setItem('1448_access', a); localStorage.setItem('1448_refresh', r); }
+function clearTokens(){ localStorage.removeItem('1448_access'); localStorage.removeItem('1448_refresh'); }
+
+async function api(path, opts = {}, retry = true){
+  const {a} = tokens();
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: {'Content-Type':'application/json', ...(a ? {Authorization:'Bearer '+a} : {}), ...(opts.headers||{})},
+  });
+  if (res.status === 401 && retry && tokens().r){
+    const ok = await tryRefresh();
+    if (ok) return api(path, opts, false);
+    logout(); throw new Error('unauthorized');
+  }
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code, status:res.status});
+  return data;
+}
+
+async function tryRefresh(){
+  try{
+    const res = await fetch(API + '/auth/refresh', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({refresh_token: tokens().r}),
+    });
+    if (!res.ok) return false;
+    const d = await res.json();
+    setTokens(d.access_token, d.refresh_token);
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ═══ СОСТОЯНИЕ ═══ */
+let me = null, economy = null;
+let authMode = 'login', curTab = 'club';
+
+/* ═══ AUTH (= shell.html) ═══ */
+function setMode(m){
+  authMode = m;
+  document.getElementById('tabLogin').classList.toggle('on', m==='login');
+  document.getElementById('tabReg').classList.toggle('on', m==='register');
+  document.getElementById('authBtn').textContent = m==='login' ? STR.btn_login : STR.btn_register;
+  document.getElementById('authErr').textContent = '';
+}
+
+async function submitAuth(){
+  const nick = document.getElementById('nick').value.trim();
+  const pass = document.getElementById('pass').value;
+  const err = document.getElementById('authErr');
+  const btn = document.getElementById('authBtn');
+  err.textContent = ''; btn.disabled = true;
+  try{
+    const path = authMode==='login' ? '/auth/login' : '/auth/register';
+    const body = authMode==='login' ? {login:nick, password:pass} : {nickname:nick, password:pass};
+    const d = await api(path, {method:'POST', body:JSON.stringify(body)}, false);
+    setTokens(d.access_token, d.refresh_token);
+    me = d.user;
+    enterApp();
+  }catch(e){ err.textContent = e.message || STR.err_generic; }
+  btn.disabled = false;
+}
+
+function logout(){
+  const r = tokens().r; // отзываем refresh на сервере (fire-and-forget)
+  if (r) fetch(API + '/auth/logout', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({refresh_token: r})}).catch(()=>{});
+  clearTokens(); me = null; economy = null;
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('authView').classList.remove('hidden');
+}
+
+/* ═══ ПРИЛОЖЕНИЕ ═══ */
+function enterApp(){
+  document.getElementById('authView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  FX.watchFPS();
+  loadMe();
+}
+
+async function loadMe(){
+  try{
+    const [m, ec] = await Promise.all([api('/me'), api('/me/economy')]);
+    me = m.user || m; economy = ec;
+    renderTop();
+  }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
+}
+
+function xpNext(level){ return Math.floor(1000 * Math.pow(level, 1.4)); }
+const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
+
+function renderTop(){
+  const need = xpNext(me.level);
+  document.getElementById('hNick').textContent = me.nickname;
+  document.getElementById('hLvl').textContent = me.level;
+  document.getElementById('ava').textContent = AVATARS[(me.avatar_id||1)-1] || '😎';
+  FX.countUp(document.getElementById('coins'), me.coins_balance);
+  document.getElementById('xpText').textContent = T('xp_of', {a: fmt(me.xp_current), b: fmt(need)});
+  document.getElementById('xpLeft').textContent = T('xp_left', {n: fmt(Math.max(0, need - me.xp_current))});
+  document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
+  if (economy && economy.rank){
+    document.getElementById('rankName').textContent = economy.rank.name;
+    document.getElementById('rankEm').textContent = RANK_EM[economy.rank.level] || '✦';
+  }
+}
+
+/* ═══ НАВИГАЦИЯ: 4 вкладки (решение №5) ═══ */
+function setTab(t){
+  curTab = t;
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('on', p.id === 'tab-' + t));
+  FX.swap(document.getElementById('tab-' + t));
+}
+document.getElementById('nav').addEventListener('click', e => {
+  const b = e.target.closest('button[data-tab]');
+  if (b) setTab(b.dataset.tab);
+});
+
+/* Поллинг вместо WS (решение №4): интервалы приедут в М1/М4.
+   Пока — обновление топбара при возврате в приложение (count-up при изменении). */
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && me) loadMe();
+});
+
+/* ═══ УТИЛИТЫ (= shell.html; правило цифр — форматирование ru-RU) ═══ */
+function fmt(n){ return (n==null?0:n).toLocaleString('ru-RU'); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+/* ═══ FX: облегчённый движок (решение №6 — без tilt/spotlight/magnet) ═══ */
+const FX = (() => {
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  let lite = reduced || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2);
+  if (lite) document.body.classList.add('perf-lite');
+
+  // авто-упрощение при низком FPS (замер первые ~2с после входа)
+  function watchFPS(){
+    if (lite) return;
+    let frames = 0, t0 = performance.now();
+    function tick(now){
+      frames++;
+      if (now - t0 >= 2000){
+        const fps = frames * 1000 / (now - t0);
+        if (fps < 32){ lite = true; document.body.classList.add('perf-lite'); }
+        return;
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // набегающие числа (как в shell)
+  function countUp(el, to){
+    if (!el) return;
+    to = Number(to) || 0;
+    const from = Number(el.dataset.v || 0);
+    if (lite || from === to){ el.textContent = to.toLocaleString('ru-RU'); el.dataset.v = to; return; }
+    const dur = 550, t0 = performance.now();
+    function step(now){
+      const p = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+      el.textContent = Math.round(from + (to - from) * e).toLocaleString('ru-RU');
+      if (p < 1) requestAnimationFrame(step); else el.dataset.v = to;
+    }
+    requestAnimationFrame(step);
+  }
+
+  // пружинная смена контента вкладки (как в shell)
+  function swap(el){
+    if (lite || !el) return;
+    el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
+  }
+
+  // ripple по тапу — тач-замена click-spark
+  function ripple(x, y){
+    if (lite) return;
+    const r = document.createElement('div');
+    r.className = 'ripple';
+    r.style.left = x + 'px'; r.style.top = y + 'px';
+    document.body.appendChild(r);
+    setTimeout(() => r.remove(), 500);
+  }
+
+  return { countUp, swap, watchFPS, ripple, get lite(){ return lite; } };
+})();
+
+// глобальный ripple на интерактивных элементах
+document.addEventListener('click', e => {
+  if (e.target.closest('.btn,.nav button,.tabs button')) FX.ripple(e.clientX, e.clientY);
+});
+
+/* ═══ SERVICE WORKER (установка на главный экран; по чистому http://<ip> молча пропускаем) ═══ */
+if ('serviceWorker' in navigator &&
+    (location.protocol === 'https:' || ['localhost','127.0.0.1'].includes(location.hostname))){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+
+/* ═══ СТАРТ ═══ */
+applyStrings();
+mountIcons();
+document.getElementById('srv').textContent = API;
+(async function init(){
+  if (tokens().a || tokens().r){
+    try{
+      const m = await api('/me');
+      me = m.user || m;
+      enterApp();
+      return;
+    }catch(e){ clearTokens(); }
+  }
+  document.getElementById('authView').classList.remove('hidden');
+})();
+</script>
+</body>
+</html>

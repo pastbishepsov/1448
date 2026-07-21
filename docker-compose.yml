@@ -78,6 +78,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - ./web:/web:ro   # PWA (трек М): сервер раздаёт /app из web/ — см. findWebDir в main.go
     command: air
 
 volumes:
