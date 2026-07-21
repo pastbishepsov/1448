@@ -83,6 +83,25 @@
   .gqdrop .gi:hover,.gqdrop .gi.sel{background:rgba(255,39,64,.13)}
   .gqdrop .gi .isvg{color:var(--dim); flex:none}
   .gqdrop .none{color:var(--dim); padding:10px; font-size:12.5px}
+  /* ── Б9-и3: командная палитра Ctrl+K ── */
+  .pal{position:fixed; inset:0; z-index:80; background:rgba(2,2,3,.5);
+       backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px);
+       display:flex; justify-content:center; align-items:flex-start; padding-top:12vh}
+  .palcard{width:min(560px,92vw); background:var(--panel); border:1px solid var(--hair);
+       border-radius:14px; box-shadow:0 24px 60px rgba(0,0,0,.6); overflow:hidden}
+  .palhead{display:flex; gap:9px; align-items:center; padding:12px 14px; border-bottom:1px solid var(--hair)}
+  .palhead .isvg{color:var(--dim); flex:none}
+  .palhead input{flex:1; background:none; border:0; outline:none; color:var(--txt); font-size:14.5px}
+  .pallist{max-height:46vh; overflow-y:auto; padding:6px}
+  .pallist .sub{font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.8px; padding:6px 10px 2px; font-weight:800}
+  .pallist .pi{display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:8px; cursor:pointer; font-size:13px}
+  .pallist .pi:hover,.pallist .pi.sel{background:rgba(255,39,64,.13)}
+  .pallist .pi .isvg{color:var(--dim); flex:none}
+  .pallist .pi .muted{margin-left:auto}
+  .pallist .pi kbd{margin-left:auto}
+  .pallist .pi .muted + kbd{margin-left:8px}
+  .pallist .none{color:var(--dim); padding:10px; font-size:12.5px}
+  @media (max-width:768px){ .pal{padding-top:6vh} }
 
   /* ── Б2: колокол — вызовы и сообщения гостей ── */
   .bellbtn{position:relative; border:0; background:transparent; color:var(--dim); cursor:pointer;
@@ -257,6 +276,22 @@
         border-radius:14px; padding:12px 14px; max-height:70vh; overflow-y:auto}
   .feed .fi{font-size:12px; line-height:1.5; padding:6px 0; border-bottom:1px solid var(--hair)}
   .feed .fi:last-child{border-bottom:0}
+  /* ── Б9: очередь-вейтлист (виджет над лентой Зала) ── */
+  .wl{margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--hair)}
+  .wl.ready{border-left:2px solid var(--acc); padding-left:8px; animation:wlpulse 1.8s ease-in-out infinite}
+  @keyframes wlpulse{0%,100%{opacity:1}50%{opacity:.72}}
+  @media (prefers-reduced-motion:reduce){ .wl.ready{animation:none} }
+  .wl .wi{display:flex; align-items:center; gap:6px; font-size:12px; padding:5px 0;
+    flex-wrap:wrap; border-bottom:1px solid var(--hair)}
+  .wl .wi:last-child{border-bottom:0}
+  .wl .wn{color:var(--dim); font-variant-numeric:tabular-nums}
+  .wl .wt{color:var(--dim); font-variant-numeric:tabular-nums; margin-left:auto}
+  .wl .wi button{background:none; border:1px solid var(--hair); border-radius:8px; color:var(--txt);
+    padding:3px 6px; cursor:pointer; line-height:1; font-size:11px; transition:border-color .15s}
+  .wl .wi button:hover{border-color:var(--acc)}
+  .wl .winp{width:100%; margin-top:8px; background:var(--card); border:1px solid var(--hair);
+    border-radius:10px; padding:7px 10px; color:var(--txt); font-size:12.5px; outline:none}
+  .wl .winp:focus{border-color:var(--acc)}
   .feed .ft{color:var(--dim); font-variant-numeric:tabular-nums; margin-right:6px}
   .sect{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.9px;
         font-weight:800; margin:20px 2px 9px}
@@ -266,7 +301,11 @@
   table{width:100%; border-collapse:collapse; background:var(--panel);
         border:1px solid var(--hair); border-radius:14px; overflow:hidden;
         font-variant-numeric:tabular-nums}
-  th,td{padding:10px 13px; text-align:left; font-size:13.5px; border-bottom:1px solid var(--hair); white-space:nowrap}
+  th,td{padding:var(--tdy,10px) var(--tdx,13px); text-align:left; font-size:var(--tdf,13.5px); border-bottom:1px solid var(--hair); white-space:nowrap}
+  /* Б9-и4: плотность таблиц — comfortable (дефолт) / compact; волосяные
+     линии и tabular-nums не меняются, только паддинги и кегль */
+  body.dense{--tdy:5px; --tdx:9px; --tdf:12.5px}
+  body.dense td.muted, body.dense td .muted{font-size:12px}
   th{color:var(--dim); font-size:11.5px; text-transform:uppercase; letter-spacing:.8px; background:var(--card)}
   tr:last-child td{border-bottom:0}
   td{transition:background .12s}
@@ -356,6 +395,7 @@
       <span data-ic="search"></span>
       <input id="gq" placeholder="Гость или ПК…" autocomplete="off" aria-label="Глобальный поиск">
       <kbd>/</kbd>
+      <kbd onclick="palOpen()" title="Палитра команд (Ctrl+K)" style="cursor:pointer">Ctrl K</kbd>
       <div id="gqDrop" class="gqdrop hidden"></div>
     </div>
     <button class="bellbtn" id="bellBtn" onclick="toggleBell()" aria-label="Вызовы и сообщения">
@@ -388,6 +428,7 @@
           <div class="kpi" onclick="nav('hall')">В зале <b id="kSessions">—</b></div>
           <div class="kpi" onclick="nav('hall')">Свободно <b id="kPCs">—</b></div>
           <div class="kpi" onclick="nav('bookings')">Броней сегодня <b id="kBookings">—</b></div>
+          <div class="kpi hidden" id="kQueueKpi" onclick="nav('hall')">В очереди <b id="kQueue">—</b></div>
         </div>
         <div class="toolrow ownerOnly hidden">
           <button class="btn ghost mini" id="hallEditBtn" onclick="toggleHallEdit()"><span data-ic="edit"></span>Редактор зала</button>
@@ -396,6 +437,12 @@
         <div class="hallrow">
           <div id="hallMap" style="flex:1; min-width:0"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
           <aside class="feed">
+            <div class="wl" id="wlBox">
+              <div class="dsub" style="margin-top:0">Очередь <span id="wlN" class="muted"></span></div>
+              <div id="wlList" class="muted" style="font-size:12px">Пока никто не ждёт</div>
+              <input id="wlNick" class="winp" placeholder="Ник гостя — Enter, в очередь"
+                     autocomplete="off" onkeydown="if(event.key==='Enter')wlAdd()">
+            </div>
             <div class="dsub" style="margin-top:0">Лента</div>
             <div id="feedList" class="muted" style="font-size:12px">События появятся здесь</div>
           </aside>
@@ -454,6 +501,10 @@
             <button class="ownerOnly hidden" onclick="audKindSet('staff',this)">Персонал</button>
           </div>
           <input id="audQ" class="input" placeholder="Ник гостя или админа…" autocomplete="off" style="min-width:200px">
+          <div class="segs" title="Плотность таблиц">
+            <button class="densBtn" data-v="comfortable" onclick="densSet('comfortable')">Просторно</button>
+            <button class="densBtn" data-v="compact" onclick="densSet('compact')">Плотно</button>
+          </div>
         </div>
         <div class="tablewrap" id="auditTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
@@ -465,6 +516,12 @@
         <div class="sect">Загрузка по часам суток · за 14 дней</div>
         <div id="statLoad"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
         <div class="sect">Топ гостей · за 14 дней</div>
+        <div class="toolrow">
+          <div class="segs" title="Плотность таблиц">
+            <button class="densBtn" data-v="comfortable" onclick="densSet('comfortable')">Просторно</button>
+            <button class="densBtn" data-v="compact" onclick="densSet('compact')">Плотно</button>
+          </div>
+        </div>
         <div class="tablewrap" id="statTop"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
@@ -506,6 +563,15 @@
   </div>
   <div class="dbody" id="drawerBody"></div>
 </aside>
+
+<div id="pal" class="pal hidden" onclick="if(event.target===this)palClose()">
+  <div class="palcard">
+    <div class="palhead"><span data-ic="search"></span>
+      <input id="palInp" placeholder="Раздел, действие или недавнее…" autocomplete="off">
+      <kbd>Esc</kbd></div>
+    <div id="palList" class="pallist"></div>
+  </div>
+</div>
 
 <div id="toast" class="toast"></div>
 
@@ -616,7 +682,7 @@ function logout(){
   if (refreshIv) clearInterval(refreshIv);
   clearTimeout(wsRetry);
   if (ws){ try{ ws.close(); }catch(e){} ws = null; }
-  wsOpen = false; feed = [];
+  wsOpen = false; feed = []; wlData = []; palClose();
   hallEdit = false; selPCId = null;
   bellItems = []; callPCs = new Set();
   document.getElementById('bellDrop').classList.add('hidden');
@@ -630,6 +696,7 @@ function enter(){
   document.getElementById('appView').classList.remove('hidden');
   document.getElementById('who').innerHTML = '<b>' + esc(me.nickname) + '</b> <span class="role">· ' + esc(me.role) + '</span>';
   document.querySelectorAll('.ownerOnly').forEach(el => el.classList.toggle('hidden', me.role !== 'owner'));
+  densApply(); // Б9-и4: плотность таблиц из localStorage
   mountIcons();
   // вернуться в раздел, где работали до перезагрузки (А7)
   const saved = localStorage.getItem('1448a_tab') || 'hall';
@@ -716,7 +783,7 @@ let ws = null, wsOpen = false, wsRetry = null, refDeb = null;
 let feed = []; // последние события для ленты Зала (кап 30)
 const FEED_ICON = {session_start:'clock', session_end:'power', shell_online:'monitor',
                    shell_offline:'monitor', deposit:'coins', booking:'cal', ban:'ban', chat:'bell',
-                   grant:'xp'};
+                   grant:'xp', waitlist:'clock'};
 
 function setPolling(ms){
   if (refreshIv) clearInterval(refreshIv);
@@ -763,6 +830,11 @@ function feedLine(m){
       const k = {create:'бронь', cancel:'отмена брони', restore:'возврат брони'}[d.kind] || 'бронь';
       return k + (d.nickname ? ': ' + d.nickname : '') + (d.computer ? ' · ' + d.computer : '')
         + (d.start_time ? ' · на ' + hhmm(d.start_time) : '');
+    }
+    case 'waitlist': {
+      const k = {add:'поставлен в очередь', join:'встал в очередь сам', remove:'снят из очереди',
+                 leave:'вышел из очереди', seated:'сел из очереди', ready:'зовём — ПК свободен'}[d.kind] || 'очередь';
+      return (d.nickname||'гость') + ' — ' + k + (d.kind === 'ready' && d.computer ? ' («' + d.computer + '»)' : '');
     }
   }
   return m.type;
@@ -876,7 +948,7 @@ let drawerPCId = null;  // id ПК, открытого в drawer
 let hallEdit = false, selPCId = null, newPCPos = null;
 
 async function renderHall(){
-  const [pcs, bk] = await Promise.all([api('/admin/computers'), api('/admin/bookings')]);
+  const [pcs, bk, wl] = await Promise.all([api('/admin/computers'), api('/admin/bookings'), api('/admin/waitlist')]);
   hallData = pcs.computers;
   pcCache = hallData; // глобальный поиск ПК ест свежие данные зала (Б1)
   hallClub = (pcs.clubs || [])[0] || null;
@@ -892,7 +964,9 @@ async function renderHall(){
       soon[b.computer_id] = b.start_time;
   });
   hallSoon = soon;
+  wlData = wl.items || [];
   paintHall();
+  paintWaitlist();
   if (drawerPCId) renderPCDrawer(drawerPCId); // обновить открытый drawer свежими данными
 }
 
@@ -1106,7 +1180,12 @@ function pcTile(pc, soonAt){
 function hhmm(iso){ const d = new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
 /* drawer ПК: инфо + завершение сессии (arm-confirm) + ремонт */
-function openPCDrawer(id){ drawerPCId = id; renderPCDrawer(id); }
+function openPCDrawer(id){
+  drawerPCId = id;
+  const pc = hallData.find(p => p.id === id);
+  if (pc) palPush({t:'pc', id:id, name:pc.name}); // Б9-и3: недавнее
+  renderPCDrawer(id);
+}
 function renderPCDrawer(id){
   const pc = hallData.find(p => p.id === id);
   if (!pc){ drawerPCId = null; closeDrawer(); return; }
@@ -1181,6 +1260,55 @@ async function seatGuest(pcId){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* ── Б9: очередь-вейтлист — виджет над лентой Зала. Данные едут в renderHall
+   (GET /admin/waitlist), live-события "waitlist" будят refresh как все. ── */
+let wlData = [];
+function paintWaitlist(){
+  const list = document.getElementById('wlList');
+  if (!list) return;
+  const free = hallData.filter(p => p.status === 'available').length;
+  const k = document.getElementById('kQueueKpi');
+  if (k){ k.classList.toggle('hidden', wlData.length === 0); setText('kQueue', wlData.length); }
+  setText('wlN', wlData.length ? wlData.length : '');
+  document.getElementById('wlBox').classList.toggle('ready', free > 0 && wlData.length > 0);
+  list.innerHTML = wlData.length === 0
+    ? 'Пока никто не ждёт'
+    : wlData.map(w => `<div class="wi"><span class="wn">${w.position}.</span><b>${esc(w.nickname)}</b>
+        ${w.notified ? '<span data-ic="bell" title="звали: был свободный ПК"></span>' : ''}
+        <span class="wt">${w.waited_min}м</span>
+        <button title="Посадить за свободный ПК" onclick="wlSeat('${esc(w.nickname)}')"><span data-ic="clock"></span></button>
+        <button title="Снять из очереди" onclick="wlRemove(this,'${w.id}','${esc(w.nickname)}')"><span data-ic="cross"></span></button>
+      </div>`).join('');
+  mountIcons(list);
+}
+async function wlAdd(){
+  const inp = document.getElementById('wlNick');
+  const nickname = (inp.value || '').trim();
+  if (!nickname){ toast('⚠ Нужен ник гостя'); return; }
+  try{
+    const d = await api('/admin/waitlist', {method:'POST', body:JSON.stringify({nickname})});
+    inp.value = '';
+    toast('⏳ ' + nickname + ' в очереди — №' + d.position);
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function wlSeat(nickname){
+  const pc = hallData.find(p => p.status === 'available');
+  if (!pc){ toast('⚠ Свободных ПК нет — как освободится, гостя позовёт уведомление'); return; }
+  openPCDrawer(pc.id);
+  const inp = document.getElementById('seatNick');
+  if (inp) inp.value = nickname;
+}
+function wlRemove(btn, id, nickname){
+  armButton(btn, 'снять?', async () => {
+    try{
+      await api('/admin/waitlist/' + id, {method:'DELETE'});
+      toast('✕ ' + nickname + ' снят из очереди');
+      await refresh();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+
 /* arm-confirm: первый клик взводит кнопку, второй (в течение 4с) — выполняет */
 function armButton(btn, armedHTML, fn){
   if (btn.dataset.armed !== '1'){
@@ -1226,6 +1354,7 @@ async function openUserDrawer(id, form){
   drawerUserId = id;
   uForm = form || null;
   await loadUserDrawer();
+  if (uData && uData.user) palPush({t:'user', id:id, name:uData.user.nickname}); // Б9-и3: недавнее
 }
 async function loadUserDrawer(){
   try{ uData = await api('/admin/users/' + drawerUserId); }
@@ -1688,7 +1817,7 @@ const AUD_GROUPS = {
   money: ['deposit'],
   grant: ['grant'],
   users: ['ban','unban'],
-  sessions: ['session_end','session_start'],
+  sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat'],
   bookings: ['booking_create','booking_cancel','booking_restore'],
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
@@ -1697,6 +1826,7 @@ const AUD_GROUPS = {
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
   session_end:'стоп сессии', session_start:'старт сессии', pc_power:'питание ПК',
+  waitlist_add:'в очередь', waitlist_remove:'снят из очереди', waitlist_seat:'посадка из очереди',
   pc_maintenance:'ПК в ремонт', pc_available:'ПК в строй',
   booking_create:'бронь', booking_cancel:'отмена брони', booking_restore:'возврат брони',
   catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
@@ -1707,6 +1837,7 @@ const AUD_LABEL = {
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
   session_start:'clock', pc_power:'power',
+  waitlist_add:'clock', waitlist_remove:'cross', waitlist_seat:'check',
   pc_maintenance:'wrench', pc_available:'check', booking_create:'cal',
   booking_cancel:'cross', booking_restore:'cal',
   catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
@@ -1945,7 +2076,7 @@ function closeDrawer(){
    только внутри транзиентного текста ── */
 const TOAST_IC = {'⚠':'cross','✓':'check','✕':'cross','🛎':'bell','💬':'bell','💰':'coins',
                   '⚡':'xp','🎁':'chest','📅':'cal','⏹':'power','🔧':'wrench','🚫':'ban',
-                  '✅':'check','⬜':'apps','🔌':'power','🔄':'power','▶':'clock'};
+                  '✅':'check','⬜':'apps','🔌':'power','🔄':'power','▶':'clock','⏳':'clock'};
 function toast(msg, undoFn){
   const t = document.getElementById('toast');
   let ic = '';
@@ -2058,11 +2189,190 @@ async function gqOpen(it){
   });
 })();
 
+/* ── Б9-и4: плотность таблиц — настройка рабочего места (localStorage),
+   не аккаунта; применяется ко всем таблицам разделов одной переменной ── */
+function densApply(){
+  const v = localStorage.getItem('1448a_density') || 'comfortable';
+  document.body.classList.toggle('dense', v === 'compact');
+  document.querySelectorAll('.densBtn').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+}
+function densSet(v){
+  localStorage.setItem('1448a_density', v);
+  densApply();
+}
+
+/* ── Б9-и3: командная палитра Ctrl+K — разделы, действия, недавнее.
+   Надстройка над «/»-поиском: «/» ищет сущности, палитра — навигацию и
+   действия; формы едут в существующие drawer'ы (карточка гостя с формой,
+   посадка Б8, бронь А3). Недавнее — последние карточки (localStorage). ── */
+const PAL_NAV = [
+  {t:'hall', name:'Зал', ic:'monitor'}, {t:'users', name:'Гости', ic:'users'},
+  {t:'bookings', name:'Брони', ic:'cal'}, {t:'catalog', name:'Каталог', ic:'apps'},
+  {t:'grants', name:'Журнал', ic:'scroll'}, {t:'stats', name:'Деньги', ic:'chart'},
+  {t:'staff', name:'Персонал', ic:'users'}, {t:'settings', name:'Экономика', ic:'gear'},
+];
+const PAL_ACTIONS = [
+  {k:'seat', name:'Посадить гостя', ic:'clock', run:() => palSeat()},
+  {k:'booking', name:'Новая бронь', ic:'plus', run:() => { nav('bookings'); newBookingDrawer(); }},
+  {k:'queue', name:'Поставить в очередь', ic:'clock',
+   run:() => { nav('hall'); setTimeout(() => { const i = document.getElementById('wlNick'); if (i) i.focus(); }, 60); }},
+  {k:'deposit', name:'Депозит гостю', ic:'coins', pick:'user', run:(u) => openUserDrawer(u.id, 'deposit')},
+  {k:'xp', name:'Начислить XP', ic:'xp', pick:'user', run:(u) => openUserDrawer(u.id, 'xp')},
+  {k:'case', name:'Выдать кейс', ic:'chest', pick:'user', run:(u) => openUserDrawer(u.id, 'case')},
+  {k:'chat', name:'Написать гостю', ic:'bell', pick:'user', run:(u) => openUserChat(u.id)},
+  {k:'power', name:'Питание ПК', ic:'power', pick:'pc', run:(p) => { nav('hall'); openPCDrawer(p.id); }},
+];
+let palItems = [], palSel = 0, palPickAct = null, palDeb = null;
+const pal = document.getElementById('pal'), palInp = document.getElementById('palInp'),
+      palList = document.getElementById('palList');
+
+/* лёгкий fuzzy: префикс > вхождение > подпоследовательность */
+function palScore(name, q){
+  const n = name.toLowerCase(), s = q.toLowerCase();
+  if (!s) return 1;
+  if (n.startsWith(s)) return 3;
+  if (n.includes(s)) return 2;
+  let i = 0;
+  for (const ch of n){ if (ch === s[i]) i++; if (i === s.length) return 1; }
+  return 0;
+}
+function palRecent(){
+  try{ return JSON.parse(localStorage.getItem('1448a_recent') || '[]'); }catch(e){ return []; }
+}
+function palPush(it){
+  try{
+    const r = palRecent().filter(x => !(x.t === it.t && x.id === it.id));
+    r.unshift(it);
+    localStorage.setItem('1448a_recent', JSON.stringify(r.slice(0, 8)));
+  }catch(e){}
+}
+function palOpen(){
+  pal.classList.remove('hidden');
+  palPickAct = null;
+  palInp.value = '';
+  palInp.placeholder = 'Раздел, действие или недавнее…';
+  palBuild();
+  palInp.focus();
+}
+function palClose(){ pal.classList.add('hidden'); palPickAct = null; palInp.blur(); }
+function palToggle(){ if (pal.classList.contains('hidden')) palOpen(); else palClose(); }
+
+function palBuild(){
+  const q = palInp.value.trim();
+  if (palPickAct) return; // pick-режим строится своим путём
+  const items = [];
+  if (!q) palRecent().slice(0, 5).forEach(r => items.push({
+    sec:'Недавнее', ic:r.t === 'pc' ? 'monitor' : 'users', name:r.name,
+    run:() => { palClose(); if (r.t === 'pc'){ nav('hall'); openPCDrawer(r.id); } else openUserDrawer(r.id); }}));
+  PAL_NAV.forEach(s => {
+    if (OWNER_SECTIONS.includes(s.t) && !isOwner()) return;
+    const sc = palScore(s.name, q);
+    if (!sc) return;
+    items.push({sec:'Разделы', ic:s.ic, name:s.name, kbd:String(SECTIONS.indexOf(s.t) + 1), sc,
+      run:() => { palClose(); nav(s.t); }});
+  });
+  PAL_ACTIONS.forEach(a => {
+    const sc = palScore(a.name, q);
+    if (!sc) return;
+    items.push({sec:'Действия', ic:a.ic, name:a.name, sc,
+      sub:a.pick ? (a.pick === 'user' ? 'выбор гостя' : 'выбор ПК') : '',
+      run:() => { if (a.pick){ palPickStart(a); } else { palClose(); a.run(); } }});
+  });
+  if (q) items.sort((a, b) => (b.sc || 0) - (a.sc || 0));
+  palItems = items;
+  palSel = 0;
+  palPaint();
+}
+function palPickStart(a){
+  palPickAct = a;
+  palInp.value = '';
+  palInp.placeholder = a.name + (a.pick === 'user' ? ': ник гостя…' : ': имя ПК…');
+  palPickBuild('');
+  palInp.focus();
+}
+async function palPickBuild(q){
+  const a = palPickAct;
+  if (!a) return;
+  if (a.pick === 'user'){
+    if (!q){ palItems = []; palSel = 0; palPaint('Набери ник гостя'); return; }
+    try{
+      const d = await api('/admin/users?q=' + encodeURIComponent(q));
+      if (palPickAct !== a) return; // режим сменился, пока ждали ответ
+      palItems = (d.users || []).filter(u => u.role === 'player').slice(0, 8).map(u => ({
+        sec:'Гости', ic:'users', name:u.nickname,
+        sub:'LVL ' + u.level + (u.status === 'banned' ? ' · бан' : ''),
+        run:() => { palClose(); a.run(u); }}));
+    }catch(e){ palItems = []; }
+  } else {
+    if (!pcCache.length){ try{ const d = await api('/admin/computers'); pcCache = d.computers || []; }catch(e){} }
+    palItems = pcCache.filter(p => palScore(p.name || '', q)).slice(0, 8).map(p => ({
+      sec:'ПК', ic:'monitor', name:p.name,
+      sub:p.session ? 'занят: ' + p.session.nickname
+         : (p.status === 'maintenance' ? 'ремонт' : (p.shell_online ? 'свободен' : 'offline')),
+      run:() => { palClose(); a.run(p); }}));
+  }
+  palSel = 0;
+  palPaint();
+}
+function palPaint(emptyText){
+  if (!palItems.length){
+    palList.innerHTML = '<div class="none">' + esc(emptyText || 'Ничего не нашлось') + '</div>';
+    return;
+  }
+  let html = '', lastSec = '';
+  palItems.forEach((it, i) => {
+    if (it.sec !== lastSec){ html += '<div class="sub">' + esc(it.sec) + '</div>'; lastSec = it.sec; }
+    html += `<div class="pi${i === palSel ? ' sel' : ''}" onclick="palItems[${i}].run()">
+      <span data-ic="${it.ic}"></span><b>${esc(it.name)}</b>
+      ${it.sub ? '<span class="muted">' + esc(it.sub) + '</span>' : ''}
+      ${it.kbd ? '<kbd>' + it.kbd + '</kbd>' : ''}</div>`;
+  });
+  palList.innerHTML = html;
+  mountIcons(palList);
+  const sel = palList.querySelector('.pi.sel');
+  if (sel) sel.scrollIntoView({block:'nearest'});
+}
+palInp.addEventListener('input', () => {
+  if (palPickAct){ clearTimeout(palDeb); palDeb = setTimeout(() => palPickBuild(palInp.value.trim()), 250); }
+  else palBuild();
+});
+palInp.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){
+    e.stopPropagation();
+    if (palPickAct){ palPickAct = null; palOpen(); } // из выбора цели — назад в корень
+    else palClose();
+    return;
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    e.preventDefault();
+    if (!palItems.length) return;
+    palSel = (palSel + (e.key === 'ArrowDown' ? 1 : -1) + palItems.length) % palItems.length;
+    palPaint();
+    return;
+  }
+  if (e.key === 'Enter' && palItems.length) palItems[Math.max(0, palSel)].run();
+});
+/* «Посадить гостя» из палитры: drawer первого свободного ПК, фокус в ник */
+async function palSeat(){
+  palClose();
+  nav('hall');
+  if (!hallData.length){ try{ await renderHall(); }catch(e){} }
+  const pc = hallData.find(p => p.status === 'available');
+  if (!pc){ toast('⚠ Свободных ПК нет — поставь гостя в очередь'); return; }
+  openPCDrawer(pc.id);
+  setTimeout(() => { const i = document.getElementById('seatNick'); if (i) i.focus(); }, 60);
+}
+
 /* ── хоткеи: 1–7 разделы, «/» — глобальный поиск (Б1), Esc — закрыть drawer/форму ── */
 document.addEventListener('keydown', e => {
   if (!me) return;
   const tag = (e.target.tagName||'').toLowerCase();
   const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK'){ // Б9-и3: палитра
+    e.preventDefault();
+    palToggle();
+    return;
+  }
   if (e.key === 'Escape'){
     if (!gqDrop.classList.contains('hidden')) gqHide();
     else if (document.getElementById('drawer').classList.contains('open')) closeDrawer();

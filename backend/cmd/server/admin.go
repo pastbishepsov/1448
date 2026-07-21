@@ -429,6 +429,8 @@ func handleAdminSetComputerStatus(c *gin.Context) {
 	action := "pc_available"
 	if req.Status == models.ComputerStatusMaintenance {
 		action = "pc_maintenance"
+	} else {
+		checkWaitlistNotify(pc.ClubID) // Б9: ПК вернулся из ремонта — зовём очередь
 	}
 	logAdminAction(c, action, nil, pc.Name)
 	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "name": pc.Name, "status": req.Status})
@@ -534,6 +536,9 @@ func handleAdminSeatGuest(c *gin.Context) {
 	if code < 300 {
 		target := user.ID
 		logAdminAction(c, "session_start", &target, user.Nickname+" за "+pc.Name)
+		if from, _ := resp["from_waitlist"].(bool); from { // Б9: посадка из очереди
+			logAdminAction(c, "waitlist_seat", &target, user.Nickname+" за "+pc.Name)
+		}
 	}
 	c.JSON(code, resp)
 }

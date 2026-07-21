@@ -147,6 +147,10 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 		"nickname":    user.Nickname,
 	})
 
+	// Вейтлист (Б9): гость сел — его место в очереди закрывается само,
+	// каким бы путём ни началась сессия (сам с киоска, посадка у стойки).
+	fromWaitlist := resolveWaitlistOnSeat(userID, user.Nickname)
+
 	return http.StatusCreated, gin.H{
 		"session_id":         session.ID,
 		"started_at":         session.StartedAt,
@@ -155,6 +159,7 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 		"rate_pln":           club.BaseRatePLN,
 		"effective_rate_pln": rate,
 		"discount_pct":       discountPct,
+		"from_waitlist":      fromWaitlist,
 	}
 }
 
@@ -341,6 +346,10 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 		"xp":          xpGained,
 		"coins":       coinsGained,
 	})
+
+	// Вейтлист (Б9): ПК освободился — если очередь не пуста, разово зовём
+	// голову («ПК свободен — подойди к стойке», шина Б4).
+	checkWaitlistNotify(session.ClubID)
 
 	return &finishResult{
 		Session: session, Minutes: minutes,

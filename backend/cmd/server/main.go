@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -105,6 +106,9 @@ func main() {
 		me.GET("/chat", handleGuestChatList)              // переписка, поллинг (Б3)
 		me.GET("/chat/unread", handleGuestChatUnread)     // бэйдж непрочитанного (Б3)
 		me.GET("/notifications", handleGetMyNotifications) // тосты о действиях админа (Б4)
+		me.GET("/waitlist", handleGetMyWaitlist)    // своя позиция в очереди (Б9, задел PWA)
+		me.POST("/waitlist", handleJoinWaitlist)    // встать в очередь самому (Б9)
+		me.DELETE("/waitlist", handleLeaveWaitlist) // выйти из очереди (Б9)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
@@ -140,6 +144,9 @@ func main() {
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
 		adm.POST("/computers/:id/power", handleAdminPCPower)   // вкл/перезагрузка/выкл (Б8)
 		adm.POST("/computers/:id/session", handleAdminSeatGuest) // посадить гостя (Б8)
+		adm.GET("/waitlist", handleAdminWaitlist)              // очередь-вейтлист (Б9)
+		adm.POST("/waitlist", handleAdminWaitlistAdd)          // поставить по нику (Б9)
+		adm.DELETE("/waitlist/:id", handleAdminWaitlistRemove) // снять из очереди (Б9)
 		adm.GET("/sessions/active", handleAdminActiveSessions)
 		adm.POST("/sessions/:id/end", handleAdminEndSession)
 		adm.GET("/bookings", handleAdminBookings)
@@ -169,6 +176,24 @@ func main() {
 		own.PATCH("/computers/:id", handleAdminUpdateComputer)
 		own.DELETE("/computers/:id", handleAdminDeleteComputer)
 		own.PATCH("/clubs/:id/layout", handleAdminClubLayout)
+	}
+
+	// ── Мобильное PWA (трек М, MOBILE.md): раздача статики ────────────────
+	// GET /app — гостевое приложение web/app.html (телефон по Wi-Fi,
+	// same-origin — CORS не нужен, решение №10). Плюс манифест, SW и иконки.
+	if webDir := findWebDir(); webDir != "" {
+		r.StaticFile("/app", filepath.Join(webDir, "app.html"))
+		r.StaticFile("/sw.js", filepath.Join(webDir, "sw.js"))
+		r.Static("/icons", filepath.Join(webDir, "icons"))
+		// .webmanifest нет во встроенной mime-таблице Go — тип ставим сами
+		manifest := filepath.Join(webDir, "app.webmanifest")
+		r.GET("/app.webmanifest", func(c *gin.Context) {
+			c.Header("Content-Type", "application/manifest+json; charset=utf-8")
+			c.File(manifest)
+		})
+		log.Printf("PWA: раздаю /app из %s", webDir)
+	} else {
+		log.Println("PWA: папка web с app.html не найдена — /app отключён (подскажи путь через WEB_DIR)")
 	}
 
 	port := getenv("SERVER_PORT", "8080")
@@ -417,6 +442,21 @@ func isDuplicate(err error) bool {
 	return strings.Contains(msg, "duplicate") ||
 		strings.Contains(msg, "unique") ||
 		strings.Contains(msg, "23505")
+}
+
+// findWebDir — где лежит web/ с app.html: WEB_DIR из окружения, /web
+// (volume в docker-compose.yml), ../web (go run из backend/), ./web (бинарь
+// рядом с web/). Пусто — раздача /app отключается, API работает как раньше.
+func findWebDir() string {
+	for _, dir := range []string{os.Getenv("WEB_DIR"), "/web", "../web", "./web"} {
+		if dir == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, "app.html")); err == nil {
+			return dir
+		}
+	}
+	return ""
 }
 
 func getenv(key, def string) string {
