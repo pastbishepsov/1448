@@ -165,6 +165,8 @@ func main() {
 		own.DELETE("/catalog/:id", handleAdminCatalogDelete)
 		own.GET("/stats/revenue", handleAdminStatsRevenue)
 		own.GET("/stats/load", handleAdminStatsLoad)
+		own.GET("/stats/shift", handleAdminStatsShift)       // сводка смены (Б10)
+		own.GET("/stats/segments", handleAdminStatsSegments) // сегменты гостей (Б10)
 		own.GET("/settings", handleAdminSettingsGet)
 		own.PUT("/settings", handleAdminSettingsPut)
 		// Персонал (спринт Б5): назначение/снятие админов вместо SQL

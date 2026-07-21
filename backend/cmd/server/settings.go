@@ -46,6 +46,9 @@ var settingBounds = map[string][2]int64{
 	"coins_per_pln":             {1, 100},
 	"admin_day_xp_cap":          {0, 10000000},
 	"admin_day_deposit_cap_pln": {0, 1000000},
+	"report_hour":               {0, 23},  // Б10-и1: граница клубных суток для сводки смены
+	"seg_new_days":              {1, 365}, // Б10-и2: сегмент «новые» — окно первого визита
+	"seg_lost_days":             {2, 730}, // Б10-и2: сегмент «пропавшие» — дней без визита
 }
 
 func currentSettings() gin.H {
@@ -55,6 +58,9 @@ func currentSettings() gin.H {
 		"coins_per_pln":             settingInt64("coins_per_pln", coinsPerPLN),
 		"admin_day_xp_cap":          settingInt64("admin_day_xp_cap", 0),
 		"admin_day_deposit_cap_pln": settingInt64("admin_day_deposit_cap_pln", 0),
+		"report_hour":               settingInt64("report_hour", 8),
+		"seg_new_days":              settingInt64("seg_new_days", 14),
+		"seg_lost_days":             settingInt64("seg_lost_days", 21),
 	}
 }
 

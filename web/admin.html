@@ -176,7 +176,8 @@
        font-size:13px; color:var(--dim); font-weight:700; white-space:nowrap}
   .kpi b{color:var(--txt); font-size:15px; margin-left:7px; font-variant-numeric:tabular-nums}
   .kpi{cursor:pointer; border:1px solid var(--hair); transition:border-color .15s}
-  .kpi:hover{border-color:var(--acc)}
+.kpi:hover{border-color:var(--acc)}
+  .kpi.on{border-color:var(--acc)}
 
   /* ── карта зала (А1): плитки ПК по зонам ── */
   .pcgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(122px,1fr)); gap:10px; margin-bottom:8px}
@@ -511,6 +512,18 @@
 
       <section id="s-stats" class="hidden">
         <div class="kpis" id="statKpis"></div>
+        <div class="sect">Смена · <span id="shDate" style="text-transform:none; letter-spacing:0">—</span></div>
+        <div class="toolrow">
+          <div class="segs">
+            <button onclick="shiftDay(-1)" title="Предыдущая смена">‹ Пред.</button>
+            <button onclick="shiftDay(0)" title="Вернуться к текущей смене">Текущая</button>
+            <button onclick="shiftDay(1)" title="Следующая смена">След. ›</button>
+          </div>
+        </div>
+        <div class="kpis" id="shiftKpis"><div class="skel"></div></div>
+        <div class="sect">Гости · сегменты</div>
+        <div class="kpis" id="segKpis"><div class="skel"></div></div>
+        <div class="tablewrap hidden" id="segTable" style="margin-bottom:16px"></div>
         <div class="sect">Выручка по дням · 14 дней</div>
         <div id="statRevenue"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
         <div class="sect">Загрузка по часам суток · за 14 дней</div>
@@ -548,6 +561,12 @@
           <input id="set_xpcap" class="input" type="number" min="0" max="10000000">
           <label class="muted" for="set_depcap">Дневной лимит депозитов на админа, zł (0 — без лимита)</label>
           <input id="set_depcap" class="input" type="number" min="0" max="1000000">
+          <label class="muted" for="set_rhour">Час границы клубных суток — сводка смены (0–23)</label>
+          <input id="set_rhour" class="input" type="number" min="0" max="23">
+          <label class="muted" for="set_segnew">Сегмент «новые»: окно первого визита, дней</label>
+          <input id="set_segnew" class="input" type="number" min="1" max="365">
+          <label class="muted" for="set_seglost">Сегмент «пропавшие»: дней без визита</label>
+          <input id="set_seglost" class="input" type="number" min="2" max="730">
           <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
           <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал. Лимиты не касаются владельца</div>
         </div>
@@ -1955,7 +1974,80 @@ async function submitBooking(){
 function fmtPLN(v){ return (+v || 0).toLocaleString('ru-RU'); }
 function lblDate(d){ return d ? d.date.slice(8,10)+'.'+d.date.slice(5,7) : ''; }
 
+/* ── Б10-и1: сводка смены — «Деньги» отвечают, как прошёл день.
+   Клубные сутки: от report_hour до report_hour (настройка owner в
+   «Экономике») — смена клуба не равна календарной дате. ── */
+let shiftDate = null, shiftMax = null; // null = текущая смена
+function shiftHours(min){ return Math.floor(min/60) + ' ч ' + (min%60) + ' м'; }
+async function renderShift(){
+  try{
+    const d = await api('/admin/stats/shift' + (shiftDate ? '?date=' + shiftDate : ''));
+    if (!shiftDate) shiftMax = d.date; // текущая смена = правая граница листания
+    shiftDate = d.date;
+    document.getElementById('shDate').textContent =
+      d.date + ' · с ' + d.report_hour + ':00';
+    const m = d.revenue.by_method || {};
+    document.getElementById('shiftKpis').innerHTML =
+      `<div class="kpi" title="нал ${fmtPLN(m.cash||0)} · карта ${fmtPLN(m.card||0)} · BLIK ${fmtPLN(m.blik||0)}">Выручка <b>${fmtPLN(d.revenue.total_pln)} zł</b></div>
+       <div class="kpi">Депозитов <b>${d.revenue.deposits}</b></div>
+       <div class="kpi">Сессий <b>${d.sessions.started}</b></div>
+       <div class="kpi">Наиграно <b>${shiftHours(d.sessions.minutes)}</b></div>
+       <div class="kpi">Новые гости <b>${d.new_guests}</b></div>
+       <div class="kpi">Брони <b>+${d.bookings.created}${d.bookings.cancelled ? ' / −' + d.bookings.cancelled : ''}</b></div>
+       <div class="kpi" title="баны · ремонты · вызовы админа">Инциденты <b>${d.incidents.bans + d.incidents.repairs + d.incidents.calls}</b></div>`;
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function shiftDay(delta){
+  if (delta === 0){ shiftDate = null; renderShift(); return; }
+  if (!shiftDate) return; // ещё не загрузилась — некуда листать
+  const d = new Date(shiftDate + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  const next = d.toISOString().slice(0, 10);
+  if (shiftMax && next > shiftMax){ toast('⏳ Эта смена ещё не началась'); return; }
+  shiftDate = next;
+  renderShift();
+}
+
+/* ── Б10-и2: сегменты гостей — новые / вернувшиеся / пропавшие.
+   Пороги — настройки owner (seg_new_days / seg_lost_days, «Экономика»);
+   клик по плитке раскрывает список, строка ведёт в карточку гостя. ── */
+let segData = null, segSel = null;
+async function renderSegments(){
+  try{
+    segData = await api('/admin/stats/segments');
+    paintSegments();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function paintSegments(){
+  if (!segData) return;
+  const t = segData.totals || {}, th = segData.thresholds || {};
+  const card = (key, label, title) =>
+    `<div class="kpi${segSel === key ? ' on' : ''}" title="${title}" onclick="segToggle('${key}')">${label} <b>${t[key] || 0}</b></div>`;
+  document.getElementById('segKpis').innerHTML =
+    card('new', 'Новые', `первый визит за последние ${th.new_days} дн`) +
+    card('returned', 'Вернувшиеся', `визит за ${th.new_days} дн после паузы ≥ ${th.lost_days} дн`) +
+    card('lost', 'Пропавшие', `нет визитов ≥ ${th.lost_days} дн`);
+  const wrap = document.getElementById('segTable');
+  if (!segSel){ wrap.classList.add('hidden'); return; }
+  const items = (segData.segments || {})[segSel] || [];
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = items.length === 0
+    ? '<div class="empty"><span data-ic="users"></span>В сегменте пусто</div>'
+    : `<table><tr><th>Гость</th><th>Визитов</th><th>Последний визит</th><th>Внесено</th></tr>
+      ${items.map(u => `<tr onclick="openUserDrawer('${u.user_id}')" style="cursor:pointer">
+        <td><b>${esc(u.nickname)}</b></td><td>${u.visits}</td>
+        <td class="muted">${fmtTime(u.last_visit)}</td>
+        <td>${fmtPLN(u.deposited_pln)} zł</td></tr>`).join('')}</table>`;
+  mountIcons(wrap);
+}
+function segToggle(key){
+  segSel = segSel === key ? null : key;
+  paintSegments();
+}
+
 async function renderStats(){
+  renderShift();    // Б10-и1: сводка смены (свой try — не роняет графики)
+  renderSegments(); // Б10-и2: сегменты гостей
   try{
     const [rev, load] = await Promise.all([
       api('/admin/stats/revenue?days=14'),
@@ -2036,6 +2128,9 @@ async function renderSettings(){
     document.getElementById('set_rate').value = d.settings.coins_per_pln;
     document.getElementById('set_xpcap').value = d.settings.admin_day_xp_cap;
     document.getElementById('set_depcap').value = d.settings.admin_day_deposit_cap_pln;
+    document.getElementById('set_rhour').value = d.settings.report_hour;
+    document.getElementById('set_segnew').value = d.settings.seg_new_days;
+    document.getElementById('set_seglost').value = d.settings.seg_lost_days;
   }catch(e){ toast('⚠ ' + e.message); }
 }
 async function saveSettings(){
@@ -2045,6 +2140,9 @@ async function saveSettings(){
     coins_per_pln: parseInt(document.getElementById('set_rate').value),
     admin_day_xp_cap: parseInt(document.getElementById('set_xpcap').value),
     admin_day_deposit_cap_pln: parseInt(document.getElementById('set_depcap').value),
+    report_hour: parseInt(document.getElementById('set_rhour').value),
+    seg_new_days: parseInt(document.getElementById('set_segnew').value),
+    seg_lost_days: parseInt(document.getElementById('set_seglost').value),
   };
   for (const k in body){
     if (!Number.isInteger(body[k]) || body[k] < 0){ toast('⚠ Нужны целые неотрицательные числа'); return; }

@@ -70,7 +70,7 @@
 | POST | `/api/v1/admin/bookings/:id/restore` | вернуть отменённую бронь — undo (А3) | admin |
 | GET  | `/api/v1/admin/audit` | единый журнал: гранты+депозиты+действия (А4, миграция 016) | admin |
 | GET  | `/api/v1/admin/stats/revenue` · `/admin/stats/load` | выручка по дням; загрузка по часам + топ гостей (А5) | owner |
-| GET/PUT | `/api/v1/admin/settings` | экономика: xp_per_min, coins_per_min, coins_per_pln (А5, миграция 017) | owner |
+| GET/PUT | `/api/v1/admin/settings` | экономика: xp_per_min, coins_per_min, coins_per_pln + report_hour и пороги сегментов (А5+Б10, миграция 017) | owner |
 | GET  | `/api/v1/ws/admin?token=` | live-канал админки: session/shell/deposit/booking/ban/grant/chat/waitlist (А6+Б) | admin |
 | POST/GET | `/api/v1/me/chat` (+`/unread`) | чат с админом; вызов = kind=call (Б2–Б3, миграция 019) | JWT |
 | GET  | `/api/v1/me/notifications` | тосты о действиях админа, выдача = прочитано (Б4, миграция 020) | JWT |
@@ -82,6 +82,7 @@
 | POST | `/api/v1/admin/computers/:id/session` | посадить гостя за ПК без его пароля (Б8) | admin |
 | GET/POST/DELETE | `/api/v1/admin/waitlist[/:id]` | очередь-вейтлист: список, поставить по нику, снять (Б9, миграция 022) | admin |
 | GET/POST/DELETE | `/api/v1/me/waitlist` | гость: позиция в очереди, встать, выйти (Б9, задел PWA) | JWT |
+| GET  | `/api/v1/admin/stats/shift?date=` · `/admin/stats/segments` | сводка смены (клубные сутки от report_hour, листание) · сегменты гостей (Б10) | owner |
 
 Роли: `users.role` (player/admin/owner, миграция 008) → JWT-claim `role` →
 `adminMiddleware`. Повысить аккаунт:
@@ -112,6 +113,10 @@ owner — формы и target/args; дневные лимиты admin (XP/де�
 свободен» голове очереди через уведомления Б4, `/me/waitlist` — задел PWA;
 командная палитра Ctrl+K (разделы · действия · недавнее) поверх
 «/»-поиска; плотность таблиц comfortable/compact (localStorage).
+«Деньги» отвечают владельцу (Б10): сводка смены по клубным суткам
+(report_hour в «Экономике», листание по дням) и сегменты гостей
+новые/вернувшиеся/пропавшие (пороги настраиваются) со списками и
+переходом в карточку.
 prompt/confirm в интерфейсе нет. Форс-завершение сессии переиспользует
 `finishSession` — ту же логику начисления, что и у игрока.
 
