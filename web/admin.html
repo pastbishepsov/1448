@@ -178,6 +178,21 @@
   .kpi{cursor:pointer; border:1px solid var(--hair); transition:border-color .15s}
 .kpi:hover{border-color:var(--acc)}
   .kpi.on{border-color:var(--acc)}
+  /* ── Б11: график смен в «Персонале» ── */
+  .sch td{vertical-align:top; min-width:96px}
+  .sch td.off{color:var(--dim); background:rgba(255,255,255,.015)}
+  .sch .shname b{display:block}
+  .sch .shname span{color:var(--dim); font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .schip{display:inline-flex; align-items:center; gap:5px; background:rgba(255,255,255,.05);
+    border:1px solid var(--hair); border-radius:8px; padding:2px 7px; margin:2px 3px 2px 0; font-size:12px}
+  .schip button{background:none; border:0; color:var(--dim); cursor:pointer; padding:0 1px;
+    font-size:12px; line-height:1}
+  .schip button:hover{color:var(--acc)}
+  .schadd{background:none; border:1px dashed var(--hair); border-radius:8px; color:var(--dim);
+    padding:2px 8px; cursor:pointer; font-size:12px; transition:border-color .15s, color .15s}
+  .schadd:hover{border-color:var(--acc); color:var(--txt)}
+  .dayscol{display:flex; gap:8px; flex-wrap:wrap}
+  .dayscol label{display:inline-flex; gap:4px; align-items:center; font-size:12px; cursor:pointer}
 
   /* ── карта зала (А1): плитки ПК по зонам ── */
   .pcgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(122px,1fr)); gap:10px; margin-bottom:8px}
@@ -414,9 +429,9 @@
       <button id="r-bookings" onclick="nav('bookings')" aria-label="Брони"><span data-ic="cal"></span><span class="rlabel">Брони</span><span class="rbadge hidden" id="bkBadge"></span></button>
       <button id="r-catalog" onclick="nav('catalog')" aria-label="Каталог"><span data-ic="apps"></span><span class="rlabel">Каталог</span></button>
       <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
-      <div class="rzone zclub ownerOnly hidden">Клуб</div>
+      <div class="rzone zclub">Клуб</div>
       <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Деньги"><span data-ic="chart"></span><span class="rlabel">Деньги</span></button>
-      <button id="r-staff" class="ownerOnly hidden" onclick="nav('staff')" aria-label="Персонал"><span data-ic="users"></span><span class="rlabel">Персонал</span></button>
+      <button id="r-staff" onclick="nav('staff')" aria-label="Персонал"><span data-ic="users"></span><span class="rlabel">Персонал</span></button>
       <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Экономика"><span data-ic="gear"></span><span class="rlabel">Экономика</span></button>
       <div class="grow"></div>
       <button onclick="logout()" aria-label="Выйти"><span data-ic="out"></span><span class="rlabel">Выйти</span></button>
@@ -454,6 +469,7 @@
           <span><span class="pcdot" style="background:var(--orange); margin-right:5px"></span>ремонт</span>
           <span style="letter-spacing:1px">◌ shell offline</span>
           <span style="display:inline-flex; align-items:center; gap:5px"><span data-ic="clock"></span>скоро бронь</span>
+          <span id="onShift" class="hidden" style="display:inline-flex; align-items:center; gap:5px; color:var(--txt)"><span data-ic="users"></span><span id="onShiftTxt"></span></span>
         </div>
       </section>
 
@@ -521,6 +537,7 @@
           </div>
         </div>
         <div class="kpis" id="shiftKpis"><div class="skel"></div></div>
+        <div class="muted hidden" id="shStaff" style="margin:-6px 0 14px"></div>
         <div class="sect">Гости · сегменты</div>
         <div class="kpis" id="segKpis"><div class="skel"></div></div>
         <div class="tablewrap hidden" id="segTable" style="margin-bottom:16px"></div>
@@ -539,13 +556,23 @@
       </section>
 
       <section id="s-staff" class="hidden">
-        <div class="toolrow">
+        <div class="toolrow ownerOnly hidden">
           <input id="stNick" class="input" placeholder="Ник гостя → назначить админом" style="min-width:250px"
                  autocomplete="off" onkeydown="if(event.key==='Enter')promoteStaff()">
           <button class="btn mini" onclick="promoteStaff()"><span data-ic="plus"></span>Назначить</button>
           <span class="muted">Роль вступает в силу после перелогина сотрудника</span>
         </div>
-        <div class="tablewrap" id="staffTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+        <div class="tablewrap ownerOnly hidden" id="staffTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+        <div class="sect">График смен · <span id="schLabel" style="text-transform:none; letter-spacing:0">—</span></div>
+        <div class="toolrow">
+          <div class="segs">
+            <button onclick="schWeek(-1)" title="Предыдущая неделя">‹ Неделя</button>
+            <button onclick="schWeek(0)" title="Текущая неделя">Текущая</button>
+            <button onclick="schWeek(1)" title="Следующая неделя">Неделя ›</button>
+          </div>
+          <button class="btn mini ownerOnly hidden" onclick="newShiftDrawer()"><span data-ic="plus"></span>Новая смена</button>
+        </div>
+        <div class="tablewrap" id="schTable"><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-settings" class="hidden">
@@ -622,7 +649,7 @@
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 const SECTIONS = ['hall','users','bookings','catalog','grants','stats','staff','settings'];
-const OWNER_SECTIONS = ['stats','staff','settings'];
+const OWNER_SECTIONS = ['stats','settings']; // Б11: «Персонал» открыт admin'у read-only (график смен)
 let curTab = 'hall', refreshIv = null, me = null, lastSync = 0;
 
 /* ── иконки: Phosphor duotone, второй тон var(--acc) (см. DESIGN.md) ── */
@@ -802,7 +829,7 @@ let ws = null, wsOpen = false, wsRetry = null, refDeb = null;
 let feed = []; // последние события для ленты Зала (кап 30)
 const FEED_ICON = {session_start:'clock', session_end:'power', shell_online:'monitor',
                    shell_offline:'monitor', deposit:'coins', booking:'cal', ban:'ban', chat:'bell',
-                   grant:'xp', waitlist:'clock'};
+                   grant:'xp', waitlist:'clock', shifts:'cal'};
 
 function setPolling(ms){
   if (refreshIv) clearInterval(refreshIv);
@@ -854,6 +881,12 @@ function feedLine(m){
       const k = {add:'поставлен в очередь', join:'встал в очередь сам', remove:'снят из очереди',
                  leave:'вышел из очереди', seated:'сел из очереди', ready:'зовём — ПК свободен'}[d.kind] || 'очередь';
       return (d.nickname||'гость') + ' — ' + k + (d.kind === 'ready' && d.computer ? ' («' + d.computer + '»)' : '');
+    }
+    case 'shifts': {
+      if (d.kind === 'assign') return 'график: ' + (d.nickname||'') + ' — ' + (d.shift||'смена')
+        + (d.date ? ' · ' + d.date.slice(8,10) + '.' + d.date.slice(5,7) : '');
+      if (d.kind === 'unassign') return 'график: ' + (d.nickname||'') + ' снят';
+      return 'шаблоны смен обновлены';
     }
   }
   return m.type;
@@ -967,7 +1000,8 @@ let drawerPCId = null;  // id ПК, открытого в drawer
 let hallEdit = false, selPCId = null, newPCPos = null;
 
 async function renderHall(){
-  const [pcs, bk, wl] = await Promise.all([api('/admin/computers'), api('/admin/bookings'), api('/admin/waitlist')]);
+  const [pcs, bk, wl, osn] = await Promise.all([api('/admin/computers'), api('/admin/bookings'), api('/admin/waitlist'),
+    api('/admin/shifts/now').catch(() => ({items: []}))]);
   hallData = pcs.computers;
   pcCache = hallData; // глобальный поиск ПК ест свежие данные зала (Б1)
   hallClub = (pcs.clubs || [])[0] || null;
@@ -984,8 +1018,10 @@ async function renderHall(){
   });
   hallSoon = soon;
   wlData = wl.items || [];
+  onShiftData = osn.items || [];
   paintHall();
   paintWaitlist();
+  paintOnShift();
   if (drawerPCId) renderPCDrawer(drawerPCId); // обновить открытый drawer свежими данными
 }
 
@@ -1277,6 +1313,17 @@ async function seatGuest(pcId){
     toast('▶ ' + nickname + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
     await refresh();
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* ── Б11-и3: «на смене: …» в легенде Зала — по графику смен (виден всем) ── */
+let onShiftData = [];
+function paintOnShift(){
+  const box = document.getElementById('onShift'), txt = document.getElementById('onShiftTxt');
+  if (!box) return;
+  if (!onShiftData.length){ box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  txt.textContent = 'на смене: ' + onShiftData.map(i =>
+    i.nickname + (i.shift ? ' (' + i.shift + ')' : '')).join(', ');
 }
 
 /* ── Б9: очередь-вейтлист — виджет над лентой Зала. Данные едут в renderHall
@@ -1840,7 +1887,7 @@ const AUD_GROUPS = {
   bookings: ['booking_create','booking_cancel','booking_restore'],
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
-  staff: ['staff_promote','staff_demote'],
+  staff: ['staff_promote','staff_demote','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
 };
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
@@ -1852,6 +1899,9 @@ const AUD_LABEL = {
   catalog_sort:'каталог: порядок', settings_update:'настройки',
   pc_create:'ПК добавлен', pc_update:'ПК изменён', pc_delete:'ПК удалён', layout_update:'схема зала',
   staff_promote:'персонал: назначен', staff_demote:'персонал: снят',
+  shift_tpl_create:'смена: создана', shift_tpl_update:'смена: правка',
+  shift_tpl_delete:'смена: удалена', shift_assign:'график: назначен',
+  shift_unassign:'график: снят',
 };
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
@@ -1863,6 +1913,8 @@ const AUD_ICON = {
   catalog_sort:'apps', settings_update:'gear',
   pc_create:'plus', pc_update:'edit', pc_delete:'cross', layout_update:'monitor',
   staff_promote:'users', staff_demote:'out',
+  shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',
+  shift_assign:'cal', shift_unassign:'out',
 };
 function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
 function relTime(iso){
@@ -1995,6 +2047,13 @@ async function renderShift(){
        <div class="kpi">Новые гости <b>${d.new_guests}</b></div>
        <div class="kpi">Брони <b>+${d.bookings.created}${d.bookings.cancelled ? ' / −' + d.bookings.cancelled : ''}</b></div>
        <div class="kpi" title="баны · ремонты · вызовы админа">Инциденты <b>${d.incidents.bans + d.incidents.repairs + d.incidents.calls}</b></div>`;
+    const st = document.getElementById('shStaff');
+    if (st){
+      const w = d.staff || [];
+      st.classList.toggle('hidden', !w.length);
+      st.textContent = w.length
+        ? 'работали: ' + w.map(x => x.nickname + (x.shift ? ' (' + x.shift + ')' : '')).join(', ') : '';
+    }
   }catch(e){ toast('⚠ ' + e.message); }
 }
 function shiftDay(delta){
@@ -2080,8 +2139,181 @@ async function renderStats(){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* ── Б11-и2: график смен в «Персонале». Сетка недели: строки — активные
+   шаблоны, колонки пн–вс; admin читает, owner назначает через drawer и
+   правит шаблоны. Дата ячейки = день НАЧАЛА смены (ночная — по вечеру). ── */
+let schWeekOff = 0, schShifts = [], schDays = [];
+const DAYS_RU = ['пн','вт','ср','чт','пт','сб','вс'];
+function mondayOf(d){
+  const x = new Date(d); x.setHours(12, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+function isoDate(d){
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function mmHH(min){ return Math.floor(min/60) + ':' + String(min%60).padStart(2, '0'); }
+function mmHH2(min){ return String(Math.floor(min/60)).padStart(2, '0') + ':' + String(min%60).padStart(2, '0'); }
+function hhmmToMin(v){ const m = /^(\d{1,2}):(\d{2})$/.exec(v || ''); return m ? (+m[1])*60 + (+m[2]) : -1; }
+function schWeek(delta){
+  schWeekOff = delta === 0 ? 0 : schWeekOff + delta;
+  renderSchedule();
+}
+async function renderSchedule(){
+  try{
+    const from = mondayOf(new Date());
+    from.setDate(from.getDate() + schWeekOff*7);
+    const [sh, sc] = await Promise.all([
+      api('/admin/shifts'),
+      api('/admin/shifts/schedule?from=' + isoDate(from) + '&days=7'),
+    ]);
+    schShifts = sh.shifts || [];
+    schDays = sc.days || [];
+    const to = new Date(from); to.setDate(to.getDate() + 6);
+    const lbl = document.getElementById('schLabel');
+    if (lbl) lbl.textContent = from.getDate() + '.' + String(from.getMonth()+1).padStart(2,'0')
+      + ' – ' + to.getDate() + '.' + String(to.getMonth()+1).padStart(2,'0')
+      + (schWeekOff === 0 ? ' · текущая' : '');
+    paintSchedule();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function paintSchedule(){
+  const wrap = document.getElementById('schTable');
+  if (!wrap) return;
+  const owner = isOwner();
+  const act = schShifts.filter(s => s.active);
+  const inact = schShifts.filter(s => !s.active);
+  if (!act.length){
+    wrap.innerHTML = '<div class="empty"><span data-ic="clock"></span>Смен ещё нет'
+      + (owner ? ' — создай первую: «Новая смена»' : ' — владелец ещё не завёл шаблоны') + '</div>';
+    mountIcons(wrap);
+    return;
+  }
+  const todayKey = isoDate(new Date());
+  let head = '<tr><th>Смена</th>';
+  schDays.forEach(d => {
+    const dt = new Date(d.date + 'T12:00:00');
+    head += `<th${d.date === todayKey ? ' style="color:var(--acc)"' : ''}>${DAYS_RU[d.dow]} ${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,'0')}</th>`;
+  });
+  head += '</tr>';
+  const rows = act.map(s => {
+    let tds = `<td class="shname"><b>${esc(s.name)}</b><span>${mmHH(s.start_min)}–${mmHH(s.end_min)}${owner
+      ? ` · <a href="#" onclick="editShiftDrawer('${s.id}');return false" style="color:var(--dim)">править</a>` : ''}</span></td>`;
+    schDays.forEach(d => {
+      if (!(s.days_mask & (1 << d.dow))){ tds += '<td class="off">—</td>'; return; }
+      const items = (d.items || []).filter(i => i.shift_id === s.id);
+      let cell = items.map(i => `<span class="schip">${esc(i.nickname)}${owner
+        ? `<button title="Снять с графика" onclick="schUnassign(this,'${i.id}','${esc(i.nickname)}')">✕</button>` : ''}</span>`).join('');
+      if (owner) cell += `<button class="schadd" title="Назначить на смену" onclick="schAssignDrawer('${s.id}','${d.date}')">+</button>`;
+      else if (!items.length) cell = '<span class="muted">—</span>';
+      tds += `<td>${cell}</td>`;
+    });
+    return `<tr>${tds}</tr>`;
+  }).join('');
+  wrap.innerHTML = `<table class="sch">${head}${rows}</table>`
+    + (owner && inact.length
+      ? `<div class="muted" style="margin-top:8px">Выключены: ${inact.map(s =>
+          `<a href="#" onclick="editShiftDrawer('${s.id}');return false" style="color:var(--dim)">${esc(s.name)}</a>`).join(' · ')}</div>` : '');
+  mountIcons(wrap);
+}
+async function schAssignDrawer(shiftId, date){
+  const s = schShifts.find(x => x.id === shiftId);
+  if (!s) return;
+  let staff = [];
+  try{ staff = (await api('/admin/staff')).staff || []; }
+  catch(e){ toast('⚠ ' + e.message); return; }
+  const dt = new Date(date + 'T12:00:00');
+  const day = schDays.find(d => d.date === date);
+  const taken = new Set(((day && day.items) || []).filter(i => i.shift_id === shiftId).map(i => i.nickname));
+  const btns = staff.map(st => taken.has(st.nickname)
+    ? `<button class="btn ghost" disabled style="width:100%; justify-content:center; opacity:.4">${esc(st.nickname)} — уже в графике</button>`
+    : `<button class="btn ghost" style="width:100%; justify-content:center" onclick="schAssign('${shiftId}','${date}','${esc(st.nickname)}')"><span data-ic="users"></span>${esc(st.nickname)}</button>`).join('');
+  openDrawer('В график: ' + s.name + ' · ' + dt.getDate() + '.' + String(dt.getMonth()+1).padStart(2,'0'),
+    `<div class="dsub" style="margin-top:0">Кто выходит</div>
+     <div class="uform" style="margin-top:0">${btns || '<div class="muted">Персонала нет — сначала назначь админов</div>'}</div>`);
+}
+async function schAssign(shiftId, date, nickname){
+  try{
+    await api('/admin/shifts/' + shiftId + '/assign', {method:'POST', body:JSON.stringify({date, nickname})});
+    toast('✓ ' + nickname + ' в графике');
+    closeDrawer();
+    renderSchedule();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function schUnassign(btn, id, nickname){
+  armButton(btn, '✕?', async () => {
+    try{
+      await api('/admin/shift-assignments/' + id, {method:'DELETE'});
+      toast('✕ ' + nickname + ' снят с графика');
+      renderSchedule();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+/* шаблоны смен: drawer-формы owner'а */
+function shiftFormHtml(s){
+  const days = DAYS_RU.map((d, i) =>
+    `<label><input type="checkbox" class="shDay" data-b="${i}"${(s.days_mask & (1 << i)) ? ' checked' : ''}>${d}</label>`).join('');
+  return `<div class="uform" style="margin-top:0">
+    <label class="muted">Название</label>
+    <input id="shName" class="input" value="${esc(s.name)}" maxlength="32" autocomplete="off">
+    <label class="muted">Начало</label>
+    <input id="shStart" class="input" type="time" value="${mmHH2(s.start_min)}">
+    <label class="muted">Конец — раньше начала значит «через полночь»</label>
+    <input id="shEnd" class="input" type="time" value="${mmHH2(s.end_min)}">
+    <label class="muted">Дни недели</label>
+    <div class="dayscol">${days}</div>
+    <label class="muted">Порядок в сетке (меньше — выше)</label>
+    <input id="shSort" class="input" type="number" value="${s.sort || 0}">
+    ${s.id ? `<label class="muted" style="display:flex; gap:8px; align-items:center; cursor:pointer">
+      <input type="checkbox" id="shActive"${s.active ? ' checked' : ''}> активна (выключенная уходит из сетки, график хранится)</label>` : ''}
+  </div>`;
+}
+function newShiftDrawer(){
+  openDrawer('Новая смена', shiftFormHtml({id:'', name:'', start_min:480, end_min:1200, days_mask:127, sort:0, active:true})
+    + `<button class="btn" style="width:100%; justify-content:center; margin-top:12px" onclick="saveShift(null)"><span data-ic="save"></span>Создать</button>`);
+}
+function editShiftDrawer(id){
+  const s = schShifts.find(x => x.id === id);
+  if (!s) return;
+  openDrawer('Смена: ' + s.name, shiftFormHtml(s)
+    + `<button class="btn" style="width:100%; justify-content:center; margin-top:12px" onclick="saveShift('${s.id}')"><span data-ic="save"></span>Сохранить</button>
+       <button class="btn danger" style="width:100%; justify-content:center; margin-top:10px" onclick="armDeleteShift(this,'${s.id}','${esc(s.name)}')"><span data-ic="cross"></span>Удалить смену</button>
+       <div class="muted" style="margin-top:8px">Удаление уносит и её назначения из графика; чтобы просто спрятать — сними галочку «активна»</div>`);
+}
+async function saveShift(id){
+  const name = document.getElementById('shName').value.trim();
+  const start = hhmmToMin(document.getElementById('shStart').value);
+  const end = hhmmToMin(document.getElementById('shEnd').value);
+  if (start < 0 || end < 0){ toast('⚠ Заполни время начала и конца'); return; }
+  let mask = 0;
+  document.querySelectorAll('.shDay:checked').forEach(ch => { mask |= 1 << (+ch.dataset.b); });
+  const body = {name, start_min: start, end_min: end, days_mask: mask,
+    sort: parseInt(document.getElementById('shSort').value) || 0};
+  const act = document.getElementById('shActive');
+  if (act) body.active = act.checked;
+  try{
+    await api(id ? '/admin/shifts/' + id : '/admin/shifts',
+      {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
+    toast('✓ Смена сохранена');
+    closeDrawer();
+    renderSchedule();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armDeleteShift(btn, id, name){
+  armButton(btn, '<span data-ic="cross"></span>Ещё раз — удалить «' + name + '»', async () => {
+    try{
+      await api('/admin/shifts/' + id, {method:'DELETE'});
+      toast('✕ Смена «' + name + '» удалена');
+      closeDrawer();
+      renderSchedule();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+
 /* ── Б5: персонал (owner) — назначение и снятие админов ── */
 async function renderStaff(){
+  renderSchedule(); // Б11: график смен виден всем
+  if (!isOwner()) return; // список команды — owner-only endpoint
   try{
     const d = await api('/admin/staff');
     setHTML('staffTable', (d.staff || []).length === 0

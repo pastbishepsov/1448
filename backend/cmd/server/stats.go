@@ -110,8 +110,22 @@ func handleAdminStatsShift(c *gin.Context) {
 	db.Model(&models.ChatMessage{}).
 		Where("kind = ? AND created_at >= ? AND created_at < ?", models.ChatKindCall, from, to).Count(&calls)
 
+	// кто работал (Б11-и3): график на день смены (дата — строкой, колонка date)
+	var worked []models.ShiftAssignment
+	db.Preload("User").Preload("Shift").
+		Where("date = ?", key).Order("created_at").Find(&worked)
+	staffOut := make([]gin.H, 0, len(worked))
+	for _, a := range worked {
+		sn := ""
+		if a.Shift != nil {
+			sn = a.Shift.Name
+		}
+		staffOut = append(staffOut, gin.H{"nickname": nicknameOf(a.User), "shift": sn})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"date": key, "from": from, "to": to, "report_hour": reportHour,
+		"staff":      staffOut,
 		"revenue":    gin.H{"total_pln": totalPLN, "by_method": byMethod, "deposits": depCount},
 		"sessions":   gin.H{"started": sessStarted, "minutes": minutes},
 		"new_guests": newGuests,
