@@ -123,6 +123,7 @@ func main() {
 		v1.GET("/ws/shell", handleShellWS)   // ← настоящий
 		v1.GET("/ws/admin", handleAdminWS)   // live-канал админки (спринт А6)
 		v1.GET("/catalog", handleGetCatalog) // ← настоящий (гостевой экран + агент)
+		v1.GET("/cases/odds", handleGetCaseOdds) // таблица шансов кейсов (прозрачность, RESEARCH §4)
 
 		// Админка (role=admin/owner из users.role, миграция 008)
 		adm := v1.Group("/admin")

@@ -64,6 +64,19 @@ var dropConfigs = map[CaseTier]CaseDropConfig{
 	CaseTierGods:   {CoinsMin: 5000, CoinsMax: 20000, JackpotChance: 10000,JackpotAmount: 50000, BusterChance: 50000, BusterAmount: 500},
 }
 
+// ── Прозрачность кейсов (RESEARCH.md §4, спринт «прозрачность») ──────────
+// Версию поднимать (и дату обновлять) при ЛЮБОМ изменении dropConfigs,
+// bonusTierWeights (cmd/server/cases.go) или формулы Roll: игрок видит
+// «таблица шансов vN от даты» в UI — она обязана соответствовать коду.
+const (
+	CaseOddsVersion = 1
+	CaseOddsDate    = "2026-07-08" // последняя правка dropConfigs (правило цифр)
+)
+
+// DropConfigFor — таблица дропа тира для публичной выдачи шансов
+// (GET /cases/odds). Возвращает копию, менять её бессмысленно.
+func DropConfigFor(t CaseTier) CaseDropConfig { return dropConfigs[t] }
+
 // Roll — генерирует дроп кейса.
 // ВАЖНО: вызывается ТОЛЬКО на сервере, никогда на клиенте.
 // Использует crypto/rand для криптографически стойкой случайности.

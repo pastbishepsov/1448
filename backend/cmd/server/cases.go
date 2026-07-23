@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"math"
 	"math/big"
 	"net/http"
 	"time"
@@ -82,6 +83,76 @@ func rollCaseTier(luckBoost float64) models.CaseTier {
 		}
 	}
 	return models.CaseTierLight
+}
+
+// ── Прозрачность кейсов (RESEARCH.md §4): открытая таблица шансов ────────
+
+// tierOdds — шансы одного тира для публичной выдачи. Проценты БАЗОВЫЕ:
+// таланты (luck_grade) и ранг повышают шанс редких тиров — только в пользу
+// игрока, поэтому публикуем нижнюю границу.
+type tierOdds struct {
+	Tier           models.CaseTier `json:"tier"`
+	BonusRollPct   float64         `json:"bonus_roll_pct"` // шанс тира при ролле бонусного кейса
+	CoinsPct       float64         `json:"coins_pct"`
+	CoinsMin       int64           `json:"coins_min"`
+	CoinsMax       int64           `json:"coins_max"`
+	BusterPct      float64         `json:"buster_pct"`
+	BusterBoostPct float64         `json:"buster_boost_pct"` // размер бустера кэшбека, %
+	JackpotPct     float64         `json:"jackpot_pct"`
+	JackpotAmount  int64           `json:"jackpot_amount"`
+}
+
+func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// caseOddsTiers — проценты по тирам. Пороги зеркалят Roll (models/case.go):
+// roll из 100000, сначала джекпот, затем бустер, остаток — монеты; RTP клуба
+// множит пороги джекпота и бустера, клэмп на 100000 — как в Roll.
+func caseOddsTiers(rtp float64) []tierOdds {
+	out := make([]tierOdds, 0, len(bonusTierWeights))
+	for _, w := range bonusTierWeights {
+		cfg := models.DropConfigFor(w.tier)
+		jt := float64(cfg.JackpotChance) * rtp
+		bt := jt + float64(cfg.BusterChance)*rtp
+		if jt > 100000 {
+			jt = 100000
+		}
+		if bt > 100000 {
+			bt = 100000
+		}
+		jackpotPct := jt / 1000
+		busterPct := (bt - jt) / 1000
+		out = append(out, tierOdds{
+			Tier:           w.tier,
+			BonusRollPct:   round2(w.weight / 100),
+			CoinsPct:       round2(100 - jackpotPct - busterPct),
+			CoinsMin:       cfg.CoinsMin,
+			CoinsMax:       cfg.CoinsMax,
+			BusterPct:      round2(busterPct),
+			BusterBoostPct: float64(cfg.BusterAmount) / 100,
+			JackpotPct:     round2(jackpotPct),
+			JackpotAmount:  cfg.JackpotAmount,
+		})
+	}
+	return out
+}
+
+// GET /cases/odds?club_id= — публичная таблица шансов кейсов (без JWT, как
+// /catalog): версия и дата, проценты по тирам, распределение тиров бонусного
+// кейса. club_id учитывает RTP-модификатор клуба, без него rtp = 1.
+func handleGetCaseOdds(c *gin.Context) {
+	rtp := 1.0
+	if clubID := c.Query("club_id"); clubID != "" {
+		var club models.Club
+		if err := db.First(&club, "id = ?", clubID).Error; err == nil && club.RTPModifier > 0 {
+			rtp = club.RTPModifier
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"version":      models.CaseOddsVersion,
+		"updated_at":   models.CaseOddsDate,
+		"rtp_modifier": rtp,
+		"tiers":        caseOddsTiers(rtp),
+	})
 }
 
 // grantCase — выдать кейс игроку. db может быть обычным или транзакционным.
