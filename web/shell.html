@@ -268,6 +268,13 @@
   .avapick button{font-size:26px; padding:8px 0; background:var(--card); border:1px solid var(--hair); border-radius:12px; cursor:pointer; transition:border-color .15s, transform .15s}
   .avapick button:hover{border-color:var(--acc); transform:translateY(-1px)}
   .avapick button.on{border-color:var(--acc); background:rgba(255,39,64,.18)}
+  /* ═══ М5 (трек М, зона связки): «клуб в кармане» — QR на /app в профиле ═══ */
+  .qrblock{margin:2px 0 14px; padding:13px 14px; border:1px solid var(--hair); border-radius:14px;
+           display:flex; gap:14px; align-items:center; background:rgba(255,255,255,.02)}
+  .qrblock canvas{width:116px; height:116px; border-radius:8px; background:#fff; flex:none;
+                  image-rendering:pixelated}
+  .qrblock .qt{font-weight:800; margin-bottom:4px}
+  .qrblock .qs{color:var(--dim); font-size:12.5px; line-height:1.45}
 
   /* ═══ LOCK (как в клубе: без сессии ПК заблокирован) ═══ */
   .lockscreen{position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center;
@@ -649,6 +656,13 @@
     <h2>Профиль</h2>
     <input id="pNick" class="input" style="margin-top:16px" placeholder="Никнейм">
     <div class="avapick" id="avaPick"></div>
+    <div class="qrblock" id="qrBlock">
+      <canvas id="clubQR" width="132" height="132"></canvas>
+      <div>
+        <div class="qt">Клуб в кармане</div>
+        <div class="qs">Наведи камеру телефона — брони, кейсы, прогресс и чат в гостевом приложении <b>/app</b>.</div>
+      </div>
+    </div>
     <div id="pErr" class="err"></div>
     <div style="display:flex; gap:10px">
       <button class="btn ghost" onclick="closeOverlay('profOverlay')">Отмена</button>
@@ -1947,6 +1961,210 @@ async function openCase(id, tier){
   }catch(e){ ov.classList.remove('show'); toast('⚠ ' + e.message); }
 }
 
+/* ═══ Мини-QR (byte mode, ECC M, версии 1–5, маски 0–7 по penalty) ═══
+   Самодостаточный энкодер для «клуб в кармане» (shell.html, М5-и2).
+   GF(256) считается кодом (полином 0x11d) — никаких зашитых таблиц RS. */
+function qrMatrix(text){
+  const data = (typeof TextEncoder !== 'undefined') ? new TextEncoder().encode(text)
+    : Uint8Array.from(text.split('').map(c => c.charCodeAt(0) & 255));
+  /* версии 1..5, ECC M: [data codewords всего, ecc на блок, блоков] */
+  const VER = [[16,10,1],[28,16,1],[44,26,1],[64,18,2],[86,24,2]];
+  let v = 0;
+  while (v < 5 && VER[v][0] - 2 < data.length) v++;
+  if (v >= 5) throw new Error('qr: слишком длинно');
+  const [dcw, eccLen, blocks] = VER[v];
+  const ver = v + 1, size = 17 + ver * 4;
+
+  /* — битовый поток: mode 0100, длина 8 бит, данные, terminator, паддинг — */
+  const bits = [];
+  const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+  push(4, 4); push(data.length, 8);
+  data.forEach(b => push(b, 8));
+  push(0, Math.min(4, dcw * 8 - bits.length));
+  while (bits.length % 8) bits.push(0);
+  const cw = [];
+  for (let i = 0; i < bits.length; i += 8){
+    let b = 0;
+    for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    cw.push(b);
+  }
+  const PAD = [0xEC, 0x11];
+  for (let i = 0; cw.length < dcw; i++) cw.push(PAD[i % 2]);
+
+  /* — GF(256) и Рид-Соломон — */
+  const exp = new Array(512), log = new Array(256);
+  for (let i = 0, x = 1; i < 255; i++){ exp[i] = x; log[x] = i; x <<= 1; if (x & 256) x ^= 0x11d; }
+  for (let i = 255; i < 512; i++) exp[i] = exp[i - 255];
+  const gmul = (a, b) => (a && b) ? exp[log[a] + log[b]] : 0;
+  const rs = (msg, n) => {
+    /* генераторный полином ∏(x − α^i), коэффициенты от старшей степени (моник: gen[0]=1) */
+    let gen = [1];
+    for (let i = 0; i < n; i++){
+      const next = new Array(gen.length + 1).fill(0);
+      for (let j = 0; j < gen.length; j++){
+        next[j] ^= gen[j];                       // ×x — степень остаётся на месте
+        next[j + 1] ^= gmul(gen[j], exp[i]);     // ×α^i — сдвиг к младшим
+      }
+      gen = next;
+    }
+    const res = msg.concat(new Array(n).fill(0));
+    for (let i = 0; i < msg.length; i++){
+      const c = res[i];
+      if (!c) continue;
+      for (let j = 0; j < gen.length; j++) res[i + j] ^= gmul(gen[j], c);
+    }
+    return res.slice(msg.length);
+  };
+
+  /* — блоки и чередование — */
+  const per = dcw / blocks;
+  const dataBlocks = [], eccBlocks = [];
+  for (let b = 0; b < blocks; b++){
+    const part = cw.slice(b * per, (b + 1) * per);
+    dataBlocks.push(part);
+    eccBlocks.push(rs(part, eccLen));
+  }
+  const seq = [];
+  for (let i = 0; i < per; i++) for (let b = 0; b < blocks; b++) seq.push(dataBlocks[b][i]);
+  for (let i = 0; i < eccLen; i++) for (let b = 0; b < blocks; b++) seq.push(eccBlocks[b][i]);
+
+  /* — матрица: null = свободно под данные, 0/1 = служебное — */
+  const M = Array.from({length: size}, () => new Array(size).fill(null));
+  const setF = (x, y, v2) => { if (y >= 0 && y < size && x >= 0 && x < size) M[y][x] = v2; };
+  const finder = (cx, cy) => {
+    for (let dy = -1; dy <= 7; dy++) for (let dx = -1; dx <= 7; dx++){
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || x >= size || y < 0 || y >= size) continue;
+      const inC = dx >= 0 && dx <= 6 && dy >= 0 && dy <= 6;
+      const ring = inC && (dx === 0 || dx === 6 || dy === 0 || dy === 6);
+      const core = dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4;
+      setF(x, y, (ring || core) ? 1 : 0);
+    }
+  };
+  finder(0, 0); finder(size - 7, 0); finder(0, size - 7);
+  for (let i = 8; i < size - 8; i++){
+    if (M[6][i] === null) M[6][i] = i % 2 ? 0 : 1;
+    if (M[i][6] === null) M[i][6] = i % 2 ? 0 : 1;
+  }
+  if (ver >= 2){ /* alignment: единственный узел для v2–v5 */
+    const pos = [18, 22, 26, 30][ver - 2];
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){
+      const on = Math.max(Math.abs(dx), Math.abs(dy)) !== 1;
+      M[pos + dy][pos + dx] = on ? 1 : 0;
+    }
+  }
+  M[size - 8][8] = 1; /* тёмный модуль */
+  /* резерв под format info */
+  for (let i = 0; i < 9; i++){ if (M[8][i] === null) M[8][i] = 0; if (M[i][8] === null) M[i][8] = 0; }
+  for (let i = 0; i < 8; i++){ if (M[8][size - 1 - i] === null) M[8][size - 1 - i] = 0; if (M[size - 1 - i][8] === null) M[size - 1 - i][8] = 0; }
+
+  /* — размещение данных зигзагом — */
+  let bi = 0;
+  const dbit = i => (seq[i >> 3] >> (7 - (i & 7))) & 1;
+  for (let col = size - 1; col > 0; col -= 2){
+    if (col === 6) col--;
+    for (let r = 0; r < size; r++){
+      const y = ((size - 1 - col) >> 1) % 2 === 0 ? size - 1 - r : r;
+      for (const x of [col, col - 1]){
+        if (M[y][x] === null){ M[y][x] = dbit(bi) ? 1 : 0; M[y][x] |= 128; bi++; }
+      }
+    }
+  }
+  /* пометка 128 = «модуль данных» (для маски); нормализуем в отдельную карту */
+  const isData = Array.from({length: size}, (_, y) => M[y].map(v2 => v2 >= 128));
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (M[y][x] >= 128) M[y][x] -= 128;
+
+  /* — маски и penalty — */
+  const MASKS = [
+    (x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x, y) => x % 3 === 0,
+    (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(y / 2) + Math.floor(x / 3)) % 2 === 0,
+    (x, y) => (x * y) % 2 + (x * y) % 3 === 0, (x, y) => ((x * y) % 2 + (x * y) % 3) % 2 === 0,
+    (x, y) => ((x + y) % 2 + (x * y) % 3) % 2 === 0,
+  ];
+  const FMT_MASK = 0x5412;
+  const bch = m => {
+    let d = m << 10;
+    for (let i = 14; i >= 10; i--) if ((d >> i) & 1) d ^= 0x537 << (i - 10);
+    return ((m << 10) | d) ^ FMT_MASK;
+  };
+  const applyAll = mi => {
+    const G = M.map(row => row.slice());
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++)
+      if (isData[y][x] && MASKS[mi](x, y)) G[y][x] ^= 1;
+    const f = bch((0 /* M=00 */ << 3) | mi); /* ECL M — биты 00 */
+    const fb = i => (f >> i) & 1;
+    /* копия 1 вокруг верхнего-левого финдера: (строка, колонка), b14 → (8,0) */
+    const c1 = [[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+    for (let i = 0; i < 15; i++){ const [y, x] = c1[i]; G[y][x] = fb(14 - i); }
+    for (let i = 0; i < 7; i++) G[size - 1 - i][8] = fb(14 - i);
+    for (let i = 7; i < 15; i++) G[8][size - 15 + i] = fb(14 - i);
+    return G;
+  };
+  const penalty = G => {
+    let p = 0;
+    const runs = line => {
+      let r = 1;
+      for (let i = 1; i <= line.length; i++){
+        if (i < line.length && line[i] === line[i - 1]) r++;
+        else { if (r >= 5) p += 3 + (r - 5); r = 1; }
+      }
+    };
+    for (let y = 0; y < size; y++) runs(G[y]);
+    for (let x = 0; x < size; x++) runs(G.map(row => row[x]));
+    for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++)
+      if (G[y][x] === G[y][x + 1] && G[y][x] === G[y + 1][x] && G[y][x] === G[y + 1][x + 1]) p += 3;
+    const pat = [1,0,1,1,1,0,1,0,0,0,0], rev = pat.slice().reverse();
+    const findPat = line => {
+      for (let i = 0; i + 11 <= line.length; i++){
+        let a = true, b = true;
+        for (let j = 0; j < 11; j++){
+          if (line[i + j] !== pat[j]) a = false;
+          if (line[i + j] !== rev[j]) b = false;
+        }
+        if (a || b) p += 40;
+      }
+    };
+    for (let y = 0; y < size; y++) findPat(G[y]);
+    for (let x = 0; x < size; x++) findPat(G.map(row => row[x]));
+    let dark = 0;
+    G.forEach(row => row.forEach(v2 => { dark += v2; }));
+    p += Math.floor(Math.abs(dark * 100 / (size * size) - 50) / 5) * 10;
+    return p;
+  };
+  let best = null, bestP = Infinity;
+  for (let mi = 0; mi < 8; mi++){
+    const G = applyAll(mi);
+    const pp = penalty(G);
+    if (pp < bestP){ bestP = pp; best = G; }
+  }
+  return {size, grid: best};
+}
+
+/* рисование на canvas: белая тихая зона 4 модуля */
+function qrDraw(cv, text){
+  const {size, grid} = qrMatrix(text);
+  const q = 4, px = Math.max(2, Math.floor(cv.width / (size + q * 2)));
+  const full = px * (size + q * 2);
+  cv.width = full; cv.height = full;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, full, full);
+  ctx.fillStyle = '#000';
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++)
+    if (grid[y][x]) ctx.fillRect((x + q) * px, (y + q) * px, px, px);
+}
+
+
+/* QR «клуб в кармане» (М5 трека М): рисуем адрес /app этого же сервера */
+function drawClubQR(){
+  const cv = document.getElementById('clubQR');
+  const block = document.getElementById('qrBlock');
+  if (!cv || !block) return;
+  if (!location.protocol.startsWith('http')){ block.style.display = 'none'; return; }
+  if (cv.dataset.done) return;
+  try{ qrDraw(cv, location.origin + '/app'); cv.dataset.done = '1'; }
+  catch(e){ block.style.display = 'none'; }
+}
+
 /* ═══════════════ ПРОФИЛЬ ═══════════════ */
 function openProfile(){
   document.getElementById('pNick').value = me.nickname;
@@ -1955,6 +2173,7 @@ function openProfile(){
   pick.innerHTML = AVATARS.map((a,i) =>
     `<button class="${i+1===profAva?'on':''}" onclick="pickAva(${i+1})">${a}</button>`).join('');
   document.getElementById('pErr').textContent = '';
+  drawClubQR(); // М5: QR на /app
   document.getElementById('profOverlay').classList.add('show');
 }
 function pickAva(id){

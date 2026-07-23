@@ -37,7 +37,7 @@
     --spring:cubic-bezier(.22,1,.36,1); --smooth:cubic-bezier(.4,0,.2,1);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
+  html,body{height:100%; overscroll-behavior:none} /* М5-и1: глушим pull-to-refresh */
   body{margin:0; background:var(--bg); color:var(--txt);
        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden;
        touch-action:manipulation; overscroll-behavior:none; height:100vh}
@@ -127,7 +127,8 @@
   @keyframes xpFlow{0%{background-position:0 0}100%{background-position:200% 0}}
   .xpnums{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:4px}
 
-  .content{flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:18px 16px}
+  .content{flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+           padding:18px calc(16px + env(safe-area-inset-right)) 18px calc(16px + env(safe-area-inset-left))}
   .tabpane{display:none}
   .tabpane.on{display:block}
   .tabpane.swap{animation:tabSwap .4s var(--spring)}
@@ -140,7 +141,7 @@
 
   .nav{flex:none; display:flex; background:rgba(9,11,18,.85); border-top:1px solid var(--glass-brd);
        backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
-       padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+       padding:6px calc(6px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left))}
   .nav button{position:relative; flex:1; min-height:50px; border:0; background:transparent; color:var(--dim);
        display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer;
        font-weight:700; border-radius:12px; transition:color .2s, transform .15s var(--spring);
@@ -483,7 +484,8 @@
         <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
         <div class="skel" style="width:75%; height:14px"></div>
       </div>
-      <button class="btn ghost hidden" style="margin:4px 0 0" id="vibroBtn" onclick="toggleVibro()"></button>
+      <button class="btn ghost" style="margin:4px 0 0" id="instBtn" onclick="openInstall()" data-str="inst_btn"></button>
+      <button class="btn ghost hidden" style="margin:10px 0 0" id="vibroBtn" onclick="toggleVibro()"></button>
       <button class="btn ghost" style="margin:10px 0 10px" onclick="logout()" data-str="logout"></button>
     </section>
     <section class="tabpane" id="tab-chat">
@@ -561,6 +563,18 @@
     <h3 data-str="topup_title"></h3>
     <div class="muted" style="margin:8px 0 16px; line-height:1.55" data-str="topup_body"></div>
     <button class="btn" onclick="closeTopup()" data-str="topup_ok"></button>
+  </div>
+</div>
+
+<!-- ═══ Шторка установки (М5-и1, RESEARCH §1: iOS 26 — «Поделиться → На экран Домой») ═══ -->
+<div id="installWrap" class="sheetwrap">
+  <div class="sheetback" onclick="closeInstall()"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <h3 data-str="inst_title"></h3>
+    <div id="instBody" class="muted" style="margin:8px 0 16px; line-height:1.6"></div>
+    <button class="btn" id="instGo" onclick="nativeInstall()" data-str="inst_install" style="margin-bottom:10px"></button>
+    <button class="btn ghost" onclick="closeInstall()" data-str="topup_ok"></button>
   </div>
 </div>
 
@@ -690,6 +704,15 @@ const STR = {
   topup_title: 'Пополнение баланса',
   topup_body: 'Пока пополнить можно у стойки клуба — админ зачислит койны сразу. Онлайн-оплата (BLIK/карта) приедет вместе со Stripe в спринте 6.',
   topup_ok: 'Понял',
+  /* М5 — установка и полировка */
+  inst_btn: '📲 Приложение на экран телефона',
+  inst_title: 'Установка на телефон',
+  inst_ios: 'Открой в Safari: «Поделиться» → «На экран „Домой“». С iOS 26 сайт с иконки открывается как отдельное приложение.',
+  inst_android: 'В Chrome: меню ⋮ → «Добавить на главный экран». Полная установка одним тапом появится с HTTPS.',
+  inst_android_native: 'Chrome готов установить приложение — жми «Установить».',
+  inst_install: 'Установить',
+  inst_done: 'Уже установлено — ты в приложении.',
+  ach_empty: 'Ачивок в клубе пока нет',
   toast_err: '⚠ {m}',
 };
 function T(key, vars){ return (STR[key] || '').replace(/\{(\w+)\}/g, (_, n) => vars && vars[n] != null ? vars[n] : ''); }
@@ -793,7 +816,7 @@ function logout(){
   if (r) fetch(API + '/auth/logout', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null; economy = null;
-  stopPolls(); stopLive(); stopComms(); closeSheet(); closeTopup();
+  stopPolls(); stopLive(); stopComms(); closeSheet(); closeTopup(); closeInstall();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('authView').classList.remove('hidden');
 }
@@ -1278,13 +1301,13 @@ function renderAch(){
   const list = achievements.achievements || [];
   const got = list.filter(a => a.earned), rest = list.filter(a => !a.earned);
   el.innerHTML = `<h3>${esc(STR.ach_title)} <span class="muted cnum" style="font-weight:700">${T('ach_got', {a: achievements.earned_count || 0, b: list.length})}</span></h3>` +
-    [...got, ...rest].map(a => `<div class="achrow ${a.earned ? 'got' : ''}">
+    (list.length ? [...got, ...rest].map(a => `<div class="achrow ${a.earned ? 'got' : ''}">
       <span class="aic" data-ic="${a.earned ? 'check' : 'lock'}"></span>
       <div style="flex:1; min-width:0">
         <div class="ach-t">${esc(a.title)}</div>
         <div class="muted" style="font-size:12.5px">${esc(a.description || '')}</div>
         ${a.reward_skillpoints || a.reward_case_tier ? `<div class="ach-rw cnum">${a.reward_skillpoints ? T('ach_reward_sp', {n: a.reward_skillpoints}) : ''}${a.reward_skillpoints && a.reward_case_tier ? ' · ' : ''}${a.reward_case_tier ? T('ach_reward_case', {t: a.reward_case_tier}) : ''}</div>` : ''}
-      </div></div>`).join('');
+      </div></div>`).join('') : `<div class="muted" style="padding:4px 0">${esc(STR.ach_empty)}</div>`);
   mountIcons(el);
 }
 
@@ -1711,6 +1734,61 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendChat(); }
 });
 
+/* ═══════════════ М5: УСТАНОВКА И ПОЛИРОВКА ═══════════════ */
+/* version-check поверх SW (RESEARCH §1): iOS агрессивно кэширует sw.js и
+   гость может залипнуть на старой версии. Зашитую APP_VER сравниваем с
+   app_version из манифеста (fetch no-store); рассинхрон → один
+   registration.update() + одна перезагрузка (sessionStorage-предохранитель).
+   ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
+   app_version в web/app.webmanifest — парой. */
+const APP_VER = '2026-07-23.1';
+async function checkVersion(){
+  if (!location.protocol.startsWith('http')) return;
+  try{
+    const mf = await (await fetch('/app.webmanifest?v=' + Date.now(), {cache: 'no-store'})).json();
+    if (!mf.app_version) return;
+    if (mf.app_version === APP_VER){ sessionStorage.removeItem('1448_verload'); return; }
+    if (sessionStorage.getItem('1448_verload')) return;   // одна попытка — циклов не будет
+    sessionStorage.setItem('1448_verload', '1');
+    if ('serviceWorker' in navigator){
+      try{
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) await reg.update();
+      }catch(e){}
+    }
+    location.reload();
+  }catch(e){ /* офлайн или dev без манифеста — молчим */ }
+}
+
+/* установка на экран телефона: Android — родной prompt, если Chrome дал
+   beforeinstallprompt (по HTTPS + Richer Install со скриншотами манифеста);
+   iOS — инструкция «Поделиться → На экран „Домой“» (iOS 26 ставит любой сайт). */
+let deferredInstall = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; });
+function isStandalone(){
+  return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+}
+function initInstall(){
+  const b = document.getElementById('instBtn');
+  if (b && isStandalone()) b.classList.add('hidden');   // уже стоит на экране
+}
+function openInstall(){
+  const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  document.getElementById('instGo').classList.toggle('hidden', !deferredInstall);
+  document.getElementById('instBody').textContent = isStandalone() ? STR.inst_done
+    : ios ? STR.inst_ios
+    : deferredInstall ? STR.inst_android_native : STR.inst_android;
+  document.getElementById('installWrap').classList.add('open');
+}
+function closeInstall(){ document.getElementById('installWrap').classList.remove('open'); }
+async function nativeInstall(){
+  const p = deferredInstall;
+  deferredInstall = null;
+  closeInstall();
+  if (!p) return;
+  try{ p.prompt(); await p.userChoice; }catch(e){}
+}
+
 /* ═══ FX: облегчённый движок (решение №6 — без tilt/spotlight/magnet) ═══ */
 const FX = (() => {
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -1804,6 +1882,8 @@ if ('serviceWorker' in navigator &&
 applyStrings();
 mountIcons();
 vibroLabel();   // М3: настройка вибро видна только там, где есть API (Android)
+initInstall();  // М5: кнопка установки прячется в standalone
+checkVersion(); // М5: iOS-кэш sw.js — сверка версии с манифестом
 document.getElementById('srv').textContent = API;
 (async function init(){
   if (tokens().a || tokens().r){
