@@ -303,6 +303,53 @@
   .h-when{color:var(--dim); white-space:nowrap; width:80px; flex:none; font-size:12px}
   .h-l{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .h-v{color:var(--acc2); white-space:nowrap; font-weight:700; font-size:12.5px}
+  /* ═══ М3: КЕЙСЫ ═══ */
+  .case-row{display:flex; align-items:center; gap:12px; cursor:pointer}
+  .case-row.dead{opacity:.5; cursor:default}
+  .case-box{width:52px; height:52px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+            flex:none; position:relative; background:transparent}
+  .case-em{font-size:26px; font-weight:900; line-height:1}
+  .case-star{position:absolute; top:-7px; right:-7px; font-size:13px; color:var(--acc);
+             text-shadow:0 0 8px rgba(255,39,64,.8); animation:starPulse 1.8s var(--smooth) infinite}
+  @keyframes starPulse{50%{opacity:.5}}
+  body.perf-lite .case-star{animation:none}
+  .tier-name{font-weight:900; letter-spacing:.3px}
+  .open-hint{margin-left:auto; color:var(--acc3); font-weight:800; font-size:11.5px; letter-spacing:.6px; flex:none}
+  /* полноэкранное открытие: реел под фиксированным маркером (канон RESEARCH §1),
+     только transform/opacity; появление — @starting-style */
+  .caseov{position:fixed; inset:0; z-index:55; display:none; opacity:0; background:rgba(4,4,6,.93);
+          flex-direction:column; align-items:center; justify-content:center;
+          backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+          transition:opacity .3s var(--smooth), display .3s; transition-behavior:allow-discrete}
+  .caseov.show{display:flex; opacity:1}
+  body.perf-lite .caseov{backdrop-filter:none; -webkit-backdrop-filter:none; background:rgba(4,4,6,.97)}
+  .co-head{position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:10px;
+           padding:calc(12px + env(safe-area-inset-top)) 16px 10px}
+  .co-tier{font-weight:900; font-size:17px; flex:1}
+  .co-x{min-width:44px; min-height:44px; border-radius:12px; background:var(--glass-2);
+        border:1px solid var(--glass-brd); color:var(--txt); font-size:16px; cursor:pointer; flex:none}
+  .co-stage{position:relative; width:100%; overflow:hidden; padding:34px 0; transition:opacity .3s var(--smooth)}
+  .co-reel{display:flex; gap:10px; will-change:transform}
+  .co-cell{flex:none; width:92px; height:112px; border-radius:14px; background:var(--card);
+           border:1.5px solid var(--line); display:flex; flex-direction:column; align-items:center;
+           justify-content:center; gap:7px}
+  .co-cell svg{width:22px; height:22px; display:block}
+  .co-cell .v{font-weight:900; font-size:14.5px}
+  .co-marker{position:absolute; left:50%; top:10px; bottom:10px; width:2px; margin-left:-1px; z-index:2;
+             background:linear-gradient(180deg,transparent,var(--acc) 25%,var(--acc) 75%,transparent);
+             box-shadow:0 0 14px var(--acc)}
+  .co-marker.tick{animation:markTick .12s var(--smooth)}
+  @keyframes markTick{50%{transform:scaleX(2.4)}}
+  .co-prize{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+            justify-content:center; gap:8px; padding:24px; text-align:center}
+  .co-chest{width:96px; height:96px; filter:drop-shadow(0 0 26px rgba(255,39,64,.45))}
+  .co-chest svg{width:100%; height:100%; display:block}
+  .co-amt{font-size:46px; font-weight:900; line-height:1.1}
+  .co-what{font-weight:700}
+  /* конфетти дропа — красно-белые, как в shell */
+  .confetti{position:fixed; width:9px; height:9px; z-index:60; pointer-events:none; will-change:transform,opacity;
+    animation:confFall var(--dur,1.4s) var(--smooth) forwards}
+  @keyframes confFall{0%{opacity:1; transform:translate(0,0) rotate(0)}100%{opacity:0; transform:translate(var(--cx),110vh) rotate(720deg)}}
   /* уважение к слабому железу / настройкам (перф-гарды как в shell) */
   body.perf-lite .aurora-bg .blob{animation:none}
   body.perf-lite .authcard,body.perf-lite .topbar,body.perf-lite .nav{backdrop-filter:none; -webkit-backdrop-filter:none}
@@ -380,10 +427,12 @@
       </div>
     </section>
     <section class="tabpane" id="tab-cases">
-      <div class="empty">
-        <div class="eic" data-ic="nav-cases"></div>
-        <div class="et" data-str="empty_cases_t"></div>
-        <div class="es" data-str="empty_cases_s"></div>
+      <!-- М3: список кейсов; открытие — полноэкранный оверлей #caseOv -->
+      <div id="casesList">
+        <div class="card">
+          <div class="skel" style="width:60%; height:18px; margin-bottom:10px"></div>
+          <div class="skel" style="width:40%; height:13px"></div>
+        </div>
       </div>
     </section>
     <section class="tabpane" id="tab-progress">
@@ -409,7 +458,8 @@
         <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
         <div class="skel" style="width:75%; height:14px"></div>
       </div>
-      <button class="btn ghost" style="margin:4px 0 10px" onclick="logout()" data-str="logout"></button>
+      <button class="btn ghost hidden" style="margin:4px 0 0" id="vibroBtn" onclick="toggleVibro()"></button>
+      <button class="btn ghost" style="margin:10px 0 10px" onclick="logout()" data-str="logout"></button>
     </section>
     <section class="tabpane" id="tab-chat">
       <div class="empty">
@@ -444,6 +494,24 @@
   </div>
 </div>
 
+<!-- ═══ Полноэкранное открытие кейса (М3-и2): реел под маркером → экран приза ═══ -->
+<div id="caseOv" class="caseov">
+  <div class="co-head">
+    <span id="coTier" class="co-tier"></span>
+    <button class="co-x" onclick="closeCase()" aria-label="Закрыть">✕</button>
+  </div>
+  <div class="co-stage" id="coStage">
+    <div class="co-reel" id="coReel"></div>
+    <div class="co-marker" id="coMarker"></div>
+  </div>
+  <div class="co-prize hidden" id="coPrize">
+    <div class="co-chest" id="coChest"></div>
+    <div class="co-amt cnum" id="coAmt">0</div>
+    <div class="co-what muted" id="coWhat"></div>
+    <button class="btn" style="max-width:240px; margin-top:8px" onclick="closeCase()" data-str="co_take"></button>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script>
@@ -463,8 +531,6 @@ const STR = {
   nav_club: 'Клуб', nav_cases: 'Кейсы', nav_progress: 'Прогресс', nav_chat: 'Чат',
   xp_of: '{a} / {b} XP',
   xp_left: 'до уровня: {n} XP',
-  empty_cases_t: 'Кейсы',
-  empty_cases_s: 'Твои кейсы с таймерами и полноэкранным открытием переедут сюда',
   empty_chat_t: 'Чат с клубом',
   empty_chat_s: 'Переписка с админом и уведомления появятся здесь',
   logout: 'Выйти из аккаунта',
@@ -531,6 +597,29 @@ const STR = {
   hist_empty: 'Пока пусто — сыграй первую сессию',
   hist_session: 'Сессия',
   hist_deposit: 'Пополнение {a} zł',
+  /* М3 — кейсы */
+  cases_empty_t: 'Кейсов пока нет',
+  cases_empty_s: 'Играй, поднимай уровень, выполняй ачивки — кейсы придут сами',
+  tier_light: 'Light', tier_medium: 'Medium', tier_heavy: 'Heavy',
+  tier_titan: 'Titan', tier_gods: "God's",
+  case_open_hint: 'ОТКРЫТЬ ▸',
+  case_expires: 'сгорит через {n} дн',
+  case_expired: 'сгорел',
+  case_expired_t: 'Этот кейс уже сгорел',
+  case_opened_coins: 'открыт: +{n} монет',
+  case_opened_buster: 'открыт: +{n}% кэшбек',
+  case_src_achievement: 'за ачивку',
+  case_src_daily_visit: 'за визит',
+  case_src_deposit: 'за пополнение',
+  case_src_level_up: 'за уровень',
+  case_src_admin_grant: 'подарок клуба',
+  co_title: 'Кейс {t}',
+  co_coins: 'монет · кейс {t}',
+  co_buster: 'кэшбек навсегда · кейс {t}',
+  co_jackpot: 'ДЖЕКПОТ',
+  co_take: 'Забрать',
+  set_vibro_on: 'Вибро в кейсах: вкл',
+  set_vibro_off: 'Вибро в кейсах: выкл',
   toast_err: '⚠ {m}',
 };
 function T(key, vars){ return (STR[key] || '').replace(/\{(\w+)\}/g, (_, n) => vars && vars[n] != null ? vars[n] : ''); }
@@ -646,6 +735,7 @@ function enterApp(){
   FX.watchFPS();
   loadMe();
   refreshClub();   // М1: клуб + брони + сессии
+  loadCases();     // М3: кейсы + бэйдж неоткрытых (решение №5)
   startPolls();
 }
 
@@ -694,6 +784,7 @@ function onTabShown(t){
   if (t === 'club'){ refreshClub(); startPolls(); }
   else { stopPolls(); stopLive(); }
   if (t === 'progress') loadProgress();   // М2: свежесть на входе, без поллинга
+  if (t === 'cases') loadCases();          // М3: то же для кейсов
 }
 document.getElementById('nav').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]');
@@ -708,6 +799,7 @@ document.addEventListener('visibilitychange', () => {
   loadMe();
   if (curTab === 'club') refreshClub();
   if (curTab === 'progress') loadProgress();
+  if (curTab === 'cases') loadCases();
   startPolls();
 });
 
@@ -1167,15 +1259,245 @@ function renderHist(){
   FX.countUp(document.getElementById('histBal'), me ? me.coins_balance : 0);
 }
 
+/* ═══════════════ М3: КЕЙСЫ ═══════════════
+   Список с тирами и таймерами сгорания → полноэкранная рулетка по канону
+   (горизонтальный реел под фиксированным маркером, разгон → долгое
+   торможение → микро-докат, только transform/opacity) → экран приза с
+   конфетти и count-up. Дроп решает ТОЛЬКО сервер (crypto/rand) — реел
+   лишь театр вокруг готового результата; красный отдан top-tier дропу.
+   Хаптика: navigator.vibrate на тики и дроп — Android only (на iOS API
+   нет), за настройкой «выкл» в Прогрессе (RESEARCH §1). */
+let cases = [], caseOpening = null, reelRaf = 0;
+
+const TIER = {
+  light: {c: 'var(--t-light)', em: '◇'}, medium: {c: 'var(--t-medium)', em: '◈'},
+  heavy: {c: 'var(--t-heavy)', em: '◆'}, titan: {c: 'var(--t-titan)', em: '✦'},
+  gods: {c: 'var(--t-gods)', em: '★'},
+};
+/* диапазоны монет по тирам — ТОЛЬКО театр реела (истина на сервере) */
+const CASE_CFG = {light: [50, 200], medium: [200, 600], heavy: [500, 2000], titan: [1000, 5000], gods: [5000, 20000]};
+const JACKPOT = 50000;
+const CONF_N = {light: 24, medium: 36, heavy: 54, titan: 80, gods: 120};
+const DROP_VIB = {light: [24], medium: [32], heavy: [18, 30, 48], titan: [18, 30, 70], gods: [24, 40, 24, 40, 110]};
+
+function vibroOn(){ return ('vibrate' in navigator) && localStorage.getItem('1448_vibro') !== '0'; }
+function vibro(p){ if (vibroOn()){ try{ navigator.vibrate(p); }catch(e){} } }
+function tierName(t){ return STR['tier_' + t] || t; }
+
+async function loadCases(){
+  try{
+    const d = await api('/me/cases');
+    cases = d.cases || [];
+    renderCases(); updateCasesBub();
+  }catch(e){ /* тихо — обновится при следующем заходе */ }
+}
+function caseAlive(c){ return !c.opened_at && new Date(c.expires_at) > new Date(); }
+function updateCasesBub(){
+  const b = document.getElementById('casesBub');
+  if (!b) return;
+  const n = cases.filter(caseAlive).length;
+  b.textContent = n; b.classList.toggle('hidden', n === 0);
+}
+function renderCases(){
+  const el = document.getElementById('casesList');
+  if (!el) return;
+  if (!cases.length){
+    el.innerHTML = `<div class="empty">
+      <div class="eic" data-ic="nav-cases"></div>
+      <div class="et">${esc(STR.cases_empty_t)}</div>
+      <div class="es">${esc(STR.cases_empty_s)}</div></div>`;
+    mountIcons(el);
+    return;
+  }
+  el.innerHTML = cases.map(c => {
+    const t = TIER[c.tier] || TIER.light;
+    const opened = !!c.opened_at;
+    const expired = !opened && new Date(c.expires_at) < new Date();
+    const days = Math.max(0, Math.ceil((new Date(c.expires_at) - Date.now()) / 86400000));
+    let sub;
+    if (opened) sub = esc(c.drop_type === 'buster'
+      ? T('case_opened_buster', {n: (c.drop_amount || 0) / 100})
+      : T('case_opened_coins', {n: fmt(c.drop_amount)}));
+    else if (expired) sub = esc(STR.case_expired);
+    else sub = esc(STR['case_src_' + c.source] || c.source) +
+      ` · <span style="color:${days <= 3 ? 'var(--red)' : 'var(--dim)'}">${esc(T('case_expires', {n: days}))}</span>`;
+    const star = (c.tier === 'titan' || c.tier === 'gods') && !opened && !expired; // star-border на Titan/God's
+    const dead = opened || expired;
+    return `<div class="card case-row ${dead ? 'dead' : ''}" ${dead ? '' : `onclick="openCase('${c.id}')"`}>
+      <div class="case-box" style="border:1.5px solid ${t.c}; background:color-mix(in srgb, ${t.c} 13%, transparent)${star ? '; box-shadow:0 0 16px color-mix(in srgb, ' + t.c + ' 45%, transparent)' : ''}">
+        <span class="case-em" style="color:${t.c}">${t.em}</span>
+        ${star ? '<span class="case-star">★</span>' : ''}
+      </div>
+      <div style="flex:1; min-width:0">
+        <div class="tier-name" style="color:${t.c}">${esc(tierName(c.tier))}</div>
+        <div class="muted cnum" style="font-size:12px">${sub}</div>
+      </div>
+      ${dead ? '' : `<div class="open-hint">${esc(STR.case_open_hint)}</div>`}
+    </div>`;
+  }).join('');
+  mountIcons(el);
+}
+
+/* ── открытие: сервер решает дроп ДО анимации ── */
+async function openCase(id){
+  const c = cases.find(v => v.id === id);
+  if (!c || c.opened_at || caseOpening) return;
+  if (new Date(c.expires_at) < new Date()){ toast(STR.case_expired_t); loadCases(); return; }
+  caseOpening = id;
+  const t = TIER[c.tier] || TIER.light;
+  const ov = document.getElementById('caseOv');
+  const tierEl = document.getElementById('coTier');
+  tierEl.textContent = T('co_title', {t: tierName(c.tier)});
+  tierEl.style.color = t.c;
+  document.getElementById('coPrize').classList.add('hidden');
+  const stage = document.getElementById('coStage');
+  stage.style.opacity = '1';
+  document.getElementById('coReel').style.transform = 'translateX(0)';
+  document.getElementById('coReel').innerHTML = '';
+  ov.classList.add('show');
+  let d;
+  try{ d = await api('/me/cases/' + id + '/open', {method: 'POST', body: '{}'}); }
+  catch(e){
+    caseOpening = null;
+    ov.classList.remove('show');
+    toast(T('toast_err', {m: e.message}));
+    if (e.code === 'already_opened' || e.code === 'expired') loadCases();
+    return;
+  }
+  /* повторное открытие — без перезагрузки списка (М3-и2): правим локально */
+  c.opened_at = new Date().toISOString();
+  c.drop_type = d.drop_type;
+  c.drop_amount = d.drop_amount;
+  if (d.user && me) me.coins_balance = d.user.coins_balance;
+  renderCases(); updateCasesBub();
+  if (FX.lite){ showPrize(d); return; }  // слабое железо / reduced-motion: сразу приз
+  requestAnimationFrame(() => runReel(d));
+}
+
+/* ячейка реела: редкость = цвет рамки/свечения; красный — top-tier (канон) */
+function reelCell(tier, val, buster){
+  if (buster) return {c: 'var(--acc2)', label: '+' + val + '%', ic: 'sp'};
+  const cfg = CASE_CFG[tier] || CASE_CFG.light;
+  let c;
+  if (val >= JACKPOT) c = 'var(--t-gods)';
+  else {
+    const rel = (val - cfg[0]) / Math.max(1, cfg[1] - cfg[0]);
+    c = rel < .25 ? 'var(--t-light)' : rel < .6 ? 'var(--t-medium)' : rel < .9 ? 'var(--t-heavy)' : 'var(--t-titan)';
+  }
+  return {c, label: fmt(val), ic: 'coins'};
+}
+
+function runReel(d){
+  const stage = document.getElementById('coStage'), reel = document.getElementById('coReel');
+  const stageW = stage.getBoundingClientRect().width || 360;
+  const CELL = 102;                    // 92 + gap 10
+  const N = 46, TARGET = 40;
+  const cfg = CASE_CFG[d.tier] || CASE_CFG.light;
+  const cells = [];
+  for (let i = 0; i < N; i++){
+    if (i === TARGET){
+      cells.push(d.drop_type === 'buster'
+        ? reelCell(d.tier, (d.drop_amount || 0) / 100, true)
+        : reelCell(d.tier, d.drop_amount));
+      continue;
+    }
+    const r = Math.random();
+    if (r < .05) cells.push(reelCell(d.tier, JACKPOT));
+    else if (r < .13) cells.push(reelCell(d.tier, 1 + Math.floor(Math.random() * 3), true));
+    else cells.push(reelCell(d.tier, Math.round((cfg[0] + Math.random() * (cfg[1] - cfg[0])) / 5) * 5));
+  }
+  reel.innerHTML = cells.map(x => `<div class="co-cell" style="border-color:${x.c}; box-shadow:0 0 14px color-mix(in srgb, ${x.c} 28%, transparent)">
+    <span style="color:${x.c}; display:flex" data-ic="${x.ic}"></span>
+    <div class="v cnum" style="color:${x.c}">${x.label}</div></div>`).join('');
+  mountIcons(reel);
+  const marker = document.getElementById('coMarker');
+  const F = TARGET * CELL + 46 - stageW / 2;  // цель ровно под маркером
+  const OVER = 16;                             // перелёт для микро-доката
+  const DUR = 5100, t0 = performance.now();
+  let lastIdx = -1;
+  cancelAnimationFrame(reelRaf);
+  function frame(now){
+    const p = Math.min(1, (now - t0) / DUR);
+    const e = 1 - Math.pow(1 - p, 4);          // мгновенный разгон, долгое торможение
+    const off = (F + OVER) * e;
+    reel.style.transform = 'translateX(' + (-off) + 'px)';
+    const idx = Math.round((off + stageW / 2 - 46) / CELL);
+    if (idx !== lastIdx && p > .02){           // тик: вибро + вспышка маркера
+      lastIdx = idx;
+      vibro(8);
+      if (marker){ marker.classList.remove('tick'); void marker.offsetWidth; marker.classList.add('tick'); }
+    }
+    if (p < 1){ reelRaf = requestAnimationFrame(frame); return; }
+    const t1 = performance.now();              // микро-докат назад
+    function settle(n2){
+      const p2 = Math.min(1, (n2 - t1) / 240);
+      const e2 = 1 - Math.pow(1 - p2, 3);
+      reel.style.transform = 'translateX(' + (-(F + OVER * (1 - e2))) + 'px)';
+      if (p2 < 1){ reelRaf = requestAnimationFrame(settle); return; }
+      showPrize(d);
+    }
+    reelRaf = requestAnimationFrame(settle);
+  }
+  reelRaf = requestAnimationFrame(frame);
+}
+
+function showPrize(d){
+  const t = TIER[d.tier] || TIER.light;
+  const stage = document.getElementById('coStage');
+  if (stage) stage.style.opacity = '0';
+  const amt = document.getElementById('coAmt');
+  const chest = document.getElementById('coChest');
+  chest.innerHTML = UI[d.drop_type === 'buster' ? 'sp' : 'coins'] || '';
+  chest.style.color = t.c;
+  amt.style.color = t.c;
+  if (d.drop_type === 'buster'){
+    amt.dataset.v = '';
+    amt.textContent = '+' + ((d.drop_amount || 0) / 100) + '%';
+    document.getElementById('coWhat').textContent = T('co_buster', {t: tierName(d.tier)});
+  } else {
+    amt.dataset.v = '0'; amt.textContent = '0';
+    document.getElementById('coWhat').textContent =
+      (d.drop_amount >= JACKPOT ? STR.co_jackpot + ' · ' : '') + T('co_coins', {t: tierName(d.tier)});
+    FX.countUp(amt, d.drop_amount);
+  }
+  document.getElementById('coPrize').classList.remove('hidden');
+  renderTop();                                 // свежие монеты в топбар (count-up)
+  vibro(DROP_VIB[d.tier] || [30]);             // дроп-вибро по тиру
+  FX.confetti(CONF_N[d.tier] || 30);           // конфетти гуще с тиром
+}
+
+function closeCase(){
+  cancelAnimationFrame(reelRaf);
+  document.getElementById('caseOv').classList.remove('show');
+  caseOpening = null;
+}
+
+/* настройка «вибро в кейсах» — только там, где есть API (Android) */
+function vibroLabel(){
+  const b = document.getElementById('vibroBtn');
+  if (!b) return;
+  if (!('vibrate' in navigator)){ b.classList.add('hidden'); return; }
+  b.classList.remove('hidden');
+  b.textContent = vibroOn() ? STR.set_vibro_on : STR.set_vibro_off;
+}
+function toggleVibro(){
+  localStorage.setItem('1448_vibro', vibroOn() ? '0' : '1');
+  if (vibroOn()) vibro(30);
+  vibroLabel();
+}
+
 /* ═══ FX: облегчённый движок (решение №6 — без tilt/spotlight/magnet) ═══ */
 const FX = (() => {
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
-  let lite = reduced || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2);
+  /* дебаг-ручка: localStorage 1448_fx = '0' — FX всегда полные, '1' — всегда lite */
+  const fxOverride = localStorage.getItem('1448_fx');
+  let lite = fxOverride === '1' || (fxOverride !== '0' &&
+    (reduced || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)));
   if (lite) document.body.classList.add('perf-lite');
 
   // авто-упрощение при низком FPS (замер первые ~2с после входа)
   function watchFPS(){
-    if (lite) return;
+    if (lite || fxOverride === '0') return;
     let frames = 0, t0 = performance.now();
     function tick(now){
       frames++;
@@ -1211,6 +1533,24 @@ const FX = (() => {
     el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
   }
 
+  // конфетти дропа/левел-апа — красно-белые (перенос из shell, М3-и3)
+  function confetti(n){
+    if (lite) return;
+    const colors = ['#ff2740', '#ff5563', '#ffffff', '#e5133a', '#c9ccd6'];
+    for (let i = 0; i < n; i++){
+      const c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = (40 + Math.random() * 20) + 'vw';
+      c.style.top = '34vh';
+      c.style.background = colors[i % colors.length];
+      c.style.setProperty('--cx', (Math.random() * 60 - 30) + 'vw');
+      c.style.setProperty('--dur', (1.1 + Math.random() * 0.8) + 's');
+      if (Math.random() > .5) c.style.borderRadius = '50%';
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 2000);
+    }
+  }
+
   // ripple по тапу — тач-замена click-spark
   function ripple(x, y){
     if (lite) return;
@@ -1221,7 +1561,7 @@ const FX = (() => {
     setTimeout(() => r.remove(), 500);
   }
 
-  return { countUp, swap, watchFPS, ripple, get lite(){ return lite; } };
+  return { countUp, swap, watchFPS, ripple, confetti, get lite(){ return lite; } };
 })();
 
 // глобальный ripple на интерактивных элементах
@@ -1238,6 +1578,7 @@ if ('serviceWorker' in navigator &&
 /* ═══ СТАРТ ═══ */
 applyStrings();
 mountIcons();
+vibroLabel();   // М3: настройка вибро видна только там, где есть API (Android)
 document.getElementById('srv').textContent = API;
 (async function init(){
   if (tokens().a || tokens().r){
