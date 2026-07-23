@@ -13,6 +13,19 @@ import (
 const maxAvatarID = 12 // число доступных аватаров (тюнинг-параметр)
 
 // validateProfilePatch — чистая проверка полей PATCH /me (тестируется отдельно).
+// nicknameSafe — чистая проверка символов ника (тест в profile_test.go).
+// Кавычки, угловые скобки, бэктик, слэши и управляющие запрещены: ники
+// едут в разметку и inline-обработчики админки — это инвариант сервера,
+// UI-экранирования недостаточно (QA-прогон Б9–Б11, 2026-07-22).
+func nicknameSafe(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || strings.ContainsRune(`'"<>&`+"`\\", r) {
+			return false
+		}
+	}
+	return true
+}
+
 func validateProfilePatch(nickname *string, avatarID *int) (ok bool, code string) {
 	if nickname == nil && avatarID == nil {
 		return false, "empty"
@@ -24,6 +37,9 @@ func validateProfilePatch(nickname *string, avatarID *int) (ok bool, code string
 		}
 		if n > 32 {
 			return false, "nickname_long"
+		}
+		if !nicknameSafe(strings.TrimSpace(*nickname)) {
+			return false, "nickname_charset"
 		}
 	}
 	if avatarID != nil {

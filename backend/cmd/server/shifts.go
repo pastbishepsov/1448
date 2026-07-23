@@ -276,6 +276,11 @@ func handleAdminShiftAssign(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "shift_not_found", "message": "Смена не найдена"})
 		return
 	}
+	if !s.Active { // QA Б11: назначение на выключенную смену ушло бы в невидимую сетку
+		c.JSON(http.StatusConflict, gin.H{"code": "shift_inactive",
+			"message": "«" + s.Name + "» выключена — включи её в шаблоне, потом назначай"})
+		return
+	}
 	var req struct {
 		Date     string `json:"date" binding:"required"`
 		Nickname string `json:"nickname" binding:"required"`

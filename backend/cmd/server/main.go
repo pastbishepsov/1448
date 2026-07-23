@@ -78,49 +78,49 @@ func main() {
 	{
 		auth := v1.Group("/auth")
 		auth.POST("/register", handleRegister) // ← настоящий
-		auth.POST("/login", handleLogin)        // ← настоящий
+		auth.POST("/login", handleLogin)       // ← настоящий
 		auth.POST("/otp/send", stub("SendOTP"))
 		auth.POST("/otp/verify", stub("VerifyOTP"))
 		auth.POST("/refresh", handleRefresh) // ← настоящий
 		auth.POST("/logout", handleLogout)   // ← настоящий
 
 		me := v1.Group("/me")
-		me.Use(authMiddleware()) // всё под /me требует JWT
-		me.GET("", handleGetMe)     // ← настоящий
-		me.PATCH("", handlePatchMe) // ← настоящий
-		me.GET("/cases", handleGetMyCases)         // ← настоящий
-		me.POST("/cases/:id/open", handleOpenCase) // ← настоящий
-		me.GET("/talents", handleGetMyTalents)        // ← настоящий
-		me.POST("/talents/invest", handleInvestTalent) // ← настоящий
-		me.GET("/achievements", handleGetMyAchievements) // ← настоящий
-		me.GET("/sessions", handleGetMySessions)     // ← настоящий
-		me.POST("/sessions/start", handleStartSession) // ← настоящий
-		me.POST("/sessions/end", handleEndSession)     // ← настоящий
-		me.GET("/bookings", handleGetMyBookings)          // ← настоящий
-		me.DELETE("/bookings/:id", handleCancelBooking)   // ← настоящий
-		me.GET("/deposits", handleGetMyDeposits)          // ← настоящий
-		me.GET("/economy", handleGetEconomy)              // ← настоящий (калькулятор + ранг)
-		me.GET("/sensitivity", handleGetSensitivity)      // ← настоящий (профиль сенсы)
-		me.PUT("/sensitivity", handlePutSensitivity)      // ← настоящий
-		me.POST("/chat", handleGuestChatPost)             // чат/вызов админа (Б2)
-		me.GET("/chat", handleGuestChatList)              // переписка, поллинг (Б3)
-		me.GET("/chat/unread", handleGuestChatUnread)     // бэйдж непрочитанного (Б3)
+		me.Use(authMiddleware())                           // всё под /me требует JWT
+		me.GET("", handleGetMe)                            // ← настоящий
+		me.PATCH("", handlePatchMe)                        // ← настоящий
+		me.GET("/cases", handleGetMyCases)                 // ← настоящий
+		me.POST("/cases/:id/open", handleOpenCase)         // ← настоящий
+		me.GET("/talents", handleGetMyTalents)             // ← настоящий
+		me.POST("/talents/invest", handleInvestTalent)     // ← настоящий
+		me.GET("/achievements", handleGetMyAchievements)   // ← настоящий
+		me.GET("/sessions", handleGetMySessions)           // ← настоящий
+		me.POST("/sessions/start", handleStartSession)     // ← настоящий
+		me.POST("/sessions/end", handleEndSession)         // ← настоящий
+		me.GET("/bookings", handleGetMyBookings)           // ← настоящий
+		me.DELETE("/bookings/:id", handleCancelBooking)    // ← настоящий
+		me.GET("/deposits", handleGetMyDeposits)           // ← настоящий
+		me.GET("/economy", handleGetEconomy)               // ← настоящий (калькулятор + ранг)
+		me.GET("/sensitivity", handleGetSensitivity)       // ← настоящий (профиль сенсы)
+		me.PUT("/sensitivity", handlePutSensitivity)       // ← настоящий
+		me.POST("/chat", handleGuestChatPost)              // чат/вызов админа (Б2)
+		me.GET("/chat", handleGuestChatList)               // переписка, поллинг (Б3)
+		me.GET("/chat/unread", handleGuestChatUnread)      // бэйдж непрочитанного (Б3)
 		me.GET("/notifications", handleGetMyNotifications) // тосты о действиях админа (Б4)
-		me.GET("/waitlist", handleGetMyWaitlist)    // своя позиция в очереди (Б9, задел PWA)
-		me.POST("/waitlist", handleJoinWaitlist)    // встать в очередь самому (Б9)
-		me.DELETE("/waitlist", handleLeaveWaitlist) // выйти из очереди (Б9)
+		me.GET("/waitlist", handleGetMyWaitlist)           // своя позиция в очереди (Б9, задел PWA)
+		me.POST("/waitlist", handleJoinWaitlist)           // встать в очередь самому (Б9)
+		me.DELETE("/waitlist", handleLeaveWaitlist)        // выйти из очереди (Б9)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
 
 		clubs := v1.Group("/clubs")
-		clubs.GET("", handleGetClubs)                    // ← настоящий
-		clubs.GET("/:id", handleGetClub)                 // ← настоящий
-		clubs.GET("/:id/computers", handleGetClubComputers) // ← настоящий
+		clubs.GET("", handleGetClubs)                                      // ← настоящий
+		clubs.GET("/:id", handleGetClub)                                   // ← настоящий
+		clubs.GET("/:id/computers", handleGetClubComputers)                // ← настоящий
 		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
-		v1.GET("/ws/shell", handleShellWS) // ← настоящий
-		v1.GET("/ws/admin", handleAdminWS) // live-канал админки (спринт А6)
+		v1.GET("/ws/shell", handleShellWS)   // ← настоящий
+		v1.GET("/ws/admin", handleAdminWS)   // live-канал админки (спринт А6)
 		v1.GET("/catalog", handleGetCatalog) // ← настоящий (гостевой экран + агент)
 
 		// Админка (role=admin/owner из users.role, миграция 008)
@@ -134,7 +134,7 @@ func main() {
 		adm.POST("/users/:id/deposit", handleAdminDeposit)
 		adm.POST("/users/:id/grant", handleAdminGrant)
 		adm.GET("/grants", handleAdminGrants)
-		adm.GET("/audit", handleAdminAudit) // единая лента действий (спринт А4)
+		adm.GET("/audit", handleAdminAudit)              // единая лента действий (спринт А4)
 		adm.GET("/chat/pending", handleAdminChatPending) // очередь вызовов/сообщений (Б2)
 		adm.POST("/chat/:id/ack", handleAdminChatAck)    // «принял» (Б2)
 		adm.GET("/chats", handleAdminChatThreads)        // треды чата (Б3)
@@ -142,18 +142,18 @@ func main() {
 		adm.POST("/chats/:id", handleAdminChatPost)      // ответ гостю (Б3)
 		adm.GET("/computers", handleAdminComputers)
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
-		adm.POST("/computers/:id/power", handleAdminPCPower)   // вкл/перезагрузка/выкл (Б8)
-		adm.POST("/computers/:id/session", handleAdminSeatGuest) // посадить гостя (Б8)
-		adm.GET("/shifts", handleAdminShifts)                // шаблоны смен — сетка графика (Б11)
-		adm.GET("/shifts/schedule", handleAdminShiftSchedule) // график персонала (Б11)
-		adm.GET("/shifts/now", handleAdminShiftsNow)          // кто сейчас на смене (Б11)
-		adm.GET("/waitlist", handleAdminWaitlist)              // очередь-вейтлист (Б9)
-		adm.POST("/waitlist", handleAdminWaitlistAdd)          // поставить по нику (Б9)
-		adm.DELETE("/waitlist/:id", handleAdminWaitlistRemove) // снять из очереди (Б9)
+		adm.POST("/computers/:id/power", handleAdminPCPower)             // вкл/перезагрузка/выкл (Б8)
+		adm.POST("/computers/:id/session", handleAdminSeatGuest)         // посадить гостя (Б8)
+		adm.GET("/shifts", handleAdminShifts)                            // шаблоны смен — сетка графика (Б11)
+		adm.GET("/shifts/schedule", handleAdminShiftSchedule)            // график персонала (Б11)
+		adm.GET("/shifts/now", handleAdminShiftsNow)                     // кто сейчас на смене (Б11)
+		adm.GET("/waitlist", handleAdminWaitlist)                        // очередь-вейтлист (Б9)
+		adm.POST("/waitlist", handleAdminWaitlistAdd)                    // поставить по нику (Б9)
+		adm.DELETE("/waitlist/:id", handleAdminWaitlistRemove)           // снять из очереди (Б9)
 		adm.GET("/sessions/active", handleAdminActiveSessions)
 		adm.POST("/sessions/:id/end", handleAdminEndSession)
 		adm.GET("/bookings", handleAdminBookings)
-		adm.POST("/bookings", handleAdminCreateBooking)             // walk-in (спринт А3)
+		adm.POST("/bookings", handleAdminCreateBooking) // walk-in (спринт А3)
 		adm.POST("/bookings/:id/cancel", handleAdminCancelBooking)
 		adm.POST("/bookings/:id/restore", handleAdminRestoreBooking) // undo отмены (спринт А3)
 		adm.GET("/catalog", handleAdminCatalog)
@@ -240,6 +240,13 @@ func handleRegister(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		return
+	}
+	// QA Б9–Б11: символьный инвариант ника (кавычки/скобки/бэктик — XSS-вектор
+	// в разметку админки), та же проверка, что и при смене ника (profile.go)
+	if !nicknameSafe(req.Nickname) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "nickname_charset",
+			"message": "В нике нельзя кавычки, угловые скобки и спецсимволы"})
 		return
 	}
 

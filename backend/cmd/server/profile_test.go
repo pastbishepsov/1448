@@ -34,3 +34,27 @@ func TestValidateProfilePatch(t *testing.T) {
 		})
 	}
 }
+
+func TestNicknameSafe(t *testing.T) {
+	cases := []struct {
+		name string
+		nick string
+		ok   bool
+	}{
+		{"обычный латинский", "gustav_q", true},
+		{"кириллица и дефис", "Гость-77", true},
+		{"точка и цифры", "user.42", true},
+		{"одинарная кавычка — инъекция в onclick", "x',alert(1),'", false},
+		{"двойная кавычка — разрыв атрибута", `a"b_cd`, false},
+		{"угловые скобки — тег", "<img_src=x>", false},
+		{"бэктик", "aa`bb", false},
+		{"бэкслэш", "aa\\bb", false},
+		{"амперсанд", "a&b_c", false},
+		{"управляющий символ", "ab\x1bcd", false},
+	}
+	for _, tc := range cases {
+		if got := nicknameSafe(tc.nick); got != tc.ok {
+			t.Errorf("%s: nicknameSafe(%q) = %v, ожидалось %v", tc.name, tc.nick, got, tc.ok)
+		}
+	}
+}
