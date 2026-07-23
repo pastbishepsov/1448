@@ -7,8 +7,13 @@ package main
 // Эффекты:
 //   - курс: 1 zł = coinsPerPLN монет;
 //   - талант coin_mint (Intellect) даёт бонусные монеты к депозиту;
-//   - депозит от depositCaseMinPLN злотых — Light-кейс (source=deposit);
 //   - ачивка first_deposit (deposit_count) выдаётся через checkAchievements.
+//
+// Кейса за депозит НЕТ: убран 2026-07-23 решением основателя (RESEARCH §4) —
+// «реальные деньги → случайная награда» было единственной тонкой связкой по
+// польскому лутбокс-проекту; теперь кейсы никак не связаны с деньгами
+// (только игра/уровни/ачивки/гранты). Старые кейсы source=deposit остаются
+// в истории, enum case_source не трогаем.
 
 import (
 	"fmt"
@@ -24,10 +29,9 @@ import (
 )
 
 const (
-	coinsPerPLN       int64   = 10
-	depositCaseMinPLN float64 = 20.0
-	maxDepositPLN     float64 = 10000.0
-	maxDiscountPct    float64 = 30.0
+	coinsPerPLN    int64   = 10
+	maxDepositPLN  float64 = 10000.0
+	maxDiscountPct float64 = 30.0
 )
 
 // depositCoins — монеты за депозит: база по курсу + бонус таланта coin_mint.
@@ -143,14 +147,6 @@ func handleAdminDeposit(c *gin.Context) {
 		return
 	}
 
-	// Кейс за ощутимый депозит.
-	caseGranted := false
-	if req.AmountPLN >= depositCaseMinPLN {
-		if grantCase(db, user.ID, nil, models.CaseTierLight, models.CaseSourceDeposit) == nil {
-			caseGranted = true
-		}
-	}
-
 	// Ачивки (first_deposit и будущие deposit_count-пороги).
 	uid := user.ID.String()
 	checkAchievements(user.ID, playerStats{
@@ -179,7 +175,6 @@ func handleAdminDeposit(c *gin.Context) {
 		"amount_pln":    req.AmountPLN,
 		"coins_granted": base,
 		"bonus_coins":   bonus,
-		"case_granted":  caseGranted,
 		"coins_balance": user.CoinsBalance,
 	})
 }

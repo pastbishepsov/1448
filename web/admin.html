@@ -1532,7 +1532,7 @@ function uFormHtml(){
       <button class="${depMethod==='blik'?'on':''}" onclick="depMethod='blik'; renderUserDrawer()">BLIK</button>
     </div>
     <button class="btn" style="width:100%; justify-content:center" onclick="submitDeposit()">Оформить депозит</button>
-    <div class="muted">Монеты — по курсу клуба (Настройки) · кейс за депозит от 20 zł</div>
+    <div class="muted">Монеты — по курсу клуба (Настройки) · кейсы к депозитам не привязаны</div>
   </div>`;
   if (uForm === 'xp') return `<div class="uform">
     <input id="g_xp" class="input" type="number" min="1" step="5" placeholder="Сколько XP (1–100000)" value="500">
@@ -1593,8 +1593,7 @@ async function submitDeposit(){
     const d = await api('/admin/users/'+drawerUserId+'/deposit', {method:'POST',
       body:JSON.stringify({amount_pln: amount, method: depMethod})});
     toast('💰 +' + d.coins_granted + ' монет'
-      + (d.bonus_coins > 0 ? ' (+' + d.bonus_coins + ' бонус таланта)' : '')
-      + (d.case_granted ? ' + кейс за депозит 🎁' : ''));
+      + (d.bonus_coins > 0 ? ' (+' + d.bonus_coins + ' бонус таланта)' : ''));
     uForm = null;
     await loadUserDrawer();
     renderUsersTable();
