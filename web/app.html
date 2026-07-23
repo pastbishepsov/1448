@@ -155,17 +155,154 @@
   .nav .bub{position:absolute; top:3px; left:calc(50% + 7px); background:var(--acc); color:#fff; border-radius:9px;
        font-size:10px; padding:1px 5px; font-weight:800; font-variant-numeric:tabular-nums}
 
-  /* ═══ ТОСТ (как в shell, поднят над навигацией) ═══ */
-  .toast{position:fixed; left:50%; transform:translateX(-50%) translateY(14px); bottom:calc(84px + env(safe-area-inset-bottom));
-         background:#131014; border:1px solid var(--acc); border-radius:14px; padding:14px 22px; opacity:0; transition:.3s;
-         pointer-events:none; z-index:60; font-weight:600; max-width:86vw}
-  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  /* ═══ ТОСТ — появление из display:none на @starting-style + transition-behavior
+     (RESEARCH §1), без JS-таймеров анимации; деградация — мгновенный показ.
+     С М1 умеет кнопку действия (undo отмены брони) ═══ */
+  .toast{position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom)); z-index:60;
+         display:none; opacity:0; transform:translateX(-50%) translateY(14px);
+         background:#131014; border:1px solid var(--acc); border-radius:14px; padding:13px 20px;
+         font-weight:600; max-width:88vw; align-items:center; gap:12px;
+         transition:opacity .3s var(--smooth), transform .3s var(--smooth), display .3s;
+         transition-behavior:allow-discrete}
+  .toast.show{display:flex; opacity:1; transform:translateX(-50%) translateY(0)}
+  @starting-style{ .toast.show{opacity:0; transform:translateX(-50%) translateY(14px)} }
+  .toast .tact{border:0; cursor:pointer; background:rgba(255,39,64,.16); color:var(--acc3); font-weight:800;
+         border-radius:10px; padding:9px 14px; min-height:38px; font-size:14px; flex:none}
 
   /* ═══ RIPPLE (тач-замена click-spark, решение №6 MOBILE.md) ═══ */
   .ripple{position:fixed; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
           background:rgba(255,85,99,.35); pointer-events:none; z-index:70; animation:rippleOut .45s var(--smooth) forwards}
   @keyframes rippleOut{to{opacity:0; transform:scale(6)}}
 
+  /* ═══ М1: КЛУБ И БРОНИ ═══ */
+  .card{position:relative; overflow:hidden; border-radius:18px; padding:16px; margin-bottom:14px;
+        background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-1);
+        backdrop-filter:blur(var(--blur)) saturate(1.2); -webkit-backdrop-filter:blur(var(--blur)) saturate(1.2)}
+  .card::before{content:""; position:absolute; inset:0 0 auto 0; height:1px;
+        background:linear-gradient(90deg,transparent,var(--hair),transparent)}
+  .card h3{margin:0 0 10px; font-size:15px}
+  body.perf-lite .card{backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--panel)}
+  .lnk{color:var(--acc3); text-decoration:none}
+  .clubfree{font-size:25px; font-weight:900; margin:2px 0}
+  .clubfree b{color:var(--acc); text-shadow:0 0 18px rgba(255,39,64,.4)}
+  .clubfree span{font-size:15px; color:var(--dim); font-weight:700}
+  /* скелетоны первой загрузки (М1-и1) */
+  .skel{position:relative; overflow:hidden; border-radius:9px; background:rgba(255,255,255,.05); min-height:12px}
+  .skel::after{content:""; position:absolute; inset:0; transform:translateX(-100%);
+        background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent); animation:skelmove 1.2s var(--smooth) infinite}
+  @keyframes skelmove{to{transform:translateX(100%)}}
+  body.perf-lite .skel::after{animation:none}
+  /* live-карточка сессии (М1-и4) — зелёный tint как в сайдбаре shell */
+  .livecard{background:linear-gradient(160deg, rgba(52,211,153,.09), var(--glass) 55%)}
+  body.perf-lite .livecard{background:linear-gradient(160deg, rgba(52,211,153,.09), var(--panel) 55%)}
+  .live-time{font-size:34px; font-weight:900; color:var(--green); margin:4px 0 2px;
+        text-shadow:0 0 18px rgba(52,211,153,.35)}
+  .livedot{width:8px; height:8px; border-radius:50%; background:#34d399; flex:none;
+        box-shadow:0 0 10px rgba(52,211,153,.8); animation:livePulse 1.6s var(--smooth) infinite}
+  @keyframes livePulse{50%{opacity:.35}}
+  body.perf-lite .livedot{animation:none}
+  /* мои брони (М1-и3): ближайшая — крупно */
+  .bknext{display:flex; align-items:center; gap:10px; padding-bottom:4px}
+  .bk-big{font-size:21px; font-weight:900}
+  .bkrow{display:flex; align-items:center; gap:10px; padding:10px 0 6px; border-top:1px solid var(--hair); margin-top:8px}
+  .bk-when{font-weight:800; white-space:nowrap; font-size:14.5px}
+  .bk-pc{flex:1; min-width:0; color:var(--dim); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .bk-x{flex:none; min-width:44px; min-height:40px; border-radius:11px; border:1px solid var(--glass-brd);
+        background:var(--glass-2); color:var(--dim); font-size:16px; cursor:pointer; font-weight:700;
+        transition:color .2s, border-color .2s}
+  .bk-x:active{color:var(--red); border-color:var(--red)}
+  /* чипы и слоты времени шагом 30 мин (М1-и2) */
+  .chips{display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 16px}
+  .chip{border:1px solid var(--glass-brd); background:var(--glass-2); color:var(--txt); border-radius:11px;
+        padding:10px 15px; font-weight:700; font-size:14px; min-height:44px; cursor:pointer;
+        transition:border-color .2s, background .2s, color .2s}
+  .chip.on{background:var(--aurora); border-color:transparent; color:#fff; box-shadow:var(--glow)}
+  .slots{display:flex; gap:8px; overflow-x:auto; margin:10px -18px 16px; padding:2px 18px 8px;
+        -webkit-overflow-scrolling:touch; scrollbar-width:none}
+  .slots::-webkit-scrollbar{display:none}
+  .slots .chip{flex:none}
+  /* шторка брони: появление/уход из display:none на @starting-style +
+     transition-behavior: allow-discrete (RESEARCH §1); деградация (iOS <17.4,
+     Chromium <117) — мгновенный показ/скрытие, без JS-таймеров и классов-маркеров */
+  .sheetwrap{position:fixed; inset:0; z-index:50; display:none; opacity:0; flex-direction:column; justify-content:flex-end;
+        transition:opacity .32s var(--smooth), display .32s; transition-behavior:allow-discrete}
+  .sheetwrap.open{display:flex; opacity:1}
+  .sheetback{position:absolute; inset:0; background:rgba(5,5,7,.62)}
+  .sheet{position:relative; z-index:1; background:var(--panel); border-top:1px solid var(--glass-brd);
+        border-radius:22px 22px 0 0; padding:10px 18px calc(18px + env(safe-area-inset-bottom));
+        box-shadow:0 -18px 50px rgba(0,0,0,.6); max-height:82vh; overflow-y:auto; overscroll-behavior:contain;
+        transform:translateY(0); transition:transform .38s var(--spring)}
+  @supports (max-height:82dvh){ .sheet{max-height:82dvh} }
+  .sheetwrap:not(.open) .sheet{transform:translateY(30px)}
+  .sheet h3{margin:4px 0 2px; font-size:17px}
+  .grab{width:38px; height:4px; border-radius:3px; background:rgba(255,255,255,.18); margin:2px auto 12px}
+  @starting-style{
+    .sheetwrap.open{opacity:0}
+    .sheetwrap.open .sheet{transform:translateY(100%)}
+  }
+  /* вейтлист (Б9, «задел PWA»): все ПК заняты → очередь из кармана */
+  .btn.slim{width:auto; padding:10px 14px; min-height:40px; font-size:14px}
+  .wl{margin-top:12px; padding:11px 12px; border:1px solid var(--glass-brd); border-radius:12px;
+      display:flex; align-items:center; gap:10px; background:var(--glass-2)}
+  .wl .pos{font-weight:800; font-size:14.5px}
+  .wl.notif{border-color:rgba(52,211,153,.45); background:rgba(52,211,153,.08); font-weight:700}
+  /* переключение вкладок через View Transitions (RESEARCH §1): имя — только зоне
+     контента, топбар и навигация не мигают; без поддержки — мгновенный свап */
+  .content{view-transition-name:tabzone}
+  ::view-transition-old(tabzone){animation-duration:.18s}
+  ::view-transition-new(tabzone){animation-duration:.26s}
+
+  /* ═══ М2: ПРОГРЕСС ═══ */
+  .rk-laur{width:46px; height:46px; color:var(--acc); flex:none; filter:drop-shadow(0 0 10px rgba(255,39,64,.4))}
+  .rk-laur svg{width:100%; height:100%; display:block}
+  .hbar{height:6px; background:rgba(255,255,255,.06); border-radius:5px; overflow:hidden}
+  .hbar i{display:block; height:100%; background:var(--aurora); border-radius:5px; box-shadow:0 0 10px rgba(255,39,64,.5)}
+  .lvlpill{background:var(--card2); border:1px solid var(--hair); border-radius:20px; padding:4px 10px;
+           font-size:11px; font-weight:700; white-space:nowrap; flex:none}
+  .lvlpill b{color:var(--gold)}
+  .pbadge{display:inline-flex; align-items:center; gap:5px; background:var(--aurora); color:#fff; border-radius:12px;
+          padding:5px 11px; font-weight:800; font-size:13px; box-shadow:var(--glow); flex:none}
+  /* таланты: 3 ветки, arm-confirm вместо confirm() (решение №7) */
+  .tbranch{display:flex; align-items:center; gap:7px; font-weight:800; font-size:12.5px; color:var(--dim);
+           letter-spacing:.5px; margin:15px 0 2px; text-transform:uppercase}
+  .tbranch .bic{width:17px; height:17px; color:var(--acc); display:inline-flex}
+  .tbranch .bic svg{width:100%; height:100%}
+  .talrow{display:flex; align-items:center; gap:10px; padding:11px 0 9px; border-top:1px solid var(--hair)}
+  .talrow.locked{opacity:.55}
+  .tal-n{font-weight:800; font-size:14.5px}
+  .tal-e{color:var(--acc2); font-size:12.5px; min-height:15px; margin:2px 0 7px}
+  .talbar{height:4px; background:rgba(255,255,255,.06); border-radius:4px; overflow:hidden; max-width:150px}
+  .talbar i{display:block; height:100%; background:var(--aurora)}
+  .tal-btn{flex:none; min-width:64px; min-height:44px; border-radius:11px; border:1px solid var(--glass-brd);
+           background:var(--glass-2); color:var(--txt); font-weight:800; font-size:13px; cursor:pointer; padding:0 12px;
+           transition:background .2s, border-color .2s, color .2s}
+  .tal-btn:disabled{opacity:.5; cursor:default}
+  .tal-btn.plus:not(:disabled){border-color:rgba(255,39,64,.5); color:var(--acc3)}
+  .tal-btn.arm{background:var(--aurora); border-color:transparent; color:#fff; box-shadow:var(--glow); animation:armPulse .45s var(--spring)}
+  @keyframes armPulse{0%{transform:scale(.9)}100%{transform:none}}
+  .tal-btn.maxed{color:var(--dim)}
+  /* ачивки */
+  .achrow{display:flex; gap:10px; padding:10px 0 8px; border-top:1px solid var(--hair); align-items:flex-start}
+  .achrow .aic{width:20px; height:20px; flex:none; color:var(--dim); margin-top:2px}
+  .achrow .aic svg{width:100%; height:100%; display:block}
+  .achrow.got .aic{color:var(--acc)}
+  .achrow:not(.got){opacity:.6}
+  .ach-t{font-weight:800; font-size:14px}
+  .ach-rw{color:var(--acc3); font-size:12px; margin-top:2px}
+  /* лидерборд */
+  .lbrow{display:flex; align-items:center; gap:9px; padding:9px 0; border-top:1px solid var(--hair); font-size:14px}
+  .lbrow.me{background:rgba(255,39,64,.08); border-radius:11px; padding:9px 8px; margin:0 -8px; border-top-color:transparent}
+  .lb-rk{width:34px; color:var(--dim); font-weight:800; flex:none}
+  .lb-rk.top3{color:var(--acc)}
+  .lb-av{flex:none}
+  .lb-nk{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700}
+  .lb-xp{color:var(--dim); font-size:12.5px}
+  /* история: баланс крупно, волосяные разделители, tabular-nums */
+  .balbig{font-size:30px; font-weight:900; line-height:1}
+  .hrow{display:flex; gap:8px; padding:9px 0; border-top:1px solid var(--hair); font-size:13px; align-items:baseline}
+  .h-when{color:var(--dim); white-space:nowrap; width:80px; flex:none; font-size:12px}
+  .h-l{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .h-v{color:var(--acc2); white-space:nowrap; font-weight:700; font-size:12.5px}
   /* уважение к слабому железу / настройкам (перф-гарды как в shell) */
   body.perf-lite .aurora-bg .blob{animation:none}
   body.perf-lite .authcard,body.perf-lite .topbar,body.perf-lite .nav{backdrop-filter:none; -webkit-backdrop-filter:none}
@@ -227,10 +364,19 @@
   <main class="content" id="content">
     <!-- М0: четыре пустые вкладки; наполнение — спринты М1–М4 -->
     <section class="tabpane on" id="tab-club">
-      <div class="empty">
-        <div class="eic" data-ic="nav-club"></div>
-        <div class="et" data-str="empty_club_t"></div>
-        <div class="es" data-str="empty_club_s"></div>
+      <!-- М1: клуб (свободно N из M) → бронь → live-карточка → мои брони -->
+      <div class="card" id="clubCard">
+        <div class="skel" style="width:55%; height:20px; margin-bottom:12px"></div>
+        <div class="skel" style="width:70%; height:30px; margin-bottom:10px"></div>
+        <div class="skel" style="width:45%; height:13px"></div>
+      </div>
+      <div class="card livecard hidden" id="liveCard"></div>
+      <div class="card" id="bkCard">
+        <h3 data-str="my_bookings"></h3>
+        <div id="bkList">
+          <div class="skel" style="width:80%; height:16px; margin-bottom:10px"></div>
+          <div class="skel" style="width:60%; height:16px"></div>
+        </div>
       </div>
     </section>
     <section class="tabpane" id="tab-cases">
@@ -241,12 +387,29 @@
       </div>
     </section>
     <section class="tabpane" id="tab-progress">
-      <div class="empty">
-        <div class="eic" data-ic="nav-progress"></div>
-        <div class="et" data-str="empty_progress_t"></div>
-        <div class="es" data-str="empty_progress_s"></div>
-        <button class="btn ghost" style="max-width:260px; margin-top:14px" onclick="logout()" data-str="logout"></button>
+      <!-- М2: ранг → таланты → ачивки → топ → история; наполняется loadProgress() -->
+      <div class="card" id="rankCard">
+        <div class="skel" style="width:60%; height:22px; margin-bottom:10px"></div>
+        <div class="skel" style="width:100%; height:8px; margin-bottom:8px"></div>
+        <div class="skel" style="width:40%; height:12px"></div>
       </div>
+      <div class="card" id="talCard">
+        <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
+        <div class="skel" style="width:90%; height:14px"></div>
+      </div>
+      <div class="card" id="achCard">
+        <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
+        <div class="skel" style="width:80%; height:14px"></div>
+      </div>
+      <div class="card" id="lbCard">
+        <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
+        <div class="skel" style="width:85%; height:14px"></div>
+      </div>
+      <div class="card" id="histCard">
+        <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
+        <div class="skel" style="width:75%; height:14px"></div>
+      </div>
+      <button class="btn ghost" style="margin:4px 0 10px" onclick="logout()" data-str="logout"></button>
     </section>
     <section class="tabpane" id="tab-chat">
       <div class="empty">
@@ -263,6 +426,22 @@
     <button data-tab="progress"><span class="nic" data-ic="nav-progress"></span><span class="nlb" data-str="nav_progress"></span></button>
     <button data-tab="chat"><span class="nic" data-ic="nav-chat"></span><span class="nlb" data-str="nav_chat"></span><span class="bub hidden" id="chatBub">0</span></button>
   </nav>
+</div>
+
+<!-- ═══ Шторка брони (М1-и2): чипы «сегодня/завтра», слоты шагом 30 мин, длительность ═══ -->
+<div id="sheetWrap" class="sheetwrap">
+  <div class="sheetback" onclick="closeSheet()"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <h3 data-str="book_title"></h3>
+    <div class="chips" id="dayChips"></div>
+    <div class="muted" data-str="book_time"></div>
+    <div class="slots" id="timeSlots"></div>
+    <div class="muted" data-str="book_dur"></div>
+    <div class="chips" id="durChips"></div>
+    <div id="bkErr" class="err"></div>
+    <button class="btn" id="bkGo" onclick="submitBooking()" data-str="btn_confirm_book"></button>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -284,15 +463,74 @@ const STR = {
   nav_club: 'Клуб', nav_cases: 'Кейсы', nav_progress: 'Прогресс', nav_chat: 'Чат',
   xp_of: '{a} / {b} XP',
   xp_left: 'до уровня: {n} XP',
-  empty_club_t: 'Это твой клуб',
-  empty_club_s: 'Свободные ПК, брони и live-карточка сессии появятся здесь',
   empty_cases_t: 'Кейсы',
   empty_cases_s: 'Твои кейсы с таймерами и полноэкранным открытием переедут сюда',
-  empty_progress_t: 'Прогресс',
-  empty_progress_s: 'Уровень, ранг, таланты, ачивки и история — скоро на этом экране',
   empty_chat_t: 'Чат с клубом',
   empty_chat_s: 'Переписка с админом и уведомления появятся здесь',
   logout: 'Выйти из аккаунта',
+  /* М1 — клуб и брони */
+  lbl_free: 'Свободно', lbl_of: 'из',
+  rate_hour: '{n} zł/час',
+  btn_book: 'Забронировать место',
+  book_title: 'Бронь ПК',
+  book_time: 'Время — шаг 30 минут',
+  book_dur: 'Длительность',
+  day_today: 'Сегодня', day_tomorrow: 'Завтра',
+  dur_h: '{n} ч', min_suffix: 'мин',
+  btn_confirm_book: 'Забронировать',
+  book_ok: '📅 Бронь: {pc} · {t}',
+  err_busy_next: '{t} занято — попробуй {t2}',
+  err_busy_none: 'На этот день свободного времени не осталось',
+  no_slots_today: 'Сегодня слотов уже нет — глянь завтра',
+  my_bookings: 'Мои брони',
+  no_bookings: 'Броней пока нет — займи место заранее',
+  cancel: 'Отменить',
+  booking_cancelled: 'Бронь отменена',
+  undo: 'Вернуть',
+  booking_restored: '📅 Бронь возвращена',
+  restore_failed: 'Не вышло вернуть: {m}',
+  live_now: 'Сессия идёт',
+  live_xp_lbl: 'XP за сессию',
+  today_at: 'сегодня {t}', tomorrow_at: 'завтра {t}',
+  club_err: 'Клуб не загрузился',
+  retry: 'Обновить',
+  wl_full: 'Сейчас всё занято',
+  wl_join: 'Встать в очередь',
+  wl_pos: 'Ты в очереди: {p}-й из {t}',
+  wl_leave: 'Выйти',
+  wl_notified: 'ПК освободился — подойди к стойке',
+  wl_joined: '📋 Ты в очереди — {p}-й',
+  wl_left: 'Ты вышел из очереди',
+  /* М2 — прогресс */
+  prog_rank: 'Ранг {a}/7 · наиграно {h} ч',
+  prog_hours_next: 'Ещё {n} ч до «{r}»',
+  prog_rank_max: 'Максимальный ранг — выше некуда',
+  prog_sessions: 'Сессий сыграно: {n}',
+  tal_title: 'Таланты',
+  branch_strength: 'Strength', branch_agility: 'Agility', branch_intellect: 'Intellect',
+  tal_from_lvl: 'с LVL {n}', tal_max: 'MAX', tal_plus: '+1', tal_confirm: 'Точно?',
+  tal_invested: '✦ {n}: теперь {e}',
+  eff_case_drop_chance: '+{n}% шанс кейса',
+  eff_case_tier_boost: '+{n}% к тиру кейса',
+  eff_double_case_chance: '+{n}% шанс второго кейса',
+  eff_xp_multiplier: '+{n}% XP',
+  eff_night_discount: '−{n}% ночной тариф',
+  eff_free_booking: 'бронь без предоплаты',
+  eff_deposit_bonus: '+{n}% койнов при депозите',
+  eff_cashback_pct: '+{n}% кэшбек',
+  eff_coins_ttl_bonus: '+{n} дн жизни койнов',
+  ach_title: 'Ачивки',
+  ach_got: '{a} из {b}',
+  ach_reward_sp: '+{n} ✦',
+  ach_reward_case: '+ кейс {t}',
+  lb_title: 'Топ клуба',
+  lb_me: 'Твоё место: #{n}',
+  lb_empty: 'Пока пусто',
+  hist_title: 'История',
+  hist_balance: 'койнов на балансе',
+  hist_empty: 'Пока пусто — сыграй первую сессию',
+  hist_session: 'Сессия',
+  hist_deposit: 'Пополнение {a} zł',
   toast_err: '⚠ {m}',
 };
 function T(key, vars){ return (STR[key] || '').replace(/\{(\w+)\}/g, (_, n) => vars && vars[n] != null ? vars[n] : ''); }
@@ -317,6 +555,13 @@ const UI = {
   'nav-cases': `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,129.09V232a8,8,0,0,1-3.84-1l-88-48.18a8,8,0,0,1-4.16-7V80.18a8,8,0,0,1,.7-3.25Z" fill="var(--acc)" opacity=".45"/><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32l80.34,44-29.77,16.3-80.35-44ZM128,120,47.66,76l33.9-18.56,80.34,44ZM40,90l80,43.78v85.79L40,175.82Zm176,85.78h0l-80,43.79V133.82l32-17.51V152a8,8,0,0,0,16,0V107.55L216,90v85.77Z"/></svg>`,
   'nav-progress': `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M232,56v64L168,56Z" fill="var(--acc)" opacity=".45"/><path d="M232,48H168a8,8,0,0,0-5.66,13.66L188.69,88,136,140.69l-34.34-34.35a8,8,0,0,0-11.32,0l-72,72a8,8,0,0,0,11.32,11.32L96,123.31l34.34,34.35a8,8,0,0,0,11.32,0L200,99.31l26.34,26.35A8,8,0,0,0,240,120V56A8,8,0,0,0,232,48Zm-8,52.69L187.31,64H224Z"/></svg>`,
   'nav-chat': `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,128A96,96,0,0,1,79.93,211.11h0L42.54,223.58a8,8,0,0,1-10.12-10.12l12.47-37.39h0A96,96,0,1,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-4-1.08,7.85,7.85,0,0,0-2.53.42L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm12-88a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm-44,0a12,12,0,1,1-12-12A12,12,0,0,1,96,128Zm88,0a12,12,0,1,1-12-12A12,12,0,0,1,184,128Z"/></svg>`,
+  laurels: `<svg class="isvg" viewBox="0 0 512 512" fill="currentColor"><path d="M137.273 41c1.41 59.526 16.381 119.035 35.125 167.77 19.69 51.191 44.086 90.988 57.965 104.867l2.637 2.636V343h46v-26.727l2.637-2.636c13.879-13.88 38.275-53.676 57.965-104.867 18.744-48.735 33.715-108.244 35.125-167.77zm-50.605 68.295c-17.97 6.05-32.296 18.214-37.625 30.367-3.015 6.875-3.48 13.44-.988 20.129.285.766.62 1.54.996 2.318a119.032 119.032 0 0 1 8.504-4.812l6.277-3.215 4.621 5.326c5.137 5.92 9.61 12.37 13.422 19.125 2.573-3.06 5.207-7.864 7.05-14.037 4.491-15.034 4.322-36.95-2.257-55.201zm338.664 0c-6.58 18.25-6.748 40.167-2.258 55.201 1.844 6.173 4.478 10.977 7.051 14.037 3.813-6.756 8.285-13.205 13.422-19.125l4.621-5.326 6.277 3.215a119.033 119.033 0 0 1 8.504 4.812c.375-.779.71-1.552.996-2.318 2.492-6.689 2.027-13.254-.988-20.129-5.329-12.153-19.655-24.317-37.625-30.367zm-365.975 67.74c-20.251 12.486-34.121 31.475-36.746 47.973-1.447 9.1.09 17.224 5.323 24.545 1.66 2.324 3.743 4.594 6.304 6.76a116.606 116.606 0 0 1 11.44-14.977l4.72-5.24 6.217 3.33c7.91 4.236 15.262 9.424 21.94 15.252.973-3.633 1.619-7.892 1.773-12.616.636-19.438-6.762-45.536-20.97-65.027zm393.286 0c-14.21 19.49-21.607 45.59-20.971 65.027.154 4.724.8 8.983 1.773 12.616 6.678-5.828 14.03-11.016 21.94-15.252l6.217-3.33 4.72 5.24a116.606 116.606 0 0 1 11.44 14.976c2.56-2.165 4.643-4.435 6.304-6.76 5.233-7.32 6.77-15.444 5.323-24.544-2.625-16.498-16.495-35.487-36.746-47.973zM54.4 259.133c-14.394 18.806-20.496 41.413-17.004 57.748 1.928 9.014 6.298 16.078 13.844 21.078 4.944 3.276 11.48 5.7 19.94 6.645a120.631 120.631 0 0 1 7.101-17.852l3.125-6.338 6.9 1.535c4.095.911 8.133 2.046 12.094 3.377-.373-3.838-1.309-8.185-2.925-12.82-6.416-18.396-22.749-40.184-43.075-53.373zm403.2 0c-20.326 13.189-36.66 34.977-43.075 53.373-1.616 4.635-2.552 8.982-2.925 12.82a119.337 119.337 0 0 1 12.093-3.377l6.9-1.535 3.126 6.338a120.63 120.63 0 0 1 7.101 17.852c8.46-.944 14.996-3.37 19.94-6.645 7.546-5 11.916-12.065 13.844-21.078 3.492-16.335-2.61-38.942-17.004-57.748zM91.5 341.527c-9.285 23.14-9.027 47.85-.709 63.54 4.57 8.619 11.106 14.607 20.268 17.562 4.586 1.479 9.957 2.19 16.185 1.803-2.135-11.155-2.771-22.97-1.756-34.938l.602-7.074 7.02-1.065a129.43 129.43 0 0 1 13.458-1.312c.554-.025 1.107-.04 1.66-.059-12.419-15.776-33.883-31.43-56.728-38.457zm329 0c-22.845 7.027-44.31 22.68-56.729 38.457.554.019 1.107.034 1.66.059 4.5.206 8.995.637 13.46 1.312l7.02 1.065.6 7.074c1.016 11.967.38 23.783-1.755 34.938 6.228.386 11.6-.324 16.185-1.803 9.162-2.955 15.699-8.943 20.268-17.563 8.318-15.69 8.576-40.4-.709-63.539zM199.729 361c-1.943 7.383-6.045 14.043-11.366 19.363a46.544 46.544 0 0 1-3.484 3.125c14.804 3.295 28.659 8.692 40.404 15.46 2.384-5.36 5.376-10.345 9.408-14.534C239.96 378.942 247.51 375 256 375c8.491 0 16.041 3.942 21.309 9.414 4.032 4.19 7.024 9.175 9.408 14.533 11.815-6.808 25.766-12.23 40.67-15.52a48.107 48.107 0 0 1-3.739-3.413c-5.227-5.333-9.27-11.852-11.261-19.014zM256 393c-3.434 0-5.635 1.084-8.34 3.895-2.704 2.81-5.395 7.52-7.527 13.298-4.265 11.556-6.343 27-7.156 38.446-1.07 15.043 3 33.368 12.285 40.06 4.733 3.412 16.743 3.412 21.476 0 9.285-6.692 13.355-25.017 12.285-40.06-.813-11.446-2.891-26.89-7.156-38.446-2.132-5.777-4.823-10.488-7.527-13.298-2.705-2.81-4.906-3.895-8.34-3.895zm-103.521 4.979c-1.714-.008-3.424.022-5.127.09-1.405.055-2.77.281-4.164.39-.418 27.817 9.816 53.543 24.994 66.644 8.264 7.134 17.586 10.772 28.35 10.157 5.908-.338 12.394-2.03 19.374-5.52-1.27-7.665-1.377-15.42-.883-22.379.632-8.89 1.852-19.962 4.479-30.877-17.16-10.686-42.426-18.395-67.023-18.506zm207.042 0c-24.597.11-49.863 7.82-67.023 18.505 2.627 10.915 3.847 21.987 4.479 30.877.494 6.958.387 14.714-.883 22.38 6.98 3.49 13.466 5.181 19.375 5.519 10.763.615 20.085-3.023 28.35-10.156 15.177-13.102 25.411-38.828 24.993-66.645-1.393-.109-2.76-.335-4.164-.39a116.32 116.32 0 0 0-5.127-.09z"/></svg>`,
+  brStr: `<svg class="isvg" viewBox="0 0 512 512" fill="currentColor"><path d="M211.832 39.06c-15.022 15.31-15.894 22.83-23.473 43.903 2.69 9.14 5.154 16.927 9.148 25.117 5.158.283 10.765.47 15.342.43-6.11-10.208-8.276-19.32-4.733-35.274 4.3 19.05 12.847 29.993 21.203 34.332 3.032-.334 5.957-.714 8.776-1.146-6.255-10.337-8.494-19.47-4.914-35.588 3.897 17.27 11.287 27.876 18.86 32.94 4.658-1.043 9.283-2.243 13.927-3.534-5.517-9.69-7.36-18.692-3.97-33.957 3.357 14.876 9.307 24.81 15.732 30.516 5.095-1.57 9.296-2.898 13.852-4.347-.685-5.782-.416-12.187 1.064-19.115l1.883-8.8 17.603 3.76-1.88 8.804c-3.636 17.008 1.324 24.42 7.306 28.666 5.98 4.244 14.69 3.46 16.03 2.6l7.576-4.86 9.72 15.15c-3.857 2.34-7.9 5.44-11.822 7.06 18.65 27.678 32.183 61.465 24.756 93.55-2.365 9.474-6.03 18.243-11.715 24.986 12.725 12.13 21.215 22.026 31.032 34.5-3.713-2.387-7.586-4.844-11.692-7.37-11.397-7.01-23.832-14.214-34.98-19.802-16.012-7.8-31.367-18.205-47.73-20.523-22.552-2.967-46.27 4.797-73.32 21.06 7.872 8.72 13.282 15.474 20.312 24.288-6.98-4.338-14.652-9.07-23.16-14.23-32.554-17.48-65.39-48.227-100.438-49.99-30.56-1.092-59.952 14.955-89.677 38.568L18 254.293V494h31.963c45.184-17.437 80.287-57.654 97.03-94.52l.25-.564.325-.52c9.463-15.252 11.148-29.688 16.79-44.732 5.645-15.044 16.907-29.718 41.884-38.756 4.353-2.16 5.07-1.415 8.633 1.395 30.468 24.01 57.29 32.02 83.24 32.35 32.61-1.557 58.442-9.882 85.682-19.38-3.966 3.528-8.77 7.21-13.986 10.762-15.323 10.436-34.217 19.928-46.304 24.8-14.716 2.006-28.36 2.416-41.967.616-9.96 12.09-25.574 20.358-37.35 26.673 63.92 14.023 115.88.91 167.386-22.896-9.522-1.817-19.008-3.692-27.994-5.42 31.634-4.422 64.984-3.766 94.705-3.53 4.084-.02 7.213-.453 8.7-.886 14.167-51.072-4.095-97.893-34.294-145.216-30.263-47.425-72.18-94.107-101.896-143.04-21.1-17.257-48.6-31.455-77.522-46.175-20.386 4.25-41.026 9.336-61.443 14.1zm85.385 70.49c-11.678 3.6-23.71 7.425-33.852 10.012 2.527 4.93 3.735 10.664 3.395 16.202 11.028.877 21.082-2.018 28.965-6.356 4.845-2.666 8.74-6.048 11.414-8.96-3.854-2.735-7.26-6.41-9.923-10.9zm-54.213 14.698c-11.76 1.143-24.59 2.362-35.06 2.236 2.39 4.772 3.78 12.067 8.51 14.84 11.18 1.164 20.6 1.997 29.91-1.746 5.435-3.214 1.818-15.058-3.36-15.33zm-34.98 209.332c-17.593 7.233-22.586 15.14-26.813 26.406-3.998 10.66-6.227 25.076-14.48 41.014 32.29-6.38 69.625-21.23 93.852-40.088-17.017-5.098-34.553-13.852-52.557-27.332zm9.318 71.385c-18.723 7.237-40.836 16.144-59.696 14.062C143.774 446.68 124.012 474.03 91.762 494h84.68c21.564-29.798 38.067-56.575 40.9-89.035z"/><path d="M320.188 23.375l-69.25 103.063 3.687 54.062 24.563-36.375 15.156-22.47 1.906 27.032 2.97 42.282 29.436-43.814-8.47-123.78zM88.155 85.655l54.688 111.626 48.03 23.532-19.405-39.156-12.25-24.72 24.75 12.19 39.343 19.374-23.625-48.188L88.156 85.656zm191.375 91.376l-25.842 38.282-4.563 6.75-7.313-3.593-41.343-20.376 20.25 40.875 3.624 7.343-6.78 4.562-38.408 25.875 46.22 3.03 8.124.533.563 8.156 3.218 45.717 25.25-38.03 4.533-6.844 7.375 3.625L316 313.406l-20.344-41.594-3.594-7.343 6.813-4.533 37.938-25.25-45.344-2.906-8.158-.53-.562-8.156-3.22-46.063zm86.533 7.69l-45.032 30.25 44.564 2.874 27.625 1.78-23.033 15.314-35.812 23.843 52.688 3.595 102.968-69.22-123.967-8.436zm-237.407 63.593l-103 69.218 124 8.44 44-29.564-43.03-2.844-27.282-1.78L146.03 276.5l36.407-24.5-53.78-3.688zm197.03 42.375l19.127 39.093 12 24.564-24.532-12.063-39.217-19.342 23.562 48.125 111.5 54.625-54.688-111.625-47.75-23.375zm-108.217 28.28l-30.157 44.876 8.468 123.78 69.25-103.062-3.592-52.937-23.782 35.75L222.5 390.25l-1.938-27.375-3.093-43.906z"/><path d="M361.906 25.938c-49.615.102-110.022 18.8-154.25 37.593-12.605-7.315-27.254-11.622-43.156-12.28-18.84-.78-39.426 3.525-60.47 13.875l-1.468.72-.093.03C51.863 87.46 22.14 140.77 19.062 200.625c91.48-18.65 15.3 110.685 57.968 156.406C181.473 441.578 284.58 484.333 390 487.53c44.707 0 67.482-12.576 70.156-40.53 14.36-46.12 15.182-98.99 13.22-148.47-12.752 42.9-25.627 85.79-47.72 128.095-5.745.157-12.06.025-18.906-.47-10.324 19.953-21.38 36.51-39.656 46.876 12.73-16.588 19.968-35.21 26-61.186 7.956-39.902 11.877-79.818 14.75-119.72L351.72 415.5c-2.474-.752-4.988-1.567-7.533-2.406-65.917-52.54-93.99-102.854-92.125-151.625 1.773-46.336 31.03-93.828 86.375-142 1.643-.338 3.29-.69 4.907-1 19.63 45.61 34.845 90.96 48.22 136.186 6.728-44.3 5.344-89.092-2.377-134.28-4.977-19.72-11.31-34.776-21.5-48.44 17.483 8.524 31.02 20.368 40.5 40.126 5.347 0 10.41.133 15.125.376 35.996 39.062 52.935 82.938 65.032 129.187 6.042-68.832-11.477-131.56-53.78-187.844l-3.752-6.81c-16.255-15.21-40.84-21.09-68.906-21.032zm-200.97 43.75c.903.005 1.8.026 2.69.062 12.338.5 23.395 3.804 33 9.094-9.716 15.956-24.405 26.127-42.064 32.03-16.195 5.416-34.8 6.806-53.125 5.157 6.505-11.26 12.63-23.118 15.094-35.936 15.916-7.18 30.878-10.494 44.407-10.406zm140.22 59.093c-42.165 42.782-66.048 86.653-67.78 131.97-1.766 46.156 19.81 91.9 65.25 136.97-32.14-11.12-66.783-24.655-94.688-44.033-33.387-18.577-59.818-42.03-73.625-71.062-15.45-32.487-13.78-71.5 10.468-113.344l16.157 9.376c-22.003 37.97-22.593 68.932-9.75 95.938 1.137 2.39 2.386 4.76 3.75 7.094-1.75-7.86-2.657-16.212-2.562-25.125.702-65.966 83.636-107.434 152.78-127.782z"/><path d="M59.88 52.08c-6.83.11-12.17 1.87-15.99 5.34C19.35 79.67 15.6 117.7 26.63 158c9.74 35.6 31.13 71.9 56.99 96.9.48.2.98.4 1.47.6-.84-11.8.74-23.3 6.28-36l16.43 7.2c-5 11.4-6 20-4.7 30.3 16.8-6 36.4 9 39.9 23.3 6 24.1-23.8 55.9-48.48 56.4-15.43.3-32.55-12.6-41.23-28-6.94 6.3-13.04 12.6-17.91 18.9-13.01 16.8-17.27 31.4-9.21 46.8 6.62 12.8 17.27 20.9 31.47 26 14.19 5.1 31.84 6.8 50.56 5.8 23-1.3 47.5-6.7 69.5-13.9-3.6-5.9-5.9-12.4-5.8-18.7.3-15.7 11-36.2 28.7-30.7l-2.6-17.2 17.8-2.8 3 19.3c2.1-.7 4.3-1.1 6.5-1.1 11.8 0 23.9 9.7 27.3 19.8 2.9 8.6.9 18.7-3.8 27.9 17.9 8 37.7 15.8 58.3 22.3 2.9-9.8 11.4-20.1 21.8-20.3 2.7-.1 5.5.6 8.4 2.1 1.5-8.1 2.3-15.5 1.1-22.4l17.8-3c1.6 9.9.5 19.2-1.1 27.9 12-.1 23.3 11.5 24.6 21.6.4 3.3 0 6.6-1.1 9.9 19.6 2.1 38.2 1.8 55-1.6-5.9-5.7-10-12.8-10.4-19.9-.8-12.8 7.2-30.4 22.8-28-.5-6.1-1.2-12.2-2.2-18.1l17.6-3.4c1.3 6.5 2.1 13 2.6 19.3 2-.7 4.1-1.1 6.2-1.1 7.8-.2 15.8 3.8 20.7 9.2.6-4.3.4-9.3-.5-14.9-1.9-11.9-6.9-25.7-12.9-38.6-6.2-13.4-13.2-25.8-18.6-34.6-6.2 4.5-13.2 7.5-19.7 7.6-17.5.4-37.8-21.1-35.9-38.5 1.3-11 9.4-24.3 21.1-24.7 2.2-.1 4.5.3 7 1.2-.1-10-1-22.2-1.7-30.3l18-1.6c.7 8.3 2 20.8 1.9 32.4 4.2-.5 8.4.4 12.2 2.2 2.7-7.2 5.6-15.4 8.2-24.1 9-29.4 14.1-64.1 6.2-81.4-4.7-10.3-11.9-20.1-20.7-28.8 2.6 4 4.4 8.2 4.9 12.3 3.3 24.6-29.8 52.8-54.4 50.5-22.7-1.9-45.8-32.9-40.8-55.3 3.1-13.5 14.6-28.87 28.9-29.21 6.5-.15 13.6 2.8 20.7 10.43 8-5.62 16.7-5.55 24.3-2.35-23.9-17.08-54.1-27.46-80.6-26-10.4.56-28.7 12.65-42.8 25.62C301.6 108.2 291.2 121 291.2 121l-6.6 8.1-7-7.7s-9.4-10.3-21.9-20.7c-12.5-10.44-28.7-20.12-37.2-20.6-4.3-.24-15.8 4.57-24.7 10.46-9 5.9-16 11.94-16 11.94l-5.6 4.9-5.8-4.6s-24.3-18.72-52.6-33.46c-14.08-7.36-29.2-13.63-41.97-16.08-3.19-.62-6.16-.99-8.93-1.13-.52 0-1.03 0-1.53-.1h-1.49zm27.49 39.34c3.22 8.1 4.87 16.18 5.65 24.08 1.9-.6 4-1 6.1-1 9.68-.1 19.88 5.9 23.58 13.2 8.7 16.8-8 45.6-26.28 50.3-16.96 4.4-41.65-11.9-43.79-29.3-1.52-13.3 5.84-32 22.64-29.1-.51-7.4-1.85-14.5-4.64-21.54zM234.8 169.2l17.8 2c-1 8.7-1.4 17.7-1 26.9 12.4-3 26.2 7.8 28.8 18.1.4 1.6.6 3.3.6 5 4.7-3.9 10.5-5.5 17-2.6 1.8-12.1 6.6-23.6 11.7-34.5l16.4 7.6c-4.6 9.8-8.3 19-9.9 27.7 12.7-2.6 26.3 10.3 29 22.7 4.8 22.7-19.2 52.6-39 53-18.3.5-39.5-26.1-37.6-47.6 0-.4.1-.7.1-1.1-7.3 7.4-16.8 12.6-25.5 12.7-17.5.4-37.8-21.1-35.9-38.5 1.3-10.9 9.4-24.2 21.1-24.6 1.7-.1 3.4.1 5.2.6-.2-9.3.2-18.5 1.2-27.4zm-80.6 248.4c-7.5 1.7-15.1 3.1-22.8 4.3-5.5 21.6-12.4 45.8-29.8 68.3h86.5c-17.5-22-28.5-48-33.9-72.6zm210.7 27.8c-8.2 6.6-18.4 10.8-27.2 9.9-.8-.1-1.7-.2-2.5-.4-2.9 11.9-7.3 24.2-14.4 36.3h79.5c-14.6-10.6-24.5-22.4-30.8-34.9-1.8-3.6-3.3-7.3-4.6-10.9z"/></svg>`,
+  brAgi: `<svg class="isvg" viewBox="0 0 512 512" fill="currentColor"><path d="M169.53 16.344L259.345 88 337 92.28l-1.03 18.657-161.376-8.906-118.78-4.905 227.28 68.03-197.72 246.75-14.53-17.655-49.22 96.625 248.69-202.78 51.81 11.592-38.78 40.594L270.5 329.5l-57.28 84.125L444.843 273.47 328 241.06l100.22-81.718c1.132.46 2.3.898 3.5 1.22 23.324 6.248 49.764-16.835 59.06-51.533 9.298-34.695-2.08-67.874-25.405-74.124-23.325-6.25-49.765 16.802-59.063 51.5-1.467 5.476-2.403 10.918-2.875 16.22L169.53 16.343z"/><path d="M326.4 26.52c-.7 0-1.7.14-2.9.44-3.4.82-8 3.38-11.7 6.89-3.8 3.51-6.7 7.92-7.9 11.34-1.1 3.41-.8 4.92.5 6.57 27.4 33.77 52.6 72.04 71.9 105.74 19.3 33.8 32.7 62.2 36.6 79.9.4 1.8.7 2 .7 1.9 1.2 0 5.7-1.7 9.9-5.2 4.3-3.5 8.6-8.6 11.1-13.3 2.6-4.7 3.1-8.8 2.6-10.4-15.1-55.3-42.6-116.41-107.9-182.57-.7-.67-1.3-1.09-2.2-1.24-.2 0-.4-.1-.7-.1zm53.2 30.97c11 13.92 20.6 27.66 28.9 41.17 13 7.24 28.5 16.34 43.9 26.04 15.2 9.4 29.4 18.9 40.9 27.4l-1.8-28.2c-16.4-16.3-45-33.55-74.1-48.31-13.1-6.65-25.8-12.61-37.8-18.1zM247.1 105.8c-.7 0-1.7.1-2.9.4-3.4.8-7.9 3.4-11.7 6.9-3.7 3.5-6.6 7.9-7.7 11.3-1.1 3.3-.9 4.8.5 6.5 27.4 33.8 52.6 72 71.9 105.7 19.3 33.8 32.6 62.3 36.6 79.8v.1c.4 1.8.7 2 .7 1.9 1.1 0 5.6-1.7 9.9-5.2 4.3-3.5 8.5-8.6 11.1-13.3 2.5-4.7 3-8.9 2.6-10.4-15.3-55.2-42.8-116.2-108.1-182.4-.7-.7-1.3-1.1-2.2-1.2-.2-.1-.4-.1-.7-.1zm53.1 30.9c11.1 14 20.7 27.8 29.1 41.3 13 7.3 28.5 16.4 43.9 26 3.5 2.2 7 4.4 10.4 6.6-5.8-12.7-13.6-27.7-22.7-43.7-7.4-4.2-15-8.2-22.7-12.1-13.2-6.6-25.9-12.6-38-18.1zm-126.5 57.1c-.7 0-1.7.1-2.9.4-3.4.8-8 3.4-11.7 6.9-3.8 3.5-6.7 7.9-7.9 11.3-1.1 3.4-.8 4.9.5 6.5 27.4 33.7 52.6 71.9 71.9 105.7 19.3 33.8 32.7 62.2 36.6 79.9.4 1.8.7 2 .7 1.9 1.1 0 5.7-1.7 9.9-5.2 4.3-3.5 8.6-8.6 11.1-13.3 2.6-4.8 3.1-8.9 2.6-10.5-15.2-55.1-42.6-116.1-107.9-182.4-.7-.6-1.3-1-2.2-1.2h-.7zm53.1 30.9c11.1 13.9 20.6 27.7 29 41.2 13 7.3 28.5 16.4 43.9 26 2.7 1.7 5.4 3.4 8 5-5.2-11.9-12.5-26.6-21.3-42.5-7.1-4-14.4-7.9-21.8-11.6-13.1-6.7-25.8-12.6-37.8-18.1zM94.5 272.9c-.77 0-1.71.2-2.97.5-3.34.8-7.91 3.3-11.67 6.8s-6.68 7.9-7.79 11.3c-1.1 3.4-.86 4.9.48 6.5 27.43 33.8 52.65 72 71.95 105.7 19.3 33.8 32.7 62.2 36.6 79.8v.1c.4 1.8.7 2 .7 1.9 1.2 0 5.7-1.7 9.9-5.2 4.3-3.5 8.6-8.6 11.1-13.3 2.6-4.7 3.1-8.8 2.6-10.4-15.3-55.1-42.7-116.1-108.02-182.4-.7-.6-1.3-1.1-2.17-1.2-.22-.1-.46-.1-.71-.1zm53.1 30.9c11.1 14 20.7 27.8 29 41.3 13 7.3 28.5 16.4 43.9 26 3.5 2.2 7 4.4 10.4 6.6-5.8-12.7-13.5-27.7-22.6-43.7-7.4-4.1-15.1-8.2-22.8-12.1-13.1-6.6-25.8-12.6-37.9-18.1zM18.72 353c.34 2.1 1.03 4.8 2.88 8.4 5.75 11.3 20.09 27.8 46.74 42.6 23.89 13.3 46.86 28.4 85.06 56.4-6-13.5-14.4-30.1-24.5-47.7l-.3-.6C92.89 388 46.1 366 18.72 353z"/><path d="M265.174 45.484c-.776-.007-1.267.05-1.65.112l-27.59 47.79c.304.79 1.13 2.36 2.693 4.268 3.39 4.134 9.688 9.436 17.47 13.928 7.78 4.492 15.52 7.296 20.796 8.164 2.432.4 4.205.33 5.043.197l6.99-12.105c-.318-.153-.635-.305-.946-.484-6.76-3.903-9.076-12.55-5.173-19.31 3.902-6.76 12.546-9.074 19.306-5.17.31.178.6.378.893.577l6.52-11.294c-.303-.79-1.13-2.362-2.694-4.27-3.39-4.133-9.688-9.435-17.47-13.927-7.78-4.494-15.52-7.297-20.794-8.165-1.318-.217-2.477-.3-3.394-.31zm-60.7 48.536c-1.037-.014-2.06-.004-3.068.03-16.13.52-27.71 6.237-34.203 17.483-.276.478-.728 1.883.668 5.627 1.397 3.744 4.64 9.01 9.558 14.72 9.837 11.42 26.167 24.707 46.054 36.188 19.888 11.482 39.56 18.98 54.368 21.79 7.404 1.407 13.587 1.58 17.527.917 3.94-.663 4.93-1.755 5.205-2.232v-.002c5.958-10.316 5.226-23.413-2.328-37.88-2.336-4.474-5.336-8.993-8.932-13.43-1.055.42-2.117.74-3.146.96-4.08.88-8.104.69-12.32-.004-8.427-1.388-17.713-4.997-27.104-10.418-9.392-5.422-17.16-11.66-22.576-18.266-2.708-3.303-4.888-6.693-6.166-10.666-.36-1.116-.622-2.332-.778-3.596-4.423-.757-8.7-1.168-12.757-1.22zm97.23 4.818l193.605 255.916v-231.73L301.702 98.837zM154.91 132.822L42.62 327.316l-.007.012c-.51.892-.9 2.505.434 6.313 1.34 3.824 4.512 9.13 9.385 14.872 9.744 11.483 26.056 24.766 45.943 36.248 19.887 11.48 39.55 18.966 54.365 21.664 7.41 1.35 13.59 1.442 17.57.69 3.98-.75 5.176-1.9 5.69-2.79l.002.002L288.295 209.83c-4.396-.122-9.03-.68-13.93-1.61-17.716-3.36-38.812-11.603-60.226-23.966-21.416-12.363-39.1-26.512-50.87-40.174-3.255-3.778-6.055-7.512-8.358-11.258zm33.48 64.776c5.008.09 9.662 1.28 13.788 3.662v-.008c14.67 8.47 19.61 30.27 14.66 56.482-2.465-16.616-10.93-31.077-24.73-39.04-13.8-7.96-30.553-8.064-46.174-1.89 14.537-12.503 29.654-19.44 42.455-19.206zM94.45 303.38c2.02 17.568 10.47 33.054 24.882 41.378 14.65 8.45 32.714 7.993 49.16.617v.006c-21.552 20.4-45.073 28.748-60.855 19.636-15.65-9.034-19.83-33.092-13.187-61.635zm-64.513 45.9l-8.1 14.03c-.513.887-.91 2.498.43 6.32 1.34 3.824 4.51 9.13 9.382 14.872 9.74 11.478 26.044 24.757 45.92 36.236l.024.014h.002c19.887 11.48 39.548 18.965 54.365 21.662 7.408 1.35 13.59 1.442 17.57.69 3.98-.75 5.177-1.9 5.69-2.788l8.1-14.03c-4.408-.072-9.045-.586-13.93-1.475-17.84-3.247-38.947-11.503-60.362-23.867-21.413-12.363-39.116-26.514-50.848-40.34-3.213-3.785-5.977-7.542-8.243-11.324z"/><path d="M399.22 15.03c-15.483 0-28.033 12.55-28.033 28.032 0 14.46 10.972 26.336 25.032 27.844l60.374 248.53c-18.185-15.346-40.6-23.03-63-23.03-25.02 0-50.046 9.577-69.188 28.72-36.185 36.184-38.155 93.355-5.937 131.843L73.81 397.53c-1.2-14.374-13.22-25.655-27.906-25.655-15.48 0-28.03 12.55-28.03 28.03 0 15.483 12.55 28.033 28.03 28.033 9.65 0 18.176-4.888 23.22-12.313l291.155 70.72c34.573 12.523 74.728 4.897 102.5-22.876 27.094-27.094 35.005-65.936 23.75-99.908L414.407 66.625c7.736-4.99 12.875-13.673 12.875-23.563 0-15.48-12.58-28.03-28.06-28.03zM110.155 96.22c-15.48 0-28.03 12.548-28.03 28.03 0 15.482 12.55 28.03 28.03 28.03 4.647 0 9.017-1.154 12.875-3.155l180.064 171.75c2.512-3.09 5.217-6.092 8.094-8.97 1.562-1.56 3.153-3.075 4.78-4.53L135.813 135.5c1.515-3.447 2.375-7.244 2.375-11.25 0-15.482-12.55-28.03-28.03-28.03z"/></svg>`,
+  brInt: `<svg class="isvg" viewBox="0 0 512 512" fill="currentColor"><path d="M241.063 54.406c-2.31.008-4.61.032-6.907.094-1.805.05-3.61.106-5.406.188-8.814 1.567-12.884 5.426-15.094 9.843-2.435 4.87-2.34 11.423.375 17.25 2.717 5.83 7.7 10.596 14.657 12.376 6.958 1.78 16.536.86 29.125-7.187l10.063 15.75c-15.818 10.11-31.124 12.777-43.813 9.53-12.688-3.247-22.103-12.123-26.968-22.563-4.584-9.836-5.426-21.376-1.03-31.624-42.917 6.94-81.777 23.398-111.626 46.562-9.81 10.688-10.77 23.11-6.47 31.594 4.83 9.526 16.21 16.48 38.97 9.28l5.656 17.813c-28.58 9.04-52.137-.588-61.28-18.625-2.23-4.397-3.592-9.156-4.127-14.063-4.814 5.712-9.16 11.658-13 17.844l.126.06c-8.614 19.616-8.81 33.203-5.376 42.032 3.436 8.83 10.635 14.44 21.72 17.532 22.168 6.18 58.065-1.277 83.343-20.156 10.82-8.08 21.077-27.677 21.97-42.875.445-7.6-1.165-13.604-4.345-17.438-3.18-3.834-8.272-6.703-18.813-6.594l-.187-18.686c14.487-.15 26.25 4.754 33.375 13.344 7.124 8.59 9.26 19.652 8.625 30.468-1.27 21.633-12.595 44.172-29.438 56.75-29.876 22.314-69.336 31.606-99.53 23.188-13.988-3.9-26.37-12.386-32.75-25.53-9.546 45.446 4.323 87.66 30.718 116.874 3.45 3.82 7.122 7.43 10.97 10.78-2.754-7.887-4.016-16.1-3.72-24.093.53-14.325 6.082-28.346 17.22-38.03 9.134-7.946 21.752-12.53 36.843-12.5 1.006 0 2.034.018 3.062.06 2.35.1 4.763.304 7.22.626l-2.44 18.532c-15.588-2.048-25.705 1.522-32.436 7.375-6.73 5.854-10.443 14.614-10.813 24.625-.74 20.024 12.07 43.406 39.69 50.188l-.032.188c27.192 5.19 57.536.372 88-18.22.018-.012.043-.017.062-.03 6.34-4.45 9.755-8.808 11.438-12.563 1.985-4.432 1.943-8.292.53-12.438-2.824-8.29-12.94-16.812-22.218-19.187-15.002-3.84-24.532 1.436-29 7.72-4.468 6.28-4.74 12.45 2.156 17.81l-11.47 14.75c-14.187-11.033-15.092-30.487-5.905-43.405 6.892-9.688 18.985-16.326 33.564-16.75.607-.018 1.228-.036 1.844-.03 4.306.03 8.79.622 13.437 1.81 15.505 3.97 29.84 15.277 35.28 31.25 1.416 4.155 2.09 8.69 1.876 13.314 16.71-8.538 34.332-16.12 52.282-21.814 30.156-13.78 43.23-37.938 42.72-58.28-.515-20.493-13.187-37.74-42.376-40.626l1.844-18.594c36.666 3.626 58.462 29.848 59.188 58.75.422 16.84-5.754 34.363-18.188 49.28 16.072-1.8 32.044-1.495 47.53 1.627-3.152-6.472-4.68-13.478-4.467-20.438.677-22.036 19.42-42.593 48.875-42.906 1.963-.022 3.974.053 6.03.218l-1.5 18.625c-24.927-1.998-34.3 11.086-34.718 24.656-.412 13.42 8.545 28.442 34.22 30.436 28.3.25 48.588-15.098 58.53-37.906 13.31-30.536 6.997-76.317-34.844-118.188-.792-.793-1.578-1.593-2.375-2.375-.444 3.792-1.424 7.443-2.842 10.844-7.25 17.39-24.233 29.128-41.875 32.407-24.335 4.522-44.29-5.347-53.5-20.406-9.21-15.057-6.792-36.35 9.78-47.56l10.47 15.5c-8.913 6.028-9.28 14.19-4.313 22.31 4.967 8.122 16.17 15.156 34.156 11.814 11.306-2.102 23.896-11.33 28.03-21.25 2.07-4.96 2.47-9.862.408-15.47-1.675-4.555-5.187-9.764-11.72-15.25l-.187-.155c-27.316-20.587-56.338-35.393-85.75-45.157.018.032.045.06.063.093 6.684 12.22 7.18 26.082 3.063 38.344-8.233 24.525-34.07 43.848-66.032 42.78-6.948-.23-13.56 3.12-19.186 9.657-5.627 6.537-9.735 16.113-10.688 26.313-1.905 20.4 6.923 42.886 41.344 54L277 258.28c-41.083-13.264-56.83-45.546-54.22-73.5 1.307-13.975 6.706-26.962 15.157-36.78 8.452-9.818 20.475-16.603 33.97-16.156 24.04.802 42.323-14.084 47.687-30.063 2.682-7.988 2.335-15.937-1.75-23.405-3.968-7.252-11.83-14.423-25.906-19.656-17.114-2.967-34.16-4.367-50.875-4.314zM342.28 306.344c-41.915 3.41-87.366 23.4-125.28 46.562-55.98 34.198-114.89 26.733-156.688-4.28 16.444 58.844 74.712 70.788 135.5 55.905 6.083-2.285 12.06-6.538 17.157-12.03 7.057-7.607 12.17-17.47 13.78-25.625l18.344 3.625c-2.445 12.383-9.078 24.666-18.406 34.72-8.95 9.645-20.61 17.35-34.094 19.374-6.766 15.07-12.334 29.68-14.594 39.906-3.55 16.06 14.206 22.225 22.156 6.03 19.022-38.743 45.87-73.23 79.406-102.967 26.064-17.153 48.406-38.303 62.72-61.22z"/><path d="M209.5 18.66c-7.4-.02-14.8 1.93-19.2 6.96-3.1 3.59-4.8 8.46 0 19.19 5.2 8.08 9.3 19.06 12.9 33.12l-17.9 4.66c-6.1-23.73-13.8-33-18.5-35.1-2.4-1.04-4.7-1.14-8.3 0-3.7 1.11-8.4 3.68-13.5 7.47-7.9 5.8-12.6 13.22-12.4 19.25 3.7 12.42 13.1 18.6 25 24.19l-8 16.8c-4.6-2.1-8.7-4.4-12.4-6.8-13.3-7.3-23.1-10.38-28-9.97-2.6.22-4.1.85-6 2.77-2 2-4.4 5.7-6.5 11.6-3.5 9.9-4 17.7-1.5 21.8 2 3.2 7.2 6.9 20.1 8.2 3.3.1 6.7.2 10.4.4v.1h1.1l.2 18.7c-3.8 0-7.3-.1-10.6-.4-11.1-.1-17.7.8-20.2 2.1-1.6.8-2.1 1.3-2.9 3-.9 1.8-1.8 5.1-2.4 10-.6 4.5-.2 7.6.7 9.8.9 2.1 2.1 3.6 5.3 5.3 6.5 3.5 21.7 5.8 47.3 3.7l1.5 18.6c-17.2 1.5-30.7 1.5-41.5-.5 4.7 15.1 14.5 21.9 25.7 21.9h94c10.6 0 19.8-7.7 23.4-22.1l8.1-32.1 9.9 31.6c4.7 14.8 14.2 22.6 23.5 22.6H383c11.2 0 21.1-6.9 25.7-22-10.9 2.1-24.6 2.1-42.4.6l1.6-18.6c25.6 2.1 40.7-.2 47.2-3.7 3.2-1.7 4.4-3.2 5.3-5.3 1.4-6.3 2.1-19.3-4.5-22.8-2.5-1.2-9.1-2.2-20.2-2.1-3.3.3-6.8.4-10.6.4l.2-18.7h1v-.1c3.8-.2 7.2-.3 10.4-.4 12.9-1.3 18.2-5 20.2-8.2 2.5-4.1 2-11.9-1.6-21.8-2.3-6.2-6-13.77-12.4-14.37-17.1 2.07-29.1 9.67-40.4 16.77l-8-16.8c4.4-1.98 7.7-4.22 11.7-6.56 10.2-6.88 13-13.02 13.3-17.63.2-6.03-4.6-13.45-12.4-19.25-5.2-3.79-9.8-6.35-13.5-7.47-3.6-1.11-6-1.01-8.3 0-1.7.72-3.7 2.34-5.8 5.09-5.7 9.01-10.4 21.31-12.7 30l-18.1-4.66c4.1-15.76 8.8-27.65 15-35.93 3.3-8.79 1.7-13.12-1.1-16.38-9.4-7.73-28.3-9.73-38.7-1.99-4.5 3.34-8.1 8.5-10.9 15-5.5 12.97-7.1 30.87-7.1 43.99v.1l-.2 30.79v.1h-18.6v-.1l-.2-30.83v-.1c0-13.12-1.6-31.02-7.2-44.03-2.7-6.5-6.3-11.66-10.8-15-4.5-2.86-12-4.86-19.4-4.88zm47.2 217.94c-7.9 10.7-19.4 17.6-32.8 17.6h-42.8c2 4.3 5.4 8.2 10 11.8 11.8 9 32.1 15 53.6 16.4l-.6.6c-7.9 8.5-33.2 6.5-48 .9-35-12.8-67.9-21.9-101.28-11.1-43.77 17.3-74.86 66.9-65.53 113.1 10.36 51.3 66.85 124.2 121.11 99.8 61.3-27.6 11.4-114.5-25.3-132.1 8.5 23.2 39.8 79.9 11.4 91.9-34.2 14.4-81.56-43.6-69.48-86.9 20.71-57.4 66.08-49.5 99.38-37.5 60.3 21.7 31.2 169.9 95.2 167.1 38.9-1.7 85.4-60.7 48.7-106.3 3.9 28.6-20.4 75.5-42.9 63.4-33.8-18.1 12.2-84.5 43.7-106.6 24.4-17.1 70.6-28.1 89.5-3.7 29.8 38.6-53.2 74.2-27.7 118.3 22.5 39 75.7 47.4 117.6-10.8-29.1 17.4-68.6 25.8-79.6 1.6-14.1-31.1 62.7-35.3 69.1-76 5.8-36.7-18.3-73.9-49.6-93.9-39.9-25.6-109.3 30.9-160.3 7.7 19.7-2.1 37.9-8.1 48.6-16.7 4.2-3.4 7.3-7 9.3-11h-39.2c-12.9 0-24.2-7-32.1-17.6z"/></svg>`,
+  sp: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M194.82,151.43l-55.09,20.3-20.3,55.09a7.92,7.92,0,0,1-14.86,0l-20.3-55.09-55.09-20.3a7.92,7.92,0,0,1,0-14.86l55.09-20.3,20.3-55.09a7.92,7.92,0,0,1,14.86,0l20.3,55.09,55.09,20.3A7.92,7.92,0,0,1,194.82,151.43Z" fill="var(--acc)" opacity=".45"/><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"/></svg>`,
+  check: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg>`,
+  lock: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,96V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H208A8,8,0,0,1,216,96Z" fill="var(--acc)" opacity=".45"/><path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z"/></svg>`,
 };
 function mountIcons(root){ (root||document).querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = UI[el.dataset.ic] || ''; }); }
 
@@ -389,6 +634,7 @@ function logout(){
   if (r) fetch(API + '/auth/logout', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null; economy = null;
+  stopPolls(); stopLive(); closeSheet();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('authView').classList.remove('hidden');
 }
@@ -399,6 +645,8 @@ function enterApp(){
   document.getElementById('appView').classList.remove('hidden');
   FX.watchFPS();
   loadMe();
+  refreshClub();   // М1: клуб + брони + сессии
+  startPolls();
 }
 
 async function loadMe(){
@@ -427,30 +675,496 @@ function renderTop(){
   }
 }
 
-/* ═══ НАВИГАЦИЯ: 4 вкладки (решение №5) ═══ */
-function setTab(t){
-  curTab = t;
+/* ═══ НАВИГАЦИЯ: 4 вкладки (решение №5) — через View Transitions (RESEARCH §1):
+   document.startViewTransition есть → плавный кросс-фейд зоны контента,
+   нет (или perf-lite) → мгновенный свап с FX.swap, как раньше ═══ */
+function applyTab(t){
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('on', p.id === 'tab-' + t));
-  FX.swap(document.getElementById('tab-' + t));
+}
+function setTab(t){
+  if (t === curTab) return;
+  curTab = t;
+  if (!FX.lite && document.startViewTransition) document.startViewTransition(() => applyTab(t));
+  else { applyTab(t); FX.swap(document.getElementById('tab-' + t)); }
+  onTabShown(t);
+}
+/* жизнь вкладок: поллинг главной живёт только на главной (решение №4) */
+function onTabShown(t){
+  if (t === 'club'){ refreshClub(); startPolls(); }
+  else { stopPolls(); stopLive(); }
+  if (t === 'progress') loadProgress();   // М2: свежесть на входе, без поллинга
 }
 document.getElementById('nav').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]');
   if (b) setTab(b.dataset.tab);
 });
 
-/* Поллинг вместо WS (решение №4): интервалы приедут в М1/М4.
-   Пока — обновление топбара при возврате в приложение (count-up при изменении). */
+/* Поллинг вместо WS (решение №4): /clubs 15с, /me/sessions 10с — только на
+   видимой главной; при visibilitychange → hidden всё останавливается. */
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && me) loadMe();
+  if (document.hidden){ stopPolls(); stopLive(); return; }
+  if (!me) return;
+  loadMe();
+  if (curTab === 'club') refreshClub();
+  if (curTab === 'progress') loadProgress();
+  startPolls();
 });
 
 /* ═══ УТИЛИТЫ (= shell.html; правило цифр — форматирование ru-RU) ═══ */
 function fmt(n){ return (n==null?0:n).toLocaleString('ru-RU'); }
-function toast(msg){
+function toast(msg, action){
   const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 3200);
+  t.innerHTML = '';
+  const span = document.createElement('span'); span.textContent = msg; t.appendChild(span);
+  if (action){
+    const b = document.createElement('button');
+    b.className = 'tact'; b.textContent = action.label;
+    b.onclick = () => { t.classList.remove('show'); action.fn(); };
+    t.appendChild(b);
+  }
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), action ? 6000 : 3200);
+}
+
+/* ═══════════════ М1: КЛУБ И БРОНИ ═══════════════
+   Главная: карточка клуба (свободно N из M) → шторка брони (чипы
+   сегодня/завтра, слоты шагом 30 мин, длительность) → live-карточка
+   сессии → мои брони с undo-тостом. Поллинг — решение №4. */
+let clubsArr = [], club = null, clubErr = false;
+let bookings = [], activeSession = null, sessionsArr = [];
+let pollClubs = null, pollSess = null, liveTick = null;
+let lastCancelled = null;
+let bkDay = 'today', bkSlot = null, bkDur = 120, bkBusy = false;
+let wl = {waiting: false};
+
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pad2(n){ return String(n).padStart(2, '0'); }
+function hm(d){ d = new Date(d); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+function sameDay(a, b){ return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
+function fmtWhen(x){
+  const d = new Date(x), now = new Date(), tom = new Date(now.getTime() + 86400000);
+  if (sameDay(d, now)) return T('today_at', {t: hm(d)});
+  if (sameDay(d, tom)) return T('tomorrow_at', {t: hm(d)});
+  return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + ' ' + hm(d);
+}
+function fmtDur(min){ return min % 60 === 0 ? T('dur_h', {n: min / 60}) : min + ' ' + STR.min_suffix; }
+
+function refreshClub(){ loadClub(); loadBookings(); loadSessions(); loadWaitlist(); }
+
+/* поллинг главной (решение №4): только видимая вкладка «Клуб», в фоне тишина */
+function startPolls(){
+  stopPolls();
+  if (document.hidden || curTab !== 'club') return;
+  pollClubs = setInterval(() => { loadClub(); loadWaitlist(); }, 15000);
+  pollSess = setInterval(loadSessions, 10000);
+}
+function stopPolls(){ clearInterval(pollClubs); clearInterval(pollSess); pollClubs = pollSess = null; }
+function stopLive(){ if (liveTick){ clearInterval(liveTick); liveTick = null; } }
+
+async function loadClub(){
+  try{
+    const d = await api('/clubs');   // v1 одноклубный (решение №8): первый клуб
+    clubsArr = d.clubs || [];
+    club = clubsArr[0] || null;
+    clubErr = !club;
+  }catch(e){ if (!club) clubErr = true; }
+  renderClub();
+}
+async function loadBookings(){
+  try{ bookings = (await api('/me/bookings')).bookings || []; renderBookings(); }
+  catch(e){ /* не роняем главную — следующий заход обновит */ }
+}
+async function loadSessions(){
+  try{
+    const was = !!activeSession;
+    sessionsArr = (await api('/me/sessions')).sessions || [];
+    activeSession = sessionsArr.find(s => s.status === 'active') || null;
+    renderLive();
+    if (was && !activeSession) loadMe();  // сессия завершилась — свежие XP/монеты в топбар
+  }catch(e){ /* тихо: поллинг повторит */ }
+}
+
+/* ── карточка клуба (М1-и1) ── */
+function renderClub(){
+  const el = document.getElementById('clubCard');
+  if (!el) return;
+  if (!club){
+    el.dataset.ready = '';
+    el.innerHTML = clubErr
+      ? '<div style="text-align:center; padding:6px 0"><div class="muted" style="margin-bottom:12px">' + esc(STR.club_err) + '</div>' +
+        '<button class="btn ghost" style="max-width:220px" onclick="loadClub()">' + esc(STR.retry) + '</button></div>'
+      : '<div class="skel" style="width:55%; height:20px; margin-bottom:12px"></div>' +
+        '<div class="skel" style="width:70%; height:30px; margin-bottom:10px"></div>' +
+        '<div class="skel" style="width:45%; height:13px"></div>';
+    return;
+  }
+  if (!el.dataset.ready){
+    el.dataset.ready = '1';
+    el.innerHTML = `<h3 id="clubName"></h3>
+      <div class="clubfree">${esc(STR.lbl_free)} <b class="cnum" id="clubFreeN" data-v="0">0</b> <span id="clubTotal"></span></div>
+      <div class="muted" id="clubAddr"></div>
+      <div class="muted" id="clubMeta" style="margin-top:2px"></div>
+      <button class="btn" style="margin-top:14px" onclick="openSheet()">${esc(STR.btn_book)}</button>
+      <div id="wlZone"></div>`;
+  }
+  document.getElementById('clubName').textContent = club.name;
+  FX.countUp(document.getElementById('clubFreeN'), club.computers_free);
+  document.getElementById('clubTotal').textContent = STR.lbl_of + ' ' + club.computers_total;
+  const a = document.getElementById('clubAddr');
+  a.textContent = club.address || ''; a.style.display = club.address ? '' : 'none';
+  document.getElementById('clubMeta').innerHTML =
+    T('rate_hour', {n: (+club.base_rate_pln).toLocaleString('ru-RU')}) +
+    (club.phone ? ' · <a class="lnk" href="tel:' + esc(club.phone) + '">' + esc(club.phone) + '</a>' : '');
+  renderWaitlist();
+}
+
+/* ── вейтлист (Б9, «задел PWA»): сервер пускает в очередь только при 0 свободных ── */
+async function loadWaitlist(){
+  try{ wl = await api('/me/waitlist'); }catch(e){ /* тихо: поллинг повторит */ }
+  renderWaitlist();
+}
+function renderWaitlist(){
+  const el = document.getElementById('wlZone');
+  if (!el) return;
+  if (wl && wl.waiting){
+    el.innerHTML = wl.notified
+      ? `<div class="wl notif"><span style="flex:1">${esc(STR.wl_notified)}</span>
+           <button class="btn ghost slim" onclick="leaveWaitlist()">${esc(STR.wl_leave)}</button></div>`
+      : `<div class="wl"><span class="pos cnum" style="flex:1">${esc(T('wl_pos', {p: wl.position, t: wl.total}))}</span>
+           <button class="btn ghost slim" onclick="leaveWaitlist()">${esc(STR.wl_leave)}</button></div>`;
+    return;
+  }
+  el.innerHTML = (club && club.computers_free === 0 && !activeSession)
+    ? `<div class="wl"><span class="muted" style="flex:1">${esc(STR.wl_full)}</span>
+         <button class="btn ghost slim" onclick="joinWaitlist()">${esc(STR.wl_join)}</button></div>`
+    : '';
+}
+async function joinWaitlist(){
+  try{
+    const d = await api('/me/waitlist', {method: 'POST'});
+    toast(T('wl_joined', {p: d.position}));
+  }catch(e){ toast(T('toast_err', {m: e.message})); }
+  loadWaitlist();
+}
+async function leaveWaitlist(){
+  try{ await api('/me/waitlist', {method: 'DELETE'}); toast(STR.wl_left); }
+  catch(e){ toast(T('toast_err', {m: e.message})); }
+  loadWaitlist();
+}
+
+/* ── live-карточка сессии (М1-и4): таймер + ≈XP, зелёный tint как сайдбар shell ── */
+function renderLive(){
+  const el = document.getElementById('liveCard');
+  if (!el) return;
+  if (!activeSession){ el.classList.add('hidden'); el.dataset.ready = ''; stopLive(); renderWaitlist(); return; }
+  if (!el.dataset.ready){
+    el.dataset.ready = '1';
+    el.innerHTML = `<div class="muted" style="display:flex; align-items:center; gap:8px"><span class="livedot"></span>${esc(STR.live_now)}</div>
+      <div class="live-time cnum" id="liveTime">00:00</div>
+      <div class="muted">≈ +<b class="cnum" id="liveXP" data-v="0" style="color:var(--txt)">0</b> ${esc(STR.live_xp_lbl)}</div>`;
+  }
+  el.classList.remove('hidden');
+  tickLive();
+  if (!liveTick) liveTick = setInterval(tickLive, 1000);
+  renderWaitlist();
+}
+function tickLive(){
+  if (!activeSession) return;
+  const sec = Math.max(0, Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  const elT = document.getElementById('liveTime');
+  if (elT) elT.textContent = (h ? h + ':' + pad2(m) : pad2(m)) + ':' + pad2(sec % 60);
+  /* ≈XP: мин × ставка × множитель ранга, кратно 5 — как finishSession (правило цифр) */
+  const rate = (economy && economy.rates && economy.rates.xp_per_min) || 10;
+  const mult = (economy && economy.rank && economy.rank.xp_mult) || 1;
+  const xp = Math.round(Math.floor(sec / 60) * rate * mult / 5) * 5;
+  const elX = document.getElementById('liveXP');
+  if (elX && Number(elX.dataset.v || 0) !== xp) FX.countUp(elX, xp);
+}
+
+/* ── мои брони (М1-и3): ближайшая — крупно, отмена с undo ── */
+function renderBookings(){
+  const el = document.getElementById('bkList');
+  if (!el) return;
+  const up = bookings
+    .filter(b => (b.status === 'pending' || b.status === 'confirmed') && new Date(b.start_time) > new Date())
+    .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  if (!up.length){
+    el.innerHTML = '<div class="muted" style="padding:2px 0 4px">' + esc(STR.no_bookings) + '</div>';
+    return;
+  }
+  const xbtn = b => `<button class="bk-x" aria-label="${esc(STR.cancel)}" onclick="cancelBooking('${b.id}')">✕</button>`;
+  const pc = b => b.computer ? b.computer.name : '';
+  const next = up[0];
+  el.innerHTML = `<div class="bknext">
+      <div style="flex:1; min-width:0">
+        <div class="bk-big cnum">${esc(fmtWhen(next.start_time))}</div>
+        <div class="muted">${esc(fmtDur(next.duration_min))}${pc(next) ? ' · ' + esc(pc(next)) : ''}</div>
+      </div>${xbtn(next)}</div>` +
+    up.slice(1).map(b => `<div class="bkrow">
+      <span class="bk-when cnum">${esc(fmtWhen(b.start_time))}</span>
+      <span class="bk-pc">${esc(fmtDur(b.duration_min))}${pc(b) ? ' · ' + esc(pc(b)) : ''}</span>${xbtn(b)}</div>`).join('');
+}
+
+async function cancelBooking(id){
+  const b = bookings.find(v => v.id === id);
+  try{
+    await api('/me/bookings/' + id, {method: 'DELETE'});
+    if (b) lastCancelled = {club_id: b.club_id, computer_id: b.computer_id, start_time: b.start_time, duration_min: b.duration_min};
+    loadBookings();
+    toast(STR.booking_cancelled, {label: STR.undo, fn: restoreBooking});
+  }catch(e){ toast(T('toast_err', {m: e.message})); }
+}
+/* undo (М1-и3) = повторная бронь того же слота: сперва тот же ПК, иначе любой свободный */
+async function restoreBooking(){
+  const c = lastCancelled;
+  if (!c) return;
+  lastCancelled = null;
+  const mk = body => api('/clubs/' + c.club_id + '/bookings', {method: 'POST', body: JSON.stringify(body)});
+  const base = {start_time: c.start_time, duration_min: c.duration_min};
+  try{
+    try{ await mk({...base, computer_id: c.computer_id}); }
+    catch(e){ if (e.code === 'slot_busy' || e.code === 'no_computer') await mk(base); else throw e; }
+    toast(STR.booking_restored);
+    loadBookings();
+  }catch(e){ toast(T('restore_failed', {m: e.message})); }
+}
+
+/* ── шторка брони (М1-и2) ── */
+function openSheet(){
+  bkDay = 'today'; bkDur = 120; bkSlot = null; bkBusy = false;
+  document.getElementById('sheetWrap').classList.add('open');
+  buildSheet();
+}
+function closeSheet(){ document.getElementById('sheetWrap').classList.remove('open'); }
+
+function slotTimes(day){
+  const out = [];
+  const start0 = new Date(); start0.setHours(0, 0, 0, 0);
+  const base = new Date(start0);
+  if (day === 'tomorrow') base.setDate(base.getDate() + 1);
+  const dayEnd = new Date(base); dayEnd.setDate(dayEnd.getDate() + 1);
+  let t = day === 'today'
+    ? new Date(Math.ceil((Date.now() + 10 * 60000) / 1800000) * 1800000)  // ближайший слот, минимум +10 мин
+    : base;
+  for (; t < dayEnd; t = new Date(t.getTime() + 1800000)) out.push(new Date(t));
+  return out;
+}
+
+function buildSheet(){
+  document.getElementById('dayChips').innerHTML = [['today', STR.day_today], ['tomorrow', STR.day_tomorrow]]
+    .map(([k, lbl]) => `<button class="chip${bkDay === k ? ' on' : ''}" onclick="setBkDay('${k}')">${esc(lbl)}</button>`).join('');
+  const slots = slotTimes(bkDay);
+  if (bkSlot == null || !slots.some(s => s.getTime() === bkSlot)){
+    const pref = bkDay === 'tomorrow' ? slots.find(s => s.getHours() === 18 && !s.getMinutes()) : null;
+    const pick = pref || slots[0];
+    bkSlot = pick ? pick.getTime() : null;
+  }
+  document.getElementById('timeSlots').innerHTML = slots.length
+    ? slots.map(s => `<button class="chip cnum${s.getTime() === bkSlot ? ' on' : ''}" onclick="setBkSlot(${s.getTime()})">${hm(s)}</button>`).join('')
+    : '<div class="muted">' + esc(STR.no_slots_today) + '</div>';
+  document.getElementById('durChips').innerHTML = [60, 120, 180, 300]
+    .map(d => `<button class="chip cnum${bkDur === d ? ' on' : ''}" onclick="setBkDur(${d})">${esc(fmtDur(d))}</button>`).join('');
+  document.getElementById('bkErr').textContent = '';
+  document.getElementById('bkGo').disabled = bkSlot == null;
+  const on = document.querySelector('#timeSlots .chip.on');
+  if (on && on.scrollIntoView) on.scrollIntoView({block: 'nearest', inline: 'center'});
+}
+function setBkDay(d){ bkDay = d; bkSlot = null; buildSheet(); }
+function setBkSlot(t){ bkSlot = t; buildSheet(); }
+function setBkDur(d){ bkDur = d; buildSheet(); }
+
+async function submitBooking(){
+  if (bkBusy || bkSlot == null || !club) return;
+  bkBusy = true;
+  const go = document.getElementById('bkGo'), err = document.getElementById('bkErr');
+  go.disabled = true; err.textContent = '';
+  try{
+    const d = await api('/clubs/' + club.id + '/bookings', {method: 'POST', body: JSON.stringify({
+      start_time: new Date(bkSlot).toISOString(),
+      duration_min: bkDur,
+    })});
+    closeSheet();
+    toast(T('book_ok', {pc: d.computer, t: hm(d.start_time)}));
+    loadBookings();
+  }catch(e){
+    if (e.code === 'slot_busy'){
+      /* по-человечески (М1-и2): сразу выбираем следующий слот и предлагаем его;
+         точного «ближайшего свободного» сервер не отдаёт (решение №10 — без новых эндпоинтов) */
+      const slots = slotTimes(bkDay), i = slots.findIndex(s => s.getTime() === bkSlot);
+      const next = i >= 0 && slots[i + 1] ? slots[i + 1] : null;
+      const was = hm(bkSlot);
+      if (next){ bkSlot = next.getTime(); buildSheet(); err.textContent = T('err_busy_next', {t: was, t2: hm(next)}); }
+      else err.textContent = STR.err_busy_none;
+    } else err.textContent = e.message || STR.err_generic;
+  }
+  bkBusy = false;
+  document.getElementById('bkGo').disabled = bkSlot == null;
+}
+
+/* ═══════════════ М2: ПРОГРЕСС ═══════════════
+   Ранг с лаврами и шкалой часов → таланты (3 ветки, arm-confirm) →
+   ачивки → топ клуба → история сессий и пополнений. Без поллинга:
+   свежие данные на входе во вкладку и по возврату в приложение. */
+let talents = null, achievements = null, leaderboard = null, deposits = null;
+let armTalent = null, armTimer = null;
+
+async function loadProgress(){
+  loadMe(); // топбар и economy (ранг/часы) заодно
+  try{
+    const [tl, ac, lb, dp] = await Promise.all([
+      api('/me/talents'), api('/me/achievements'), api('/leaderboard'), api('/me/deposits'),
+    ]);
+    talents = tl; achievements = ac; leaderboard = lb; deposits = dp.deposits || [];
+  }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
+  await loadSessions(); // журнал для истории (заодно live-карточка честная)
+  renderProgress();
+}
+function renderProgress(){ renderRank(); renderTalents(); renderAch(); renderLb(); renderHist(); }
+
+/* ── ранг с лаврами и шкалой часов (М2-и1) ── */
+function renderRank(){
+  const el = document.getElementById('rankCard');
+  if (!el || !economy || !economy.rank) return;
+  const rk = economy.rank, hours = Math.floor(economy.hours_played || 0);
+  let prog = 100, progText = STR.prog_rank_max;
+  if (economy.next_rank){
+    const span = (economy.next_rank.min_hours - rk.min_hours) || 1;
+    prog = Math.max(0, Math.min(100, Math.round(100 * ((economy.hours_played || 0) - rk.min_hours) / span)));
+    progText = T('prog_hours_next', {n: economy.next_rank.hours_left, r: economy.next_rank.name});
+  }
+  const done = sessionsArr.filter(s => s.status === 'completed').length;
+  el.innerHTML = `<div style="display:flex; align-items:center; gap:12px">
+      <span class="rk-laur" data-ic="laurels"></span>
+      <div style="flex:1; min-width:0">
+        <div style="font-weight:900; font-size:19px">${esc(rk.name)}</div>
+        <div class="muted cnum">${T('prog_rank', {a: rk.level, h: fmt(hours)})}</div>
+      </div>
+      <span class="lvlpill">LVL <b class="cnum">${me ? me.level : 1}</b></span>
+    </div>
+    <div class="hbar" style="margin:12px 0 6px"><i style="width:${prog}%"></i></div>
+    <div class="muted cnum">${esc(progText)}</div>
+    <div class="muted cnum" style="margin-top:5px">${T('prog_sessions', {n: done >= 50 ? '50+' : done})}</div>`;
+  mountIcons(el);
+}
+
+/* ── таланты: 3 ветки, эффекты словами, arm-confirm (М2-и2, решение №7) ── */
+function fmtEffect(type, val){
+  if (type === 'free_booking') return STR.eff_free_booking;
+  const n = type === 'coins_ttl_bonus' ? Math.round(val) : Math.round(val * 100);
+  const key = 'eff_' + type;
+  return STR[key] ? T(key, {n}) : '+' + n + '%';
+}
+function renderTalents(){
+  const el = document.getElementById('talCard');
+  if (!el || !talents) return;
+  const sp = talents.skillpoints_available || 0;
+  const BR = {strength: ['brStr', STR.branch_strength], agility: ['brAgi', STR.branch_agility], intellect: ['brInt', STR.branch_intellect]};
+  let html = `<div style="display:flex; align-items:center; gap:8px">
+    <h3 style="margin:0; flex:1">${esc(STR.tal_title)}</h3>
+    ${sp > 0 ? `<span class="pbadge cnum">${UI.sp} ${sp}</span>` : ''}</div>`;
+  for (const br of ['strength', 'agility', 'intellect']){
+    const list = (talents.talents || []).filter(t => t.branch === br);
+    if (!list.length) continue;
+    html += `<div class="tbranch"><span class="bic" data-ic="${BR[br][0]}"></span>${esc(BR[br][1])}</div>`;
+    html += list.map(t => {
+      const eff = t.current_level > 0 ? fmtEffect(t.effect_type, t.effect_now) : '';
+      const nxt = t.current_level < t.max_level ? fmtEffect(t.effect_type, t.effect_next) : '';
+      let btn;
+      if (!t.unlocked) btn = `<button class="tal-btn" disabled>${esc(T('tal_from_lvl', {n: t.min_user_level}))}</button>`;
+      else if (t.current_level >= t.max_level) btn = `<button class="tal-btn maxed" disabled>${esc(STR.tal_max)}</button>`;
+      else if (armTalent === t.id) btn = `<button class="tal-btn arm" onclick="invest('${t.id}')">${esc(STR.tal_confirm)}</button>`;
+      else btn = `<button class="tal-btn plus" ${sp < 1 ? 'disabled' : ''} onclick="armInvest('${t.id}')">${esc(STR.tal_plus)}</button>`;
+      return `<div class="talrow ${t.unlocked ? '' : 'locked'}">
+        <div style="flex:1; min-width:0">
+          <div class="tal-n">${esc(t.name)} <span class="muted cnum" style="font-weight:700">${t.current_level}/${t.max_level}</span></div>
+          <div class="tal-e cnum">${esc(eff)}${nxt ? (eff ? ' → ' : '→ ') + esc(nxt) : ''}</div>
+          <div class="talbar"><i style="width:${100 * t.current_level / t.max_level}%"></i></div>
+        </div>${btn}</div>`;
+    }).join('');
+  }
+  el.innerHTML = html;
+  mountIcons(el);
+}
+function armInvest(id){
+  armTalent = id;
+  clearTimeout(armTimer);
+  armTimer = setTimeout(() => { armTalent = null; renderTalents(); }, 2600);
+  renderTalents();
+}
+async function invest(id){
+  clearTimeout(armTimer); armTalent = null;
+  try{
+    const d = await api('/me/talents/invest', {method: 'POST', body: JSON.stringify({talent_id: id})});
+    const t = ((talents && talents.talents) || []).find(v => v.id === id);
+    toast(T('tal_invested', {n: t ? t.name : '', e: t ? fmtEffect(t.effect_type, d.effect_now) : ''}));
+  }catch(e){ toast(T('toast_err', {m: e.message})); }
+  loadProgress();
+}
+
+/* ── ачивки: получено сверху (М2-и3) ── */
+function renderAch(){
+  const el = document.getElementById('achCard');
+  if (!el || !achievements) return;
+  const list = achievements.achievements || [];
+  const got = list.filter(a => a.earned), rest = list.filter(a => !a.earned);
+  el.innerHTML = `<h3>${esc(STR.ach_title)} <span class="muted cnum" style="font-weight:700">${T('ach_got', {a: achievements.earned_count || 0, b: list.length})}</span></h3>` +
+    [...got, ...rest].map(a => `<div class="achrow ${a.earned ? 'got' : ''}">
+      <span class="aic" data-ic="${a.earned ? 'check' : 'lock'}"></span>
+      <div style="flex:1; min-width:0">
+        <div class="ach-t">${esc(a.title)}</div>
+        <div class="muted" style="font-size:12.5px">${esc(a.description || '')}</div>
+        ${a.reward_skillpoints || a.reward_case_tier ? `<div class="ach-rw cnum">${a.reward_skillpoints ? T('ach_reward_sp', {n: a.reward_skillpoints}) : ''}${a.reward_skillpoints && a.reward_case_tier ? ' · ' : ''}${a.reward_case_tier ? T('ach_reward_case', {t: a.reward_case_tier}) : ''}</div>` : ''}
+      </div></div>`).join('');
+  mountIcons(el);
+}
+
+/* ── топ клуба + твоё место (М2-и3) ── */
+function renderLb(){
+  const el = document.getElementById('lbCard');
+  if (!el || !leaderboard) return;
+  const top10 = (leaderboard.top || []).slice(0, 10);
+  const rows = top10.map(r => `<div class="lbrow ${r.is_me ? 'me' : ''}">
+      <span class="lb-rk cnum ${r.rank <= 3 ? 'top3' : ''}">#${r.rank}</span>
+      <span class="lb-av">${AVATARS[(r.avatar_id || 1) - 1] || '😎'}</span>
+      <span class="lb-nk">${esc(r.nickname)}</span>
+      <span class="lvlpill">LVL <b class="cnum">${r.level}</b></span>
+      <span class="lb-xp cnum">${fmt(r.xp_total)} XP</span>
+    </div>`).join('');
+  const meRow = (leaderboard.me && leaderboard.me.rank && !top10.some(r => r.is_me))
+    ? `<div class="muted cnum" style="text-align:center; margin-top:8px">${T('lb_me', {n: leaderboard.me.rank})}</div>` : '';
+  el.innerHTML = `<h3>${esc(STR.lb_title)}</h3>` + (rows || `<div class="muted">${esc(STR.lb_empty)}</div>`) + meRow;
+}
+
+/* ── история сессий и пополнений + баланс крупно (М2-и4) ── */
+function renderHist(){
+  const el = document.getElementById('histCard');
+  if (!el || (deposits == null && !sessionsArr.length)) return;
+  const items = [];
+  sessionsArr.filter(s => s.status === 'completed').forEach(s => items.push({
+    at: s.ended_at || s.started_at,
+    l: STR.hist_session, sub: fmt(s.minutes_used || 0) + ' ' + STR.min_suffix,
+    v: '+' + fmt(s.xp_earned) + ' XP · +' + fmt(s.coins_earned),
+  }));
+  (deposits || []).forEach(d => items.push({
+    at: d.created_at,
+    l: T('hist_deposit', {a: (+d.amount_pln).toLocaleString('ru-RU')}), sub: '',
+    v: '+' + fmt((d.coins_granted || 0) + (d.bonus_coins || 0)),
+  }));
+  items.sort((a, b) => new Date(b.at) - new Date(a.at));
+  el.innerHTML = `<h3>${esc(STR.hist_title)}</h3>
+    <div style="display:flex; align-items:baseline; gap:8px; margin:2px 0 6px">
+      <span class="balbig gold-t cnum" id="histBal" data-v="0">0</span>
+      <span class="muted">${esc(STR.hist_balance)}</span>
+    </div>` +
+    (items.slice(0, 20).map(i => `<div class="hrow">
+      <span class="h-when">${esc(fmtWhen(i.at))}</span>
+      <span class="h-l">${esc(i.l)}${i.sub ? ' · ' + i.sub : ''}</span>
+      <span class="h-v">${i.v}</span>
+    </div>`).join('') || `<div class="muted">${esc(STR.hist_empty)}</div>`);
+  FX.countUp(document.getElementById('histBal'), me ? me.coins_balance : 0);
 }
 
 /* ═══ FX: облегчённый движок (решение №6 — без tilt/spotlight/magnet) ═══ */
@@ -512,7 +1226,7 @@ const FX = (() => {
 
 // глобальный ripple на интерактивных элементах
 document.addEventListener('click', e => {
-  if (e.target.closest('.btn,.nav button,.tabs button')) FX.ripple(e.clientX, e.clientY);
+  if (e.target.closest('.btn,.nav button,.tabs button,.chip,.bk-x')) FX.ripple(e.clientX, e.clientY);
 });
 
 /* ═══ SERVICE WORKER (установка на главный экран; по чистому http://<ip> молча пропускаем) ═══ */
