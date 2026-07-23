@@ -324,14 +324,24 @@ func (a *agent) runWS() {
 }
 
 func (a *agent) heartbeat(stop <-chan struct{}) {
-	t := time.NewTicker(60 * time.Second)
+	runHeartbeat(60*time.Second, stop, func() error {
+		return a.wsSend(wsMessage{Type: "session_tick"})
+	})
+}
+
+// runHeartbeat — таймерный цикл heartbeat'а: раз в interval зовёт send, пока
+// не закрыт stop или send не вернул ошибку (связь упала — цикл умирает вместе
+// с соединением, runWS поднимет новый). Чистая функция — тестируется на
+// виртуальном времени (heartbeat_test.go, testing/synctest).
+func runHeartbeat(interval time.Duration, stop <-chan struct{}, send func() error) {
+	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
 		select {
 		case <-stop:
 			return
 		case <-t.C:
-			if err := a.wsSend(wsMessage{Type: "session_tick"}); err != nil {
+			if err := send(); err != nil {
 				return
 			}
 		}

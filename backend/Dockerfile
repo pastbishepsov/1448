@@ -1,5 +1,5 @@
 # ── Сборка ───────────────────────────────────────────────────────────────────
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26.5-alpine AS builder
 
 WORKDIR /app
 
@@ -26,7 +26,7 @@ EXPOSE 8080
 ENTRYPOINT ["./entrypoint.sh"]
 
 # ── Development (hot reload) ─────────────────────────────────────────────────
-FROM golang:1.25-alpine AS development
+FROM golang:1.26.5-alpine AS development
 
 WORKDIR /app
 

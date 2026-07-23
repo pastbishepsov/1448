@@ -63,8 +63,9 @@ func main() {
 
 	// ── Роуты ───────────────────────────────────────────────────────────────
 	r := gin.Default()
-	r.Use(corsMiddleware())      // разрешаем запросы из браузера (веб-приложение)
-	r.Use(rateLimitMiddleware()) // ~10 rps с IP (ТЗ 10.1), кроме /health
+	r.Use(corsMiddleware())        // разрешаем запросы из браузера (веб-приложение)
+	r.Use(crossOriginMiddleware()) // CSRF-защита мутаций (Go 1.25+), GET/агент не трогает
+	r.Use(rateLimitMiddleware())   // ~10 rps с IP (ТЗ 10.1), кроме /health
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -446,6 +447,36 @@ func corsMiddleware() gin.HandlerFunc {
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
+}
+
+// crossOriginMiddleware — CSRF-защита стандартной библиотеки (Go 1.25+,
+// http.CrossOriginProtection): небезопасные кросс-доменные браузерные запросы
+// (POST/PUT/PATCH/DELETE с чужого origin) получают 403 по Sec-Fetch-Site /
+// Origin. Безопасные методы (GET/HEAD/OPTIONS) и клиенты без браузерных
+// заголовков (shell-agent, C#-сервис, curl) проходят всегда — поведение API
+// для легитимных клиентов не меняется. Origin «null» пропускаем явно: киоск
+// WebView2 и admin.html открываются с file:// до HTTPS-домена (спринт 6);
+// после переезда на домен этот допуск убрать, а домен вписать в
+// TRUSTED_ORIGINS (список через запятую: scheme://host[:port]).
+func crossOriginMiddleware() gin.HandlerFunc {
+	cop := http.NewCrossOriginProtection()
+	for _, origin := range strings.Split(os.Getenv("TRUSTED_ORIGINS"), ",") {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if err := cop.AddTrustedOrigin(origin); err != nil {
+			log.Printf("TRUSTED_ORIGINS: пропускаю %q: %v", origin, err)
+		}
+	}
+	return func(c *gin.Context) {
+		if err := cop.Check(c.Request); err != nil && c.GetHeader("Origin") != "null" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"code": "cross_origin", "message": "Кросс-доменный запрос отклонён"})
 			return
 		}
 		c.Next()
