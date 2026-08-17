@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>14:48 — Админка</title>
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
 <style>
   :root{
     /* ── 14:48 Noir (см. DESIGN.md): чёрная база, красный — единственный акцент.
@@ -32,10 +34,18 @@
   .isvg{width:1em; height:1em; display:inline-block; vertical-align:-.125em; flex:none}
   :focus-visible{outline:2px solid var(--acc); outline-offset:2px; border-radius:6px}
 
-  .logo{font-weight:800; letter-spacing:1px}
-  .logo b{color:var(--acc); animation:colon 2.2s ease-in-out infinite}
-  @keyframes colon{0%,100%{opacity:1}50%{opacity:.35}}
-  @media (prefers-reduced-motion:reduce){ .logo b{animation:none} }
+  /* ═══ ФИРМЕННЫЙ ЗНАК «14:48» (docs/ТЗ-логотип-14-48.md) ═══
+     Геометрия и цвета знака зафиксированы дизайнером: штрих #f2f0f2, акцент #ff2740.
+     Пульс двоеточия (1s ease-out) — подпись бренда. Настоящие часы в интерфейсе
+     набираются обычным шрифтом: двоеточие НЕ красное и не пульсирует, иначе знак
+     читается как время. Рядом со знаком часы не ставим. */
+  @keyframes logo1448Pulse{0%{opacity:1}12%{opacity:.22}42%{opacity:1}100%{opacity:1}}
+  .logo1448{display:block; flex:none; overflow:visible}
+  .logo1448 .l-colon{animation:logo1448Pulse 1s ease-out infinite}
+  .logo-row{display:flex; align-items:center; gap:10px}
+  .logo-wrap{display:flex; justify-content:center}
+  @media (prefers-reduced-motion:reduce){ .logo1448 .l-colon{animation:none} }
+  .logo-row .tag{color:var(--dim); font-weight:800; letter-spacing:.18em}
 
   .btn{border:0; border-radius:11px; padding:10px 16px; font-size:14px; font-weight:700;
        background:linear-gradient(135deg,var(--acc),#c11226); color:#fff; cursor:pointer;
@@ -394,7 +404,19 @@
 <body>
 
 <div id="loginView">
-  <div class="logo" style="font-size:40px">14<b>:</b>48 <span class="muted" style="font-size:16px">ADMIN</span></div>
+  <div class="logo-row" style="justify-content:center">
+    <svg class="logo1448" viewBox="-10 -10 336 120" style="height:46px" role="img" aria-label="14:48" focusable="false">
+      <g class="l-sand" fill="#ff2740"><path d="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/><rect x="279.6" y="54" width="2.8" height="14" rx="1.4"/><path d="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/></g>
+      <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12,26 L34,7 L34,94"/>
+        <path d="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+        <path d="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+        <path d="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+      </g>
+      <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
+    </svg>
+    <span class="tag" style="font-size:16px">ADMIN</span>
+  </div>
   <div class="logincard">
     <input id="nick" class="input" placeholder="Никнейм администратора" autocomplete="off" autofocus>
     <input id="pass" class="input" type="password" placeholder="Пароль" onkeydown="if(event.key==='Enter')login()">
@@ -406,7 +428,19 @@
 
 <div id="appView" class="hidden">
   <div class="topbar">
-    <div class="logo" style="font-size:20px">14<b>:</b>48 <span class="muted">ADMIN</span></div>
+    <div class="logo-row">
+      <svg class="logo1448" viewBox="-6 -6 328 112" style="height:22px" role="img" aria-label="14:48" focusable="false">
+        <g class="l-sand" fill="#ff2740"><path d="M263,83 Q281,62 299,83 Q294,89.5 281,90 Q268,89.5 263,83 Z"/></g>
+        <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12,26 L34,9 L34,92"/>
+          <path d="M104,10 L60,62 L114,62 M104,10 L104,92"/>
+          <path d="M218,10 L174,62 L228,62 M218,10 L218,92"/>
+          <path d="M281,50 C258,40 255,10 281,10 C307,10 304,40 281,50 C258,60 255,90 281,90 C307,90 304,60 281,50 Z"/>
+        </g>
+        <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="12"/><circle cx="143" cy="72" r="12"/></g>
+      </svg>
+      <span class="tag" style="font-size:13px">ADMIN</span>
+    </div>
     <div class="gsearch" id="gsearch">
       <span data-ic="search"></span>
       <input id="gq" placeholder="Гость или ПК…" autocomplete="off" aria-label="Глобальный поиск">

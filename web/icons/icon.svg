@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512">
+<rect width="100" height="100" rx="22" fill="#070708"/>
+<g id="colon" fill="#ff2740"><circle cx="15" cy="40" r="7.5"></circle><circle cx="15" cy="60" r="7.5"></circle></g>
+<g transform="translate(30,16) scale(0.68)">
+<g id="sand" fill="#ff2740"><path d="M34,82 Q50,64 66,82 Q63,89 50,90 Q37,89 34,82 Z"></path><rect x="48.2" y="53" width="3.6" height="14" rx="1.8"></rect></g>
+<g id="digits"><path d="M50,50 C24,39 20,6 50,6 C80,6 76,39 50,50 C24,61 20,94 50,94 C80,94 76,61 50,50 Z" fill="none" stroke="#f2f0f2" stroke-width="11" stroke-linejoin="round"></path></g>
+</g>
+</svg>

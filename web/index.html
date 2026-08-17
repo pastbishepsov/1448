@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>14:48</title>
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
 <style>
   :root{
     --bg:#0a0c11; --card:#151a24; --card2:#1d2330; --line:#2a3140;
@@ -22,8 +24,17 @@
   .view{flex:1; overflow-y:auto; padding:20px}
   .view::-webkit-scrollbar{width:0}
   h1,h2,h3{margin:0}
-  .logo{font-weight:800; letter-spacing:1px; font-size:30px}
-  .logo b{color:var(--acc)}
+  /* ═══ ФИРМЕННЫЙ ЗНАК «14:48» (docs/ТЗ-логотип-14-48.md) ═══
+     Геометрия и цвета знака зафиксированы дизайнером: штрих #f2f0f2, акцент #ff2740.
+     Пульс двоеточия (1s ease-out) — подпись бренда. Настоящие часы в интерфейсе
+     набираются обычным шрифтом: двоеточие НЕ красное и не пульсирует, иначе знак
+     читается как время. Рядом со знаком часы не ставим. */
+  @keyframes logo1448Pulse{0%{opacity:1}12%{opacity:.22}42%{opacity:1}100%{opacity:1}}
+  .logo1448{display:block; flex:none; overflow:visible}
+  .logo1448 .l-colon{animation:logo1448Pulse 1s ease-out infinite}
+  .logo-row{display:flex; align-items:center; gap:10px}
+  .logo-wrap{display:flex; justify-content:center}
+  @media (prefers-reduced-motion:reduce){ .logo1448 .l-colon{animation:none} }
   .btn{width:100%; border:0; border-radius:14px; padding:15px; font-size:16px; font-weight:700;
        background:linear-gradient(135deg,var(--acc),#9d7bff); color:#fff; cursor:pointer; transition:.15s}
   .btn:active{transform:scale(.98)}
@@ -99,7 +110,18 @@
   <!-- AUTH -->
   <div id="authView" class="view">
     <div style="text-align:center">
-      <div class="logo">14<b>:</b>48</div>
+      <div class="logo-wrap">
+        <svg class="logo1448" viewBox="-10 -10 336 120" style="height:44px" role="img" aria-label="14:48" focusable="false">
+          <g class="l-sand" fill="#ff2740"><path d="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/><rect x="279.6" y="54" width="2.8" height="14" rx="1.4"/><path d="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/></g>
+          <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12,26 L34,7 L34,94"/>
+            <path d="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+            <path d="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+            <path d="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+          </g>
+          <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
+        </svg>
+      </div>
       <div class="muted" style="margin-top:6px">Твой клуб — это игра</div>
     </div>
     <div class="tabs">

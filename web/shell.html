@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>14:48 — Гостевой экран</title>
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
 <style>
   :root{
     /* ── 14:48 Noir — чёрная база, красный акцент ── */
@@ -59,8 +62,17 @@
   /* ═══ AUTH ═══ */
   #authView{height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:26px}
   .authcard{width:400px; background:var(--panel); border:1px solid var(--hair); border-radius:24px; padding:34px}
-  .logo{font-weight:800; letter-spacing:2px; font-size:44px; text-align:center}
-  .logo b{color:var(--acc)}
+  /* ═══ ФИРМЕННЫЙ ЗНАК «14:48» (docs/ТЗ-логотип-14-48.md) ═══
+     Геометрия и цвета знака зафиксированы дизайнером: штрих #f2f0f2, акцент #ff2740.
+     Пульс двоеточия (1s ease-out) — подпись бренда. Настоящие часы в интерфейсе
+     набираются обычным шрифтом: двоеточие НЕ красное и не пульсирует, иначе знак
+     читается как время. Рядом со знаком часы не ставим. */
+  @keyframes logo1448Pulse{0%{opacity:1}12%{opacity:.22}42%{opacity:1}100%{opacity:1}}
+  .logo1448{display:block; flex:none; overflow:visible}
+  .logo1448 .l-colon{animation:logo1448Pulse 1s ease-out infinite}
+  .logo-row{display:flex; align-items:center; gap:10px}
+  .logo-wrap{display:flex; justify-content:center}
+  @media (prefers-reduced-motion:reduce){ .logo1448 .l-colon{animation:none} }
   .slogan{text-align:center; color:var(--dim); margin-top:6px}
   .tabs{display:flex; background:#0e0d10; border-radius:12px; padding:4px; margin:24px 0 18px}
   .tabs button{flex:1; border:0; background:transparent; color:var(--dim); padding:10px; border-radius:9px; font-weight:700; cursor:pointer; font-size:14px}
@@ -82,8 +94,7 @@
   #shellView{height:100vh; display:flex; flex-direction:column}
   .topbar{display:flex; align-items:center; gap:14px; padding:11px 22px; background:rgba(13,14,20,.92);
           border-bottom:1px solid var(--hair); backdrop-filter:blur(8px)}
-  .tb-logo{font-weight:800; font-size:22px; letter-spacing:1px}
-  .tb-logo b{color:var(--acc)}
+  /* шапка: фирменный знак .logo1448 высотой 22px (см. блок «ФИРМЕННЫЙ ЗНАК») */
   .ava{width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg,var(--acc),#7a1020);
        display:flex; align-items:center; justify-content:center; font-size:22px; cursor:pointer; user-select:none}
   .tb-user{cursor:pointer; line-height:1.25}
@@ -286,7 +297,12 @@
               flex-direction:column; gap:10px; background:radial-gradient(900px 500px at 50% 30%, #1c0d12 0%, rgba(5,4,6,.98) 60%);
               backdrop-filter:blur(6px)}
   .lockscreen.show{display:flex}
-  .lock-clock{font-size:88px; font-weight:900; letter-spacing:2px; font-variant-numeric:tabular-nums; line-height:1}
+  /* #lockOverlay в блоке слоёв выше объявлен position:relative (id перебивает класс) —
+     из-за этого лок-экран уезжал под шапку вниз по потоку; возвращаем ему fixed. */
+  #lockOverlay.lockscreen{position:fixed}
+  /* настоящие часы: обычный набор, двоеточие не красное — знак над ними единственный логотип */
+  .lock-clock{font-size:54px; font-weight:800; letter-spacing:2px; font-variant-numeric:tabular-nums;
+              line-height:1; color:var(--txt); margin-top:22px}
   .lock-sub{color:var(--dim); font-size:15px; margin-bottom:16px}
   .lock-card{display:flex; flex-direction:column; gap:10px; width:340px; text-align:center}
   .lock-user{color:var(--dim); font-size:14px; margin-top:14px}
@@ -311,7 +327,7 @@
   .attract{position:fixed; inset:0; z-index:60; background:#000; display:none; align-items:center;
     justify-content:center; flex-direction:column; gap:16px; cursor:none}
   .attract.show{display:flex}
-  .attract .logo{font-size:64px; animation:attPulse 3.2s var(--smooth) infinite}
+  .attract .logo1448{height:min(19vw,180px); animation:attPulse 3.2s var(--smooth) infinite}
   .att-free{color:var(--dim); font-size:16px; letter-spacing:.4px}
   .att-free b{color:var(--txt)}
   @keyframes attPulse{0%,100%{opacity:1}50%{opacity:.55}}
@@ -329,11 +345,8 @@
     transition:transform .25s var(--spring), border-color .25s var(--smooth), box-shadow .25s var(--smooth)}
   .side{background:linear-gradient(180deg,rgba(14,18,32,.75),rgba(10,12,20,.85))}
 
-  /* — лого с пульсирующим двоеточием (мотив времени) — */
-  .logo,.tb-logo{background:var(--aurora); -webkit-background-clip:text; background-clip:text; color:transparent;
-    -webkit-text-fill-color:transparent}
-  .logo b,.tb-logo b,.clock b,.lock-clock b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
-  @keyframes colonPulse{0%,100%{opacity:1; text-shadow:0 0 10px var(--acc3)}50%{opacity:.35; text-shadow:none}}
+  /* — логотип теперь вектор (.logo1448): aurora-градиент и красное пульсирующее
+       двоеточие у текстовых «14:48» убраны, чтобы часы не читались как знак — */
 
   /* — premium-кнопки: shimmer + glow + magnet — */
   .btn{position:relative; overflow:hidden; background:var(--aurora); background-size:200% 100%;
@@ -529,8 +542,8 @@
   .tb-sens.active{background:var(--aurora); color:#fff; animation:none; box-shadow:var(--glow)}
   @keyframes sensPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,39,64,.4)}50%{box-shadow:0 0 14px 2px rgba(255,39,64,.35)}}
   body.perf-lite .tb-sens{animation:none}
-  body.perf-lite .logo b, body.perf-lite .tb-logo b, body.perf-lite .clock b, body.perf-lite .lock-clock b{animation:none}
-  body.perf-lite .attract .logo{animation:none}
+  body.perf-lite .logo1448 .l-colon{animation:none}
+  body.perf-lite .attract .logo1448{animation:none}
 </style>
 </head>
 <body>
@@ -544,7 +557,18 @@
 <!-- ═══════════ AUTH ═══════════ -->
 <div id="authView">
   <div>
-    <div class="logo">14<b>:</b>48</div>
+    <div class="logo-wrap">
+      <svg class="logo1448" viewBox="-10 -10 336 120" style="height:60px" role="img" aria-label="14:48" focusable="false">
+        <g class="l-sand" fill="#ff2740"><path d="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/><rect x="279.6" y="54" width="2.8" height="14" rx="1.4"/><path d="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/></g>
+        <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12,26 L34,7 L34,94"/>
+          <path d="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+          <path d="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+          <path d="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+        </g>
+        <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
+      </svg>
+    </div>
     <div class="slogan">Твой клуб — это игра</div>
   </div>
   <div class="authcard">
@@ -563,7 +587,16 @@
 <!-- ═══════════ SHELL ═══════════ -->
 <div id="shellView" class="hidden">
   <div class="topbar">
-    <div class="tb-logo">14<b>:</b>48</div>
+    <svg class="logo1448" viewBox="-6 -6 328 112" style="height:22px" role="img" aria-label="14:48" focusable="false">
+      <g class="l-sand" fill="#ff2740"><path d="M263,83 Q281,62 299,83 Q294,89.5 281,90 Q268,89.5 263,83 Z"/></g>
+      <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12,26 L34,9 L34,92"/>
+        <path d="M104,10 L60,62 L114,62 M104,10 L104,92"/>
+        <path d="M218,10 L174,62 L228,62 M218,10 L218,92"/>
+        <path d="M281,50 C258,40 255,10 281,10 C307,10 304,40 281,50 C258,60 255,90 281,90 C307,90 304,60 281,50 Z"/>
+      </g>
+      <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="12"/><circle cx="143" cy="72" r="12"/></g>
+    </svg>
     <div class="ava" id="ava" onclick="openProfile()">😎</div>
     <div class="tb-user" onclick="openProfile()">
       <div class="nick" id="hNick">—</div>
@@ -673,7 +706,16 @@
 </div>
 
 <div id="lockOverlay" class="lockscreen">
-  <div class="logo" style="font-size:34px">14<b>:</b>48</div>
+  <svg class="logo1448" viewBox="-10 -10 336 120" style="height:96px" role="img" aria-label="14:48" focusable="false">
+    <g class="l-sand" fill="#ff2740"><path d="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/><rect x="279.6" y="54" width="2.8" height="14" rx="1.4"/><path d="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/></g>
+    <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12,26 L34,7 L34,94"/>
+      <path d="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+      <path d="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+      <path d="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+    </g>
+    <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
+  </svg>
   <div class="lock-clock" id="lockClock">--:--</div>
   <div class="lock-sub">ПК заблокирован — начни сессию, чтобы играть</div>
   <div class="lock-card">
@@ -685,7 +727,16 @@
 </div>
 
 <div id="attract" class="attract">
-  <div class="logo">14<b>:</b>48</div>
+  <svg class="logo1448" viewBox="-10 -10 336 120" role="img" aria-label="14:48" focusable="false">
+    <g class="l-sand" fill="#ff2740"><path d="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/><rect x="279.6" y="54" width="2.8" height="14" rx="1.4"/><path d="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/></g>
+    <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12,26 L34,7 L34,94"/>
+      <path d="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+      <path d="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+      <path d="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+    </g>
+    <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
+  </svg>
   <div class="att-free" id="attractFree"></div>
 </div>
 
@@ -2355,8 +2406,9 @@ function closeOverlay(id){ document.getElementById(id).classList.remove('show');
 setInterval(() => {
   const d = new Date();
   const t = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-  document.getElementById('clock').innerHTML = t.replace(':','<b>:</b>');
-  document.getElementById('lockClock').innerHTML = t.replace(':','<b>:</b>');
+  /* настоящие часы — обычным шрифтом: двоеточие не красное и не пульсирует (ТЗ логотипа) */
+  document.getElementById('clock').textContent = t;
+  document.getElementById('lockClock').textContent = t;
 }, 1000);
 
 /* ═══════════════ FX: ДВИЖОК АНИМАЦИЙ (14:48 Aurora) ═══════════════ */

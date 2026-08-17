@@ -9,8 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="14:48">
 <link rel="manifest" href="/app.webmanifest">
-<link rel="icon" type="image/png" href="/icons/icon-192.png">
-<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png">
 <title>14:48 — клуб в кармане</title>
 <style>
   :root{
@@ -70,13 +72,19 @@
             backdrop-filter:blur(var(--blur)) saturate(1.2); -webkit-backdrop-filter:blur(var(--blur)) saturate(1.2)}
   .authcard::before{content:""; position:absolute; inset:0 0 auto 0; height:1px;
     background:linear-gradient(90deg,transparent,var(--glass-hi),transparent)}
-  .logo{font-weight:800; letter-spacing:2px; font-size:44px; text-align:center}
+  /* ═══ ФИРМЕННЫЙ ЗНАК «14:48» (docs/ТЗ-логотип-14-48.md) ═══
+     Геометрия и цвета знака зафиксированы дизайнером: штрих #f2f0f2, акцент #ff2740.
+     Пульс двоеточия (1s ease-out) — подпись бренда. Настоящие часы в интерфейсе
+     набираются обычным шрифтом: двоеточие НЕ красное и не пульсирует, иначе знак
+     читается как время. Рядом со знаком часы не ставим. */
+  @keyframes logo1448Pulse{0%{opacity:1}12%{opacity:.22}42%{opacity:1}100%{opacity:1}}
+  .logo1448{display:block; flex:none; overflow:visible}
+  .logo1448 .l-colon{animation:logo1448Pulse 1s ease-out infinite}
+  .logo-row{display:flex; align-items:center; gap:10px}
+  .logo-wrap{display:flex; justify-content:center}
+  @media (prefers-reduced-motion:reduce){ .logo1448 .l-colon{animation:none} }
   .slogan{text-align:center; color:var(--dim); margin-top:6px}
-  /* лого с пульсирующим двоеточием (мотив времени) — как в shell */
-  .logo,.tb-logo{background:var(--aurora); -webkit-background-clip:text; background-clip:text; color:transparent;
-    -webkit-text-fill-color:transparent}
-  .logo b,.tb-logo b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
-  @keyframes colonPulse{0%,100%{opacity:1; text-shadow:0 0 10px var(--acc3)}50%{opacity:.35; text-shadow:none}}
+  /* — логотип теперь вектор (.logo1448), см. блок «ФИРМЕННЫЙ ЗНАК» выше — */
   .tabs{display:flex; background:rgba(8,11,20,.6); border:1px solid var(--glass-brd); border-radius:12px; padding:4px; margin:0 0 18px}
   .tabs button{flex:1; border:0; background:transparent; color:var(--dim); padding:11px; border-radius:9px; font-weight:700; cursor:pointer; font-size:14px; transition:color .2s; min-height:44px}
   .tabs button.on{background:var(--aurora); color:#fff; box-shadow:var(--glow)}
@@ -107,7 +115,7 @@
           background:rgba(9,11,18,.72); border-bottom:1px solid var(--glass-brd);
           backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px)}
   .tb-row{display:flex; align-items:center; gap:11px}
-  .tb-logo{font-weight:800; font-size:20px; letter-spacing:1px}
+  /* шапка: фирменный знак .logo1448 высотой 22px */
   .ava{width:38px; height:38px; border-radius:12px; background:linear-gradient(135deg,var(--acc),#7a1020); flex:none;
        display:flex; align-items:center; justify-content:center; font-size:21px; user-select:none; -webkit-user-select:none}
   .tb-user{flex:1; min-width:0; line-height:1.25}
@@ -381,7 +389,7 @@
   body.perf-lite .authcard,body.perf-lite .topbar,body.perf-lite .nav{backdrop-filter:none; -webkit-backdrop-filter:none}
   body.perf-lite .authcard{background:var(--panel)}
   body.perf-lite .xpbar{animation:none}
-  body.perf-lite .logo b, body.perf-lite .tb-logo b{animation:none}
+  body.perf-lite .logo1448 .l-colon{animation:none}
   @media (prefers-reduced-motion:reduce){
     .aurora-bg .blob{animation:none}
     *{animation-duration:.001ms!important; transition-duration:.05ms!important}
@@ -399,7 +407,18 @@
 <!-- ═══════════ AUTH (= authView shell.html) ═══════════ -->
 <div id="authView" class="hidden">
   <div>
-    <div class="logo">14<b>:</b>48</div>
+    <div class="logo-wrap">
+      <svg class="logo1448" viewBox="-10 -10 336 120" style="height:60px" role="img" aria-label="14:48" focusable="false">
+        <g class="l-sand" fill="#ff2740"><path d="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/><rect x="279.6" y="54" width="2.8" height="14" rx="1.4"/><path d="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/></g>
+        <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12,26 L34,7 L34,94"/>
+          <path d="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+          <path d="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+          <path d="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+        </g>
+        <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
+      </svg>
+    </div>
     <div class="slogan" data-str="slogan"></div>
   </div>
   <div class="authcard">
@@ -420,7 +439,16 @@
 <div id="appView" class="hidden">
   <header class="topbar">
     <div class="tb-row">
-      <div class="tb-logo">14<b>:</b>48</div>
+      <svg class="logo1448" viewBox="-6 -6 328 112" style="height:22px" role="img" aria-label="14:48" focusable="false">
+        <g class="l-sand" fill="#ff2740"><path d="M263,83 Q281,62 299,83 Q294,89.5 281,90 Q268,89.5 263,83 Z"/></g>
+        <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12,26 L34,9 L34,92"/>
+          <path d="M104,10 L60,62 L114,62 M104,10 L104,92"/>
+          <path d="M218,10 L174,62 L228,62 M218,10 L218,92"/>
+          <path d="M281,50 C258,40 255,10 281,10 C307,10 304,40 281,50 C258,60 255,90 281,90 C307,90 304,60 281,50 Z"/>
+        </g>
+        <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="12"/><circle cx="143" cy="72" r="12"/></g>
+      </svg>
       <div class="ava" id="ava">😎</div>
       <div class="tb-user">
         <div class="nick" id="hNick">—</div>

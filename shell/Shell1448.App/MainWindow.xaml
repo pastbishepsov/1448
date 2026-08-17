@@ -10,10 +10,48 @@
     <!-- Запасной lock от сервиса (fail-safe): поверх WebView -->
     <Grid x:Name="HardLock" Visibility="Collapsed" Background="#F2070B11">
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-        <TextBlock Text="14:48" FontSize="44" FontWeight="Bold" Foreground="White"
-                   HorizontalAlignment="Center"/>
+        <!-- Фирменный знак «14:48» (docs/ТЗ-логотип-14-48.md): геометрия и цвета
+             совпадают с web/shell.html, двоеточие пульсирует 1s — это логотип, а не часы. -->
+        <Viewbox Width="300" HorizontalAlignment="Center">
+          <Canvas Width="326" Height="110">
+            <Canvas.Triggers>
+              <EventTrigger RoutedEvent="Canvas.Loaded">
+                <BeginStoryboard>
+                  <Storyboard RepeatBehavior="Forever">
+                    <DoubleAnimationUsingKeyFrames Storyboard.TargetName="LogoColon"
+                                                   Storyboard.TargetProperty="Opacity" Duration="0:0:1">
+                      <LinearDoubleKeyFrame Value="1" KeyTime="0:0:0"/>
+                      <LinearDoubleKeyFrame Value="0.22" KeyTime="0:0:0.12"/>
+                      <LinearDoubleKeyFrame Value="1" KeyTime="0:0:0.42"/>
+                      <LinearDoubleKeyFrame Value="1" KeyTime="0:0:1"/>
+                    </DoubleAnimationUsingKeyFrames>
+                  </Storyboard>
+                </BeginStoryboard>
+              </EventTrigger>
+            </Canvas.Triggers>
+            <!-- песок в восьмёрке -->
+            <Path Fill="#ff2740" Data="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/>
+            <Rectangle Canvas.Left="279.6" Canvas.Top="54" Width="2.8" Height="14"
+                       RadiusX="1.4" RadiusY="1.4" Fill="#ff2740"/>
+            <Path Fill="#ff2740" Data="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/>
+            <!-- цифры 1 4 4 8 -->
+            <Path Stroke="#f2f0f2" StrokeThickness="14" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                  StrokeLineJoin="Round" Data="M12,26 L34,7 L34,94"/>
+            <Path Stroke="#f2f0f2" StrokeThickness="14" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                  StrokeLineJoin="Round" Data="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+            <Path Stroke="#f2f0f2" StrokeThickness="14" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                  StrokeLineJoin="Round" Data="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+            <Path Stroke="#f2f0f2" StrokeThickness="14" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                  StrokeLineJoin="Round" Data="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+            <!-- двоеточие: фирменный акцент + пульс -->
+            <Canvas x:Name="LogoColon">
+              <Ellipse Canvas.Left="133" Canvas.Top="20" Width="20" Height="20" Fill="#ff2740"/>
+              <Ellipse Canvas.Left="133" Canvas.Top="62" Width="20" Height="20" Fill="#ff2740"/>
+            </Canvas>
+          </Canvas>
+        </Viewbox>
         <TextBlock x:Name="HardLockReason" Text="ПК заблокирован"
-                   FontSize="18" Foreground="#8A93A6" Margin="0,10,0,0"
+                   FontSize="18" Foreground="#8A93A6" Margin="0,22,0,0"
                    HorizontalAlignment="Center"/>
         <TextBlock Text="Обратись к администратору клуба" FontSize="14"
                    Foreground="#8A93A6" Margin="0,6,0,0" HorizontalAlignment="Center"/>

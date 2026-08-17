@@ -19,11 +19,10 @@ const OFFLINE_HTML = `<!DOCTYPE html>
        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
        display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;
        text-align:center; padding:24px}
-  .logo{font-weight:800; letter-spacing:2px; font-size:44px;
-        background:var(--aurora); -webkit-background-clip:text; background-clip:text;
-        color:transparent; -webkit-text-fill-color:transparent}
-  .logo b{-webkit-text-fill-color:var(--acc3); color:var(--acc3); animation:colonPulse 1.6s var(--smooth) infinite}
-  @keyframes colonPulse{0%,100%{opacity:1; text-shadow:0 0 10px var(--acc3)}50%{opacity:.35; text-shadow:none}}
+  /* фирменный знак: SVG внутри страницы — офлайн внешние файлы недоступны */
+  @keyframes logo1448Pulse{0%{opacity:1}12%{opacity:.22}42%{opacity:1}100%{opacity:1}}
+  .logo1448{display:block; height:64px}
+  .logo1448 .l-colon{animation:logo1448Pulse 1s ease-out infinite}
   h1{margin:10px 0 0; font-size:19px}
   p{margin:0; color:var(--dim); font-size:14px; max-width:280px; line-height:1.5}
   button{margin-top:14px; border:0; border-radius:14px; padding:14px 34px; font-size:16px; font-weight:700;
@@ -34,7 +33,16 @@ const OFFLINE_HTML = `<!DOCTYPE html>
 </style>
 </head>
 <body>
-  <div class="logo">14<b>:</b>48</div>
+  <svg class="logo1448" viewBox="-10 -10 336 120" role="img" aria-label="14:48" focusable="false">
+    <g class="l-sand" fill="#ff2740"><path d="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/><rect x="279.6" y="54" width="2.8" height="14" rx="1.4"/><path d="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/></g>
+    <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12,26 L34,7 L34,94"/>
+      <path d="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+      <path d="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+      <path d="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+    </g>
+    <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
+  </svg>
   <h1>Нет сети</h1>
   <p>Проверь Wi-Fi или мобильный интернет — и попробуй ещё раз.</p>
   <button onclick="location.reload()">Повторить</button>
