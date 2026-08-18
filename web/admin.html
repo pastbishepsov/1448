@@ -271,6 +271,16 @@
              transition:background .15s}
   .bars .bar:hover{background:var(--acc)}
   .barlabels{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin:6px 6px 0}
+  /* В1: чип роста к предыдущему периоду рядом с числом */
+  .dlt{font-style:normal; font-size:11px; margin-left:8px; padding:2px 6px; border-radius:6px;
+       background:rgba(255,255,255,.05); color:var(--dim); white-space:nowrap}
+  .dlt.up{color:var(--green); background:rgba(52,211,153,.13)}
+  .dlt.dn{color:var(--acc3); background:rgba(255,39,64,.13)}
+  .input[type=date]{color-scheme:dark; min-width:148px; padding:7px 10px}
+  #repLabel{font-size:12px}
+  /* на телефоне владельца плотность таблиц не нужна — панель периода и так
+     съедает первый экран; переключатель остаётся в «Журнале» */
+  @media (max-width:640px){ #repDens{display:none} }
   .uform label{font-size:12px; font-weight:700; margin-bottom:-4px}
 
   /* ── А8: схема зала — позиционная сетка и редактор ── */
@@ -464,7 +474,7 @@
       <button id="r-catalog" onclick="nav('catalog')" aria-label="Каталог"><span data-ic="apps"></span><span class="rlabel">Каталог</span></button>
       <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
       <div class="rzone zclub">Клуб</div>
-      <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Деньги"><span data-ic="chart"></span><span class="rlabel">Деньги</span></button>
+      <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Отчёты"><span data-ic="chart"></span><span class="rlabel">Отчёты</span></button>
       <button id="r-staff" onclick="nav('staff')" aria-label="Персонал"><span data-ic="users"></span><span class="rlabel">Персонал</span></button>
       <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Экономика"><span data-ic="gear"></span><span class="rlabel">Экономика</span></button>
       <div class="grow"></div>
@@ -561,7 +571,44 @@
       </section>
 
       <section id="s-stats" class="hidden">
-        <div class="kpis" id="statKpis"></div>
+        <!-- Спринт В1: отчёты за период. Пресеты + произвольный диапазон,
+             четыре разреза, сравнение с предыдущим периодом. Окна считаются
+             клубными сутками от report_hour («Экономика»). -->
+        <div class="toolrow">
+          <div class="segs" id="repPresets">
+            <button data-p="today" onclick="repPreset('today',this)">Сегодня</button>
+            <button data-p="yesterday" onclick="repPreset('yesterday',this)">Вчера</button>
+            <button class="on" data-p="d7" onclick="repPreset('d7',this)">7 дней</button>
+            <button data-p="d30" onclick="repPreset('d30',this)">30 дней</button>
+            <button data-p="month" onclick="repPreset('month',this)">Этот месяц</button>
+            <button data-p="prev_month" onclick="repPreset('prev_month',this)">Прошлый месяц</button>
+            <button data-p="d90" onclick="repPreset('d90',this)">90 дней</button>
+            <button data-p="year" onclick="repPreset('year',this)">Год</button>
+          </div>
+        </div>
+        <div class="toolrow">
+          <div class="segs" style="align-items:center">
+            <input id="repFrom" class="input" type="date" aria-label="Начало периода">
+            <span class="muted" style="align-self:center">—</span>
+            <input id="repTo" class="input" type="date" aria-label="Конец периода">
+            <button class="btn ghost mini" onclick="repCustom()"><span data-ic="chart"></span>Показать</button>
+          </div>
+          <div class="segs" id="repDens" title="Плотность таблиц">
+            <button class="densBtn" data-v="comfortable" onclick="densSet('comfortable')">Просторно</button>
+            <button class="densBtn" data-v="compact" onclick="densSet('compact')">Плотно</button>
+          </div>
+        </div>
+        <div class="muted" id="repLabel" style="margin:-4px 0 12px">—</div>
+        <div class="toolrow">
+          <div class="segs" id="repTabs">
+            <button class="on" data-t="money" onclick="repTabSet('money',this)">Деньги</button>
+            <button data-t="guests" onclick="repTabSet('guests',this)">Гости</button>
+            <button data-t="load" onclick="repTabSet('load',this)">Загрузка</button>
+            <button data-t="staff" onclick="repTabSet('staff',this)">Персонал</button>
+          </div>
+        </div>
+        <div id="repBody"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+
         <div class="sect">Смена · <span id="shDate" style="text-transform:none; letter-spacing:0">—</span></div>
         <div class="toolrow">
           <div class="segs">
@@ -572,21 +619,6 @@
         </div>
         <div class="kpis" id="shiftKpis"><div class="skel"></div></div>
         <div class="muted hidden" id="shStaff" style="margin:-6px 0 14px"></div>
-        <div class="sect">Гости · сегменты</div>
-        <div class="kpis" id="segKpis"><div class="skel"></div></div>
-        <div class="tablewrap hidden" id="segTable" style="margin-bottom:16px"></div>
-        <div class="sect">Выручка по дням · 14 дней</div>
-        <div id="statRevenue"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
-        <div class="sect">Загрузка по часам суток · за 14 дней</div>
-        <div id="statLoad"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
-        <div class="sect">Топ гостей · за 14 дней</div>
-        <div class="toolrow">
-          <div class="segs" title="Плотность таблиц">
-            <button class="densBtn" data-v="comfortable" onclick="densSet('comfortable')">Просторно</button>
-            <button class="densBtn" data-v="compact" onclick="densSet('compact')">Плотно</button>
-          </div>
-        </div>
-        <div class="tablewrap" id="statTop"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-staff" class="hidden">
@@ -787,7 +819,7 @@ function enter(){
 }
 
 /* ── навигация ── */
-function navRev(){ nav(isOwner() ? 'stats' : 'grants'); } // выручка: owner — Деньги, admin — журнал дня
+function navRev(){ nav(isOwner() ? 'stats' : 'grants'); } // выручка: owner — Отчёты, admin — журнал дня
 
 function nav(t){
   if (OWNER_SECTIONS.includes(t) && !isOwner()) return;
@@ -2059,7 +2091,7 @@ async function submitBooking(){
 function fmtPLN(v){ return (+v || 0).toLocaleString('ru-RU'); }
 function lblDate(d){ return d ? d.date.slice(8,10)+'.'+d.date.slice(5,7) : ''; }
 
-/* ── Б10-и1: сводка смены — «Деньги» отвечают, как прошёл день.
+/* ── Б10-и1: сводка смены — «как прошёл день» одним экраном (внизу «Отчётов»).
    Клубные сутки: от report_hour до report_hour (настройка owner в
    «Экономике») — смена клуба не равна календарной дате. ── */
 let shiftDate = null, shiftMax = null; // null = текущая смена
@@ -2100,76 +2132,206 @@ function shiftDay(delta){
   renderShift();
 }
 
-/* ── Б10-и2: сегменты гостей — новые / вернувшиеся / пропавшие.
-   Пороги — настройки owner (seg_new_days / seg_lost_days, «Экономика»);
-   клик по плитке раскрывает список, строка ведёт в карточку гостя. ── */
-let segData = null, segSel = null;
-async function renderSegments(){
+/* ── В1: отчёты владельца за период (ADMIN.md, спринт В1).
+   Один период на четыре разреза: пресеты и произвольный диапазон «с…по…».
+   Рядом с каждым числом — рост к предыдущему периоду того же размера
+   (для календарных пресетов это тот же отрезок прошлого месяца/года).
+   Все окна — клубные сутки от report_hour, поэтому ночная смена целиком
+   принадлежит дню своего начала и выручка ночи не делится пополам. ── */
+let repPeriod = {preset:'d7'}, repTab = 'money';
+
+function repQuery(){
+  return repPeriod.preset ? 'preset=' + repPeriod.preset
+                          : 'from=' + repPeriod.from + '&to=' + repPeriod.to;
+}
+function repPreset(p, btn){
+  repPeriod = {preset:p};
+  document.querySelectorAll('#repPresets button').forEach(b => b.classList.toggle('on', b === btn));
+  renderReports();
+}
+function repCustom(){
+  const f = document.getElementById('repFrom').value, t = document.getElementById('repTo').value;
+  if (!f){ toast('⚠ Укажи дату начала'); return; }
+  if (t && t < f){ toast('⚠ Конец периода раньше начала'); return; }
+  repPeriod = {from:f, to:t || f};
+  document.querySelectorAll('#repPresets button').forEach(b => b.classList.remove('on'));
+  renderReports();
+}
+function repTabSet(t, btn){
+  repTab = t;
+  document.querySelectorAll('#repTabs button').forEach(b => b.classList.toggle('on', b === btn));
+  renderReports();
+}
+
+const MONTHS_RU = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+function repDate(s){
+  if (!s) return '—';
+  const y = s.slice(0,4), d = (+s.slice(8,10)) + ' ' + MONTHS_RU[+s.slice(5,7)-1];
+  return y === String(new Date().getFullYear()) ? d : d + ' ' + y; // прошлый год подписываем явно
+}
+function repPlural(n, one, few, many){
+  const a = Math.abs(n) % 100, b = a % 10;
+  return n + ' ' + (a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many);
+}
+function repHours(h){ return (+h || 0).toLocaleString('ru-RU') + ' ч'; }
+/* Чип роста. null с бэкенда = в прошлом периоде было пусто, процент
+   бессмыслен. invert — метрика, где рост это плохо (например простой). */
+function dlt(v, invert){
+  if (v === null || v === undefined) return '<i class="dlt" title="в прошлом периоде было пусто">—</i>';
+  const cls = v === 0 ? '' : ((invert ? v < 0 : v > 0) ? 'up' : 'dn');
+  return `<i class="dlt ${cls}">${v > 0 ? '+' : ''}${v}%</i>`;
+}
+function repKpi(label, value, delta, opt){
+  const o = opt || {};
+  const t = [o.title, o.was === undefined ? '' : 'в прошлом периоде: ' + o.was].filter(Boolean).join(' · ');
+  return `<div class="kpi"${t ? ' title="' + t + '"' : ''}>${label} <b>${value}</b>` +
+         (delta === undefined ? '' : dlt(delta, o.invert)) + '</div>';
+}
+/* График-столбики. Период целиком без данных рисуем не пустой коробкой,
+   а честной заглушкой — иначе владелец решит, что отчёт сломался. */
+function repChart(items, valueOf, titleOf, fromLbl, toLbl){
+  const max = Math.max(...items.map(valueOf), 0);
+  if (!items.length || max === 0) return repEmpty('За этот период данных нет');
+  const gap = items.length > 180 ? 0 : items.length > 60 ? 1 : 4;
+  return `<div class="bars" style="gap:${gap}px">${items.map(x =>
+      `<div class="bar" style="height:${Math.max(2, Math.round(valueOf(x)/max*100))}%" title="${titleOf(x)}"></div>`).join('')}</div>
+    <div class="barlabels">${(fromLbl || []).concat(toLbl || []).map(l => '<span>' + l + '</span>').join('')}</div>`;
+}
+function repEmpty(text){ return `<div class="empty"><span data-ic="chart"></span>${text}</div>`; }
+function repTable(head, rows, empty){
+  return `<div class="tablewrap">${rows.length === 0 ? repEmpty(empty)
+    : `<table><tr>${head.map(h => '<th>' + h + '</th>').join('')}</tr>${rows.join('')}</table>`}</div>`;
+}
+
+async function renderReports(){
+  const body = document.getElementById('repBody');
+  if (!body) return;
+  body.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try{
-    segData = await api('/admin/stats/segments');
-    paintSegments();
-  }catch(e){ toast('⚠ ' + e.message); }
+    const d = await api('/admin/reports/' + repTab + '?' + repQuery());
+    const p = d.period, pv = d.prev_period;
+    document.getElementById('repLabel').textContent =
+      repDate(p.from) + ' — ' + repDate(p.to) + ' · ' + repPlural(p.days, 'день', 'дня', 'дней') +
+      ' · сравнение с ' + repDate(pv.from) + ' — ' + repDate(pv.to);
+    document.getElementById('repFrom').value = p.from;
+    document.getElementById('repTo').value = p.to;
+    ({money:paintMoney, guests:paintGuests, load:paintLoad, staff:paintStaff})[repTab](d);
+    mountIcons(body);
+  }catch(e){
+    body.innerHTML = repEmpty('Отчёт не загрузился: ' + e.message);
+    mountIcons(body);
+  }
 }
-function paintSegments(){
-  if (!segData) return;
-  const t = segData.totals || {}, th = segData.thresholds || {};
-  const card = (key, label, title) =>
-    `<div class="kpi${segSel === key ? ' on' : ''}" title="${title}" onclick="segToggle('${key}')">${label} <b>${t[key] || 0}</b></div>`;
-  document.getElementById('segKpis').innerHTML =
-    card('new', 'Новые', `первый визит за последние ${th.new_days} дн`) +
-    card('returned', 'Вернувшиеся', `визит за ${th.new_days} дн после паузы ≥ ${th.lost_days} дн`) +
-    card('lost', 'Пропавшие', `нет визитов ≥ ${th.lost_days} дн`);
-  const wrap = document.getElementById('segTable');
-  if (!segSel){ wrap.classList.add('hidden'); return; }
-  const items = (segData.segments || {})[segSel] || [];
-  wrap.classList.remove('hidden');
-  wrap.innerHTML = items.length === 0
-    ? '<div class="empty"><span data-ic="users"></span>В сегменте пусто</div>'
-    : `<table><tr><th>Гость</th><th>Визитов</th><th>Последний визит</th><th>Внесено</th></tr>
-      ${items.map(u => `<tr onclick="openUserDrawer('${u.user_id}')" style="cursor:pointer">
-        <td><b>${esc(u.nickname)}</b></td><td>${u.visits}</td>
-        <td class="muted">${fmtTime(u.last_visit)}</td>
-        <td>${fmtPLN(u.deposited_pln)} zł</td></tr>`).join('')}</table>`;
-  mountIcons(wrap);
+
+function paintMoney(d){
+  const t = d.totals, k = d.delta, w = d.prev || {}, days = d.days || [];
+  document.getElementById('repBody').innerHTML =
+    `<div class="kpis">
+       ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln, {was:fmtPLN(w.revenue_pln) + ' zł'})}
+       ${repKpi('Депозитов', t.deposits, k.deposits, {was:w.deposits})}
+       ${repKpi('Средний чек', fmtPLN(t.avg_check_pln) + ' zł', k.avg_check_pln, {was:fmtPLN(w.avg_check_pln) + ' zł'})}
+       ${repKpi('Платили гостей', t.guests, k.guests, {was:w.guests})}
+     </div>
+     <div class="kpis">
+       <div class="kpi">Наличные <b>${fmtPLN(t.cash_pln)} zł</b></div>
+       <div class="kpi">Карта <b>${fmtPLN(t.card_pln)} zł</b></div>
+       <div class="kpi">BLIK <b>${fmtPLN(t.blik_pln)} zł</b></div>
+     </div>
+     <div class="sect">Выручка по дням</div>
+     ${repChart(days, x => x.value, x => repDate(x.date) + ' · ' + fmtPLN(x.value) + ' zł · депозитов: ' + x.count,
+                [repDate(d.period.from)], [repDate(d.period.to)])}
+     <div class="sect">Кто оформлял</div>
+     ${repTable(['Сотрудник','Выручка','Депозитов'], (d.by_admin||[]).map(a =>
+        `<tr><td><b>${esc(a.nickname||'—')}</b></td><td>${fmtPLN(a.revenue_pln)} zł</td><td>${a.deposits}</td></tr>`),
+        'За этот период пополнений не было')}`;
 }
-function segToggle(key){
-  segSel = segSel === key ? null : key;
-  paintSegments();
+
+function paintGuests(d){
+  const t = d.totals, k = d.delta, w = d.prev || {}, th = d.thresholds || {}, lost = d.lost || {count:0, items:[]};
+  const row = u => `<tr onclick="openUserDrawer('${u.user_id}')" style="cursor:pointer">`;
+  document.getElementById('repBody').innerHTML =
+    `<div class="kpis">
+       ${repKpi('Уникальных гостей', t.unique, k.unique, {was:w.unique})}
+       ${repKpi('Сессий', t.sessions, k.sessions, {was:w.sessions})}
+       ${repKpi('Наиграно', repHours(t.hours), k.hours, {was:repHours(w.hours)})}
+       ${repKpi('Сессий на гостя', t.avg_sessions)}
+     </div>
+     <div class="kpis">
+       ${repKpi('Новые', t.new, k.new, {title:'первый в жизни визит попал в этот период', was:w.new})}
+       ${repKpi('Вернувшиеся', t.returning, k.returning, {title:'пришли после паузы ' + th.lost_days + ' дн и дольше', was:w.returning})}
+       ${repKpi('Удержание', (d.retention_pct === null || d.retention_pct === undefined ? '—' : d.retention_pct + '%'), undefined,
+                {title:'доля гостей прошлого периода, пришедших и в этом'})}
+       ${repKpi('Пропали', lost.count, undefined,
+                {title:'не были ' + th.lost_days + ' дн и дольше на конец периода; забаненные не в счёт'})}
+     </div>
+     <div class="sect">Топ по деньгам</div>
+     ${repTable(['Гость','Внесено','Сессий','Наиграно'], (d.top_money||[]).map(u =>
+        `${row(u)}<td><b>${esc(u.nickname||'—')}</b></td><td>${fmtPLN(u.deposited_pln)} zł</td>
+         <td>${u.sessions||0}</td><td>${repHours(u.hours)}</td></tr>`), 'Пополнений за период не было')}
+     <div class="sect">Топ по времени</div>
+     ${repTable(['Гость','Наиграно','Сессий'], (d.top_hours||[]).map(u =>
+        `${row(u)}<td><b>${esc(u.nickname||'—')}</b></td><td>${repHours(u.hours)}</td><td>${u.sessions}</td></tr>`),
+        'Сессий за период не было')}
+     <div class="sect">Пропавшие · нет визитов ${th.lost_days} дн и дольше</div>
+     ${repTable(['Гость','Последний визит'], (lost.items||[]).map(u =>
+        `${row(u)}<td><b>${esc(u.nickname||'—')}</b></td><td class="muted">${fmtTime(u.last_visit)}</td></tr>`),
+        'Никто не пропал — все возвращаются')}`;
+}
+
+function paintLoad(d){
+  const t = d.totals, k = d.delta, w = d.prev || {}, cap = d.capacity || {};
+  const days = d.days || [], hours = d.hours || [];
+  document.getElementById('repBody').innerHTML =
+    `<div class="kpis">
+       ${repKpi('Наиграно', repHours(t.hours), k.hours, {was:repHours(w.hours)})}
+       ${repKpi('Сессий', t.sessions, k.sessions, {was:w.sessions})}
+       ${repKpi('Занятость', t.occupancy_pct + '%', k.occupancy_pct,
+                {title:cap.computers + ' ПК × ' + cap.open_hours_per_day + ' ч в сутки — часы работы берутся из активных смен',
+                 was:w.occupancy_pct + '%'})}
+       ${repKpi('Средняя сессия', t.avg_minutes + ' мин', k.avg_minutes, {was:w.avg_minutes + ' мин'})}
+     </div>
+     <div class="sect">Часы игры по дням</div>
+     ${repChart(days, x => x.value, x => repDate(x.date) + ' · ' + repHours(x.value) + ' · сессий: ' + x.count,
+                [repDate(d.period.from)], [repDate(d.period.to)])}
+     <div class="sect">Загрузка по часам суток${d.peak_hour >= 0 ? ' · пик в ' + d.peak_hour + ':00' : ''}</div>
+     ${repChart(hours, x => x.hours, x => x.hour + ':00 · ' + repHours(x.hours) + ' · сессий: ' + x.sessions,
+                ['0:00','6:00','12:00'], ['18:00','23:00'])}
+     <div class="sect">Зоны</div>
+     ${repTable(['Зона','ПК','Наиграно','Сессий','Занятость'], (d.zones||[]).map(z =>
+        `<tr><td><b>${esc(z.zone)}</b></td><td>${z.computers}</td><td>${repHours(z.hours)}</td>
+         <td>${z.sessions}</td><td>${z.occupancy_pct}%</td></tr>`), 'Сессий за период не было')}
+     <div class="sect">Компьютеры</div>
+     ${repTable(['ПК','Зона','Наиграно','Сессий','Занятость'], (d.computers||[]).map(c =>
+        `<tr><td><b>${esc(c.name)}</b></td><td class="muted">${esc(c.zone)}</td><td>${repHours(c.hours)}</td>
+         <td>${c.sessions}</td><td>${c.occupancy_pct}%</td></tr>`), 'Сессий за период не было')}`;
+}
+
+function paintStaff(d){
+  const t = d.totals, k = d.delta, w = d.prev || {};
+  document.getElementById('repBody').innerHTML =
+    `<div class="kpis">
+       ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln, {was:fmtPLN(w.revenue_pln) + ' zł'})}
+       ${repKpi('Депозитов', t.deposits, undefined, {was:w.deposits})}
+       ${repKpi('Людей в деле', t.people)}
+       ${repKpi('Смен в графике', t.assignments)}
+     </div>
+     <div class="sect">Что принесла каждая смена</div>
+     ${repTable(['Смена','Выручка','Депозитов','Средний чек','Сессий','Наиграно'], (d.by_shift||[]).map(x =>
+        `<tr><td><b>${esc(x.shift)}</b></td><td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits}</td>
+         <td>${fmtPLN(x.avg_check_pln)} zł</td><td>${x.sessions}</td><td>${repHours(x.hours)}</td></tr>`),
+        'Смен нет — заведи шаблоны в «Персонале»')}
+     <div class="sect">Люди</div>
+     ${repTable(['Сотрудник','Роль','Смен','Часов в графике','Выручка','Депозитов','Операций'], (d.by_person||[]).map(x =>
+        `<tr><td><b>${esc(x.nickname||'—')}</b></td>
+         <td class="muted">${x.role === 'owner' ? 'владелец' : 'админ'}</td>
+         <td>${x.shifts}</td><td>${repHours(x.scheduled_hours)}</td>
+         <td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits}</td><td>${x.actions}</td></tr>`),
+        'В этом периоде никто не работал')}`;
 }
 
 async function renderStats(){
-  renderShift();    // Б10-и1: сводка смены (свой try — не роняет графики)
-  renderSegments(); // Б10-и2: сегменты гостей
-  try{
-    const [rev, load] = await Promise.all([
-      api('/admin/stats/revenue?days=14'),
-      api('/admin/stats/load?days=14'),
-    ]);
-    document.getElementById('statKpis').innerHTML =
-      `<div class="kpi">Сегодня <b>${fmtPLN(rev.today_pln)} zł</b></div>
-       <div class="kpi">7 дней <b>${fmtPLN(rev.week_pln)} zł</b></div>
-       <div class="kpi">14 дней <b>${fmtPLN(rev.total_pln)} zł</b></div>`;
-    const days = rev.days || [];
-    const maxP = Math.max(1, ...days.map(d => d.pln));
-    document.getElementById('statRevenue').innerHTML =
-      `<div class="bars">${days.map(d =>
-        `<div class="bar" style="height:${Math.max(2, Math.round(d.pln/maxP*100))}%" title="${lblDate(d)} · ${fmtPLN(d.pln)} zł · депозитов: ${d.count}"></div>`).join('')}</div>
-       <div class="barlabels"><span>${lblDate(days[0])}</span><span>${lblDate(days[days.length-1])}</span></div>`;
-    const hours = load.hours || [];
-    const maxM = Math.max(1, ...hours.map(h => h.minutes));
-    document.getElementById('statLoad').innerHTML =
-      `<div class="bars">${hours.map(h =>
-        `<div class="bar" style="height:${Math.max(2, Math.round(h.minutes/maxM*100))}%" title="${h.hour}:00 · ${Math.round(h.minutes/60)} ч игры · сессий: ${h.sessions}"></div>`).join('')}</div>
-       <div class="barlabels"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>`;
-    setHTML('statTop', (load.top || []).length === 0
-      ? '<div class="empty"><span data-ic="chart"></span>Пока пусто — нужны сессии</div>'
-      : `<table><tr><th>Гость</th><th>Наиграно</th><th>Внесено</th></tr>
-    ${load.top.map(t => `<tr onclick="openUserDrawer('${t.user_id}')" style="cursor:pointer">
-      <td><b>${esc(t.nickname||'—')}</b></td>
-      <td>${Math.floor(t.minutes/60)} ч ${t.minutes%60} м</td>
-      <td>${fmtPLN(t.deposited_pln)} zł</td>
-    </tr>`).join('')}</table>`);
-  }catch(e){ toast('⚠ ' + e.message); }
+  renderShift();   // Б10-и1: сводка смены — свой try, не роняет отчёты
+  renderReports(); // В1: отчёты за период
 }
 
 /* ── Б11-и2: график смен в «Персонале». Сетка недели: строки — активные
@@ -2571,7 +2733,7 @@ function densSet(v){
 const PAL_NAV = [
   {t:'hall', name:'Зал', ic:'monitor'}, {t:'users', name:'Гости', ic:'users'},
   {t:'bookings', name:'Брони', ic:'cal'}, {t:'catalog', name:'Каталог', ic:'apps'},
-  {t:'grants', name:'Журнал', ic:'scroll'}, {t:'stats', name:'Деньги', ic:'chart'},
+  {t:'grants', name:'Журнал', ic:'scroll'}, {t:'stats', name:'Отчёты', ic:'chart'},
   {t:'staff', name:'Персонал', ic:'users'}, {t:'settings', name:'Экономика', ic:'gear'},
 ];
 const PAL_ACTIONS = [

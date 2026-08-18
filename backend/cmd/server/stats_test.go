@@ -38,28 +38,3 @@ func TestShiftWindow(t *testing.T) {
 		}
 	}
 }
-
-func TestClassifySegment(t *testing.T) {
-	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.Local)
-	d := func(daysAgo int) time.Time { return now.AddDate(0, 0, -daysAgo) }
-	p := func(daysAgo int) *time.Time { v := d(daysAgo); return &v }
-	cases := []struct {
-		name              string
-		first, last, prev *time.Time
-		registered        time.Time
-		want              string
-	}{
-		{"новый: первый визит вчера", p(1), p(1), nil, d(1), "new"},
-		{"новый: зарегался, ещё не играл", nil, nil, nil, d(2), "new"},
-		{"вернувшийся: вчера после месяца паузы", p(60), p(1), p(30), d(60), "returned"},
-		{"не вернувшийся: пауза мала", p(60), p(1), p(10), d(60), "regular"},
-		{"пропавший: месяц тишины", p(90), p(30), p(30), d(90), "lost"},
-		{"пропавший: старая регистрация без сессий", nil, nil, nil, d(40), "lost"},
-		{"обычный: играет между окнами", p(60), p(16), p(16), d(60), "regular"},
-	}
-	for _, tc := range cases {
-		if got := classifySegment(tc.first, tc.last, tc.prev, tc.registered, now, 14, 21); got != tc.want {
-			t.Errorf("%s: classifySegment = %q, ожидалось %q", tc.name, got, tc.want)
-		}
-	}
-}

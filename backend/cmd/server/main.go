@@ -168,8 +168,12 @@ func main() {
 		// Каталог: правка/удаление — конфигурация запуска на гостевых ПК (Б0-и3)
 		own.POST("/catalog", handleAdminCatalogUpsert)
 		own.DELETE("/catalog/:id", handleAdminCatalogDelete)
-		own.GET("/stats/revenue", handleAdminStatsRevenue)
-		own.GET("/stats/load", handleAdminStatsLoad)
+		// Отчёты за произвольный период (спринт В1): пресеты + «с…по…»,
+		// сравнение с предыдущим периодом, четыре разреза.
+		own.GET("/reports/money", handleReportMoney)
+		own.GET("/reports/guests", handleReportGuests)
+		own.GET("/reports/load", handleReportLoad)
+		own.GET("/reports/staff", handleReportStaff)
 		// Смены и график персонала (Б11): правит только owner
 		own.POST("/shifts", handleAdminShiftCreate)
 		own.PATCH("/shifts/:id", handleAdminShiftUpdate)
@@ -177,7 +181,6 @@ func main() {
 		own.POST("/shifts/:id/assign", handleAdminShiftAssign)
 		own.DELETE("/shift-assignments/:id", handleAdminShiftUnassign)
 		own.GET("/stats/shift", handleAdminStatsShift)       // сводка смены (Б10)
-		own.GET("/stats/segments", handleAdminStatsSegments) // сегменты гостей (Б10)
 		own.GET("/settings", handleAdminSettingsGet)
 		own.PUT("/settings", handleAdminSettingsPut)
 		// Персонал (спринт Б5): назначение/снятие админов вместо SQL

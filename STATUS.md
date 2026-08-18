@@ -1,7 +1,7 @@
 # 14:48 — Состояние проекта
 
 > Живой документ. Обновляется по мере работы. Точка входа для всех: открой его первым.
-> Последнее обновление: 2026-08-17.
+> Последнее обновление: 2026-08-18.
 
 **14:48** — геймифицированная SaaS-платформа для компьютерных клубов. Игрок получает XP за время за ПК, прокачивает уровни и таланты, открывает кейсы, получает кэшбек. Конкуренты делают инструмент контроля — мы делаем продолжение игры.
 
@@ -70,7 +70,7 @@
 | POST | `/api/v1/admin/bookings` | walk-in бронь за гостя (А3) | admin |
 | POST | `/api/v1/admin/bookings/:id/restore` | вернуть отменённую бронь — undo (А3) | admin |
 | GET  | `/api/v1/admin/audit` | единый журнал: гранты+депозиты+действия (А4, миграция 016) | admin |
-| GET  | `/api/v1/admin/stats/revenue` · `/admin/stats/load` | выручка по дням; загрузка по часам + топ гостей (А5) | owner |
+| GET  | `/api/v1/admin/reports/money` · `/guests` · `/load` · `/staff` | отчёты за период: пресеты и `from`/`to`, клубные сутки, сравнение с предыдущим периодом (В1) | owner |
 | GET/PUT | `/api/v1/admin/settings` | экономика: xp_per_min, coins_per_min, coins_per_pln + report_hour и пороги сегментов (А5+Б10, миграция 017) | owner |
 | GET  | `/api/v1/ws/admin?token=` | live-канал админки: session/shell/deposit/booking/ban/grant/chat/waitlist (А6+Б) | admin |
 | POST/GET | `/api/v1/me/chat` (+`/unread`) | чат с админом; вызов = kind=call (Б2–Б3, миграция 019) | JWT |
@@ -83,7 +83,7 @@
 | POST | `/api/v1/admin/computers/:id/session` | посадить гостя за ПК без его пароля (Б8) | admin |
 | GET/POST/DELETE | `/api/v1/admin/waitlist[/:id]` | очередь-вейтлист: список, поставить по нику, снять (Б9, миграция 022) | admin |
 | GET/POST/DELETE | `/api/v1/me/waitlist` | гость: позиция в очереди, встать, выйти (Б9, задел PWA) | JWT |
-| GET  | `/api/v1/admin/stats/shift?date=` · `/admin/stats/segments` | сводка смены (клубные сутки от report_hour, листание) · сегменты гостей (Б10) | owner |
+| GET  | `/api/v1/admin/stats/shift?date=` | сводка смены: клубные сутки от report_hour, листание по дням (Б10-и1) | owner |
 | GET  | `/api/v1/admin/shifts` · `/shifts/schedule` · `/shifts/now` | шаблоны смен, график недели, кто сейчас на смене (Б11) | admin |
 | POST/PATCH/DELETE | `/api/v1/admin/shifts[/:id]` + `/shifts/:id/assign`, `/shift-assignments/:id` | смены: CRUD шаблонов и график (Б11, миграция 023) | owner |
 
