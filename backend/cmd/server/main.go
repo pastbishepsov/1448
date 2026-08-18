@@ -162,6 +162,14 @@ func main() {
 		adm.POST("/catalog/:id/toggle", handleAdminCatalogToggle)
 		adm.POST("/catalog/:id/sort", handleAdminCatalogSort) // Б0-и3: admin — только порядок
 
+		// Товары и продажи (В2, миграция 024): ценник правит owner, а продажа,
+		// приём поставки и корректировка остатка — операции смены.
+		adm.GET("/goods", handleAdminGoods)
+		adm.POST("/goods/:id/stock", handleAdminGoodStock)
+		adm.GET("/sales", handleAdminSales)
+		adm.POST("/sales", handleAdminSaleCreate)
+		adm.POST("/sales/:id/void", handleAdminSaleVoid)
+
 		// Owner-only: статистика и настройки экономики (спринт А5)
 		own := adm.Group("")
 		own.Use(ownerMiddleware())
@@ -170,6 +178,10 @@ func main() {
 		own.DELETE("/catalog/:id", handleAdminCatalogDelete)
 		// Отчёты за произвольный период (спринт В1): пресеты + «с…по…»,
 		// сравнение с предыдущим периодом, четыре разреза.
+		own.POST("/goods", handleAdminGoodCreate)
+		own.PATCH("/goods/:id", handleAdminGoodUpdate)
+		own.DELETE("/goods/:id", handleAdminGoodDelete)
+		own.GET("/goods/:id/moves", handleAdminGoodMoves)
 		own.GET("/reports/money", handleReportMoney)
 		own.GET("/reports/guests", handleReportGuests)
 		own.GET("/reports/load", handleReportLoad)

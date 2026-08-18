@@ -211,15 +211,21 @@ func fillDays(p period, byDay map[string][2]float64) []gin.H {
 // ── Разрез «Деньги» ───────────────────────────────────────────────────
 
 type moneyAgg struct {
-	Revenue  float64 `json:"revenue_pln"`
-	Deposits int64   `json:"deposits"`
-	Guests   int64   `json:"guests"`
-	AvgCheck float64 `json:"avg_check_pln"`
-	Cash     float64 `json:"cash_pln"`
-	Card     float64 `json:"card_pln"`
-	Blik     float64 `json:"blik_pln"`
+	Revenue     float64 `json:"revenue_pln"` // итого: пополнения + товары
+	DepositsPLN float64 `json:"deposits_pln"`
+	Deposits    int64   `json:"deposits"`
+	GoodsPLN    float64 `json:"goods_pln"`
+	GoodsSales  int64   `json:"goods_sales"`
+	GoodsItems  int64   `json:"goods_items"`
+	Guests      int64   `json:"guests"`
+	AvgCheck    float64 `json:"avg_check_pln"` // средний чек пополнения
+	Cash        float64 `json:"cash_pln"`
+	Card        float64 `json:"card_pln"`
+	Blik        float64 `json:"blik_pln"`
 }
 
+// aggMoney — деньги за период. Выручка клуба = пополнения + продажи товаров
+// (решение основателя 2026-08-18); отменённые продажи в выручку не идут.
 func aggMoney(p period) moneyAgg {
 	var a moneyAgg
 	var head struct {
@@ -230,9 +236,32 @@ func aggMoney(p period) moneyAgg {
 	db.Model(&models.Deposit{}).
 		Select("COALESCE(SUM(amount_pln),0) AS revenue, COUNT(*) AS deposits, COUNT(DISTINCT user_id) AS guests").
 		Where("created_at >= ? AND created_at < ?", p.From, p.To).Scan(&head)
-	a.Revenue, a.Deposits, a.Guests = head.Revenue, head.Deposits, head.Guests
+	a.DepositsPLN, a.Deposits, a.Guests = head.Revenue, head.Deposits, head.Guests
 	if a.Deposits > 0 {
-		a.AvgCheck = math.Round(a.Revenue/float64(a.Deposits)*100) / 100
+		a.AvgCheck = math.Round(a.DepositsPLN/float64(a.Deposits)*100) / 100
+	}
+
+	var goods struct {
+		Pln   float64
+		Cnt   int64
+		Items int64
+	}
+	db.Model(&models.Sale{}).
+		Select("COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt, COALESCE(SUM(qty),0) AS items").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Scan(&goods)
+	a.GoodsPLN, a.GoodsSales, a.GoodsItems = goods.Pln, goods.Cnt, goods.Items
+	a.Revenue = math.Round((a.DepositsPLN+a.GoodsPLN)*100) / 100
+
+	// разбивка по способам оплаты — по обоим каналам сразу
+	add := func(method string, pln float64) {
+		switch method {
+		case "cash":
+			a.Cash += pln
+		case "card":
+			a.Card += pln
+		case "blik":
+			a.Blik += pln
+		}
 	}
 	var rows []struct {
 		Method string
@@ -241,14 +270,14 @@ func aggMoney(p period) moneyAgg {
 	db.Model(&models.Deposit{}).Select("method, COALESCE(SUM(amount_pln),0) AS pln").
 		Where("created_at >= ? AND created_at < ?", p.From, p.To).Group("method").Scan(&rows)
 	for _, r := range rows {
-		switch r.Method {
-		case "cash":
-			a.Cash = r.Pln
-		case "card":
-			a.Card = r.Pln
-		case "blik":
-			a.Blik = r.Pln
-		}
+		add(r.Method, r.Pln)
+	}
+	rows = nil
+	db.Model(&models.Sale{}).Select("method, COALESCE(SUM(total_pln),0) AS pln").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Group("method").Scan(&rows)
+	for _, r := range rows {
+		add(r.Method, r.Pln)
 	}
 	return a
 }
@@ -261,6 +290,19 @@ func handleReportMoney(c *gin.Context) {
 	}
 	cur, old := aggMoney(p), aggMoney(prev)
 
+	// ряд по дням: столбик = пополнения + товары, в подсказке разбивка
+	type dayRow struct {
+		deposits float64
+		goods    float64
+		count    int64
+	}
+	perDay := map[string]*dayRow{}
+	get := func(k string) *dayRow {
+		if perDay[k] == nil {
+			perDay[k] = &dayRow{}
+		}
+		return perDay[k]
+	}
 	var rows []struct {
 		D   time.Time
 		Pln float64
@@ -270,9 +312,28 @@ func handleReportMoney(c *gin.Context) {
 		Select(dayExpr("created_at", reportHour)+" AS d, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
 		Where("created_at >= ? AND created_at < ?", p.From, p.To).
 		Group("d").Order("d").Scan(&rows)
-	byDay := map[string][2]float64{}
 	for _, r := range rows {
-		byDay[r.D.Format("2006-01-02")] = [2]float64{r.Pln, float64(r.Cnt)}
+		v := get(r.D.Format("2006-01-02"))
+		v.deposits, v.count = r.Pln, r.Cnt
+	}
+	rows = nil
+	db.Model(&models.Sale{}).
+		Select(dayExpr("created_at", reportHour)+" AS d, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Group("d").Order("d").Scan(&rows)
+	for _, r := range rows {
+		v := get(r.D.Format("2006-01-02"))
+		v.goods, v.count = r.Pln, v.count+r.Cnt
+	}
+	days := make([]gin.H, 0, p.Days)
+	for d := p.FromDay; !d.After(p.ToDay); d = d.AddDate(0, 0, 1) {
+		key := d.Format("2006-01-02")
+		v := perDay[key]
+		if v == nil {
+			v = &dayRow{}
+		}
+		days = append(days, gin.H{"date": key, "value": math.Round((v.deposits+v.goods)*100) / 100,
+			"deposits_pln": v.deposits, "goods_pln": v.goods, "count": v.count})
 	}
 
 	var admRows []struct {
@@ -283,29 +344,88 @@ func handleReportMoney(c *gin.Context) {
 	db.Model(&models.Deposit{}).
 		Select("created_by AS admin_id, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
 		Where("created_at >= ? AND created_at < ? AND created_by IS NOT NULL", p.From, p.To).
-		Group("created_by").Order("pln DESC").Scan(&admRows)
-	nick := nicknamesByID(idsOf(admRows, func(r struct {
-		AdminID string
-		Pln     float64
-		Cnt     int64
-	}) string {
-		return r.AdminID
-	}))
-	byAdmin := make([]gin.H, 0, len(admRows))
-	for _, r := range admRows {
-		byAdmin = append(byAdmin, gin.H{"nickname": nick[r.AdminID], "revenue_pln": r.Pln, "deposits": r.Cnt})
+		Group("created_by").Scan(&admRows)
+	type byAdminRow struct {
+		deposits float64
+		cnt      int64
+		goods    float64
+		sales    int64
 	}
+	admins := map[string]*byAdminRow{}
+	getAdmin := func(id string) *byAdminRow {
+		if admins[id] == nil {
+			admins[id] = &byAdminRow{}
+		}
+		return admins[id]
+	}
+	for _, r := range admRows {
+		a := getAdmin(r.AdminID)
+		a.deposits, a.cnt = r.Pln, r.Cnt
+	}
+	admRows = nil
+	db.Model(&models.Sale{}).
+		Select("created_by AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Group("created_by").Scan(&admRows)
+	for _, r := range admRows {
+		a := getAdmin(r.AdminID)
+		a.goods, a.sales = r.Pln, r.Cnt
+	}
+	ids := make([]string, 0, len(admins))
+	for id := range admins {
+		ids = append(ids, id)
+	}
+	nick := nicknamesByID(ids)
+	byAdmin := make([]gin.H, 0, len(admins))
+	for id, a := range admins {
+		byAdmin = append(byAdmin, gin.H{"nickname": nick[id],
+			"revenue_pln": math.Round((a.deposits+a.goods)*100) / 100,
+			"deposits":    a.cnt, "goods_pln": a.goods, "sales": a.sales})
+	}
+	sort.Slice(byAdmin, func(i, j int) bool {
+		return byAdmin[i]["revenue_pln"].(float64) > byAdmin[j]["revenue_pln"].(float64)
+	})
+
+	// топ позиций ценника
+	var goodRows []struct {
+		Name  string
+		Pln   float64
+		Items int64
+	}
+	db.Model(&models.Sale{}).
+		Select("name, COALESCE(SUM(total_pln),0) AS pln, COALESCE(SUM(qty),0) AS items").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Group("name").Order("pln DESC").Limit(15).Scan(&goodRows)
+	topGoods := make([]gin.H, 0, len(goodRows))
+	for _, r := range goodRows {
+		topGoods = append(topGoods, gin.H{"name": r.Name, "revenue_pln": r.Pln, "items": r.Items})
+	}
+
+	// потери: всё, что ушло со склада корректировкой, а не через кассу
+	var loss struct {
+		Units int64
+		Pln   float64
+		Moves int64
+	}
+	db.Model(&models.StockMove{}).
+		Select("COALESCE(-SUM(stock_moves.delta),0) AS units, COUNT(*) AS moves, COALESCE(-SUM(stock_moves.delta * goods.price_pln),0) AS pln").
+		Joins("JOIN goods ON goods.id = stock_moves.good_id").
+		Where("stock_moves.created_at >= ? AND stock_moves.created_at < ? AND stock_moves.reason = ? AND stock_moves.delta < 0",
+			p.From, p.To, "adjust").Scan(&loss)
 
 	c.JSON(http.StatusOK, gin.H{
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
 		"delta": gin.H{
 			"revenue_pln":   pctDelta(cur.Revenue, old.Revenue),
+			"deposits_pln":  pctDelta(cur.DepositsPLN, old.DepositsPLN),
+			"goods_pln":     pctDelta(cur.GoodsPLN, old.GoodsPLN),
 			"deposits":      pctDelta(float64(cur.Deposits), float64(old.Deposits)),
 			"guests":        pctDelta(float64(cur.Guests), float64(old.Guests)),
 			"avg_check_pln": pctDelta(cur.AvgCheck, old.AvgCheck),
 		},
-		"days": fillDays(p, byDay), "by_admin": byAdmin,
+		"days": days, "by_admin": byAdmin, "top_goods": topGoods,
+		"losses": gin.H{"units": loss.Units, "pln": math.Round(loss.Pln*100) / 100, "moves": loss.Moves},
 	})
 }
 
@@ -711,8 +831,10 @@ func handleReportStaff(c *gin.Context) {
 
 	// выручка и сессии по сменам: момент операции раскладываем по шаблонам
 	type bucket struct {
-		revenue  float64
+		revenue  float64 // пополнения
 		deposits int64
+		goods    float64 // продажи товаров
+		sales    int64
 		sessions int64
 		minutes  int64
 	}
@@ -725,39 +847,39 @@ func handleReportStaff(c *gin.Context) {
 	}
 	const outside = "вне смен"
 
-	var deps []models.Deposit
-	db.Where("created_at >= ? AND created_at < ?", p.From, p.To).Find(&deps)
-	for _, d := range deps {
-		name := outside
+	shiftOf := func(at time.Time) string {
 		for _, s := range shifts {
 			if !s.Active {
 				continue
 			}
-			if on, _ := shiftActiveAt(s.StartMin, s.EndMin, s.DaysMask, d.CreatedAt); on {
-				name = s.Name
-				break
+			if on, _ := shiftActiveAt(s.StartMin, s.EndMin, s.DaysMask, at); on {
+				return s.Name
 			}
 		}
-		b := get(name)
+		return outside
+	}
+
+	var deps []models.Deposit
+	db.Where("created_at >= ? AND created_at < ?", p.From, p.To).Find(&deps)
+	for _, d := range deps {
+		b := get(shiftOf(d.CreatedAt))
 		b.revenue += d.AmountPLN
 		b.deposits++
+	}
+
+	var sales []models.Sale
+	db.Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Find(&sales)
+	for _, sl := range sales {
+		b := get(shiftOf(sl.CreatedAt))
+		b.goods += sl.TotalPLN
+		b.sales++
 	}
 
 	var sess []models.Session
 	db.Select("id, started_at, minutes_used").
 		Where("started_at >= ? AND started_at < ?", p.From, p.To).Find(&sess)
 	for _, s := range sess {
-		name := outside
-		for _, sh := range shifts {
-			if !sh.Active {
-				continue
-			}
-			if on, _ := shiftActiveAt(sh.StartMin, sh.EndMin, sh.DaysMask, s.StartedAt); on {
-				name = sh.Name
-				break
-			}
-		}
-		b := get(name)
+		b := get(shiftOf(s.StartedAt))
 		b.sessions++
 		b.minutes += int64(s.MinutesUsed)
 	}
@@ -772,7 +894,10 @@ func handleReportStaff(c *gin.Context) {
 		if b.deposits > 0 {
 			avg = math.Round(b.revenue/float64(b.deposits)*100) / 100
 		}
-		byShift = append(byShift, gin.H{"shift": name, "revenue_pln": b.revenue, "deposits": b.deposits,
+		byShift = append(byShift, gin.H{"shift": name,
+			"revenue_pln":  math.Round((b.revenue+b.goods)*100) / 100,
+			"deposits_pln": b.revenue, "deposits": b.deposits,
+			"goods_pln": b.goods, "sales": b.sales,
 			"sessions": b.sessions, "hours": math.Round(float64(b.minutes)/60*10) / 10, "avg_check_pln": avg})
 	}
 	for _, s := range shifts {
@@ -798,8 +923,9 @@ func handleReportStaff(c *gin.Context) {
 	type person struct {
 		shifts   int64
 		schedMin int64
-		revenue  float64
+		revenue  float64 // пополнения + товары
 		deposits int64
+		sales    int64
 		actions  int64
 		grants   int64
 	}
@@ -828,6 +954,16 @@ func handleReportStaff(c *gin.Context) {
 		w := who(r.AdminID)
 		w.revenue, w.deposits = r.Pln, r.Cnt
 	}
+	depRows = nil
+	db.Model(&models.Sale{}).
+		Select("created_by AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Group("created_by").Scan(&depRows)
+	for _, r := range depRows {
+		w := who(r.AdminID)
+		w.revenue += r.Pln
+		w.sales = r.Cnt
+	}
 	var actRows []struct {
 		AdminID string
 		Cnt     int64
@@ -855,8 +991,8 @@ func handleReportStaff(c *gin.Context) {
 		byPerson = append(byPerson, gin.H{
 			"nickname": nick[id], "role": roles[id],
 			"shifts": w.shifts, "scheduled_hours": math.Round(float64(w.schedMin)/60*10) / 10,
-			"revenue_pln": w.revenue, "deposits": w.deposits,
-			"actions": w.actions + w.grants,
+			"revenue_pln": math.Round(w.revenue*100) / 100, "deposits": w.deposits, "sales": w.sales,
+			"actions": w.actions + w.grants + w.sales,
 		})
 	}
 	sort.Slice(byPerson, func(i, j int) bool {
@@ -867,8 +1003,8 @@ func handleReportStaff(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": gin.H{"revenue_pln": curMoney.Revenue, "deposits": curMoney.Deposits,
-			"people": len(people), "assignments": len(asg)},
-		"prev":      gin.H{"revenue_pln": oldMoney.Revenue, "deposits": oldMoney.Deposits},
+			"goods_pln": curMoney.GoodsPLN, "people": len(people), "assignments": len(asg)},
+		"prev":      gin.H{"revenue_pln": oldMoney.Revenue, "deposits": oldMoney.Deposits, "goods_pln": oldMoney.GoodsPLN},
 		"delta":     gin.H{"revenue_pln": pctDelta(curMoney.Revenue, oldMoney.Revenue)},
 		"by_shift":  byShift,
 		"by_person": byPerson,

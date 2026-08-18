@@ -59,13 +59,30 @@ func handleAdminStatsShift(c *gin.Context) {
 		Where("created_at >= ? AND created_at < ?", from, to).
 		Group("method").Scan(&depRows)
 	byMethod := gin.H{"cash": 0.0, "card": 0.0, "blik": 0.0}
-	var totalPLN float64
+	var depPLN float64
 	var depCount int64
 	for _, r := range depRows {
 		byMethod[r.Method] = r.Pln
-		totalPLN += r.Pln
+		depPLN += r.Pln
 		depCount += r.Cnt
 	}
+
+	// продажи товаров (В2) — вторая половина выручки смены
+	depRows = nil
+	db.Model(&models.Sale{}).
+		Select("method, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", from, to).
+		Group("method").Scan(&depRows)
+	var goodsPLN float64
+	var saleCount int64
+	for _, r := range depRows {
+		if v, ok := byMethod[r.Method].(float64); ok {
+			byMethod[r.Method] = v + r.Pln
+		}
+		goodsPLN += r.Pln
+		saleCount += r.Cnt
+	}
+	totalPLN := depPLN + goodsPLN
 
 	// сессии: начатые в окне; часы — по завершённым в окне (начисления
 	// привязаны к завершению, активные ещё не отыграли своё)
@@ -115,8 +132,9 @@ func handleAdminStatsShift(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"date": key, "from": from, "to": to, "report_hour": reportHour,
-		"staff":      staffOut,
-		"revenue":    gin.H{"total_pln": totalPLN, "by_method": byMethod, "deposits": depCount},
+		"staff": staffOut,
+		"revenue": gin.H{"total_pln": totalPLN, "by_method": byMethod, "deposits": depCount,
+			"deposits_pln": depPLN, "goods_pln": goodsPLN, "sales": saleCount},
 		"sessions":   gin.H{"started": sessStarted, "minutes": minutes},
 		"new_guests": newGuests,
 		"bookings":   gin.H{"created": bkCreated, "cancelled": bkCancelled},

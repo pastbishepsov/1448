@@ -271,6 +271,19 @@
              transition:background .15s}
   .bars .bar:hover{background:var(--acc)}
   .barlabels{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin:6px 6px 0}
+  /* В2: плитки товаров — продажа в один тап у стойки */
+  .gtiles{display:flex; flex-wrap:wrap; gap:10px; margin:2px 0 10px}
+  .gtile{background:var(--card); border:1px solid var(--hair); border-radius:12px; padding:10px 14px;
+         min-width:136px; cursor:pointer; text-align:left; color:var(--txt);
+         transition:border-color .15s var(--smooth), transform .08s var(--smooth)}
+  .gtile:hover{border-color:var(--acc)}
+  .gtile:active{transform:scale(.97)}
+  .gtile b{display:block; font-size:14px; margin-bottom:2px}
+  .gtile .gp{color:var(--acc3); font-weight:700; font-variant-numeric:tabular-nums}
+  .gtile .gs{display:block; color:var(--dim); font-size:11px; margin-top:3px}
+  .gtile.low .gs{color:var(--orange)}
+  .gtile.out{opacity:.4; cursor:not-allowed}
+  .gtile.out:hover{border-color:var(--hair)}
   /* В1: чип роста к предыдущему периоду рядом с числом */
   .dlt{font-style:normal; font-size:11px; margin-left:8px; padding:2px 6px; border-radius:6px;
        background:rgba(255,255,255,.05); color:var(--dim); white-space:nowrap}
@@ -472,6 +485,7 @@
       <button id="r-users" onclick="nav('users')" aria-label="Гости"><span data-ic="users"></span><span class="rlabel">Гости</span></button>
       <button id="r-bookings" onclick="nav('bookings')" aria-label="Брони"><span data-ic="cal"></span><span class="rlabel">Брони</span><span class="rbadge hidden" id="bkBadge"></span></button>
       <button id="r-catalog" onclick="nav('catalog')" aria-label="Каталог"><span data-ic="apps"></span><span class="rlabel">Каталог</span></button>
+      <button id="r-goods" onclick="nav('goods')" aria-label="Товары"><span data-ic="box"></span><span class="rlabel">Товары</span><span class="rbadge hidden" id="goodsBadge"></span></button>
       <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
       <div class="rzone zclub">Клуб</div>
       <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Отчёты"><span data-ic="chart"></span><span class="rlabel">Отчёты</span></button>
@@ -546,6 +560,26 @@
           <span class="muted" id="catHint">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
         </div>
         <div class="tablewrap" id="catalogTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+      </section>
+
+      <section id="s-goods" class="hidden">
+        <!-- Спринт В2: продажа в один тап, лента смены и ценник с остатками.
+             Платят только злотыми — решение основателя 18.08.2026. -->
+        <div class="toolrow">
+          <div class="segs" title="Чем платит гость">
+            <button class="on" data-m="cash" onclick="saleMethod('cash',this)">Наличные</button>
+            <button data-m="card" onclick="saleMethod('card',this)">Карта</button>
+            <button data-m="blik" onclick="saleMethod('blik',this)">BLIK</button>
+          </div>
+          <input id="saleNick" class="input" placeholder="Ник гостя — необязательно" autocomplete="off" style="min-width:210px">
+          <button class="btn mini ownerOnly hidden" onclick="editGood('')"><span data-ic="plus"></span>Позиция</button>
+        </div>
+        <div class="toolrow"><div class="segs" id="goodsCats"></div></div>
+        <div id="goodsTiles"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+        <div class="sect">Продажи смены · <span id="salesTotal" style="text-transform:none; letter-spacing:0">—</span></div>
+        <div class="tablewrap" id="salesTable"><div class="skel"></div><div class="skel"></div></div>
+        <div class="sect">Ценник и остатки</div>
+        <div class="tablewrap" id="goodsTable"><div class="skel"></div><div class="skel"></div></div>
       </section>
 
       <section id="s-grants" class="hidden">
@@ -714,7 +748,7 @@
    но не редактирует; fallback — прежняя группировка по зонам. */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
-const SECTIONS = ['hall','users','bookings','catalog','grants','stats','staff','settings'];
+const SECTIONS = ['hall','users','bookings','catalog','goods','grants','stats','staff','settings'];
 const OWNER_SECTIONS = ['stats','settings']; // Б11: «Персонал» открыт admin'у read-only (график смен)
 let curTab = 'hall', refreshIv = null, me = null, lastSync = 0;
 
@@ -738,6 +772,7 @@ const UI = {
   ban: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>`,
   unban: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,128a88,88,0,1,1-88-88A88,88,0,0,1,216,128Z" fill="var(--acc)" opacity=".45"/><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>`,
   power: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,128a88,88,0,1,1-88-88A88,88,0,0,1,216,128Z" fill="var(--acc)" opacity=".45"/><path d="M120,128V48a8,8,0,0,1,16,0v80a8,8,0,0,1-16,0Zm60.37-78.7a8,8,0,0,0-8.74,13.4C194.74,77.77,208,101.57,208,128a80,80,0,0,1-160,0c0-26.43,13.26-50.23,36.37-65.3a8,8,0,0,0-8.74-13.4C47.9,67.38,32,96.06,32,128a96,96,0,0,0,192,0C224,96.06,208.1,67.38,180.37,49.3Z"/></svg>`,
+  box: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,96v96a16,16,0,0,1-16,16H64a16,16,0,0,1-16-16V96Z" fill="var(--acc)" opacity=".45"/><path d="M224,56a8,8,0,0,0-8-8H40a8,8,0,0,0-8,8V96a8,8,0,0,0,8,8h8v88a24,24,0,0,0,24,24H184a24,24,0,0,0,24-24V104h8a8,8,0,0,0,8-8Zm-16,32H48V64H208ZM192,192a8,8,0,0,1-8,8H72a8,8,0,0,1-8-8V104H192Z"/><path d="M104,144a8,8,0,0,1,8-8h32a8,8,0,0,1,0,16H112A8,8,0,0,1,104,144Z"/></svg>`,
   edit: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z" fill="var(--acc)" opacity=".45"/><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg>`,
   plus: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z"/></svg>`,
   wrench: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,96a64,64,0,0,1-94.94,56L73,217A24,24,0,0,1,39,183L104,126.94a64,64,0,0,1,80-90.29L144,80l5.66,26.34L176,112l43.35-40A63.8,63.8,0,0,1,224,96Z" fill="var(--acc)" opacity=".45"/><path d="M226.76,69a8,8,0,0,0-12.84-2.88l-40.3,37.19-17.23-3.7-3.7-17.23,37.19-40.3A8,8,0,0,0,187,29.24,72,72,0,0,0,88,96,72.34,72.34,0,0,0,94,124.94L33.79,177c-.15.12-.29.26-.43.39a32,32,0,0,0,45.26,45.26c.13-.13.27-.28.39-.42L131.06,162A72,72,0,0,0,232,96,71.56,71.56,0,0,0,226.76,69ZM160,152a56.14,56.14,0,0,1-27.07-7,8,8,0,0,0-9.92,1.77L67.11,211.51a16,16,0,0,1-22.62-22.62L109.18,133a8,8,0,0,0,1.77-9.93,56,56,0,0,1,58.36-82.31l-31.2,33.81a8,8,0,0,0-1.94,7.1L141.83,108a8,8,0,0,0,6.14,6.14l26.35,5.66a8,8,0,0,0,7.1-1.94l33.81-31.2A56.06,56.06,0,0,1,160,152Z"/></svg>`,
@@ -831,6 +866,7 @@ function nav(t){
     document.getElementById('s-' + x).classList.toggle('hidden', x !== t);
   });
   if (t === 'catalog') renderCatalogTab();
+  else if (t === 'goods') renderGoods();
   else if (t === 'stats') renderStats();
   else if (t === 'staff') renderStaff();
   else if (t === 'settings') renderSettings();
@@ -933,6 +969,10 @@ function feedLine(m){
     case 'shell_online': return pcName(d.computer_id) + ' — shell online';
     case 'shell_offline': return pcName(d.computer_id) + ' — shell offline';
     case 'deposit': return (d.nickname||'гость') + ' внёс ' + (+d.amount_pln||0) + ' zł (+' + (d.coins||0) + ' монет)';
+    case 'sale': return d.kind === 'void'
+      ? 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł'
+      : 'продано: ' + (d.name||'товар') + (d.qty > 1 ? ' ×' + d.qty : '')
+        + ' · ' + (+d.total_pln||0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '');
     case 'ban': return (d.nickname||'гость') + ' забанен';
     case 'chat': return (d.nickname || d.computer || 'гость')
       + (d.kind === 'call' ? ' зовёт админа' : ': ' + (d.text||''));
@@ -1945,13 +1985,14 @@ async function toggleApp(id){
 /* ── Журнал-аудит (А4): единая лента — начисления, депозиты, действия ── */
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
-  money: ['deposit'],
+  money: ['deposit','sale','sale_void'],
   grant: ['grant'],
   users: ['ban','unban'],
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat'],
   bookings: ['booking_create','booking_cancel','booking_restore'],
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
+  goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
   staff: ['staff_promote','staff_demote','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
 };
 const AUD_LABEL = {
@@ -1967,6 +2008,9 @@ const AUD_LABEL = {
   shift_tpl_create:'смена: создана', shift_tpl_update:'смена: правка',
   shift_tpl_delete:'смена: удалена', shift_assign:'график: назначен',
   shift_unassign:'график: снят',
+  sale:'продажа', sale_void:'отмена продажи',
+  good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
+  stock_in:'склад: приход', stock_adjust:'склад: корректировка',
 };
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
@@ -1980,6 +2024,9 @@ const AUD_ICON = {
   staff_promote:'users', staff_demote:'out',
   shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',
   shift_assign:'cal', shift_unassign:'out',
+  sale:'box', sale_void:'cross',
+  good_create:'plus', good_update:'edit', good_delete:'cross',
+  stock_in:'box', stock_adjust:'wrench',
 };
 function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
 function relTime(iso){
@@ -2106,6 +2153,7 @@ async function renderShift(){
     const m = d.revenue.by_method || {};
     document.getElementById('shiftKpis').innerHTML =
       `<div class="kpi" title="нал ${fmtPLN(m.cash||0)} · карта ${fmtPLN(m.card||0)} · BLIK ${fmtPLN(m.blik||0)}">Выручка <b>${fmtPLN(d.revenue.total_pln)} zł</b></div>
+       <div class="kpi" title="пополнения ${fmtPLN(d.revenue.deposits_pln||0)} zł · товары ${fmtPLN(d.revenue.goods_pln||0)} zł">Товары <b>${fmtPLN(d.revenue.goods_pln||0)} zł</b></div>
        <div class="kpi">Депозитов <b>${d.revenue.deposits}</b></div>
        <div class="kpi">Сессий <b>${d.sessions.started}</b></div>
        <div class="kpi">Наиграно <b>${shiftHours(d.sessions.minutes)}</b></div>
@@ -2130,6 +2178,251 @@ function shiftDay(delta){
   if (shiftMax && next > shiftMax){ toast('⏳ Эта смена ещё не началась'); return; }
   shiftDate = next;
   renderShift();
+}
+
+/* ── В2: товары, продажи и остатки (ADMIN.md, спринт В2; миграция 024).
+   Продажа — один тап по плитке: у стойки лишний шаг стоит очереди, а ошибку
+   снимает «Вернуть» в тосте (отмена вернёт товар на склад). Ценник правит
+   владелец, приход и корректировку — любой на смене, но остаток не меняется
+   «молча»: каждое движение остаётся в складской истории, и владелец видит
+   в отчёте потери — всё, что ушло со склада мимо кассы. ── */
+let goodsData = [], goodsCat = null, saleM = 'cash';
+
+function saleMethod(m, btn){
+  saleM = m;
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+}
+
+async function renderGoods(){
+  try{
+    const [g, sl] = await Promise.all([api('/admin/goods'), api('/admin/sales')]);
+    goodsData = g.goods || [];
+    paintGoodsCats(g.categories || []);
+    paintGoodsTiles();
+    paintGoodsTable();
+    paintSales(sl);
+    goodsBadgeSet(g.low_count || 0);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function goodsBadgeSet(n){
+  const b = document.getElementById('goodsBadge');
+  if (!b) return;
+  b.textContent = n;
+  b.classList.toggle('hidden', !n);
+  b.title = n ? 'позиций заканчивается: ' + n : '';
+}
+
+function paintGoodsCats(cats){
+  const box = document.getElementById('goodsCats');
+  if (cats.length < 2){ box.innerHTML = ''; return; }
+  box.innerHTML = `<button class="${goodsCat ? '' : 'on'}" onclick="goodsCatSet(null,this)">Все</button>` +
+    cats.map(c => `<button class="${goodsCat === c ? 'on' : ''}" onclick="goodsCatSet('${esc(c)}',this)">${esc(c)}</button>`).join('');
+}
+function goodsCatSet(c, btn){
+  goodsCat = c;
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+  paintGoodsTiles();
+}
+
+function paintGoodsTiles(){
+  const list = goodsData.filter(g => g.active && (!goodsCat || g.category === goodsCat));
+  setHTML('goodsTiles', list.length === 0
+    ? '<div class="empty"><span data-ic="box"></span>Ценник пуст — заведи первую позицию</div>'
+    : `<div class="gtiles">${list.map(g => `
+      <button class="gtile ${g.stock <= 0 ? 'out' : (g.low ? 'low' : '')}" onclick="sellGood('${g.id}')"
+              ${g.stock <= 0 ? 'disabled' : ''} title="${g.stock <= 0 ? 'нет на складе' : 'продать 1 шт'}">
+        <b>${esc(g.name)}</b>
+        <span class="gp">${fmtPLN(g.price_pln)} zł</span>
+        <span class="gs">${g.stock <= 0 ? 'нет на складе' : 'осталось ' + g.stock + (g.low ? ' · заканчивается' : '')}</span>
+      </button>`).join('')}</div>`);
+}
+
+async function sellGood(id){
+  const g = goodsData.find(x => x.id === id);
+  if (!g || g.stock <= 0) return;
+  const nick = document.getElementById('saleNick').value.trim();
+  try{
+    const d = await api('/admin/sales', {method:'POST', body:JSON.stringify(
+      {good_id:id, qty:1, method:saleM, nickname:nick || undefined})});
+    const sale = d.sale;
+    toast('✓ ' + sale.name + ' — ' + fmtPLN(sale.total_pln) + ' zł' + (nick ? ' · ' + nick : ''),
+          () => voidSale(sale.id, true));
+    renderGoods();
+    refresh(); // выручка в шапке
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+async function voidSale(id, quiet){
+  try{
+    await api('/admin/sales/' + id + '/void', {method:'POST'});
+    if (!quiet) toast('✓ Продажа отменена — товар вернулся на склад');
+    renderGoods();
+    refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function paintSales(d){
+  setText('salesTotal', (d.date || '') + ' · ' + fmtPLN(d.total_pln || 0) + ' zł' +
+    (d.voided ? ' · отменено: ' + d.voided : ''));
+  const rows = d.sales || [];
+  setHTML('salesTable', rows.length === 0
+    ? '<div class="empty"><span data-ic="box"></span>За смену пока ничего не продано</div>'
+    : `<table><tr><th>Время</th><th>Позиция</th><th>Сумма</th><th>Оплата</th><th>Гость</th><th>Продал</th><th></th></tr>
+      ${rows.map(x => `<tr${x.voided ? ' style="opacity:.45"' : ''}>
+        <td class="muted">${hhmm(x.created_at)}</td>
+        <td><b>${esc(x.name)}</b>${x.qty > 1 ? ' ×' + x.qty : ''}${x.voided ? ' <span class="muted">— отменена</span>' : ''}</td>
+        <td>${fmtPLN(x.total_pln)} zł</td>
+        <td class="muted">${PAY_RU[x.method] || esc(x.method)}</td>
+        <td class="muted">${x.nickname ? esc(x.nickname) : '—'}</td>
+        <td class="muted">${esc(x.admin || '—')}</td>
+        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}')">Отменить</button>`}</td>
+      </tr>`).join('')}</table>`);
+}
+const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK'};
+
+/* отмена продажи — arm-confirm: деньги уходят из выручки смены */
+function armVoid(btn, id){
+  if (btn.dataset.armed){ voidSale(id); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = 'Точно отменить?';
+  btn.classList.add('danger');
+  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; btn.classList.remove('danger'); } }, 4000);
+}
+
+function paintGoodsTable(){
+  const owner = isOwner();
+  setHTML('goodsTable', goodsData.length === 0
+    ? '<div class="empty"><span data-ic="box"></span>Ценник пуст</div>'
+    : `<table><tr><th>Позиция</th><th>Категория</th><th>Цена</th><th>Остаток</th><th></th></tr>
+      ${goodsData.map(g => `<tr${g.active ? '' : ' style="opacity:.5"'}>
+        <td><b>${esc(g.name)}</b>${g.active ? '' : ' <span class="muted">— выключена</span>'}</td>
+        <td class="muted">${esc(g.category || '—')}</td>
+        <td>${fmtPLN(g.price_pln)} zł</td>
+        <td${g.low ? ' style="color:var(--orange)"' : ''}>${g.stock}${g.low ? ' · заканчивается' : ''}</td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost mini" onclick="stockDrawer('${g.id}')"><span data-ic="box"></span>Склад</button>
+          ${owner ? `<button class="btn ghost mini" onclick="editGood('${g.id}')"><span data-ic="edit"></span>Правка</button>` : ''}
+        </td></tr>`).join('')}</table>`);
+}
+
+function editGood(id){
+  if (!isOwner()){ toast('Ценник правит владелец'); return; }
+  const g = goodsData.find(x => x.id === id) || {active:true, sort:100};
+  const isNew = !g.id;
+  openDrawer(isNew ? 'Новая позиция' : g.name, `
+  <div class="uform">
+    <input id="gd_name" class="input" placeholder="Название (Кола 0.5)" value="${esc(g.name||'')}">
+    <input id="gd_cat" class="input" placeholder="Категория (Напитки)" value="${esc(g.category||'')}">
+    <input id="gd_price" class="input" type="number" step="0.01" min="0.01" placeholder="Цена, zł" value="${g.price_pln ?? ''}">
+    <input id="gd_low" class="input" type="number" min="0" placeholder="Порог «заканчивается» (0 — не следим)" value="${g.low_stock ?? 0}">
+    ${isNew ? '<input id="gd_stock" class="input" type="number" min="0" placeholder="Начальный остаток" value="0">' : ''}
+    <input id="gd_sort" class="input" type="number" placeholder="Порядок (меньше = выше)" value="${g.sort ?? 100}">
+    <label class="muted" style="display:flex; gap:8px; align-items:center">
+      <input id="gd_active" type="checkbox" ${g.active === false ? '' : 'checked'}> позиция в продаже
+    </label>
+    ${isNew ? '' : '<div class="muted">Остаток здесь не меняется — он живёт только движениями склада, иначе потери не посчитать.</div>'}
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+      <button class="btn mini" onclick="saveGood('${g.id||''}')"><span data-ic="save"></span>Сохранить</button>
+      ${isNew ? '' : `<button class="btn ghost mini" onclick="goodMoves('${g.id}')"><span data-ic="scroll"></span>История склада</button>`}
+      ${isNew ? '' : `<button class="btn ghost mini danger" onclick="armDeleteGood(this,'${g.id}')">Удалить</button>`}
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+  </div>`);
+}
+
+async function saveGood(id){
+  const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
+  const body = {
+    name: v('gd_name'), category: v('gd_cat'),
+    price_pln: parseFloat(v('gd_price')),
+    low_stock: parseInt(v('gd_low') || '0', 10),
+    sort: parseInt(v('gd_sort') || '100', 10),
+    active: document.getElementById('gd_active').checked,
+  };
+  if (!body.name){ toast('⚠ Нужно название'); return; }
+  if (!(body.price_pln > 0)){ toast('⚠ Нужна цена больше нуля'); return; }
+  const stockEl = document.getElementById('gd_stock');
+  if (stockEl) body.stock = parseInt(stockEl.value || '0', 10);
+  try{
+    await api(id ? '/admin/goods/' + id : '/admin/goods',
+              {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
+    toast('✓ ' + body.name + ' сохранена');
+    closeDrawer();
+    renderGoods();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function armDeleteGood(btn, id){
+  if (btn.dataset.armed){ deleteGood(id); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = 'Точно удалить?';
+  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Удалить'; } }, 4000);
+}
+async function deleteGood(id){
+  try{
+    await api('/admin/goods/' + id, {method:'DELETE'});
+    toast('✓ Позиция удалена');
+    closeDrawer();
+    renderGoods();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function stockDrawer(id){
+  const g = goodsData.find(x => x.id === id);
+  if (!g) return;
+  openDrawer('Склад · ' + g.name, `
+  <div class="uform">
+    <div class="muted">На складе сейчас <b style="color:var(--txt)">${g.stock}</b> шт${g.low ? ' — заканчивается' : ''}</div>
+    <div class="segs">
+      <button class="on" id="stk_supply" onclick="stockKind('supply')">Приход</button>
+      <button id="stk_adjust" onclick="stockKind('adjust')">Корректировка</button>
+    </div>
+    <input id="stk_delta" class="input" type="number" placeholder="Сколько штук (приход — плюсом)" value="">
+    <input id="stk_note" class="input" placeholder="Причина (для корректировки обязательна)">
+    <div class="muted" id="stk_hint">Приход поставки увеличивает остаток.</div>
+    <div style="display:flex; gap:10px">
+      <button class="btn mini" onclick="saveStock('${g.id}')"><span data-ic="save"></span>Записать</button>
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+  </div>`);
+  stockKindV = 'supply';
+}
+let stockKindV = 'supply';
+function stockKind(k){
+  stockKindV = k;
+  document.getElementById('stk_supply').classList.toggle('on', k === 'supply');
+  document.getElementById('stk_adjust').classList.toggle('on', k === 'adjust');
+  setText('stk_hint', k === 'supply'
+    ? 'Приход поставки увеличивает остаток.'
+    : 'Корректировка списывает со склада (бой, порча, пересчёт) — минусом. Причину увидит владелец в отчёте о потерях.');
+}
+async function saveStock(id){
+  const delta = parseInt(document.getElementById('stk_delta').value, 10);
+  const note = document.getElementById('stk_note').value.trim();
+  if (!delta){ toast('⚠ Укажи количество'); return; }
+  if (stockKindV === 'adjust' && !note){ toast('⚠ У корректировки должна быть причина'); return; }
+  try{
+    await api('/admin/goods/' + id + '/stock', {method:'POST', body:JSON.stringify(
+      {delta: stockKindV === 'supply' ? Math.abs(delta) : delta, reason: stockKindV, note})});
+    toast('✓ Склад обновлён');
+    closeDrawer();
+    renderGoods();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+async function goodMoves(id){
+  try{
+    const d = await api('/admin/goods/' + id + '/moves');
+    const R = {supply:'приход', sale:'продажа', void:'возврат', adjust:'корректировка'};
+    openDrawer('История склада', (d.moves||[]).length === 0
+      ? '<div class="empty"><span data-ic="box"></span>Движений пока не было</div>'
+      : `<table><tr><th>Когда</th><th>±</th><th>Причина</th><th>Кто</th></tr>
+        ${d.moves.map(m => `<tr><td class="muted">${fmtTime(m.created_at)}</td>
+          <td style="color:${m.delta > 0 ? 'var(--green)' : 'var(--acc3)'}">${m.delta > 0 ? '+' : ''}${m.delta}</td>
+          <td>${R[m.reason] || esc(m.reason)}${m.note ? ' · ' + esc(m.note) : ''}</td>
+          <td class="muted">${esc(m.admin || '—')}</td></tr>`).join('')}</table>`);
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* ── В1: отчёты владельца за период (ADMIN.md, спринт В1).
@@ -2225,12 +2518,22 @@ async function renderReports(){
 
 function paintMoney(d){
   const t = d.totals, k = d.delta, w = d.prev || {}, days = d.days || [];
+  const loss = d.losses || {units:0, pln:0, moves:0};
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
-       ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln, {was:fmtPLN(w.revenue_pln) + ' zł'})}
+       ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln,
+                {title:'пополнения + продажи товаров', was:fmtPLN(w.revenue_pln) + ' zł'})}
+       ${repKpi('Пополнения', fmtPLN(t.deposits_pln) + ' zł', k.deposits_pln, {was:fmtPLN(w.deposits_pln) + ' zł'})}
+       ${repKpi('Товары', fmtPLN(t.goods_pln) + ' zł', k.goods_pln, {was:fmtPLN(w.goods_pln) + ' zł'})}
+       ${repKpi('Средний чек', fmtPLN(t.avg_check_pln) + ' zł', k.avg_check_pln,
+                {title:'по пополнениям', was:fmtPLN(w.avg_check_pln) + ' zł'})}
+     </div>
+     <div class="kpis">
        ${repKpi('Депозитов', t.deposits, k.deposits, {was:w.deposits})}
-       ${repKpi('Средний чек', fmtPLN(t.avg_check_pln) + ' zł', k.avg_check_pln, {was:fmtPLN(w.avg_check_pln) + ' zł'})}
        ${repKpi('Платили гостей', t.guests, k.guests, {was:w.guests})}
+       ${repKpi('Продано штук', t.goods_items, undefined, {title:t.goods_sales + ' продаж за период'})}
+       ${repKpi('Потери', fmtPLN(loss.pln) + ' zł', undefined,
+                {title:'списано корректировкой, а не через кассу: ' + loss.units + ' шт за ' + loss.moves + ' движений'})}
      </div>
      <div class="kpis">
        <div class="kpi">Наличные <b>${fmtPLN(t.cash_pln)} zł</b></div>
@@ -2238,12 +2541,19 @@ function paintMoney(d){
        <div class="kpi">BLIK <b>${fmtPLN(t.blik_pln)} zł</b></div>
      </div>
      <div class="sect">Выручка по дням</div>
-     ${repChart(days, x => x.value, x => repDate(x.date) + ' · ' + fmtPLN(x.value) + ' zł · депозитов: ' + x.count,
-                [repDate(d.period.from)], [repDate(d.period.to)])}
+     ${repChart(days, x => x.value,
+        x => repDate(x.date) + ' · ' + fmtPLN(x.value) + ' zł (пополнения ' + fmtPLN(x.deposits_pln)
+             + ' · товары ' + fmtPLN(x.goods_pln) + ')',
+        [repDate(d.period.from)], [repDate(d.period.to)])}
+     <div class="sect">Что покупают</div>
+     ${repTable(['Позиция','Выручка','Штук'], (d.top_goods||[]).map(g =>
+        `<tr><td><b>${esc(g.name)}</b></td><td>${fmtPLN(g.revenue_pln)} zł</td><td>${g.items}</td></tr>`),
+        'За этот период товары не продавали')}
      <div class="sect">Кто оформлял</div>
-     ${repTable(['Сотрудник','Выручка','Депозитов'], (d.by_admin||[]).map(a =>
-        `<tr><td><b>${esc(a.nickname||'—')}</b></td><td>${fmtPLN(a.revenue_pln)} zł</td><td>${a.deposits}</td></tr>`),
-        'За этот период пополнений не было')}`;
+     ${repTable(['Сотрудник','Выручка','Депозитов','Товаров'], (d.by_admin||[]).map(a =>
+        `<tr><td><b>${esc(a.nickname||'—')}</b></td><td>${fmtPLN(a.revenue_pln)} zł</td>
+         <td>${a.deposits}</td><td>${a.sales} · ${fmtPLN(a.goods_pln)} zł</td></tr>`),
+        'За этот период денег не принимали')}`;
 }
 
 function paintGuests(d){
@@ -2311,21 +2621,23 @@ function paintStaff(d){
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln, {was:fmtPLN(w.revenue_pln) + ' zł'})}
-       ${repKpi('Депозитов', t.deposits, undefined, {was:w.deposits})}
+       ${repKpi('Из них товары', fmtPLN(t.goods_pln) + ' zł', undefined, {was:fmtPLN(w.goods_pln) + ' zł'})}
        ${repKpi('Людей в деле', t.people)}
        ${repKpi('Смен в графике', t.assignments)}
      </div>
      <div class="sect">Что принесла каждая смена</div>
-     ${repTable(['Смена','Выручка','Депозитов','Средний чек','Сессий','Наиграно'], (d.by_shift||[]).map(x =>
-        `<tr><td><b>${esc(x.shift)}</b></td><td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits}</td>
-         <td>${fmtPLN(x.avg_check_pln)} zł</td><td>${x.sessions}</td><td>${repHours(x.hours)}</td></tr>`),
+     ${repTable(['Смена','Выручка','Пополнения','Товары','Сессий','Наиграно'], (d.by_shift||[]).map(x =>
+        `<tr><td><b>${esc(x.shift)}</b></td><td>${fmtPLN(x.revenue_pln)} zł</td>
+         <td>${fmtPLN(x.deposits_pln)} zł · ${x.deposits}</td>
+         <td>${fmtPLN(x.goods_pln)} zł · ${x.sales}</td>
+         <td>${x.sessions}</td><td>${repHours(x.hours)}</td></tr>`),
         'Смен нет — заведи шаблоны в «Персонале»')}
      <div class="sect">Люди</div>
-     ${repTable(['Сотрудник','Роль','Смен','Часов в графике','Выручка','Депозитов','Операций'], (d.by_person||[]).map(x =>
+     ${repTable(['Сотрудник','Роль','Смен','Часов в графике','Выручка','Депозитов · продаж','Операций'], (d.by_person||[]).map(x =>
         `<tr><td><b>${esc(x.nickname||'—')}</b></td>
          <td class="muted">${x.role === 'owner' ? 'владелец' : 'админ'}</td>
          <td>${x.shifts}</td><td>${repHours(x.scheduled_hours)}</td>
-         <td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits}</td><td>${x.actions}</td></tr>`),
+         <td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits} · ${x.sales}</td><td>${x.actions}</td></tr>`),
         'В этом периоде никто не работал')}`;
 }
 
@@ -2733,6 +3045,7 @@ function densSet(v){
 const PAL_NAV = [
   {t:'hall', name:'Зал', ic:'monitor'}, {t:'users', name:'Гости', ic:'users'},
   {t:'bookings', name:'Брони', ic:'cal'}, {t:'catalog', name:'Каталог', ic:'apps'},
+  {t:'goods', name:'Товары', ic:'box'},
   {t:'grants', name:'Журнал', ic:'scroll'}, {t:'stats', name:'Отчёты', ic:'chart'},
   {t:'staff', name:'Персонал', ic:'users'}, {t:'settings', name:'Экономика', ic:'gear'},
 ];

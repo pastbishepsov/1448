@@ -83,6 +83,23 @@ func handleAdminAudit(c *gin.Context) {
 			fmt.Sprintf("%.0f zł → +%d монет (%s)", d.AmountPLN, d.CoinsGranted+d.BonusCoins, d.Method)})
 	}
 
+	// Продажи товаров (В2) — четвёртый источник: своя таблица, как у депозитов.
+	// Отменённая продажа даёт вторую строку в момент отмены: в хронологии важно
+	// не только что продали, но и когда это отыграли назад.
+	var sales []models.Sale
+	scope(db.Order("created_at DESC").Limit(100)).Find(&sales)
+	for _, s := range sales {
+		text := fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)
+		items = append(items, item{s.CreatedAt, "sale", s.CreatedBy, s.UserID, text})
+		if s.VoidedAt != nil && (ownerView || !s.VoidedAt.Before(startOfToday())) {
+			by := s.CreatedBy
+			if s.VoidedBy != nil {
+				by = *s.VoidedBy
+			}
+			items = append(items, item{*s.VoidedAt, "sale_void", by, s.UserID, "отмена: " + text})
+		}
+	}
+
 	var actions []models.AdminAction
 	scope(db.Order("created_at DESC").Limit(100)).Find(&actions)
 	for _, a := range actions {
