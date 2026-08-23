@@ -413,7 +413,34 @@ func handleReportMoney(c *gin.Context) {
 		Where("stock_moves.created_at >= ? AND stock_moves.created_at < ? AND stock_moves.reason = ? AND stock_moves.delta < 0",
 			p.From, p.To, "adjust").Scan(&loss)
 
+	// Г0-и4 (Р7 GUEST.md): кошельки гостей — ОБЯЗАТЕЛЬСТВО клуба, не выручка.
+	// Выручка признана в момент пополнения (принцип В1 не меняется); остатки
+	// кошельков — деньги, которые клуб ещё должен временем/кухней. Списания
+	// за период появятся со спринтов Г1 (session_spend) и Г7 (kitchen_spend) —
+	// они тоже НЕ выручка, иначе пополнение посчиталось бы дважды.
+	var wal struct {
+		Total  int64
+		Guests int64
+	}
+	db.Model(&models.User{}).
+		Select("COALESCE(SUM(wallet_grosz),0) AS total, COUNT(*) FILTER (WHERE wallet_grosz > 0) AS guests").
+		Scan(&wal)
+	var walSpent struct {
+		Grosz int64
+		Cnt   int64
+	}
+	db.Model(&models.WalletTransaction{}).
+		Select("COALESCE(-SUM(amount_grosz),0) AS grosz, COUNT(*) AS cnt").
+		Where("created_at >= ? AND created_at < ? AND amount_grosz < 0", p.From, p.To).
+		Scan(&walSpent)
+
 	c.JSON(http.StatusOK, gin.H{
+		"wallet": gin.H{
+			"liability_pln":       models.PLNFromGrosz(wal.Total),
+			"guests_with_balance": wal.Guests,
+			"period_spent_pln":    models.PLNFromGrosz(walSpent.Grosz),
+			"period_spends":       walSpent.Cnt,
+		},
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
 		"delta": gin.H{

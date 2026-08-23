@@ -38,6 +38,7 @@ type User struct {
 	XPCurrent            int64   `json:"xp_current"             gorm:"default:0"`
 	XPTotal              int64   `json:"xp_total"               gorm:"default:0"`
 	CoinsBalance         int64   `json:"coins_balance"          gorm:"default:0"`
+	WalletGrosz          int64   `json:"wallet_grosz"           gorm:"default:0"` // денежный кошелёк в грошах (трек Г, Г0-и1): меняется только через walletApply
 	SkillpointsAvailable int     `json:"skillpoints_available"  gorm:"default:0"`
 	PaymentIncreasePct   float64 `json:"payment_increase_pct"   gorm:"type:decimal(5,2);default:0"`
 

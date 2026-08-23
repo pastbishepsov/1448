@@ -4,8 +4,12 @@ package main
 // MVP: депозит оформляет администратор (наличные/карта на кассе клуба) —
 // POST /admin/users/:id/deposit. Stripe/BLIK позже встанут на это же место.
 //
-// Эффекты:
-//   - курс: 1 zł = coinsPerPLN монет;
+// Эффекты (Г0-и2, трек Г: депозит наполняет денежный КОШЕЛЁК — Р1 GUEST.md):
+//   - деньги: amount_pln → users.wallet_grosz через walletApply, строка в
+//     журнале wallet_transactions; сессия спишет их поминутно (Г1), остаток
+//     живёт между визитами — «выйти и не потерять деньги»;
+//   - кэшбек-монеты: 1 zł = coinsPerPLN монет — прежний курс оставлен
+//     сознательно, при кошельке он щедрый (вопрос владельцу №6 GUEST.md);
 //   - талант coin_mint (Intellect) даёт бонусные монеты к депозиту;
 //   - ачивка first_deposit (deposit_count) выдаётся через checkAchievements.
 //
@@ -132,9 +136,21 @@ func handleAdminDeposit(c *gin.Context) {
 		Method: method, CreatedBy: createdBy,
 	}
 
+	amountGrosz := models.GroszFromPLN(req.AmountPLN)
+	var walletAfter int64
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&dep).Error; err != nil {
 			return err
+		}
+		// Г0-и2 (Р1 GUEST.md): деньги депозита — в кошелёк, единственной
+		// дверью walletApply (журнал + инвариант баланса).
+		var werr error
+		walletAfter, werr = walletApply(tx, walletOp{
+			UserID: user.ID, Kind: models.WalletTxDeposit, Amount: amountGrosz,
+			RefType: "deposit", RefID: &dep.ID, CreatedBy: createdBy,
+		})
+		if werr != nil {
+			return werr
 		}
 		return tx.Model(&models.User{}).Where("id = ?", user.ID).
 			Updates(map[string]any{
@@ -164,9 +180,10 @@ func handleAdminDeposit(c *gin.Context) {
 
 	db.First(user, "id = ?", user.ID) // свежий баланс
 
-	// Б4: гостю — тост о пополнении (сумма, монеты, новый баланс)
+	// Б4: гостю — тост о пополнении (сумма, монеты, новый баланс + кошелёк)
 	notifyUser(user.ID, "deposit", map[string]any{
 		"amount_pln": req.AmountPLN, "coins": base + bonus, "balance": user.CoinsBalance,
+		"wallet_pln": models.PLNFromGrosz(walletAfter),
 	})
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -176,6 +193,8 @@ func handleAdminDeposit(c *gin.Context) {
 		"coins_granted": base,
 		"bonus_coins":   bonus,
 		"coins_balance": user.CoinsBalance,
+		"wallet_grosz":  walletAfter,
+		"wallet_pln":    models.PLNFromGrosz(walletAfter),
 	})
 }
 

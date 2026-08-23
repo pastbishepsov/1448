@@ -18,6 +18,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
 type AccountRank struct {
@@ -78,8 +80,14 @@ func handleGetEconomy(c *gin.Context) {
 	hours := userHoursPlayed(userID)
 	rank, next := accountRankFor(hours)
 
+	// Г0-и3 (трек Г): кошелёк — рядом с остальной экономикой гостя.
+	var me models.User
+	_ = db.First(&me, "id = ?", userID).Error
+
 	caseHunter := talentEffect(userID, "case_hunter")
 	resp := gin.H{
+		"wallet_grosz": me.WalletGrosz,
+		"wallet_pln":   models.PLNFromGrosz(me.WalletGrosz),
 		"hours_played": hours,
 		"rank": gin.H{
 			"level": rank.Level, "name": rank.Name, "min_hours": rank.MinHours,

@@ -100,6 +100,7 @@ func main() {
 		me.GET("/bookings", handleGetMyBookings)           // ← настоящий
 		me.DELETE("/bookings/:id", handleCancelBooking)    // ← настоящий
 		me.GET("/deposits", handleGetMyDeposits)           // ← настоящий
+		me.GET("/wallet", handleGetMyWallet)               // кошелёк: баланс + журнал (трек Г, Г0)
 		me.GET("/economy", handleGetEconomy)               // ← настоящий (калькулятор + ранг)
 		me.GET("/sensitivity", handleGetSensitivity)       // ← настоящий (профиль сенсы)
 		me.PUT("/sensitivity", handlePutSensitivity)       // ← настоящий
