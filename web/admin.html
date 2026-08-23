@@ -640,6 +640,7 @@
             <button data-t="guests" onclick="repTabSet('guests',this)">Гости</button>
             <button data-t="load" onclick="repTabSet('load',this)">Загрузка</button>
             <button data-t="staff" onclick="repTabSet('staff',this)">Персонал</button>
+            <button data-t="coins" onclick="repTabSet('coins',this)">Монеты</button>
           </div>
         </div>
         <div id="repBody"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -703,6 +704,16 @@
           <input id="set_coins" class="input" type="number" min="0" max="1000">
           <label class="muted" for="set_rate">Монет за 1 zł депозита</label>
           <input id="set_rate" class="input" type="number" min="1" max="100">
+          <label class="muted" for="set_spend">Монет за 1 zł при списании — курс погашения</label>
+          <input id="set_spend" class="input" type="number" min="1" max="1000">
+          <label class="muted" for="set_spendcap">Потолок минут за одну выдачу (0 — без лимита)</label>
+          <input id="set_spendcap" class="input" type="number" min="0" max="1440">
+          <label class="muted" for="set_idle">Монеты не трогаем, пока гость не играет, дней</label>
+          <input id="set_idle" class="input" type="number" min="0" max="3650">
+          <label class="muted" for="set_burnpct">Потом сгорает в неделю, % (0 — не жечь)</label>
+          <input id="set_burnpct" class="input" type="number" min="0" max="100">
+          <label class="muted" for="set_burnwarn">Предупредить гостя за столько дней до начала</label>
+          <input id="set_burnwarn" class="input" type="number" min="0" max="365">
           <label class="muted" for="set_xpcap">Дневной лимит XP-начислений на админа (0 — без лимита)</label>
           <input id="set_xpcap" class="input" type="number" min="0" max="10000000">
           <label class="muted" for="set_depcap">Дневной лимит депозитов на админа, zł (0 — без лимита)</label>
@@ -1000,6 +1011,8 @@ function feedLine(m){
       ? 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł'
       : 'продано: ' + (d.name||'товар') + (d.qty > 1 ? ' ×' + d.qty : '')
         + ' · ' + (+d.total_pln||0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '');
+    case 'coin_redeem': return (d.nickname||'гость') + ' взял ' + (d.minutes||0) + ' мин за '
+      + (d.coins||0) + ' монет' + (d.zone ? ' · ' + d.zone : '');
     case 'ban': return (d.nickname||'гость') + ' забанен';
     case 'chat': return (d.nickname || d.computer || 'гость')
       + (d.kind === 'call' ? ' зовёт админа' : ': ' + (d.text||''));
@@ -1591,6 +1604,7 @@ function renderUserDrawer(){
       <button class="btn mini ${uForm==='deposit'?'':'ghost'}" onclick="uFormToggle('deposit')"><span data-ic="coins"></span>Депозит</button>
       <button class="btn mini ${uForm==='xp'?'':'ghost'}" onclick="uFormToggle('xp')"><span data-ic="xp"></span>XP</button>
       <button class="btn mini ${uForm==='case'?'':'ghost'}" onclick="uFormToggle('case')"><span data-ic="chest"></span>Кейс</button>
+      <button class="btn mini ${uForm==='redeem'?'':'ghost'}" onclick="uFormToggle('redeem')"><span data-ic="clock"></span>Время за монеты</button>
       ${u.status === 'banned'
         ? `<button class="btn ghost mini" onclick="unbanNow('${u.id}','${esc(u.nickname)}')"><span data-ic="unban"></span>Разбанить</button>`
         : `<button class="btn danger mini" onclick="armBan(this,'${u.id}','${esc(u.nickname)}')"><span data-ic="ban"></span>Бан</button>`}
@@ -1608,7 +1622,25 @@ function renderUserDrawer(){
   openDrawer(u.nickname, body);
 }
 
-function uFormToggle(f){ uForm = (uForm === f) ? null : f; renderUserDrawer(); }
+async function uFormToggle(f){
+  uForm = (uForm === f) ? null : f;
+  if (uForm === 'redeem' && !zonesCache.length){
+    try{ zonesCache = (await api('/admin/zones')).zones || []; }catch(e){}
+  }
+  if (uForm === 'redeem' && !redeemZone && zonesCache.length) redeemZone = zonesCache[0].id;
+  renderUserDrawer();
+}
+
+async function submitRedeem(){
+  const body = {zone_id: redeemZone || '', minutes: redeemMin};
+  try{
+    const d = await api('/admin/users/' + drawerUserId + '/redeem', {method:'POST', body:JSON.stringify(body)});
+    toast('⏱ ' + d.minutes + ' мин' + (d.zone ? ' · ' + d.zone : '') + ' за ' + d.coins + ' монет');
+    uForm = null;
+    await openUserDrawer(drawerUserId);
+    refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
 function uTabSet(t){
   uTab = t;
   renderUserDrawer();
@@ -1679,12 +1711,38 @@ function uFormHtml(){
     <input id="g_xp_r" class="input" placeholder="Причина (обязательно, попадёт в журнал)">
     <button class="btn" style="width:100%; justify-content:center" onclick="submitXP()">Начислить XP</button>
   </div>`;
-  return `<div class="uform">
+  if (uForm === 'case') return `<div class="uform">
     <div class="segs">${['light','medium','heavy','titan','gods'].map(t =>
       `<button class="${caseTier===t?'on':''}" onclick="caseTier='${t}'; renderUserDrawer()">${t}</button>`).join('')}</div>
     <input id="g_case_r" class="input" placeholder="Причина (обязательно, попадёт в журнал)">
     <button class="btn" style="width:100%; justify-content:center" onclick="submitCase()">Выдать кейс</button>
   </div>`;
+  // В4-2: единственное место, где монеты УХОДЯТ с баланса. Курс не набивается
+  // руками: цена часа зоны × курс погашения — считает сервер, здесь только
+  // предпросмотр теми же формулами.
+  return `<div class="uform">
+    <div class="segs">${zonesCache.map(z =>
+      `<button class="${redeemZone===z.id?'on':''}" onclick="redeemZone='${z.id}'; renderUserDrawer()">${esc(z.name)} · ${fmtPLN(z.rate_pln)} zł/ч</button>`).join('')
+      || '<span class="muted">Зоны не заведены — считаем по клубному тарифу</span>'}</div>
+    <div class="segs">${[30,60,120,180].map(m =>
+      `<button class="${redeemMin===m?'on':''}" onclick="redeemMin=${m}; renderUserDrawer()">${m} мин</button>`).join('')}</div>
+    <div class="muted" id="redeemHint">${redeemHintText()}</div>
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitRedeem()"><span data-ic="clock"></span>Выдать время</button>
+    <div class="muted">Монеты спишутся с баланса гостя, время выдаёшь ты — в отчёте это ляжет в «отдано временем»</div>
+  </div>`;
+}
+
+/* В4-2: предпросмотр обмена. Считаем ровно как сервер: цена часа зоны,
+   помноженная на курс погашения, с округлением вверх до пятёрки. */
+let redeemZone = null, redeemMin = 60;
+function redeemHintText(){
+  const z = zonesCache.find(x => x.id === redeemZone) || zonesCache[0];
+  if (!z) return 'Курс подтянется с сервера';
+  const perHour = z.coins_per_hour || 0;
+  const need = Math.ceil(perHour * redeemMin / 60 / 5) * 5;
+  const bal = (uData && uData.user) ? (uData.user.coins_balance ?? 0) : 0;
+  return `${redeemMin} мин в «${z.name}» — ${need} монет` +
+         (bal ? ` · у гостя ${bal}` + (bal < need ? ' — не хватает' : '') : '');
 }
 
 function uHistHtml(){
@@ -2019,7 +2077,7 @@ async function toggleApp(id){
 /* ── Журнал-аудит (А4): единая лента — начисления, депозиты, действия ── */
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
-  money: ['deposit','sale','sale_void'],
+  money: ['deposit','sale','sale_void','coin_redeem','coin_burn'],
   grant: ['grant'],
   users: ['ban','unban'],
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat'],
@@ -2047,6 +2105,8 @@ const AUD_LABEL = {
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
   work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка',
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
+  coin_redeem:'монеты: время за монеты',
+  coin_burn:'монеты: сгорание',
   good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
 };
@@ -2067,6 +2127,8 @@ const AUD_ICON = {
   staff_hire:'plus', staff_dismiss:'out',
   work_start:'clock', work_stop:'check', work_edit:'edit',
   zone_create:'plus', zone_update:'edit', zone_delete:'cross',
+  coin_redeem:'clock',
+  coin_burn:'clock',
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
 };
@@ -2550,7 +2612,8 @@ async function renderReports(){
       ' · сравнение с ' + repDate(pv.from) + ' — ' + repDate(pv.to);
     document.getElementById('repFrom').value = p.from;
     document.getElementById('repTo').value = p.to;
-    ({money:paintMoney, guests:paintGuests, load:paintLoad, staff:paintStaff})[repTab](d);
+    ({money:paintMoney, guests:paintGuests, load:paintLoad, staff:paintStaff, coins:paintCoins})[repTab](d);
+    if (repTab === 'coins') loadBurnPreview();
     mountIcons(body);
   }catch(e){
     body.innerHTML = repEmpty('Отчёт не загрузился: ' + e.message);
@@ -2683,6 +2746,76 @@ function paintStaff(d){
          <td>${x.payout_pln === undefined ? '<span class="muted" title="в карточке не задана ставка">—</span>'
               : fmtPLN(x.payout_pln) + ' zł' + (x.payout_kind === 'month' ? ' <span class="muted">оклад</span>' : '')}</td></tr>`),
         'В этом периоде никто не работал')}`;
+}
+
+/* Разрез «Монеты» (В4-2): сколько монет выпущено, сколько погашено и сколько
+   висит на руках у гостей. Обязательства считаются по КУРСУ ПОГАШЕНИЯ — это
+   и есть ответ на «сколько денег равно монетам»: столько клуб отдаст временем,
+   если гости придут забирать всё сразу. */
+function paintCoins(d){
+  const t = d.totals, k = d.delta, w = d.prev || {}, oh = d.on_hand || {}, r = d.rates || {};
+  document.getElementById('repBody').innerHTML =
+    `<div class="kpis">
+       ${repKpi('На руках у гостей', (oh.coins||0).toLocaleString('ru-RU') + ' монет', undefined,
+                {title:'сумма балансов всех гостей прямо сейчас'})}
+       ${repKpi('Это обязательств на', fmtPLN(oh.value_pln) + ' zł', undefined,
+                {title:'по курсу погашения ' + r.spend + ' монет за 1 zł — столько клуб отдаст временем'})}
+       ${repKpi('Выпущено за период', (t.issued||0).toLocaleString('ru-RU'), k.issued, {was:(w.issued||0).toLocaleString('ru-RU')})}
+       ${repKpi('Погашено за период', (t.redeemed||0).toLocaleString('ru-RU'), k.redeemed, {was:(w.redeemed||0).toLocaleString('ru-RU')})}
+     </div>
+     <div class="kpis">
+       ${repKpi('За пополнения', (t.deposits||0).toLocaleString('ru-RU'), undefined, {title:'куплено гостями за злотые, курс ' + r.buy + ' монет за 1 zł'})}
+       ${repKpi('За игру', (t.play||0).toLocaleString('ru-RU'), undefined, {title:r.per_min + ' монет за минуту'})}
+       ${repKpi('Из кейсов', (t.cases||0).toLocaleString('ru-RU'))}
+       ${repKpi('Отдано временем', fmtPLN(t.given_pln) + ' zł', k.given_pln,
+                {title:(t.minutes||0) + ' минут игры', was:fmtPLN(w.given_pln) + ' zł'})}
+     </div>
+     <div class="kpis">
+       ${repKpi('Сгорело у неактивных', (t.burned||0).toLocaleString('ru-RU'), k.burned,
+                {title:'у ' + (t.burned_guests||0) + ' гостей, которые давно не приходили', was:(w.burned||0).toLocaleString('ru-RU')})}
+       <div class="kpi" id="burnPreview" title="посчитано по текущим правилам">Сгорит сейчас <b>—</b></div>
+       <button class="btn ghost mini" onclick="burnRunNow(this)"><span data-ic="clock"></span>Прогнать таяние</button>
+     </div>
+     <div class="sect">Конвертер · час игры в монетах</div>
+     ${repTable(['Зона','Цена часа','Час стоит','Гость зарабатывает за час','Это кэшбек'], (d.converter||[]).map(z =>
+        `<tr><td><b>${esc(z.zone)}</b></td><td>${fmtPLN(z.rate_pln)} zł</td>
+         <td>${z.coins_per_hour} монет</td><td class="muted">${z.earned_per_hour} монет</td>
+         <td${z.cashback_pct > 20 ? ' style="color:var(--orange)"' : ''}>${z.cashback_pct}%</td></tr>`),
+        'Зоны не заведены')}
+     <div class="muted" style="margin:-6px 0 14px">Кэшбек — какую долю цены часа гость отыгрывает монетами за этот же час. Больше 20% обычно уже дорого.</div>
+     <div class="sect">Погашения за период</div>
+     ${repTable(['Когда','Гость','Зона','Минут','Монет','Стоило клубу'], (d.redemptions||[]).map(x =>
+        `<tr><td class="muted">${fmtTime(x.created_at)}</td><td><b>${esc(x.nickname||'—')}</b></td>
+         <td class="muted">${x.zone ? esc(x.zone) : 'клубный тариф'}</td><td>${x.minutes}</td>
+         <td>${x.coins}</td><td>${fmtPLN(x.value_pln)} zł</td></tr>`),
+        'За период монеты никто не гасил')}`;
+}
+
+/* В4-3: таяние монет у неактивных. Фоновый прогон идёт сам раз в 6 часов,
+   но владельцу нужен предпросмотр «сколько сгорит прямо сейчас» и кнопка
+   прогнать вручную — иначе механика невидима до первого срабатывания. */
+async function loadBurnPreview(){
+  const box = document.getElementById('burnPreview');
+  if (!box) return;
+  try{
+    const d = await api('/admin/coins/burn');
+    const r = d.rules || {};
+    box.innerHTML = `Сгорит сейчас <b>${(d.coins||0).toLocaleString('ru-RU')}</b>`
+      + (d.count ? ` <i class="dlt">у ${d.count}</i>` : '');
+    box.title = `правила: не трогаем ${r.idle_days} дней без игры, потом ${r.pct_week}% в неделю`
+      + (d.value_pln ? ` · это ${d.value_pln} zł обязательств` : '');
+  }catch(e){ box.innerHTML = 'Сгорит сейчас <b>—</b>'; }
+}
+async function burnRunNow(btn){
+  armButton(btn, 'Ещё раз — сжечь', async () => {
+    try{
+      const d = await api('/admin/coins/burn', {method:'POST'});
+      toast(d.guests
+        ? '✓ Сгорело ' + d.coins + ' монет у ' + d.guests + ' гостей'
+        : '✓ Жечь пока некого — все в сроке неприкосновенности');
+      renderReports();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 
 async function renderStats(){
@@ -3224,10 +3357,11 @@ async function renderZones(){
       + (d.without_zone ? ' — таких сейчас ' + d.without_zone : ''));
     setHTML('zonesTable', zonesCache.length === 0
       ? '<div class="empty"><span data-ic="monitor"></span>Зон нет — все ПК на клубном тарифе</div>'
-      : `<table><tr><th>Зона</th><th>Цена часа</th><th>Компьютеров</th><th></th></tr>
+      : `<table><tr><th>Зона</th><th>Цена часа</th><th>Час в монетах</th><th>Компьютеров</th><th></th></tr>
       ${zonesCache.map(z => `<tr>
         <td><b>${esc(z.name)}</b></td>
         <td>${fmtPLN(z.rate_pln)} zł</td>
+        <td class="muted" title="цена часа × курс погашения — считает конвертер">${z.coins_per_hour}</td>
         <td class="muted">${z.computers}</td>
         <td style="white-space:nowrap">
           <button class="btn ghost mini" onclick="zoneEdit('${z.id}')"><span data-ic="edit"></span>Правка</button>
@@ -3286,6 +3420,11 @@ async function renderSettings(){
     document.getElementById('set_xp').value = d.settings.xp_per_min;
     document.getElementById('set_coins').value = d.settings.coins_per_min;
     document.getElementById('set_rate').value = d.settings.coins_per_pln;
+    document.getElementById('set_spend').value = d.settings.coins_per_pln_spend;
+    document.getElementById('set_spendcap').value = d.settings.coin_spend_max_min;
+    document.getElementById('set_idle').value = d.settings.coin_idle_days;
+    document.getElementById('set_burnpct').value = d.settings.coin_burn_pct_week;
+    document.getElementById('set_burnwarn').value = d.settings.coin_burn_warn_days;
     document.getElementById('set_xpcap').value = d.settings.admin_day_xp_cap;
     document.getElementById('set_depcap').value = d.settings.admin_day_deposit_cap_pln;
     document.getElementById('set_rhour').value = d.settings.report_hour;
@@ -3298,6 +3437,11 @@ async function saveSettings(){
     xp_per_min: parseInt(document.getElementById('set_xp').value),
     coins_per_min: parseInt(document.getElementById('set_coins').value),
     coins_per_pln: parseInt(document.getElementById('set_rate').value),
+    coins_per_pln_spend: parseInt(document.getElementById('set_spend').value),
+    coin_spend_max_min: parseInt(document.getElementById('set_spendcap').value),
+    coin_idle_days: parseInt(document.getElementById('set_idle').value),
+    coin_burn_pct_week: parseInt(document.getElementById('set_burnpct').value),
+    coin_burn_warn_days: parseInt(document.getElementById('set_burnwarn').value),
     admin_day_xp_cap: parseInt(document.getElementById('set_xpcap').value),
     admin_day_deposit_cap_pln: parseInt(document.getElementById('set_depcap').value),
     report_hour: parseInt(document.getElementById('set_rhour').value),

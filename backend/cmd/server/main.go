@@ -170,7 +170,9 @@ func main() {
 		adm.POST("/work/stop", handleWorkStop)
 		adm.GET("/work/me", handleWorkMe)
 
-		adm.GET("/zones", handleAdminZones) // В4-5: цену часа видно и у стойки
+		adm.GET("/zones", handleAdminZones) // В4-1: цену часа видно и у стойки
+		// В4-2: обмен монет на время — операция смены, делает админ у стойки
+		adm.POST("/users/:id/redeem", handleAdminRedeemCoins)
 
 		adm.GET("/goods", handleAdminGoods)
 		adm.POST("/goods/:id/stock", handleAdminGoodStock)
@@ -190,6 +192,9 @@ func main() {
 		own.PATCH("/goods/:id", handleAdminGoodUpdate)
 		own.DELETE("/goods/:id", handleAdminGoodDelete)
 		own.GET("/goods/:id/moves", handleAdminGoodMoves)
+		own.GET("/reports/coins", handleReportCoins)  // В4-2: эмиссия и обязательства
+		own.GET("/coins/burn", handleCoinBurnPreview) // В4-3: кто потеряет монеты сейчас
+		own.POST("/coins/burn", handleCoinBurnRun)
 		own.GET("/reports/money", handleReportMoney)
 		own.GET("/reports/guests", handleReportGuests)
 		own.GET("/reports/load", handleReportLoad)
@@ -245,6 +250,10 @@ func main() {
 	} else {
 		log.Println("PWA: папка web с app.html не найдена — /app отключён (подскажи путь через WEB_DIR)")
 	}
+
+	// В4-3: таяние монет у неактивных гостей. Фоновый прогон безопасен при
+	// перезапусках — жечь чаще раза в неделю на гостя правило не даёт.
+	startCoinBurnJob()
 
 	port := getenv("SERVER_PORT", "8080")
 	log.Printf("14:48 Backend запущен → http://localhost:%s", port)

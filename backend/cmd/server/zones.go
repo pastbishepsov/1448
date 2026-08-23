@@ -91,7 +91,8 @@ func handleAdminZones(c *gin.Context) {
 	for i := range zones {
 		z := zones[i]
 		out = append(out, gin.H{"id": z.ID, "name": z.Name, "rate_pln": z.RatePLN,
-			"sort": z.Sort, "computers": byZone[z.ID.String()]})
+			"sort": z.Sort, "computers": byZone[z.ID.String()],
+			"coins_per_hour": coinsPerHourFor(z.RatePLN)}) // В4-2: конвертер считает сам
 	}
 	club, _ := defaultClub()
 	base := 0.0
