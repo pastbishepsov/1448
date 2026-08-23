@@ -99,3 +99,22 @@ func TestParseDateOpt(t *testing.T) {
 		t.Error("18.08.2026 не должна проходить — формат ГГГГ-ММ-ДД")
 	}
 }
+
+func TestValidateHire(t *testing.T) {
+	cases := []struct{ name, nick, pass, want string }{
+		{"нормальный найм", "kasia", "s3cret!", ""},
+		{"кириллица в нике — можно", "Катя", "s3cret!", ""},
+		{"короткий ник", "ka", "s3cret!", "bad_nickname"},
+		{"ник длиннее 32", string(make([]rune, 33)), "s3cret!", "bad_nickname"},
+		{"кавычка в нике — XSS-вектор", `ka"sia`, "s3cret!", "nickname_charset"},
+		{"угловая скобка в нике", "<b>", "s3cret!", "nickname_charset"},
+		{"короткий пароль", "kasia", "12345", "bad_password"},
+		{"пароль длиннее 72 байт (bcrypt)", "kasia", string(make([]byte, 73)), "bad_password"},
+	}
+	for _, tc := range cases {
+		_, code := validateHire(tc.nick, tc.pass)
+		if code != tc.want {
+			t.Errorf("%s: validateHire = %q, ожидалось %q", tc.name, code, tc.want)
+		}
+	}
+}

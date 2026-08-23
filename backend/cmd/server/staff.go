@@ -14,6 +14,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -125,8 +127,22 @@ func handleAdminStaffPromote(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	// человек мог у нас уже работать — снимаем отметку об увольнении,
+	// иначе он останется в архиве уволенных, работая на смене
+	var p models.StaffProfile
+	returned := false
+	if db.First(&p, "user_id = ? AND dismissed_at IS NOT NULL", user.ID).Error == nil {
+		db.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
+			Updates(map[string]any{"dismissed_at": nil, "updated_at": time.Now()})
+		returned = true
+	}
+
 	target := user.ID
-	logAdminAction(c, "staff_promote", &target, user.Nickname+" → admin")
+	note := " → admin"
+	if returned {
+		note = " → admin (вернулся)"
+	}
+	logAdminAction(c, "staff_promote", &target, user.Nickname+note)
 	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": models.UserRoleAdmin})
 }
 
@@ -394,4 +410,211 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 		logAdminAction(c, "staff_card", &target, user.Nickname+": "+strings.Join(changed, ", "))
 	}
 	c.JSON(http.StatusOK, gin.H{"nickname": user.Nickname, "profile": profileOut(&p)})
+}
+
+// ── Наём и увольнение (В3-этап 3) ─────────────────────────────────────
+// До этого этапа нанять можно было только того, кто уже сам зарегистрировался
+// гостем на киоске: владелец находил его по нику и повышал. Теперь сотрудника
+// заводят из админки целиком — аккаунт и карточка одной операцией.
+//
+// Увольнение — событие, а не «снять роль»: пишется дата и причина, человек
+// уходит из будущих смен, а его аккаунт остаётся жить гостевым (уволенный
+// админ вполне может приходить играть). Уволенные видны в архиве.
+
+// validateHire — чистая проверка данных нового сотрудника (тест в staff_test.go).
+// Правила ника и пароля те же, что при обычной регистрации (main.go), плюс
+// символьный инвариант ника из QA Б9–Б11.
+func validateHire(nickname, password string) (bool, string) {
+	n := strings.TrimSpace(nickname)
+	if len([]rune(n)) < 3 || len([]rune(n)) > 32 {
+		return false, "bad_nickname"
+	}
+	if !nicknameSafe(n) {
+		return false, "nickname_charset"
+	}
+	if len(password) < 6 || len(password) > 72 {
+		return false, "bad_password"
+	}
+	return true, ""
+}
+
+var hireErrors = map[string]string{
+	"bad_nickname":     "Ник сотрудника — от 3 до 32 символов",
+	"nickname_charset": "В нике нельзя кавычки, угловые скобки и спецсимволы",
+	"bad_password":     "Пароль — от 6 до 72 символов",
+	"already_exists":   "Такой ник уже занят",
+}
+
+type hireRequest struct {
+	Nickname string `json:"nickname"`
+	Password string `json:"password"`
+	staffProfileRequest
+}
+
+// POST /admin/staff/hire — завести сотрудника с нуля (owner): аккаунт с ролью
+// admin и кадровая карточка одной транзакцией.
+func handleAdminStaffHire(c *gin.Context) {
+	var req hireRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Не разобрал данные сотрудника"})
+		return
+	}
+	if ok, code := validateHire(req.Nickname, req.Password); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": hireErrors[code]})
+		return
+	}
+	hired, ok := parseDateOpt(req.HiredAt)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_date", "message": profileErrors["bad_date"]})
+		return
+	}
+	rateType := strings.TrimSpace(req.RateType)
+	if rateType == "" {
+		rateType = "none"
+	}
+	rate := 0.0
+	if req.RateAmount != nil {
+		rate = *req.RateAmount
+	}
+	name := strings.TrimSpace(req.FullName)
+	phone := strings.TrimSpace(req.Phone)
+	position := strings.TrimSpace(req.Position)
+	note := strings.TrimSpace(req.Note)
+	if valid, code := validateStaffProfile(name, phone, position, note, rateType, rate, hired, nil); !valid {
+		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": profileErrors[code]})
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "hash_error", "message": "Не удалось обработать пароль"})
+		return
+	}
+	now := time.Now()
+	user := models.User{
+		Nickname: strings.TrimSpace(req.Nickname), PasswordHash: string(hash),
+		Status: models.UserStatusActive, Role: models.UserRoleAdmin, Level: 1,
+		RegisteredAt: now, LastActiveAt: now,
+	}
+	if hired == nil {
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		hired = &today
+	}
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&user).Error; err != nil {
+			return err
+		}
+		return tx.Create(&models.StaffProfile{
+			UserID: user.ID, FullName: name, Phone: phone, Position: position,
+			HiredAt: hired, RateType: rateType, RateAmount: rate, Note: note,
+		}).Error
+	})
+	if err != nil {
+		if isDuplicate(err) {
+			c.JSON(http.StatusConflict, gin.H{"code": "already_exists", "message": hireErrors["already_exists"]})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	target := user.ID
+	details := user.Nickname
+	if position != "" {
+		details += " · " + position
+	}
+	logAdminAction(c, "staff_hire", &target, details+" · с "+dateOut(hired))
+	c.JSON(http.StatusCreated, gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": user.Role})
+}
+
+type dismissRequest struct {
+	Date   string `json:"date"`
+	Reason string `json:"reason"`
+}
+
+// POST /admin/staff/:id/dismiss — уволить сотрудника (owner).
+// Роль уходит в player, аккаунт остаётся: уволенный админ может приходить
+// играть гостем, и его история сессий не должна осиротеть.
+func handleAdminStaffDismiss(c *gin.Context) {
+	var user models.User
+	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+	if ok, code := canChangeStaffRole(user.Role, user.ID.String(), c.GetString("user_id"), false); !ok {
+		c.JSON(http.StatusConflict, gin.H{"code": code, "message": staffRoleErrors[code]})
+		return
+	}
+	var req dismissRequest
+	_ = c.ShouldBindJSON(&req)
+	date, ok := parseDateOpt(req.Date)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_date", "message": profileErrors["bad_date"]})
+		return
+	}
+	if date == nil {
+		now := time.Now()
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		date = &today
+	}
+	var p models.StaffProfile
+	hasCard := db.First(&p, "user_id = ?", user.ID).Error == nil
+	if hasCard && p.HiredAt != nil && date.Before(*p.HiredAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_dates", "message": profileErrors["bad_dates"]})
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if len([]rune(reason)) > 200 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_reason", "message": "Причина — до 200 символов"})
+		return
+	}
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&user).Update("role", models.UserRolePlayer).Error; err != nil {
+			return err
+		}
+		if hasCard {
+			return tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
+				Updates(map[string]any{"dismissed_at": date, "updated_at": time.Now()}).Error
+		}
+		// карточки не было — заводим минимальную, чтобы человек попал в архив
+		return tx.Create(&models.StaffProfile{UserID: user.ID, DismissedAt: date, RateType: "none"}).Error
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	removed := clearFutureShifts(user.ID)
+
+	target := user.ID
+	details := user.Nickname + " · уволен " + dateOut(date)
+	if reason != "" {
+		details += " · " + reason
+	}
+	if removed > 0 {
+		details += fmt.Sprintf(", снят с %d будущих смен", removed)
+	}
+	logAdminAction(c, "staff_dismiss", &target, details)
+	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname,
+		"dismissed_at": dateOut(date), "removed_shifts": removed})
+}
+
+// GET /admin/staff/archive — уволенные (owner): кто, кем был и когда ушёл.
+func handleAdminStaffArchive(c *gin.Context) {
+	var profiles []models.StaffProfile
+	db.Where("dismissed_at IS NOT NULL").Order("dismissed_at DESC").Find(&profiles)
+	ids := make([]string, 0, len(profiles))
+	for _, p := range profiles {
+		ids = append(ids, p.UserID.String())
+	}
+	nick := nicknamesByID(ids)
+	out := make([]gin.H, 0, len(profiles))
+	for i := range profiles {
+		p := profiles[i]
+		out = append(out, gin.H{
+			"id": p.UserID, "nickname": nick[p.UserID.String()],
+			"full_name": p.FullName, "position": p.Position,
+			"hired_at": dateOut(p.HiredAt), "dismissed_at": dateOut(p.DismissedAt),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"count": len(out), "staff": out})
 }

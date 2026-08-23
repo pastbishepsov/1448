@@ -658,11 +658,16 @@
 
       <section id="s-staff" class="hidden">
         <div class="toolrow ownerOnly hidden">
-          <input id="stNick" class="input" placeholder="Ник гостя → назначить админом" style="min-width:250px"
+          <button class="btn mini" onclick="hireDrawer()"><span data-ic="plus"></span>Нанять</button>
+          <input id="stNick" class="input" placeholder="Ник гостя → назначить админом" style="min-width:230px"
                  autocomplete="off" onkeydown="if(event.key==='Enter')promoteStaff()">
-          <button class="btn mini" onclick="promoteStaff()"><span data-ic="plus"></span>Назначить</button>
-          <span class="muted">Роль вступает в силу после перелогина сотрудника</span>
+          <button class="btn ghost mini" onclick="promoteStaff()">Назначить</button>
+          <div class="segs" id="staffTabs">
+            <button class="on" onclick="staffViewSet('active',this)">Работают</button>
+            <button onclick="staffViewSet('archive',this)">Уволенные</button>
+          </div>
         </div>
+        <div class="muted ownerOnly hidden" style="margin:-6px 0 12px">Роль вступает в силу после перелогина сотрудника</div>
         <div class="tablewrap ownerOnly hidden" id="staffTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
         <div class="sect">График смен · <span id="schLabel" style="text-transform:none; letter-spacing:0">—</span></div>
         <div class="toolrow">
@@ -1994,7 +1999,7 @@ const AUD_GROUPS = {
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
   goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
-  staff: ['staff_promote','staff_demote','staff_card','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
+  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
 };
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
@@ -2011,6 +2016,7 @@ const AUD_LABEL = {
   shift_unassign:'график: снят',
   sale:'продажа', sale_void:'отмена продажи',
   staff_card:'персонал: карточка',
+  staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
   good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
 };
@@ -2028,6 +2034,7 @@ const AUD_ICON = {
   shift_assign:'cal', shift_unassign:'out',
   sale:'box', sale_void:'cross',
   staff_card:'scroll',
+  staff_hire:'plus', staff_dismiss:'out',
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
 };
@@ -2821,9 +2828,17 @@ function armDeleteShift(btn, id, name){
 }
 
 /* ── Б5: персонал (owner) — назначение и снятие админов ── */
+let staffView = 'active';
+function staffViewSet(v, btn){
+  staffView = v;
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+  renderStaff();
+}
+
 async function renderStaff(){
   renderSchedule(); // Б11: график смен виден всем
   if (!isOwner()) return; // список команды — owner-only endpoint
+  if (staffView === 'archive') return renderStaffArchive();
   try{
     const d = await api('/admin/staff');
     setHTML('staffTable', (d.staff || []).length === 0
@@ -2838,7 +2853,7 @@ async function renderStaff(){
       <td style="white-space:nowrap">
         <button class="btn ghost mini" onclick="staffCard('${s.id}')"><span data-ic="scroll"></span>Карточка</button>
         ${s.role === 'admin'
-          ? `<button class="btn danger mini" onclick="armDemote(this,'${s.id}','${esc(s.nickname)}')"><span data-ic="out"></span>Снять</button>`
+          ? `<button class="btn danger mini" onclick="dismissDrawer('${s.id}','${esc(s.nickname)}')"><span data-ic="out"></span>Уволить</button>`
           : ''}</td>
     </tr>`).join('')}</table>`);
   }catch(e){ toast('⚠ ' + e.message); }
@@ -2854,6 +2869,108 @@ async function promoteStaff(){
     renderStaff();
   }catch(e){ toast('⚠ ' + e.message); }
 }
+/* ── В3-этап 3: наём и увольнение. Раньше нанять можно было только того, кто
+   уже сам зарегистрировался на киоске; теперь аккаунт и карточка заводятся
+   одной операцией. Увольнение — событие с датой и причиной: роль уходит в
+   гостя, аккаунт остаётся жить (уволенный админ может приходить играть),
+   будущие смены освобождаются, человек уезжает в архив. ── */
+async function renderStaffArchive(){
+  try{
+    const d = await api('/admin/staff/archive');
+    setHTML('staffTable', (d.staff || []).length === 0
+      ? '<div class="empty"><span data-ic="users"></span>Никого не увольняли</div>'
+      : `<table><tr><th>Сотрудник</th><th>Должность</th><th>Работал</th><th></th></tr>
+      ${d.staff.map(s => `<tr>
+        <td><b>${esc(s.nickname)}</b>${s.full_name ? `<div class="muted">${esc(s.full_name)}</div>` : ''}</td>
+        <td class="muted">${s.position ? esc(s.position) : '—'}</td>
+        <td class="muted">${s.hired_at ? ruDate(s.hired_at) : '—'} — ${ruDate(s.dismissed_at)}</td>
+        <td><button class="btn ghost mini" onclick="staffCard('${s.id}')"><span data-ic="scroll"></span>Карточка</button></td>
+      </tr>`).join('')}</table>`);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function hireDrawer(){
+  const today = new Date().toISOString().slice(0, 10);
+  openDrawer('Новый сотрудник', `
+  <div class="uform">
+    <label class="muted" style="margin-bottom:-6px">Ник для входа в админку</label>
+    <input id="hr_nick" class="input" placeholder="от 3 символов" autocomplete="off">
+    <label class="muted" style="margin-bottom:-6px">Пароль</label>
+    <input id="hr_pass" class="input" type="password" placeholder="от 6 символов" autocomplete="new-password">
+    <label class="muted" style="margin-bottom:-6px">ФИО</label>
+    <input id="hr_name" class="input" placeholder="Иван Ковальский">
+    <label class="muted" style="margin-bottom:-6px">Телефон</label>
+    <input id="hr_phone" class="input" placeholder="+48 …">
+    <label class="muted" style="margin-bottom:-6px">Должность</label>
+    <input id="hr_pos" class="input" placeholder="администратор">
+    <label class="muted" style="margin-bottom:-6px">Работает с</label>
+    <input id="hr_hired" class="input" type="date" value="${today}">
+    <label class="muted" style="margin-bottom:-6px">Оплата</label>
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <select id="hr_ratetype" class="input" style="flex:1; min-width:130px" onchange="hrRateSync()">
+        ${Object.keys(RATE_RU).map(k => `<option value="${k}">${RATE_RU[k]}</option>`).join('')}
+      </select>
+      <input id="hr_rate" class="input" type="number" step="0.01" min="0" style="flex:1; min-width:120px" placeholder="Сумма, zł" disabled>
+    </div>
+    <div class="muted">Аккаунт сразу с правами админа — приходить на киоск для регистрации не нужно. Пароль сотрудник сменит сам в профиле.</div>
+    <div style="display:flex; gap:10px">
+      <button class="btn mini" onclick="doHire()"><span data-ic="save"></span>Нанять</button>
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+  </div>`);
+}
+function hrRateSync(){
+  const t = document.getElementById('hr_ratetype'), r = document.getElementById('hr_rate');
+  if (!t || !r) return;
+  r.disabled = t.value === 'none';
+  if (r.disabled) r.value = '';
+}
+async function doHire(){
+  const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
+  const rateType = v('hr_ratetype');
+  const body = {
+    nickname: v('hr_nick'), password: v('hr_pass'),
+    full_name: v('hr_name'), phone: v('hr_phone'), position: v('hr_pos'),
+    hired_at: v('hr_hired'), rate_type: rateType,
+    rate_amount: rateType === 'none' ? 0 : parseFloat(v('hr_rate') || '0'),
+  };
+  if (!body.nickname || !body.password){ toast('⚠ Нужны ник и пароль'); return; }
+  if (rateType !== 'none' && !(body.rate_amount > 0)){ toast('⚠ Выбран тип ставки — нужна сумма'); return; }
+  try{
+    const d = await api('/admin/staff/hire', {method:'POST', body:JSON.stringify(body)});
+    toast('✓ ' + d.nickname + ' нанят — уже может входить в админку');
+    closeDrawer();
+    renderStaff();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function dismissDrawer(id, nick){
+  const today = new Date().toISOString().slice(0, 10);
+  openDrawer('Увольнение · ' + nick, `
+  <div class="uform">
+    <label class="muted" style="margin-bottom:-6px">Последний рабочий день</label>
+    <input id="dm_date" class="input" type="date" value="${today}">
+    <label class="muted" style="margin-bottom:-6px">Причина — для себя, в журнал</label>
+    <input id="dm_reason" class="input" placeholder="напр. ушёл учиться">
+    <div class="muted">Аккаунт останется гостевым: история смен и сессий не пропадёт, человек сможет приходить играть. Со всех смен начиная с завтра снимется автоматически.</div>
+    <div style="display:flex; gap:10px">
+      <button class="btn danger mini" onclick="doDismiss('${id}','${esc(nick)}')"><span data-ic="out"></span>Уволить</button>
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+  </div>`);
+}
+async function doDismiss(id, nick){
+  const body = {date: document.getElementById('dm_date').value,
+                reason: document.getElementById('dm_reason').value.trim()};
+  try{
+    const d = await api('/admin/staff/' + id + '/dismiss', {method:'POST', body:JSON.stringify(body)});
+    toast('✕ ' + nick + ' уволен ' + ruDate(d.dismissed_at)
+          + (d.removed_shifts ? ' · снят с ' + d.removed_shifts + ' будущих смен' : ''));
+    closeDrawer();
+    renderStaff();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 /* ── В3-этап 2: кадровая карточка. Личные данные сотрудника живут отдельно
    от профиля гостя (тот светится на экранах клуба) и открыты только
    владельцу — эндпоинт за ownerMiddleware, не проверкой в UI. ── */
@@ -2887,9 +3004,12 @@ async function staffCard(id){
       <textarea id="sc_note" class="input" rows="3" placeholder="для себя: ключи, доступы, договорённости">${esc(p.note||'')}</textarea>
       ${p.dismissed_at ? `<div class="muted">Уволен ${ruDate(p.dismissed_at)}</div>` : ''}
       <div class="muted">Карточку видит только владелец. В журнал попадает ник и что менялось, сами ФИО и телефон — нет.</div>
-      <div style="display:flex; gap:10px">
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
         <button class="btn mini" onclick="saveStaffCard('${id}')"><span data-ic="save"></span>Сохранить</button>
         <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+        ${d.role === 'admin'
+          ? `<button class="btn ghost mini danger" title="убрать доступ в админку, не увольняя"
+                     onclick="armDemote(this,'${id}','${esc(d.nickname)}')">Снять права</button>` : ''}
       </div>
     </div>`);
     scRateSync();

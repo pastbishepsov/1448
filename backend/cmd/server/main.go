@@ -199,6 +199,9 @@ func main() {
 		own.GET("/staff", handleAdminStaffList)
 		// Кадровая карточка (В3-этап 2, миграция 025): личные данные сотрудника
 		// видит и правит только владелец.
+		own.POST("/staff/hire", handleAdminStaffHire)           // В3-этап 3: наём с нуля
+		own.POST("/staff/:id/dismiss", handleAdminStaffDismiss) // увольнение как событие
+		own.GET("/staff/archive", handleAdminStaffArchive)
 		own.GET("/staff/:id/profile", handleAdminStaffProfileGet)
 		own.PUT("/staff/:id/profile", handleAdminStaffProfilePut)
 		own.POST("/staff", handleAdminStaffPromote)
