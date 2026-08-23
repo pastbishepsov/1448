@@ -458,6 +458,10 @@
   .modal{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2)}
   .overlay{backdrop-filter:blur(10px)}
 
+  /* — кошелёк в топбаре (Г1): предоплаченные деньги — */
+  #walletChip .muted{ font-size:11px; font-weight:700; white-space:nowrap }
+  #walletChip.low .gold-t, #walletChip.low .muted{ color:var(--acc) }
+
   /* — ранг аккаунта в топбаре — */
   /* — калькулятор койнов — */
   .calc-rank{display:flex; align-items:center; gap:12px; margin-bottom:12px}
@@ -609,6 +613,7 @@
       <div class="xpnums"><span id="xpText">0 / 1000 XP</span><span id="xpLeft"></span></div>
     </div>
     <div class="res"><span class="ic" data-ic="coins"></span><span class="gold-t" id="coins">0</span></div>
+    <div class="res" id="walletChip" title="Кошелёк — предоплаченное время. Пополнение у стойки"><span class="ic" data-ic="wallet"></span><span class="gold-t" id="walletZl">—</span><span class="muted" id="walletEta"></span></div>
     <div class="res"><span class="ic" data-ic="sp"></span><span class="cyan-t" id="sp">0</span></div>
     <div class="res timerchip" id="timerChip"><span class="ic" data-ic="timer"></span><span id="timer">00:00</span></div>
     <div class="clock" id="clock">--:--</div>
@@ -888,6 +893,7 @@ async function loadCatalog(){
 /* UI-иконки. Phosphor duotone (MIT) — второй слой фирменный красный var(--acc).
    Геймификация — game-icons.net (CC BY 3.0; авторы: Lorc, Delapouite и соавторы, https://game-icons.net). */
 const UI = {
+  wallet: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,72H56a8,8,0,0,1,0-16H192a8,8,0,0,0,0-16H56A24,24,0,0,0,32,64V192a24,24,0,0,0,24,24H216a16,16,0,0,0,16-16V88A16,16,0,0,0,216,72Z" opacity=".45" fill="var(--acc)"/><path d="M216,64H56a8,8,0,0,1,0-16H192a8,8,0,0,0,0-16H56A24,24,0,0,0,32,56V184a24,24,0,0,0,24,24H216a16,16,0,0,0,16-16V80A16,16,0,0,0,216,64Zm0,128H56a8,8,0,0,1-8-8V78.63A23.84,23.84,0,0,0,56,80H216ZM180,124a12,12,0,1,1-12,12A12,12,0,0,1,180,124Z"/></svg>`,
   coins: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M240,132c0,19.88-35.82,36-80,36-19.6,0-37.56-3.17-51.47-8.44h0C146.76,156.85,176,142,176,124V96.72h0C212.52,100.06,240,114.58,240,132ZM176,84c0-19.88-35.82-36-80-36S16,64.12,16,84s35.82,36,80,36S176,103.88,176,84Z" fill="var(--acc)" opacity=".45"/><path d="M184,89.57V84c0-25.08-37.83-44-88-44S8,58.92,8,84v40c0,20.89,26.25,37.49,64,42.46V172c0,25.08,37.83,44,88,44s88-18.92,88-44V132C248,111.3,222.58,94.68,184,89.57ZM232,132c0,13.22-30.79,28-72,28-3.73,0-7.43-.13-11.08-.37C170.49,151.77,184,139,184,124V105.74C213.87,110.19,232,122.27,232,132ZM72,150.25V126.46A183.74,183.74,0,0,0,96,128a183.74,183.74,0,0,0,24-1.54v23.79A163,163,0,0,1,96,152,163,163,0,0,1,72,150.25Zm96-40.32V124c0,8.39-12.41,17.4-32,22.87V123.5C148.91,120.37,159.84,115.71,168,109.93ZM96,56c41.21,0,72,14.78,72,28s-30.79,28-72,28S24,97.22,24,84,54.79,56,96,56ZM24,124V109.93c8.16,5.78,19.09,10.44,32,13.57v23.37C36.41,141.4,24,132.39,24,124Zm64,48v-4.17c2.63.1,5.29.17,8,.17,3.88,0,7.67-.13,11.39-.35A121.92,121.92,0,0,0,120,171.41v23.46C100.41,189.4,88,180.39,88,172Zm48,26.25V174.4a179.48,179.48,0,0,0,24,1.6,183.74,183.74,0,0,0,24-1.54v23.79a165.45,165.45,0,0,1-48,0Zm64-3.38V171.5c12.91-3.13,23.84-7.79,32-13.57V172C232,180.39,219.59,189.4,200,194.87Z"/></svg>`,
   sp: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M194.82,151.43l-55.09,20.3-20.3,55.09a7.92,7.92,0,0,1-14.86,0l-20.3-55.09-55.09-20.3a7.92,7.92,0,0,1,0-14.86l55.09-20.3,20.3-55.09a7.92,7.92,0,0,1,14.86,0l20.3,55.09,55.09,20.3A7.92,7.92,0,0,1,194.82,151.43Z" fill="var(--acc)" opacity=".45"/><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"/></svg>`,
   xp: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M96,240l16-80L48,136,160,16,144,96l64,24Z" fill="var(--acc)" opacity=".45"/><path d="M215.79,118.17a8,8,0,0,0-5-5.66L153.18,90.9l14.66-73.33a8,8,0,0,0-13.69-7l-112,120a8,8,0,0,0,3,13l57.63,21.61L88.16,238.43a8,8,0,0,0,13.69,7l112-120A8,8,0,0,0,215.79,118.17ZM109.37,214l10.47-52.38a8,8,0,0,0-5-9.06L62,132.71l84.62-90.66L136.16,94.43a8,8,0,0,0,5,9.06l52.8,19.8Z"/></svg>`,
@@ -1091,7 +1097,7 @@ async function loadAll(){
     }
     activeSession = sessions.find(s => !s.ended_at) || null;
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
-    renderTop(); renderSession(); renderSide(); renderLock();
+    renderTop(); renderWallet(); renderSession(); renderSide(); renderLock();
     document.getElementById('casesBub').classList.toggle('hidden', !(cs.unopened > 0));
     document.getElementById('casesBub').textContent = cs.unopened;
   }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
@@ -1115,6 +1121,30 @@ function renderTop(){
   }
 }
 const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
+
+/* ── Кошелёк (Г1): баланс в шапке + прогноз «хватит до HH:MM».
+   Клиент только показывает: баланс и ставка приходят с сервера (Р2),
+   списание и решения — целиком серверные (billing.go). ── */
+function fmtZl(gr){ return ((gr||0)/100).toFixed(2).replace('.', ',') + ' zł'; }
+function renderWallet(){
+  const zl = document.getElementById('walletZl'), eta = document.getElementById('walletEta');
+  if (!zl || !me) return;
+  zl.textContent = fmtZl(me.wallet_grosz);
+  let txt = '', low = false;
+  if (activeSession){
+    const rateGr = Math.round((activeSession.effective_rate_pln || 0) * 100);
+    if (rateGr > 0){
+      const left = (me.coin_minutes || 0) + Math.floor((me.wallet_grosz || 0) * 60 / rateGr);
+      low = left <= 15;
+      if (left > 0){
+        const till = new Date(Date.now() + left * 60000);
+        txt = '· до ' + String(till.getHours()).padStart(2, '0') + ':' + String(till.getMinutes()).padStart(2, '0');
+      } else txt = '· пополни у стойки';
+    }
+  }
+  eta.textContent = txt;
+  document.getElementById('walletChip').classList.toggle('low', low);
+}
 
 /* ═══════════════ КАТАЛОГ ═══════════════ */
 function plural(n, forms){ // 1 игра / 2 игры / 5 игр
@@ -1367,6 +1397,8 @@ function notifText(n){
     case 'deposit': return '💰 +' + (p.coins||0) + ' монет — депозит ' + (p.amount_pln||0) + ' zł';
     case 'grant_xp': return '⚡ Тебе начислено +' + (p.amount||0) + ' XP' + (p.levels_gained > 0 ? ' → LVL ' + p.level + ' 🎉' : '');
     case 'grant_case': return '🎁 Тебе выдан кейс ' + (p.tier||'');
+    case 'balance_low': return '⏳ Баланс кончается: осталось ~' + (p.minutes_left||0) + ' мин. Пополни у стойки';
+    case 'balance_zero': return '🛑 Деньги кончились — сессия завершится через ' + (p.grace_min||0) + ' мин. Пополни у стойки, чтобы продолжить';
   }
   return '🔔 Обновление аккаунта';
 }
@@ -1531,6 +1563,13 @@ setInterval(async () => {
     } else {
       const started = rows.find(s => s.status === 'active');
       if (started){ toast('▶ Сессия начата у стойки — играй!'); await loadAll(); }
+    }
+    if (activeSession){ // Г1: свежий кошелёк и прогноз, пока идёт списание
+      try{
+        const fresh = await api('/me');
+        me.wallet_grosz = fresh.wallet_grosz; me.coin_minutes = fresh.coin_minutes;
+        renderWallet();
+      }catch(e){}
     }
   }catch(e){ /* тихо: сеть/токен обработает api() */ }
 }, 10000);

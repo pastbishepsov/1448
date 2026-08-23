@@ -22,6 +22,7 @@ const (
 	MsgAdminCall    MessageType = "admin_call"     // shell → сервер: кнопка вызова
 	MsgPCPower      MessageType = "pc_power"       // сервер → shell: restart|shutdown (Б8)
 	MsgWOL          MessageType = "wol"            // сервер → shell: разбудить соседа по MAC (Б8)
+	MsgWalletUpdate MessageType = "wallet_update"  // сервер → shell: кошелёк/прогноз после тика биллинга (Г1)
 	// force_unlock удалён (Б7-и3): сервер его никогда не слал — мёртвый тип.
 )
 

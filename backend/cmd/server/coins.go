@@ -141,6 +141,13 @@ func handleAdminRedeemCoins(c *gin.Context) {
 		if res.RowsAffected == 0 {
 			return errNotEnoughCoins
 		}
+		// Г1-и5: выданные минуты — в минутный запас гостя; биллинг тратит его
+		// РАНЬШЕ кошелька, так «монеты гасятся только временем» перестаёт быть
+		// честным словом и становится учётом.
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).
+			UpdateColumn("coin_minutes", gorm.Expr("coin_minutes + ?", rec.Minutes)).Error; err != nil {
+			return err
+		}
 		return tx.Create(&rec).Error
 	})
 	if err == errNotEnoughCoins {
@@ -152,6 +159,12 @@ func handleAdminRedeemCoins(c *gin.Context) {
 		return
 	}
 
+	// Г1: свежие минуты оживляют активную сессию — предупреждения и грейс
+	// начинаются заново (как у депозита).
+	db.Model(&models.Session{}).
+		Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).
+		Updates(map[string]any{"warn15_at": nil, "warn5_at": nil, "zero_since": nil})
+
 	db.First(user, "id = ?", user.ID)
 	target := user.ID
 	logAdminAction(c, "coin_redeem", &target, fmt.Sprintf("%d мин%s за %d монет (%.2f zł)",
@@ -160,7 +173,7 @@ func handleAdminRedeemCoins(c *gin.Context) {
 		"nickname": user.Nickname, "minutes": rec.Minutes, "coins": rec.Coins, "zone": zoneName})
 	c.JSON(http.StatusOK, gin.H{
 		"id": rec.ID, "minutes": rec.Minutes, "coins": rec.Coins, "value_pln": rec.ValuePLN,
-		"zone": zoneName, "coins_balance": user.CoinsBalance,
+		"zone": zoneName, "coins_balance": user.CoinsBalance, "coin_minutes": user.CoinMinutes,
 	})
 }
 
@@ -206,8 +219,15 @@ func handleCoinRedeemVoid(c *gin.Context) {
 			Updates(map[string]any{"voided_at": now, "voided_by": adminID}).Error; err != nil {
 			return err
 		}
+		if err := tx.Model(&models.User{}).Where("id = ?", rec.UserID).
+			UpdateColumn("coins_balance", gorm.Expr("coins_balance + ?", rec.Coins)).Error; err != nil {
+			return err
+		}
+		// Г1-и5: забираем обратно и минутный запас — но не больше, чем у гостя
+		// осталось: если часть выданного времени уже отсижена, вернуть можно
+		// только неотсиженный хвост (отмена существует для свежих ошибок).
 		return tx.Model(&models.User{}).Where("id = ?", rec.UserID).
-			UpdateColumn("coins_balance", gorm.Expr("coins_balance + ?", rec.Coins)).Error
+			UpdateColumn("coin_minutes", gorm.Expr("GREATEST(coin_minutes - ?, 0)", rec.Minutes)).Error
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})

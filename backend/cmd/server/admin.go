@@ -6,6 +6,7 @@ package main
 //   UPDATE users SET role='admin' WHERE nickname='<ник>';
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -149,7 +150,7 @@ func setUserStatus(c *gin.Context, status models.UserStatus) {
 		var s models.Session
 		if db.Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).
 			First(&s).Error == nil {
-			if res, err := finishSession(&s, nil); err == nil {
+			if res, err := finishSession(&s, nil, "admin"); err == nil {
 				details = fmt.Sprintf("активная сессия завершена: %d мин, +%d XP, +%d монет",
 					res.Minutes, res.XPGained, res.CoinsGained)
 			} else {
@@ -339,8 +340,12 @@ func handleAdminEndSession(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "session_not_found", "message": "Активная сессия не найдена"})
 		return
 	}
-	res, err := finishSession(&session, nil)
+	res, err := finishSession(&session, nil, "admin")
 	if err != nil {
+		if errors.Is(err, errSessionGone) {
+			c.JSON(http.StatusConflict, gin.H{"code": "session_closed", "message": "Сессия уже завершена"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}

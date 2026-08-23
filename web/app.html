@@ -727,6 +727,9 @@ const STR = {
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 Тебе выдан кейс {t}',
   ntf_default: '🔔 Обновление аккаунта',
+  ntf_bal_low: '⏳ Осталось ~{m} мин — пополни у стойки',
+  ntf_bal_zero: '🛑 Деньги кончились — сессия завершится через {g} мин',
+  wal_balance: 'zł в кошельке',
   rate_line: '1 zł → {c} койнов · игра: +{m} койнов/мин',
   btn_topup: 'Пополнить',
   topup_title: 'Пополнение баланса',
@@ -930,6 +933,7 @@ document.addEventListener('visibilitychange', () => {
 
 /* ═══ УТИЛИТЫ (= shell.html; правило цифр — форматирование ru-RU) ═══ */
 function fmt(n){ return (n==null?0:n).toLocaleString('ru-RU'); }
+function zl2(gr){ return ((gr||0)/100).toFixed(2).replace('.', ','); } // Г1: гроши → zł
 function toast(msg, action){
   const t = document.getElementById('toast');
   t.innerHTML = '';
@@ -1363,7 +1367,8 @@ function renderHist(){
   const items = [];
   sessionsArr.filter(s => s.status === 'completed').forEach(s => items.push({
     at: s.ended_at || s.started_at,
-    l: STR.hist_session, sub: fmt(s.minutes_used || 0) + ' ' + STR.min_suffix,
+    l: STR.hist_session, sub: fmt(s.minutes_used || 0) + ' ' + STR.min_suffix +
+      (s.charged_grosz > 0 ? ' · −' + zl2(s.charged_grosz) + ' zł' : ''),
     v: '+' + fmt(s.xp_earned) + ' XP · +' + fmt(s.coins_earned),
   }));
   (deposits || []).forEach(d => items.push({
@@ -1373,7 +1378,11 @@ function renderHist(){
   }));
   items.sort((a, b) => new Date(b.at) - new Date(a.at));
   el.innerHTML = `<h3>${esc(STR.hist_title)}</h3>
-    <div style="display:flex; align-items:baseline; gap:8px; margin:2px 0 6px">
+    <div style="display:flex; align-items:baseline; gap:8px; margin:2px 0 2px">
+      <span class="balbig cnum" style="font-size:24px">${esc(zl2(me ? me.wallet_grosz : 0))}</span>
+      <span class="muted">${esc(STR.wal_balance)}</span>
+    </div>
+    <div style="display:flex; align-items:baseline; gap:8px; margin:0 0 6px">
       <span class="balbig gold-t cnum" id="histBal" data-v="0">0</span>
       <span class="muted">${esc(STR.hist_balance)}</span>
     </div>
@@ -1742,6 +1751,10 @@ function ntfText(n){
       return T('ntf_grant_xp', {n: fmt(p.amount || 0)}) + (p.levels_gained > 0 ? T('ntf_grant_xp_lvl', {l: p.level}) : '');
     case 'grant_case':
       return T('ntf_grant_case', {t: tierName(p.tier || '')});
+    case 'balance_low':
+      return T('ntf_bal_low', {m: p.minutes_left || 0});
+    case 'balance_zero':
+      return T('ntf_bal_zero', {g: p.grace_min || 0});
   }
   return STR.ntf_default;
 }
@@ -1769,7 +1782,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-07-23.1';
+const APP_VER = '2026-08-23.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

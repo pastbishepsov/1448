@@ -32,6 +32,17 @@ type Session struct {
 	XPEarned    int64 `json:"xp_earned" gorm:"default:0"`
 	CoinsEarned int64 `json:"coins_earned" gorm:"default:0"`
 
+	// Биллинг кошелька (трек Г, Г1; миграция 032). Поля меняет только
+	// биллинг-движок (billing.go) — транзакционно, вместе со списанием.
+	BilledMinutes   int        `json:"billed_minutes" gorm:"default:0"`    // минут учтено всего
+	CoinMinutesUsed int        `json:"coin_minutes_used" gorm:"default:0"` // покрыто минутным запасом монет
+	MoneyMinutes    int        `json:"money_minutes" gorm:"default:0"`     // оплачено кошельком
+	ChargedGrosz    int64      `json:"charged_grosz" gorm:"default:0"`     // списано денег за сессию
+	Warn15At        *time.Time `json:"warn15_at,omitempty"`                // «осталось ~15 мин» отправлено
+	Warn5At         *time.Time `json:"warn5_at,omitempty"`                 // «осталось ~5 мин» отправлено
+	ZeroSince       *time.Time `json:"zero_since,omitempty"`               // кошелёк на нуле с … (грейс)
+	EndedReason     *string    `json:"ended_reason,omitempty" gorm:"size:16"` // manual|admin|balance (Г3: booking, Г2: afk)
+
 	CreatedAt time.Time `json:"created_at"`
 
 	// Связи

@@ -257,6 +257,10 @@ func main() {
 	// перезапусках — жечь чаще раза в неделю на гостя правило не даёт.
 	startCoinBurnJob()
 
+	// Г1: поминутный биллинг кошелька активных сессий. Вся память — в БД,
+	// перезапуск догоняет прошедшие минуты одним доначислением.
+	startWalletBillingJob()
+
 	port := getenv("SERVER_PORT", "8080")
 	log.Printf("14:48 Backend запущен → http://localhost:%s", port)
 	if err := r.Run(":" + port); err != nil {

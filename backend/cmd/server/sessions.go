@@ -1,6 +1,9 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -115,6 +118,21 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 	baseRate := rateForComputer(zoneRateOf(&computer), club.BaseRatePLN)
 	rate := effectiveRate(baseRate, discountPct)
 
+	// Г1-и3 (Р8 GUEST.md): порог старта — кошелёк + минутный запас монет
+	// должны покрывать min_start_minutes по ставке этого ПК. Пустой гость
+	// получает понятный отказ и у киоска, и при посадке админом (админ
+	// сначала проводит депозит, потом сажает).
+	if minStart := settingInt64("min_start_minutes", minStartMinutesDef); minStart > 0 {
+		rateGrosz := models.GroszFromPLN(rate)
+		covered := int64(minutesLeft(user.CoinMinutes, user.WalletGrosz, rateGrosz, 0))
+		if covered < minStart {
+			needPLN := models.PLNFromGrosz(costForMinutes(rateGrosz, int(minStart)))
+			return http.StatusConflict, gin.H{"code": "wallet_low",
+				"message": fmt.Sprintf("Не хватает на старт: нужен запас на %d мин (~%.2f zł), у гостя %.2f zł и %d мин запаса. Пополни баланс у стойки",
+					minStart, needPLN, models.PLNFromGrosz(user.WalletGrosz), user.CoinMinutes)}
+		}
+	}
+
 	session := models.Session{
 		UserID:           userID,
 		ComputerID:       computer.ID,
@@ -180,8 +198,12 @@ func handleEndSession(c *gin.Context) {
 		return
 	}
 
-	res, err := finishSession(&session, req.Minutes)
+	res, err := finishSession(&session, req.Minutes, "manual")
 	if err != nil {
+		if errors.Is(err, errSessionGone) {
+			c.JSON(http.StatusConflict, gin.H{"code": "session_closed", "message": "Сессия уже завершена"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
@@ -226,10 +248,13 @@ func finishResponse(r *finishResult) gin.H {
 	}
 }
 
-// finishSession — единая логика завершения: начисление XP/coins, уровни, кейсы,
-// достижения, освобождение ПК, команда Shell. Используется игроком (/me/sessions/end)
-// и админом (/admin/sessions/:id/end).
-func finishSession(session *models.Session, minutesOverride *int) (*finishResult, error) {
+// finishSession — единая логика завершения: финальный расчёт кошелька,
+// начисление XP/coins, уровни, кейсы, достижения, освобождение ПК, команда
+// Shell. Используется игроком (/me/sessions/end), админом
+// (/admin/sessions/:id/end, бан) и биллингом Г1 (ноль кошелька).
+// reason — причина завершения (ended_reason): manual | admin | balance
+// (Г3 добавит booking, Г2 — afk).
+func finishSession(session *models.Session, minutesOverride *int, reason string) (*finishResult, error) {
 	userID := session.UserID.String()
 
 	now := time.Now()
@@ -237,6 +262,20 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 	if minutes < 0 {
 		minutes = 0
 	}
+
+	// Г1: финальный расчёт кошелька — доначислить хвост по РЕАЛЬНОМУ времени
+	// (вверх до целой минуты, как и XP). Дев-оверрайд минут ниже на деньги
+	// сознательно не влияет: он существует для проверки начислений XP/монет.
+	// Сессия уже закрыта параллельно (errSessionGone) — наружу без наград,
+	// второй раз ничего не начисляем.
+	var payer models.User
+	if _, serr := settleSessionMinutes(session, &payer, minutes); serr != nil {
+		if errors.Is(serr, errSessionGone) {
+			return nil, serr
+		}
+		log.Printf("биллинг: финальный расчёт сессии %s не прошёл: %v", session.ID, serr)
+	}
+
 	// dev-оверрайд: позволяет тестировать начисление без ожидания реального времени
 	if minutesOverride != nil && os.Getenv("SERVER_ENV") != "production" {
 		minutes = *minutesOverride
@@ -280,20 +319,47 @@ func finishSession(session *models.Session, minutesOverride *int) (*finishResult
 	user.LastActiveAt = now
 
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// Закрываем только пока active: гость, админ и биллинг могут захотеть
+		// завершить одну сессию одновременно — награды получает первый.
+		res := tx.Model(&models.Session{}).
+			Where("id = ? AND status = ?", session.ID, models.SessionStatusActive).
+			Updates(map[string]any{
+				"status":       models.SessionStatusCompleted,
+				"ended_at":     now,
+				"minutes_used": minutes,
+				"xp_earned":    xpGained,
+				"coins_earned": coinsGained,
+				"ended_reason": reason,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errSessionGone
+		}
 		session.Status = models.SessionStatusCompleted
 		session.EndedAt = &now
 		session.MinutesUsed = minutes
 		session.XPEarned = xpGained
 		session.CoinsEarned = coinsGained
-		if err := tx.Omit("User", "Computer").Save(session).Error; err != nil {
-			return err
-		}
+		session.EndedReason = &reason
 		if err := tx.Model(&models.Computer{}).
 			Where("id = ?", session.ComputerID).
 			Update("status", models.ComputerStatusAvailable).Error; err != nil {
 			return err
 		}
-		return tx.Save(&user).Error
+		// Обновляем только поля наград (Г1): полный Save затирал бы
+		// wallet_grosz/coin_minutes, если биллинг успел списать между чтением
+		// гостя и этой транзакцией.
+		return tx.Model(&models.User{}).Where("id = ?", user.ID).
+			Updates(map[string]any{
+				"level":                 user.Level,
+				"xp_current":            user.XPCurrent,
+				"xp_total":              user.XPTotal,
+				"coins_balance":         user.CoinsBalance,
+				"skillpoints_available": user.SkillpointsAvailable,
+				"last_active_at":        user.LastActiveAt,
+			}).Error
 	})
 	if err != nil {
 		return nil, err
