@@ -173,6 +173,7 @@ func main() {
 		adm.GET("/zones", handleAdminZones) // В4-1: цену часа видно и у стойки
 		// В4-2: обмен монет на время — операция смены, делает админ у стойки
 		adm.POST("/users/:id/redeem", handleAdminRedeemCoins)
+		adm.POST("/coin-redemptions/:id/void", handleCoinRedeemVoid) // В4-4: откат ошибочной выдачи
 
 		adm.GET("/goods", handleAdminGoods)
 		adm.POST("/goods/:id/stock", handleAdminGoodStock)

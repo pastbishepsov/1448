@@ -32,7 +32,12 @@ CREATE INDEX IF NOT EXISTS idx_coin_redemptions_user ON coin_redemptions (user_i
 
 INSERT INTO settings (key, value) VALUES
     ('coins_per_pln_spend', '20'),   -- монет за 1 zł ПРИ СПИСАНИИ (курс погашения)
-    ('coin_spend_max_min', '240')    -- потолок минут за одну операцию, 0 = без лимита
+    ('coin_spend_max_min', '0')      -- потолок минут за одну выдачу, 0 = без лимита
+                                     -- решение основателя: не ограничиваем — гостя
+                                     -- ограничивает его же баланс, а лимит на операцию
+                                     -- админ обходит повтором, то есть защищает он только
+                                     -- от лишнего клика. Поле оставлено на случай, если
+                                     -- на живом клубе понадобится.
 ON CONFLICT (key) DO NOTHING;
 
 COMMENT ON TABLE coin_redemptions IS 'Монеты, погашенные временем за ПК (спринт В4-2)';

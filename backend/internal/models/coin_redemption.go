@@ -23,6 +23,10 @@ type CoinRedemption struct {
 	ValuePLN  float64    `json:"value_pln" gorm:"type:decimal(8,2);not null"`
 	CreatedBy *uuid.UUID `json:"created_by,omitempty" gorm:"type:uuid"`
 	CreatedAt time.Time  `json:"created_at"`
+	// Отмена ошибочной выдачи (миграция 030): монеты возвращаются на баланс,
+	// строка остаётся в истории — как у отменённой продажи товара.
+	VoidedAt *time.Time `json:"voided_at,omitempty"`
+	VoidedBy *uuid.UUID `json:"voided_by,omitempty" gorm:"type:uuid"`
 }
 
 func (r *CoinRedemption) BeforeCreate(tx *gorm.DB) error {

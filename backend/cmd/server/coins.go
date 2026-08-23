@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -26,8 +27,8 @@ import (
 )
 
 const (
-	coinsPerPLNSpend int64 = 20  // монет за 1 zł при списании (дефолт)
-	coinSpendMaxMin  int64 = 240 // потолок минут за операцию (дефолт), 0 = без лимита
+	coinsPerPLNSpend int64 = 20 // монет за 1 zł при списании (дефолт)
+	coinSpendMaxMin  int64 = 0  // потолок минут за выдачу: 0 = без лимита (решение основателя)
 )
 
 // ceilTo5 — округление вверх до пятёрки. Правило цифр проекта требует шага 5,
@@ -158,7 +159,7 @@ func handleAdminRedeemCoins(c *gin.Context) {
 	hub.AdminBroadcast("coin_redeem", map[string]any{
 		"nickname": user.Nickname, "minutes": rec.Minutes, "coins": rec.Coins, "zone": zoneName})
 	c.JSON(http.StatusOK, gin.H{
-		"minutes": rec.Minutes, "coins": rec.Coins, "value_pln": rec.ValuePLN,
+		"id": rec.ID, "minutes": rec.Minutes, "coins": rec.Coins, "value_pln": rec.ValuePLN,
 		"zone": zoneName, "coins_balance": user.CoinsBalance,
 	})
 }
@@ -170,6 +171,52 @@ func zoneSuffix(name string) string {
 		return " (клубный тариф)"
 	}
 	return " · " + name
+}
+
+// POST /admin/coin-redemptions/:id/void — отменить выдачу времени (staff).
+// Правила ровно те же, что у отмены продажи товара: свою и в пределах текущих
+// клубных суток отменяет админ, чужую и вчерашнюю — владелец. Иначе «отмена»
+// становится тихим способом вернуть монеты в обход сданной смены.
+func handleCoinRedeemVoid(c *gin.Context) {
+	var rec models.CoinRedemption
+	if err := db.First(&rec, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "redeem_not_found", "message": "Выдача не найдена"})
+		return
+	}
+	if rec.VoidedAt != nil {
+		c.JSON(http.StatusConflict, gin.H{"code": "already_void", "message": "Выдача уже отменена"})
+		return
+	}
+	reportHour := int(settingInt64("report_hour", 8))
+	from, to, _, _ := shiftWindow("", reportHour, time.Now())
+	createdBy := ""
+	if rec.CreatedBy != nil {
+		createdBy = rec.CreatedBy.String()
+	}
+	if ok, code := canVoidSale(c.GetString("user_role"), createdBy,
+		c.GetString("user_id"), rec.CreatedAt, from, to); !ok {
+		c.JSON(http.StatusForbidden, gin.H{"code": code, "message": goodErrors[code]})
+		return
+	}
+
+	adminID, _ := uuid.Parse(c.GetString("user_id"))
+	now := time.Now()
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.CoinRedemption{}).Where("id = ?", rec.ID).
+			Updates(map[string]any{"voided_at": now, "voided_by": adminID}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&models.User{}).Where("id = ?", rec.UserID).
+			UpdateColumn("coins_balance", gorm.Expr("coins_balance + ?", rec.Coins)).Error
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	target := rec.UserID
+	logAdminAction(c, "coin_redeem_void", &target,
+		fmt.Sprintf("отмена: %d мин%s, %d монет вернулись", rec.Minutes, zoneSuffix(rec.ZoneName), rec.Coins))
+	c.JSON(http.StatusOK, gin.H{"voided": rec.ID, "coins_returned": rec.Coins})
 }
 
 // ── Отчёт «Монеты»: эмиссия и обязательства ───────────────────────────
@@ -204,7 +251,7 @@ func aggCoins(p period) coinsAgg {
 	}
 	db.Model(&models.CoinRedemption{}).
 		Select("COALESCE(SUM(coins),0) AS coins, COALESCE(SUM(minutes),0) AS minutes, COALESCE(SUM(value_pln),0) AS pln").
-		Where("created_at >= ? AND created_at < ?", p.From, p.To).Scan(&red)
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Scan(&red)
 	a.Redeemed, a.Minutes, a.GivenPLN = red.Coins, red.Minutes, math.Round(red.Pln*100)/100
 
 	// В4-3: сгорание у неактивных — вторая причина, по которой обязательства
@@ -262,6 +309,7 @@ func handleReportCoins(c *gin.Context) {
 	var recent []models.CoinRedemption
 	db.Where("created_at >= ? AND created_at < ?", p.From, p.To).
 		Order("created_at DESC").Limit(50).Find(&recent)
+	// отменённые показываем тоже — с пометкой: в истории они должны остаться
 	ids := make([]string, 0, len(recent))
 	for _, r := range recent {
 		ids = append(ids, r.UserID.String())
@@ -269,8 +317,9 @@ func handleReportCoins(c *gin.Context) {
 	nick := nicknamesByID(ids)
 	items := make([]gin.H, 0, len(recent))
 	for _, r := range recent {
-		items = append(items, gin.H{"created_at": r.CreatedAt, "nickname": nick[r.UserID.String()],
-			"zone": r.ZoneName, "minutes": r.Minutes, "coins": r.Coins, "value_pln": r.ValuePLN})
+		items = append(items, gin.H{"id": r.ID, "created_at": r.CreatedAt, "nickname": nick[r.UserID.String()],
+			"zone": r.ZoneName, "minutes": r.Minutes, "coins": r.Coins, "value_pln": r.ValuePLN,
+			"voided": r.VoidedAt != nil})
 	}
 
 	c.JSON(http.StatusOK, gin.H{

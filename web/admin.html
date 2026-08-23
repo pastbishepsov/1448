@@ -706,7 +706,7 @@
           <input id="set_rate" class="input" type="number" min="1" max="100">
           <label class="muted" for="set_spend">Монет за 1 zł при списании — курс погашения</label>
           <input id="set_spend" class="input" type="number" min="1" max="1000">
-          <label class="muted" for="set_spendcap">Потолок минут за одну выдачу (0 — без лимита)</label>
+          <label class="muted" for="set_spendcap">Потолок минут за одну выдачу (0 — без лимита, так и стоит)</label>
           <input id="set_spendcap" class="input" type="number" min="0" max="1440">
           <label class="muted" for="set_idle">Монеты не трогаем, пока гость не играет, дней</label>
           <input id="set_idle" class="input" type="number" min="0" max="3650">
@@ -1631,11 +1631,25 @@ async function uFormToggle(f){
   renderUserDrawer();
 }
 
+/* Откат ошибочной выдачи: монеты возвращаются на баланс, строка остаётся в
+   истории с пометкой — ровно как у отменённой продажи товара. */
+async function voidRedeem(id, userId){
+  try{
+    const d = await api('/admin/coin-redemptions/' + id + '/void', {method:'POST'});
+    toast('✓ Выдача отменена — ' + d.coins_returned + ' монет вернулись');
+    if (userId && drawerUserId === userId) await openUserDrawer(userId);
+    if (curTab === 'stats') renderReports();
+    refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 async function submitRedeem(){
   const body = {zone_id: redeemZone || '', minutes: redeemMin};
   try{
     const d = await api('/admin/users/' + drawerUserId + '/redeem', {method:'POST', body:JSON.stringify(body)});
-    toast('⏱ ' + d.minutes + ' мин' + (d.zone ? ' · ' + d.zone : '') + ' за ' + d.coins + ' монет');
+    const uid = drawerUserId;
+    toast('⏱ ' + d.minutes + ' мин' + (d.zone ? ' · ' + d.zone : '') + ' за ' + d.coins + ' монет',
+          () => voidRedeem(d.id, uid));
     uForm = null;
     await openUserDrawer(drawerUserId);
     refresh();
@@ -1726,6 +1740,8 @@ function uFormHtml(){
       || '<span class="muted">Зоны не заведены — считаем по клубному тарифу</span>'}</div>
     <div class="segs">${[30,60,120,180].map(m =>
       `<button class="${redeemMin===m?'on':''}" onclick="redeemMin=${m}; renderUserDrawer()">${m} мин</button>`).join('')}</div>
+    <input id="redeemMinInput" class="input" type="number" min="1" step="5" value="${redeemMin}"
+           placeholder="или сколько угодно минут" oninput="redeemMinSet(this.value)">
     <div class="muted" id="redeemHint">${redeemHintText()}</div>
     <button class="btn" style="width:100%; justify-content:center" onclick="submitRedeem()"><span data-ic="clock"></span>Выдать время</button>
     <div class="muted">Монеты спишутся с баланса гостя, время выдаёшь ты — в отчёте это ляжет в «отдано временем»</div>
@@ -1735,6 +1751,15 @@ function uFormHtml(){
 /* В4-2: предпросмотр обмена. Считаем ровно как сервер: цена часа зоны,
    помноженная на курс погашения, с округлением вверх до пятёрки. */
 let redeemZone = null, redeemMin = 60;
+// потолка на выдачу нет по решению основателя: гостя ограничивает его баланс,
+// а лимит на операцию админ всё равно обходит повтором
+function redeemMinSet(v){
+  const m = parseInt(v, 10);
+  if (!Number.isInteger(m) || m <= 0) return;
+  redeemMin = m;
+  const box = document.getElementById('redeemHint');
+  if (box) box.textContent = redeemHintText();
+}
 function redeemHintText(){
   const z = zonesCache.find(x => x.id === redeemZone) || zonesCache[0];
   if (!z) return 'Курс подтянется с сервера';
@@ -2077,7 +2102,7 @@ async function toggleApp(id){
 /* ── Журнал-аудит (А4): единая лента — начисления, депозиты, действия ── */
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
-  money: ['deposit','sale','sale_void','coin_redeem','coin_burn'],
+  money: ['deposit','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn'],
   grant: ['grant'],
   users: ['ban','unban'],
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat'],
@@ -2107,6 +2132,7 @@ const AUD_LABEL = {
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   coin_redeem:'монеты: время за монеты',
   coin_burn:'монеты: сгорание',
+  coin_redeem_void:'монеты: отмена выдачи',
   good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
 };
@@ -2129,6 +2155,7 @@ const AUD_ICON = {
   zone_create:'plus', zone_update:'edit', zone_delete:'cross',
   coin_redeem:'clock',
   coin_burn:'clock',
+  coin_redeem_void:'cross',
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
 };
@@ -2752,6 +2779,9 @@ function paintStaff(d){
    висит на руках у гостей. Обязательства считаются по КУРСУ ПОГАШЕНИЯ — это
    и есть ответ на «сколько денег равно монетам»: столько клуб отдаст временем,
    если гости придут забирать всё сразу. */
+function armVoidRedeem(btn, id){
+  armButton(btn, 'Точно отменить?', () => voidRedeem(id, null));
+}
 function paintCoins(d){
   const t = d.totals, k = d.delta, w = d.prev || {}, oh = d.on_hand || {}, r = d.rates || {};
   document.getElementById('repBody').innerHTML =
@@ -2784,10 +2814,13 @@ function paintCoins(d){
         'Зоны не заведены')}
      <div class="muted" style="margin:-6px 0 14px">Кэшбек — какую долю цены часа гость отыгрывает монетами за этот же час. Больше 20% обычно уже дорого.</div>
      <div class="sect">Погашения за период</div>
-     ${repTable(['Когда','Гость','Зона','Минут','Монет','Стоило клубу'], (d.redemptions||[]).map(x =>
-        `<tr><td class="muted">${fmtTime(x.created_at)}</td><td><b>${esc(x.nickname||'—')}</b></td>
+     ${repTable(['Когда','Гость','Зона','Минут','Монет','Стоило клубу',''], (d.redemptions||[]).map(x =>
+        `<tr${x.voided ? ' style="opacity:.45"' : ''}><td class="muted">${fmtTime(x.created_at)}</td>
+         <td><b>${esc(x.nickname||'—')}</b></td>
          <td class="muted">${x.zone ? esc(x.zone) : 'клубный тариф'}</td><td>${x.minutes}</td>
-         <td>${x.coins}</td><td>${fmtPLN(x.value_pln)} zł</td></tr>`),
+         <td>${x.coins}${x.voided ? ' <span class="muted">— отменена</span>' : ''}</td>
+         <td>${fmtPLN(x.value_pln)} zł</td>
+         <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoidRedeem(this,'${x.id}')">Отменить</button>`}</td></tr>`),
         'За период монеты никто не гасил')}`;
 }
 
