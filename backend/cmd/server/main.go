@@ -170,6 +170,8 @@ func main() {
 		adm.POST("/work/stop", handleWorkStop)
 		adm.GET("/work/me", handleWorkMe)
 
+		adm.GET("/zones", handleAdminZones) // В4-5: цену часа видно и у стойки
+
 		adm.GET("/goods", handleAdminGoods)
 		adm.POST("/goods/:id/stock", handleAdminGoodStock)
 		adm.GET("/sales", handleAdminSales)
@@ -205,6 +207,9 @@ func main() {
 		own.GET("/staff", handleAdminStaffList)
 		// Кадровая карточка (В3-этап 2, миграция 025): личные данные сотрудника
 		// видит и правит только владелец.
+		own.POST("/zones", handleAdminZoneCreate)
+		own.PATCH("/zones/:id", handleAdminZoneUpdate)
+		own.DELETE("/zones/:id", handleAdminZoneDelete)
 		own.GET("/work", handleWorkList)
 		own.POST("/work", handleWorkCreate)
 		own.PATCH("/work/:id", handleWorkUpdate)

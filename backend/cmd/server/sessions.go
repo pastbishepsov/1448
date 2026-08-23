@@ -110,7 +110,10 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 	if discountPct > maxDiscountPct {
 		discountPct = maxDiscountPct
 	}
-	rate := effectiveRate(club.BaseRatePLN, discountPct)
+	// В4-5: час стоит столько, сколько стоит ЗОНА этого ПК; клубный тариф
+	// остаётся запасным вариантом для машин без зоны.
+	baseRate := rateForComputer(zoneRateOf(&computer), club.BaseRatePLN)
+	rate := effectiveRate(baseRate, discountPct)
 
 	session := models.Session{
 		UserID:           userID,
@@ -118,7 +121,7 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 		ClubID:           club.ID,
 		Status:           models.SessionStatusActive,
 		StartedAt:        time.Now(),
-		BaseRatePLN:      club.BaseRatePLN,
+		BaseRatePLN:      baseRate,
 		EffectiveRatePLN: rate,
 	}
 
@@ -156,7 +159,7 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 		"started_at":         session.StartedAt,
 		"computer":           computer.Name,
 		"club":               club.Name,
-		"rate_pln":           club.BaseRatePLN,
+		"rate_pln":           baseRate,
 		"effective_rate_pln": rate,
 		"discount_pct":       discountPct,
 		"from_waitlist":      fromWaitlist,
@@ -202,16 +205,16 @@ type finishResult struct {
 
 func finishResponse(r *finishResult) gin.H {
 	return gin.H{
-		"session_id":    r.Session.ID,
-		"minutes":       r.Minutes,
-		"xp_earned":     r.XPGained,
-		"coins_earned":  r.CoinsGained,
-		"daily_bonus_xp": r.DailyBonusXP,
-		"levels_gained":   r.LevelsGained,
-		"bonus_case":      r.BonusCase,
-		"bonus_case_tier": r.BonusCaseTier,
+		"session_id":        r.Session.ID,
+		"minutes":           r.Minutes,
+		"xp_earned":         r.XPGained,
+		"coins_earned":      r.CoinsGained,
+		"daily_bonus_xp":    r.DailyBonusXP,
+		"levels_gained":     r.LevelsGained,
+		"bonus_case":        r.BonusCase,
+		"bonus_case_tier":   r.BonusCaseTier,
 		"bonus_case_tier_2": r.BonusCaseTier2,
-		"rank":            gin.H{"level": r.Rank.Level, "name": r.Rank.Name, "xp_mult": r.Rank.XPMult, "coin_mult": r.Rank.CoinMult},
+		"rank":              gin.H{"level": r.Rank.Level, "name": r.Rank.Name, "xp_mult": r.Rank.XPMult, "coin_mult": r.Rank.CoinMult},
 		"user": gin.H{
 			"level":                 r.User.Level,
 			"xp_current":            r.User.XPCurrent,

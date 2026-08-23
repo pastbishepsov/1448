@@ -45,10 +45,10 @@ func nameTaken(clubID, excludeID, name string) bool {
 }
 
 type computerCreateRequest struct {
-	Name string  `json:"name" binding:"required,min=1,max=32"`
-	Zone *string `json:"zone"`
-	PosX *int    `json:"pos_x"`
-	PosY *int    `json:"pos_y"`
+	Name   string  `json:"name" binding:"required,min=1,max=32"`
+	ZoneID *string `json:"zone_id"` // В4-5: зона теперь сущность с ценой часа
+	PosX   *int    `json:"pos_x"`
+	PosY   *int    `json:"pos_y"`
 }
 
 // POST /admin/computers — новый ПК (owner). Клуб — первый активный (пилот).
@@ -86,8 +86,13 @@ func handleAdminCreateComputer(c *gin.Context) {
 		Status: models.ComputerStatusAvailable,
 		PosX:   req.PosX, PosY: req.PosY,
 	}
-	if req.Zone != nil {
-		pc.Zone = *req.Zone
+	if req.ZoneID != nil && strings.TrimSpace(*req.ZoneID) != "" {
+		var z models.Zone
+		if err := db.First(&z, "id = ?", *req.ZoneID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"code": "zone_not_found", "message": "Зона не найдена"})
+			return
+		}
+		pc.ZoneID, pc.Zone = &z.ID, z.Name
 	}
 	if err := db.Create(&pc).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
@@ -99,7 +104,7 @@ func handleAdminCreateComputer(c *gin.Context) {
 
 type computerPatchRequest struct {
 	Name     *string `json:"name" binding:"omitempty,min=1,max=32"`
-	Zone     *string `json:"zone"`
+	ZoneID   *string `json:"zone_id"` // В4-5: пустая строка — снять зону
 	PosX     *int    `json:"pos_x"`
 	PosY     *int    `json:"pos_y"`
 	ClearPos bool    `json:"clear_pos"` // true — снять ПК со схемы
@@ -128,8 +133,20 @@ func handleAdminUpdateComputer(c *gin.Context) {
 		updates["name"] = *req.Name
 		changes = pc.Name + " → " + *req.Name
 	}
-	if req.Zone != nil {
-		updates["zone"] = *req.Zone
+	if req.ZoneID != nil {
+		fields, z, ok := zoneFieldsFor(*req.ZoneID)
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"code": "zone_not_found", "message": "Зона не найдена"})
+			return
+		}
+		for k, v := range fields {
+			updates[k] = v
+		}
+		if z != nil {
+			changes += " · зона " + z.Name
+		} else {
+			changes += " · без зоны"
+		}
 	}
 	if req.MAC != nil { // Б8: MAC для WoL, пустая строка стирает
 		m := strings.ToUpper(strings.TrimSpace(*req.MAC))

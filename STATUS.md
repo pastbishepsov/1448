@@ -71,6 +71,8 @@
 | POST | `/api/v1/admin/bookings/:id/restore` | вернуть отменённую бронь — undo (А3) | admin |
 | GET  | `/api/v1/admin/audit` | единый журнал: гранты+депозиты+действия (А4, миграция 016) | admin |
 | GET  | `/api/v1/admin/reports/money` · `/guests` · `/load` · `/staff` | отчёты за период: пресеты и `from`/`to`, клубные сутки, сравнение с предыдущим периодом (В1) | owner |
+| GET  | `/api/v1/admin/zones` | зоны зала с ценой часа (В4, миграция 027); цена часа сессии берётся из зоны ПК | admin |
+| POST/PATCH/DELETE | `/api/v1/admin/zones[/:id]` | завести зону, поменять имя и цену, удалить пустую | owner |
 | GET/PUT | `/api/v1/admin/staff/:id/profile` | кадровая карточка: ФИО, телефон, должность, дата найма, ставка, заметка (В3, миграция 025) | owner |
 | POST | `/api/v1/admin/staff/hire` · `/staff/:id/dismiss` · GET `/staff/archive` | наём с нуля (аккаунт + карточка), увольнение с датой и причиной, архив уволенных (В3) | owner |
 | POST/GET | `/api/v1/admin/work/start` · `/work/stop` · `/work/me` | табель: отметка прихода и ухода за себя, своё состояние (В3, миграция 026) | admin |

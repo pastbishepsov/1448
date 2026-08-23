@@ -716,6 +716,14 @@
           <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
           <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал. Лимиты не касаются владельца</div>
         </div>
+
+        <!-- В4-этап 5: зона стала сущностью со своей ценой часа -->
+        <div class="sect">Зоны и цена часа</div>
+        <div class="toolrow">
+          <button class="btn mini" onclick="zoneEdit('')"><span data-ic="plus"></span>Зона</button>
+          <span class="muted" id="zonesHint"></span>
+        </div>
+        <div class="tablewrap" id="zonesTable"><div class="skel"></div><div class="skel"></div></div>
       </section>
     </main>
   </div>
@@ -1266,16 +1274,23 @@ async function layoutResize(dw, dh){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
-function openPCEditDrawer(id){
+async function openPCEditDrawer(id){
   const pc = hallData.find(p => p.id === id);
   if (!pc) return;
+  // список зон нужен для выпадашки; в «Экономику» владелец мог и не заходить
+  if (!zonesCache.length){
+    try{ zonesCache = (await api('/admin/zones')).zones || []; }catch(e){}
+  }
   drawerPCId = null; drawerUserId = null;
   openDrawer(pc.name, `
   <div class="uform" style="margin-top:0">
     <label class="muted" for="hpc_name">Имя ПК</label>
     <input id="hpc_name" class="input" value="${esc(pc.name)}" maxlength="32">
-    <label class="muted" for="hpc_zone">Зона (подпись, необязательно)</label>
-    <input id="hpc_zone" class="input" value="${esc(pc.zone||'')}" maxlength="32">
+    <label class="muted" for="hpc_zone">Зона — от неё зависит цена часа</label>
+    <select id="hpc_zone" class="input">
+      <option value="">без зоны · клубный тариф</option>
+      ${zonesCache.map(z => `<option value="${z.id}" ${pc.zone_id === z.id ? 'selected' : ''}>${esc(z.name)} · ${fmtPLN(z.rate_pln)} zł/ч</option>`).join('')}
+    </select>
     <label class="muted" for="hpc_mac">MAC для Wake-on-LAN (пусто — выключено)</label>
     <input id="hpc_mac" class="input" value="${esc(pc.mac||'')}" placeholder="AA:BB:CC:DD:EE:FF" maxlength="17">
     <div class="muted">${pc.pos_x != null ? 'На схеме: клетка ' + (pc.pos_x+1) + '×' + (pc.pos_y+1) : 'Вне схемы'}</div>
@@ -1287,11 +1302,11 @@ function openPCEditDrawer(id){
 }
 async function submitPCEdit(id){
   const name = document.getElementById('hpc_name').value.trim();
-  const zone = document.getElementById('hpc_zone').value.trim();
+  const zone_id = document.getElementById('hpc_zone').value;
   const mac = document.getElementById('hpc_mac').value.trim();
   if (!name){ toast('⚠ Нужно имя ПК'); return; }
   try{
-    await api('/admin/computers/' + id, {method:'PATCH', body:JSON.stringify({name, zone, mac})});
+    await api('/admin/computers/' + id, {method:'PATCH', body:JSON.stringify({name, zone_id, mac})});
     toast('✓ Сохранено');
     closeDrawer();
     await renderHall();
@@ -2009,7 +2024,7 @@ const AUD_GROUPS = {
   users: ['ban','unban'],
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat'],
   bookings: ['booking_create','booking_cancel','booking_restore'],
-  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power'],
+  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
   goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
   staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
@@ -2031,6 +2046,7 @@ const AUD_LABEL = {
   staff_card:'персонал: карточка',
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
   work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка',
+  zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
 };
@@ -2050,6 +2066,7 @@ const AUD_ICON = {
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out',
   work_start:'clock', work_stop:'check', work_edit:'edit',
+  zone_create:'plus', zone_update:'edit', zone_delete:'cross',
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
 };
@@ -3193,8 +3210,77 @@ function armDemote(btn, id, nick){
   });
 }
 
+/* ── В4-этап 5: зоны с ценой. Раньше зона была просто подписью на ПК, а тариф
+   один на весь клуб и нигде не редактировался — VIP стоил столько же, сколько
+   обычное место. Теперь цена часа живёт в зоне, а сессия берёт цену той зоны,
+   где стоит компьютер. Клубный тариф остался запасным для машин без зоны. ── */
+let zonesCache = [];
+
+async function renderZones(){
+  try{
+    const d = await api('/admin/zones');
+    zonesCache = d.zones || [];
+    setText('zonesHint', 'Клубный тариф ' + fmtPLN(d.club_rate_pln) + ' zł/ч действует на ПК без зоны'
+      + (d.without_zone ? ' — таких сейчас ' + d.without_zone : ''));
+    setHTML('zonesTable', zonesCache.length === 0
+      ? '<div class="empty"><span data-ic="monitor"></span>Зон нет — все ПК на клубном тарифе</div>'
+      : `<table><tr><th>Зона</th><th>Цена часа</th><th>Компьютеров</th><th></th></tr>
+      ${zonesCache.map(z => `<tr>
+        <td><b>${esc(z.name)}</b></td>
+        <td>${fmtPLN(z.rate_pln)} zł</td>
+        <td class="muted">${z.computers}</td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost mini" onclick="zoneEdit('${z.id}')"><span data-ic="edit"></span>Правка</button>
+          ${z.computers === 0 ? `<button class="btn ghost mini danger" onclick="armZoneDelete(this,'${z.id}')">✕</button>` : ''}
+        </td></tr>`).join('')}</table>`);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function zoneEdit(id){
+  const z = zonesCache.find(x => x.id === id) || {sort:0};
+  const isNew = !z.id;
+  openDrawer(isNew ? 'Новая зона' : 'Зона · ' + z.name, `
+  <div class="uform">
+    <label class="muted" style="margin-bottom:-6px">Название — как назовёшь, так и будет в зале</label>
+    <input id="zn_name" class="input" placeholder="VIP, Симрейсинг, Утренняя" value="${esc(z.name||'')}" maxlength="32">
+    <label class="muted" style="margin-bottom:-6px">Цена часа, zł</label>
+    <input id="zn_rate" class="input" type="number" step="0.01" min="0.01" value="${z.rate_pln ?? ''}">
+    <label class="muted" style="margin-bottom:-6px">Порядок в списке</label>
+    <input id="zn_sort" class="input" type="number" value="${z.sort ?? 0}">
+    <div class="muted">Цена действует на новые сессии. Уже начатые досчитываются по своей — она записана в сессии.</div>
+    <div style="display:flex; gap:10px">
+      <button class="btn mini" onclick="zoneSave('${z.id||''}')"><span data-ic="save"></span>Сохранить</button>
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+  </div>`);
+}
+async function zoneSave(id){
+  const name = document.getElementById('zn_name').value.trim();
+  const rate = parseFloat(document.getElementById('zn_rate').value);
+  const sort = parseInt(document.getElementById('zn_sort').value || '0', 10);
+  if (!name){ toast('⚠ Нужно название зоны'); return; }
+  if (!(rate > 0)){ toast('⚠ Нужна цена часа больше нуля'); return; }
+  try{
+    await api(id ? '/admin/zones/' + id : '/admin/zones',
+              {method: id ? 'PATCH' : 'POST', body: JSON.stringify({name, rate_pln: rate, sort})});
+    toast('✓ Зона сохранена');
+    closeDrawer();
+    renderZones();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armZoneDelete(btn, id){
+  armButton(btn, 'Удалить?', async () => {
+    try{
+      await api('/admin/zones/' + id, {method:'DELETE'});
+      toast('✓ Зона удалена');
+      renderZones();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+
 /* ── Настройки экономики (А5, только owner) ── */
 async function renderSettings(){
+  renderZones(); // В4-5: цены зон живут здесь же, в «Экономике»
   try{
     const d = await api('/admin/settings');
     document.getElementById('set_xp').value = d.settings.xp_per_min;

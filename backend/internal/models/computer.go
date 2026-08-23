@@ -19,7 +19,10 @@ type Computer struct {
 	ID        uuid.UUID      `json:"id"         gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
 	ClubID    uuid.UUID      `json:"club_id"    gorm:"type:uuid;not null;index"`
 	Name      string         `json:"name"       gorm:"size:32;not null"`
+	// Zone — КЭШ имени зоны (миграция 027): по нему строятся карта зала и
+	// разрезы отчётов. Источник правды — ZoneID; кэш пишет только сервер.
 	Zone      string         `json:"zone"       gorm:"size:32"`
+	ZoneID    *uuid.UUID     `json:"zone_id,omitempty" gorm:"type:uuid"`
 	Status    ComputerStatus `json:"status"     gorm:"type:computer_status;default:available"`
 	LastSeen  time.Time      `json:"last_seen"`
 	CreatedAt time.Time      `json:"created_at"`
