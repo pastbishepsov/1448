@@ -164,6 +164,12 @@ func main() {
 
 		// Товары и продажи (В2, миграция 024): ценник правит owner, а продажа,
 		// приём поставки и корректировка остатка — операции смены.
+		// Табель (В3-этап 4, миграция 026): отметиться может каждый за себя,
+		// правит записи владелец.
+		adm.POST("/work/start", handleWorkStart)
+		adm.POST("/work/stop", handleWorkStop)
+		adm.GET("/work/me", handleWorkMe)
+
 		adm.GET("/goods", handleAdminGoods)
 		adm.POST("/goods/:id/stock", handleAdminGoodStock)
 		adm.GET("/sales", handleAdminSales)
@@ -199,6 +205,10 @@ func main() {
 		own.GET("/staff", handleAdminStaffList)
 		// Кадровая карточка (В3-этап 2, миграция 025): личные данные сотрудника
 		// видит и правит только владелец.
+		own.GET("/work", handleWorkList)
+		own.POST("/work", handleWorkCreate)
+		own.PATCH("/work/:id", handleWorkUpdate)
+		own.DELETE("/work/:id", handleWorkDelete)
 		own.POST("/staff/hire", handleAdminStaffHire)           // В3-этап 3: наём с нуля
 		own.POST("/staff/:id/dismiss", handleAdminStaffDismiss) // увольнение как событие
 		own.GET("/staff/archive", handleAdminStaffArchive)

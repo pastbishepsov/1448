@@ -923,6 +923,8 @@ func handleReportStaff(c *gin.Context) {
 	type person struct {
 		shifts   int64
 		schedMin int64
+		factMin  int64 // В3-4: факт из табеля
+		factCnt  int64
 		revenue  float64 // пополнения + товары
 		deposits int64
 		sales    int64
@@ -980,20 +982,44 @@ func handleReportStaff(c *gin.Context) {
 		who(r.AdminID).grants = r.Cnt
 	}
 
+	// факт из табеля (В3-4): без него ставка из кадровой карточки бесполезна
+	for id, v := range factByUser(p) {
+		w := who(id)
+		w.factMin, w.factCnt = v[0], v[1]
+	}
+
 	ids := make([]string, 0, len(people))
 	for id := range people {
 		ids = append(ids, id)
 	}
 	nick := nicknamesByID(ids)
 	roles := rolesByID(ids)
+	cards := map[string]models.StaffProfile{}
+	var profiles []models.StaffProfile
+	db.Find(&profiles)
+	for _, pr := range profiles {
+		cards[pr.UserID.String()] = pr
+	}
 	byPerson := make([]gin.H, 0, len(people))
 	for id, w := range people {
-		byPerson = append(byPerson, gin.H{
+		row := gin.H{
 			"nickname": nick[id], "role": roles[id],
 			"shifts": w.shifts, "scheduled_hours": math.Round(float64(w.schedMin)/60*10) / 10,
+			"fact_hours": math.Round(float64(w.factMin)/60*10) / 10, "fact_shifts": w.factCnt,
 			"revenue_pln": math.Round(w.revenue*100) / 100, "deposits": w.deposits, "sales": w.sales,
 			"actions": w.actions + w.grants + w.sales,
-		})
+		}
+		if card, ok := cards[id]; ok {
+			amount, kind := payoutFor(card.RateType, card.RateAmount, w.factMin, w.factCnt)
+			if kind != "" {
+				row["payout_pln"] = amount
+				row["payout_kind"] = kind
+			}
+			if card.Position != "" {
+				row["position"] = card.Position
+			}
+		}
+		byPerson = append(byPerson, row)
 	}
 	sort.Slice(byPerson, func(i, j int) bool {
 		return byPerson[i]["revenue_pln"].(float64) > byPerson[j]["revenue_pln"].(float64)

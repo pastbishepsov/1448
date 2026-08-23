@@ -668,7 +668,20 @@
           </div>
         </div>
         <div class="muted ownerOnly hidden" style="margin:-6px 0 12px">Роль вступает в силу после перелогина сотрудника</div>
+        <!-- В3-этап 4: отметка прихода и ухода — видна и админу, и владельцу -->
+        <div class="toolrow" id="myShiftBox"></div>
         <div class="tablewrap ownerOnly hidden" id="staffTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+        <div class="sect ownerOnly hidden">Табель · <span id="tsLabel" style="text-transform:none; letter-spacing:0">—</span></div>
+        <div class="toolrow ownerOnly hidden">
+          <div class="segs" id="tsPresets">
+            <button data-p="d7" onclick="tsPreset('d7',this)">7 дней</button>
+            <button class="on" data-p="d30" onclick="tsPreset('d30',this)">30 дней</button>
+            <button data-p="month" onclick="tsPreset('month',this)">Этот месяц</button>
+            <button data-p="prev_month" onclick="tsPreset('prev_month',this)">Прошлый месяц</button>
+          </div>
+          <button class="btn ghost mini" onclick="tsEdit('')"><span data-ic="plus"></span>Запись</button>
+        </div>
+        <div class="tablewrap ownerOnly hidden" id="tsTable"><div class="skel"></div><div class="skel"></div></div>
         <div class="sect">График смен · <span id="schLabel" style="text-transform:none; letter-spacing:0">—</span></div>
         <div class="toolrow">
           <div class="segs">
@@ -1999,7 +2012,7 @@ const AUD_GROUPS = {
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
   goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
-  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
+  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
 };
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
@@ -2017,6 +2030,7 @@ const AUD_LABEL = {
   sale:'продажа', sale_void:'отмена продажи',
   staff_card:'персонал: карточка',
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
+  work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка',
   good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
 };
@@ -2035,6 +2049,7 @@ const AUD_ICON = {
   sale:'box', sale_void:'cross',
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out',
+  work_start:'clock', work_stop:'check', work_edit:'edit',
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
 };
@@ -2643,11 +2658,13 @@ function paintStaff(d){
          <td>${x.sessions}</td><td>${repHours(x.hours)}</td></tr>`),
         'Смен нет — заведи шаблоны в «Персонале»')}
      <div class="sect">Люди</div>
-     ${repTable(['Сотрудник','Роль','Смен','Часов в графике','Выручка','Депозитов · продаж','Операций'], (d.by_person||[]).map(x =>
-        `<tr><td><b>${esc(x.nickname||'—')}</b></td>
-         <td class="muted">${x.role === 'owner' ? 'владелец' : 'админ'}</td>
-         <td>${x.shifts}</td><td>${repHours(x.scheduled_hours)}</td>
-         <td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits} · ${x.sales}</td><td>${x.actions}</td></tr>`),
+     ${repTable(['Сотрудник','Смен план · факт','Часов план · факт','Выручка','Депозитов · продаж','К выплате'], (d.by_person||[]).map(x =>
+        `<tr><td><b>${esc(x.nickname||'—')}</b>${x.position ? `<div class="muted">${esc(x.position)}</div>` : ''}</td>
+         <td>${x.shifts} · <b>${x.fact_shifts ?? 0}</b></td>
+         <td>${repHours(x.scheduled_hours)} · <b>${repHours(x.fact_hours ?? 0)}</b></td>
+         <td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits} · ${x.sales}</td>
+         <td>${x.payout_pln === undefined ? '<span class="muted" title="в карточке не задана ставка">—</span>'
+              : fmtPLN(x.payout_pln) + ' zł' + (x.payout_kind === 'month' ? ' <span class="muted">оклад</span>' : '')}</td></tr>`),
         'В этом периоде никто не работал')}`;
 }
 
@@ -2836,7 +2853,9 @@ function staffViewSet(v, btn){
 }
 
 async function renderStaff(){
-  renderSchedule(); // Б11: график смен виден всем
+  renderSchedule();  // Б11: график смен виден всем
+  renderMyShift();   // В3-4: отметка прихода/ухода — тоже всем
+  renderTimesheet(); // В3-4: табель — только владельцу (проверка внутри)
   if (!isOwner()) return; // список команды — owner-only endpoint
   if (staffView === 'archive') return renderStaffArchive();
   try{
@@ -2869,6 +2888,126 @@ async function promoteStaff(){
     renderStaff();
   }catch(e){ toast('⚠ ' + e.message); }
 }
+/* ── В3-этап 4: табель. График (Б11) — план, здесь факт: сотрудник отмечает
+   приход и уход сам, владелец правит. Без факта ставка из кадровой карточки
+   бесполезна — зарплату не из чего считать. Забытый уход сервер закрывает при
+   следующем приходе по расписанию смены и помечает: выдумывать отработанные
+   часы нельзя, пометка поднимет запись владельцу на исправление. ── */
+function hm(min){ min = Math.max(0, +min || 0); return Math.floor(min/60) + ' ч ' + String(min%60).padStart(2,'0') + ' м'; }
+
+async function renderMyShift(){
+  const box = document.getElementById('myShiftBox');
+  if (!box) return;
+  try{
+    const d = await api('/admin/work/me');
+    const on = !!d.on_shift;
+    box.innerHTML =
+      `<button class="btn ${on ? 'danger ' : ''}mini" onclick="workToggle(${on})">
+         <span data-ic="${on ? 'out' : 'check'}"></span>${on ? 'Отметить уход' : 'Я пришёл'}</button>
+       <div class="kpi" title="${on ? 'с ' + hhmm(d.entry.started_at) : 'по табелю за клубные сутки'}">
+         ${on ? 'На смене' : 'Сегодня отработано'} <b>${hm(on ? d.minutes_so_far : d.minutes_today)}</b></div>
+       ${on && d.entry.shift ? `<div class="kpi">Смена <b>${esc(d.entry.shift)}</b></div>` : ''}`;
+    mountIcons(box);
+  }catch(e){ box.innerHTML = ''; }
+}
+
+async function workToggle(on){
+  try{
+    const d = await api('/admin/work/' + (on ? 'stop' : 'start'), {method:'POST'});
+    if (on) toast('✓ Смена закрыта · ' + hm(d.entry.minutes));
+    else if (d.auto_closed_previous) toast('⚠ Прошлая смена осталась незакрытой — закрыл по расписанию, проверь табель');
+    else toast('✓ Приход отмечен');
+    renderMyShift();
+    if (isOwner()) renderTimesheet();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+let tsPresetV = 'd30';
+function tsPreset(p, btn){
+  tsPresetV = p;
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+  renderTimesheet();
+}
+
+async function renderTimesheet(){
+  if (!isOwner()) return;
+  try{
+    const d = await api('/admin/work?preset=' + tsPresetV);
+    const p = d.period || {};
+    setText('tsLabel', repDate(p.from) + ' — ' + repDate(p.to)
+      + (d.open ? ' · открытых смен: ' + d.open : '')
+      + (d.auto_closed ? ' · без отметки ухода: ' + d.auto_closed : ''));
+    setHTML('tsTable', (d.entries || []).length === 0
+      ? '<div class="empty"><span data-ic="clock"></span>За период никто не отмечался</div>'
+      : `<table><tr><th>Дата</th><th>Сотрудник</th><th>Смена</th><th>Время</th><th>Часы</th><th></th></tr>
+      ${d.entries.map(e => `<tr${e.open || e.auto_closed ? ' style="color:var(--orange)"' : ''}>
+        <td class="muted">${ruDate(e.date)}</td>
+        <td><b>${esc(e.nickname||'—')}</b></td>
+        <td class="muted">${e.shift ? esc(e.shift) : 'вне смены'}</td>
+        <td>${hhmm(e.started_at)} — ${e.open ? 'ещё на смене' : hhmm(e.ended_at)}</td>
+        <td>${e.open ? '—' : hm(e.minutes)}${e.auto_closed ? ' <span class="muted">· не отметил уход</span>' : ''}</td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost mini" onclick="tsEdit('${e.id}')"><span data-ic="edit"></span></button>
+          <button class="btn ghost mini danger" onclick="armTsDelete(this,'${e.id}')">✕</button>
+        </td></tr>`).join('')}</table>`);
+    tsCache = d.entries || [];
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+let tsCache = [];
+
+function tsEdit(id){
+  const e = tsCache.find(x => x.id === id);
+  const isNew = !e;
+  const today = new Date().toISOString().slice(0, 10);
+  openDrawer(isNew ? 'Запись табеля' : 'Правка · ' + (e.nickname || ''), `
+  <div class="uform">
+    ${isNew ? `<label class="muted" style="margin-bottom:-6px">Сотрудник</label>
+      <input id="ts_nick" class="input" placeholder="ник" autocomplete="off">` : ''}
+    <label class="muted" style="margin-bottom:-6px">Дата смены (день её начала)</label>
+    <input id="ts_date" class="input" type="date" value="${isNew ? today : e.date}">
+    <div style="display:flex; gap:8px">
+      <div style="flex:1">
+        <label class="muted" style="margin-bottom:-6px">Пришёл</label>
+        <input id="ts_start" class="input" placeholder="20:00" value="${isNew ? '' : hhmm(e.started_at)}">
+      </div>
+      <div style="flex:1">
+        <label class="muted" style="margin-bottom:-6px">Ушёл</label>
+        <input id="ts_end" class="input" placeholder="08:00" value="${isNew || e.open ? '' : hhmm(e.ended_at)}">
+      </div>
+    </div>
+    <label class="muted" style="margin-bottom:-6px">Заметка</label>
+    <input id="ts_note" class="input" placeholder="почему правим" value="${isNew ? '' : esc(e.note||'')}">
+    <div class="muted">Если уход раньше прихода — считаем смену через полночь.</div>
+    <div style="display:flex; gap:10px">
+      <button class="btn mini" onclick="tsSave('${id}')"><span data-ic="save"></span>Сохранить</button>
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+  </div>`);
+}
+async function tsSave(id){
+  const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
+  const body = {date: v('ts_date'), start: v('ts_start'), end: v('ts_end'), note: v('ts_note')};
+  if (!id) body.nickname = v('ts_nick');
+  if (!id && !body.nickname){ toast('⚠ Нужен ник сотрудника'); return; }
+  if (!body.start || !body.end){ toast('⚠ Нужны время прихода и ухода'); return; }
+  try{
+    await api(id ? '/admin/work/' + id : '/admin/work',
+              {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
+    toast('✓ Табель обновлён');
+    closeDrawer();
+    renderTimesheet();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armTsDelete(btn, id){
+  armButton(btn, 'Удалить?', async () => {
+    try{
+      await api('/admin/work/' + id, {method:'DELETE'});
+      toast('✓ Запись убрана из табеля');
+      renderTimesheet();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+
 /* ── В3-этап 3: наём и увольнение. Раньше нанять можно было только того, кто
    уже сам зарегистрировался на киоске; теперь аккаунт и карточка заводятся
    одной операцией. Увольнение — событие с датой и причиной: роль уходит в
