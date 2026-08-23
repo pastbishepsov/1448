@@ -47,3 +47,55 @@ func TestFutureShiftsFrom(t *testing.T) {
 		t.Errorf("ночью: чистим с %s, ожидалось 2026-08-18", got.Format("2006-01-02"))
 	}
 }
+
+func dt(s string) *time.Time {
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return &d
+}
+
+func TestValidateStaffProfile(t *testing.T) {
+	cases := []struct {
+		name      string
+		full      string
+		phone     string
+		position  string
+		rateType  string
+		rate      float64
+		hired     *time.Time
+		dismissed *time.Time
+		want      string
+	}{
+		{"пустая карточка — норм", "", "", "", "none", 0, nil, nil, ""},
+		{"обычная", "Иван Ковальский", "+48 600 000 000", "старший смены", "hour", 32.5, dt("2026-01-15"), nil, ""},
+		{"оклад", "А", "", "", "month", 6500, nil, nil, ""},
+		{"ставка без суммы", "", "", "", "shift", 0, nil, nil, "rate_needed"},
+		{"сумма без типа ставки", "", "", "", "none", 100, nil, nil, "rate_extra"},
+		{"неизвестный тип ставки", "", "", "", "piecework", 10, nil, nil, "bad_rate_type"},
+		{"отрицательная ставка", "", "", "", "hour", -5, nil, nil, "bad_rate"},
+		{"ФИО длиннее 128", string(make([]rune, 129)), "", "", "none", 0, nil, nil, "bad_name"},
+		{"телефон длиннее 32", "", string(make([]rune, 33)), "", "none", 0, nil, nil, "bad_phone"},
+		{"уволен раньше, чем нанят", "", "", "", "none", 0, dt("2026-05-01"), dt("2026-04-01"), "bad_dates"},
+		{"уволен в день найма — можно", "", "", "", "none", 0, dt("2026-05-01"), dt("2026-05-01"), ""},
+	}
+	for _, tc := range cases {
+		_, code := validateStaffProfile(tc.full, tc.phone, tc.position, "", tc.rateType, tc.rate, tc.hired, tc.dismissed)
+		if code != tc.want {
+			t.Errorf("%s: validateStaffProfile = %q, ожидалось %q", tc.name, code, tc.want)
+		}
+	}
+}
+
+func TestParseDateOpt(t *testing.T) {
+	if d, ok := parseDateOpt(""); !ok || d != nil {
+		t.Errorf("пустая строка должна дать nil без ошибки, вышло (%v, %v)", d, ok)
+	}
+	if d, ok := parseDateOpt("  2026-08-18 "); !ok || d == nil || d.Format("2006-01-02") != "2026-08-18" {
+		t.Errorf("дата с пробелами не разобралась: (%v, %v)", d, ok)
+	}
+	if _, ok := parseDateOpt("18.08.2026"); ok {
+		t.Error("18.08.2026 не должна проходить — формат ГГГГ-ММ-ДД")
+	}
+}

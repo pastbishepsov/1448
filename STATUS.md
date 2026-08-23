@@ -71,6 +71,7 @@
 | POST | `/api/v1/admin/bookings/:id/restore` | вернуть отменённую бронь — undo (А3) | admin |
 | GET  | `/api/v1/admin/audit` | единый журнал: гранты+депозиты+действия (А4, миграция 016) | admin |
 | GET  | `/api/v1/admin/reports/money` · `/guests` · `/load` · `/staff` | отчёты за период: пресеты и `from`/`to`, клубные сутки, сравнение с предыдущим периодом (В1) | owner |
+| GET/PUT | `/api/v1/admin/staff/:id/profile` | кадровая карточка: ФИО, телефон, должность, дата найма, ставка, заметка (В3, миграция 025) | owner |
 | GET  | `/api/v1/admin/goods` · POST `/goods/:id/stock` | ценник с остатками (staff); приход поставки и корректировка с причиной (В2, миграция 024) | admin |
 | POST/PATCH/DELETE | `/api/v1/admin/goods[/:id]` · GET `/goods/:id/moves` | ценник: создание, цена, удаление, история движений склада (В2) | owner |
 | GET/POST | `/api/v1/admin/sales` · POST `/sales/:id/void` | продажи за злотые: лента смены, продажа, отмена с возвратом на склад (В2) | admin |

@@ -120,9 +120,9 @@ func main() {
 		clubs.GET("/:id/computers", handleGetClubComputers)                // ← настоящий
 		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
-		v1.GET("/ws/shell", handleShellWS)   // ← настоящий
-		v1.GET("/ws/admin", handleAdminWS)   // live-канал админки (спринт А6)
-		v1.GET("/catalog", handleGetCatalog) // ← настоящий (гостевой экран + агент)
+		v1.GET("/ws/shell", handleShellWS)       // ← настоящий
+		v1.GET("/ws/admin", handleAdminWS)       // live-канал админки (спринт А6)
+		v1.GET("/catalog", handleGetCatalog)     // ← настоящий (гостевой экран + агент)
 		v1.GET("/cases/odds", handleGetCaseOdds) // таблица шансов кейсов (прозрачность, RESEARCH §4)
 
 		// Админка (role=admin/owner из users.role, миграция 008)
@@ -192,11 +192,15 @@ func main() {
 		own.DELETE("/shifts/:id", handleAdminShiftDelete)
 		own.POST("/shifts/:id/assign", handleAdminShiftAssign)
 		own.DELETE("/shift-assignments/:id", handleAdminShiftUnassign)
-		own.GET("/stats/shift", handleAdminStatsShift)       // сводка смены (Б10)
+		own.GET("/stats/shift", handleAdminStatsShift) // сводка смены (Б10)
 		own.GET("/settings", handleAdminSettingsGet)
 		own.PUT("/settings", handleAdminSettingsPut)
 		// Персонал (спринт Б5): назначение/снятие админов вместо SQL
 		own.GET("/staff", handleAdminStaffList)
+		// Кадровая карточка (В3-этап 2, миграция 025): личные данные сотрудника
+		// видит и правит только владелец.
+		own.GET("/staff/:id/profile", handleAdminStaffProfileGet)
+		own.PUT("/staff/:id/profile", handleAdminStaffProfilePut)
 		own.POST("/staff", handleAdminStaffPromote)
 		own.DELETE("/staff/:id", handleAdminStaffDemote)
 		// Конструктор зала (спринт А8)

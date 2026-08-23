@@ -59,6 +59,7 @@
   .input{background:#0e0d10; border:1px solid var(--hair); color:var(--txt);
          padding:12px 14px; border-radius:11px; font-size:15px}
   .input:focus{outline:none; border-color:var(--acc)}
+  textarea.input{font:inherit; font-size:13px; resize:vertical; min-height:66px; line-height:1.45}
 
   /* ═══ LOGIN ═══ */
   #loginView{min-height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:24px}
@@ -1993,7 +1994,7 @@ const AUD_GROUPS = {
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
   goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
-  staff: ['staff_promote','staff_demote','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
+  staff: ['staff_promote','staff_demote','staff_card','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
 };
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
@@ -2009,6 +2010,7 @@ const AUD_LABEL = {
   shift_tpl_delete:'смена: удалена', shift_assign:'график: назначен',
   shift_unassign:'график: снят',
   sale:'продажа', sale_void:'отмена продажи',
+  staff_card:'персонал: карточка',
   good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
 };
@@ -2025,6 +2027,7 @@ const AUD_ICON = {
   shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',
   shift_assign:'cal', shift_unassign:'out',
   sale:'box', sale_void:'cross',
+  staff_card:'scroll',
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
 };
@@ -2825,15 +2828,18 @@ async function renderStaff(){
     const d = await api('/admin/staff');
     setHTML('staffTable', (d.staff || []).length === 0
       ? '<div class="empty"><span data-ic="users"></span>Персонала нет — назначь первого админа по нику</div>'
-      : `<table><tr><th>Ник</th><th>Роль</th><th>Действий сегодня</th><th>Был активен</th><th></th></tr>
+      : `<table><tr><th>Сотрудник</th><th>Должность</th><th>Роль</th><th>В клубе с</th><th>Действий сегодня</th><th></th></tr>
     ${d.staff.map(s => `<tr>
-      <td><b>${esc(s.nickname)}</b></td>
+      <td><b>${esc(s.nickname)}</b>${s.full_name ? `<div class="muted">${esc(s.full_name)}</div>` : ''}</td>
+      <td class="muted">${s.position ? esc(s.position) : '—'}</td>
       <td>${s.role === 'owner' ? '<span class="st active">owner</span>' : s.role}</td>
+      <td class="muted">${s.hired_at ? ruDate(s.hired_at) : '<span title="карточка не заведена">—</span>'}</td>
       <td>${s.actions_today}</td>
-      <td class="muted">${fmtTime(s.last_active_at)}</td>
-      <td>${s.role === 'admin'
-        ? `<button class="btn danger mini" onclick="armDemote(this,'${s.id}','${esc(s.nickname)}')"><span data-ic="out"></span>Снять</button>`
-        : '<span class="muted">—</span>'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn ghost mini" onclick="staffCard('${s.id}')"><span data-ic="scroll"></span>Карточка</button>
+        ${s.role === 'admin'
+          ? `<button class="btn danger mini" onclick="armDemote(this,'${s.id}','${esc(s.nickname)}')"><span data-ic="out"></span>Снять</button>`
+          : ''}</td>
     </tr>`).join('')}</table>`);
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -2848,6 +2854,73 @@ async function promoteStaff(){
     renderStaff();
   }catch(e){ toast('⚠ ' + e.message); }
 }
+/* ── В3-этап 2: кадровая карточка. Личные данные сотрудника живут отдельно
+   от профиля гостя (тот светится на экранах клуба) и открыты только
+   владельцу — эндпоинт за ownerMiddleware, не проверкой в UI. ── */
+const RATE_RU = {none:'не задана', hour:'за час', shift:'за смену', month:'оклад'};
+function ruDate(iso){ return iso ? iso.slice(8,10) + '.' + iso.slice(5,7) + '.' + iso.slice(0,4) : ''; }
+
+async function staffCard(id){
+  try{
+    const d = await api('/admin/staff/' + id + '/profile');
+    const p = d.profile || {};
+    openDrawer('Карточка · ' + d.nickname, `
+    <div class="uform">
+      <label class="muted" style="margin-bottom:-6px">ФИО</label>
+      <input id="sc_name" class="input" placeholder="Иван Ковальский" value="${esc(p.full_name||'')}">
+      <label class="muted" style="margin-bottom:-6px">Телефон</label>
+      <input id="sc_phone" class="input" placeholder="+48 …" value="${esc(p.phone||'')}">
+      <label class="muted" style="margin-bottom:-6px">Должность</label>
+      <input id="sc_pos" class="input" placeholder="администратор, старший смены" value="${esc(p.position||'')}">
+      <label class="muted" style="margin-bottom:-6px">Работает с</label>
+      <input id="sc_hired" class="input" type="date" value="${p.hired_at||''}">
+      <label class="muted" style="margin-bottom:-6px">Оплата</label>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <select id="sc_ratetype" class="input" style="flex:1; min-width:130px" onchange="scRateSync()">
+          ${Object.keys(RATE_RU).map(k =>
+            `<option value="${k}" ${p.rate_type === k ? 'selected' : ''}>${RATE_RU[k]}</option>`).join('')}
+        </select>
+        <input id="sc_rate" class="input" type="number" step="0.01" min="0" style="flex:1; min-width:120px"
+               placeholder="Сумма, zł" value="${p.rate_amount ? p.rate_amount : ''}">
+      </div>
+      <label class="muted" style="margin-bottom:-6px">Заметка</label>
+      <textarea id="sc_note" class="input" rows="3" placeholder="для себя: ключи, доступы, договорённости">${esc(p.note||'')}</textarea>
+      ${p.dismissed_at ? `<div class="muted">Уволен ${ruDate(p.dismissed_at)}</div>` : ''}
+      <div class="muted">Карточку видит только владелец. В журнал попадает ник и что менялось, сами ФИО и телефон — нет.</div>
+      <div style="display:flex; gap:10px">
+        <button class="btn mini" onclick="saveStaffCard('${id}')"><span data-ic="save"></span>Сохранить</button>
+        <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+      </div>
+    </div>`);
+    scRateSync();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function scRateSync(){
+  const t = document.getElementById('sc_ratetype'), r = document.getElementById('sc_rate');
+  if (!t || !r) return;
+  const off = t.value === 'none';
+  r.disabled = off;
+  if (off) r.value = '';
+  r.placeholder = off ? 'ставка не задана' : 'Сумма, zł';
+}
+async function saveStaffCard(id){
+  const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
+  const rateType = v('sc_ratetype');
+  const body = {
+    full_name: v('sc_name'), phone: v('sc_phone'), position: v('sc_pos'),
+    hired_at: v('sc_hired'), rate_type: rateType,
+    rate_amount: rateType === 'none' ? 0 : parseFloat(v('sc_rate') || '0'),
+    note: v('sc_note'),
+  };
+  if (rateType !== 'none' && !(body.rate_amount > 0)){ toast('⚠ Выбран тип ставки — нужна сумма'); return; }
+  try{
+    const d = await api('/admin/staff/' + id + '/profile', {method:'PUT', body:JSON.stringify(body)});
+    toast('✓ Карточка ' + d.nickname + ' сохранена');
+    closeDrawer();
+    renderStaff();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 function armDemote(btn, id, nick){
   armButton(btn, 'Точно снять?', async () => {
     try{
