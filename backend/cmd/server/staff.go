@@ -7,10 +7,13 @@ package main
 // (от роли admin они скрыты фильтром Б1 в audit.go).
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -111,6 +114,22 @@ func handleAdminStaffPromote(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": models.UserRoleAdmin})
 }
 
+// futureShiftsFrom — с какой даты чистить график при снятии сотрудника.
+// Сегодняшнюю смену не трогаем: человек её уже отработал (или дорабатывает),
+// и «работали: …» в сводке смены должно остаться честным. Чистим завтра и
+// дальше. Чистая функция (тест в staff_test.go).
+func futureShiftsFrom(now time.Time, reportHour int) time.Time {
+	return clubDayOf(now, reportHour).AddDate(0, 0, 1)
+}
+
+// clearFutureShifts — снять сотрудника со всех будущих смен. Возвращает,
+// сколько записей графика убрано (владельцу важно это увидеть в тосте).
+func clearFutureShifts(userID uuid.UUID) int64 {
+	from := futureShiftsFrom(time.Now(), int(settingInt64("report_hour", 8)))
+	res := db.Where("user_id = ? AND date >= ?", userID, from).Delete(&models.ShiftAssignment{})
+	return res.RowsAffected
+}
+
 // DELETE /admin/staff/:id — снять админа до гостя (owner).
 func handleAdminStaffDemote(c *gin.Context) {
 	var user models.User
@@ -126,7 +145,17 @@ func handleAdminStaffDemote(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	// БАГ до этого фикса: снятый админ оставался висеть в будущих сменах —
+	// назначение проверяет роль только в момент постановки, а снятие график
+	// не трогало, и в сетке недели стоял человек, который тут больше не работает.
+	removed := clearFutureShifts(user.ID)
+
 	target := user.ID
-	logAdminAction(c, "staff_demote", &target, user.Nickname+" → player")
-	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": models.UserRolePlayer})
+	details := user.Nickname + " → player"
+	if removed > 0 {
+		details += fmt.Sprintf(", снят с %d будущих смен", removed)
+	}
+	logAdminAction(c, "staff_demote", &target, details)
+	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname,
+		"role": models.UserRolePlayer, "removed_shifts": removed})
 }

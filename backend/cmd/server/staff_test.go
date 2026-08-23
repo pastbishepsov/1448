@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -30,5 +31,19 @@ func TestCanChangeStaffRole(t *testing.T) {
 			t.Errorf("%s: canChangeStaffRole(%s, %s, %s, %v) = (%v, %q), ожидалось (%v, %q)",
 				tc.name, tc.role, tc.target, tc.actor, tc.promote, ok, code, tc.ok, tc.code)
 		}
+	}
+}
+
+func TestFutureShiftsFrom(t *testing.T) {
+	// снятие среди дня: сегодняшняя смена остаётся в графике, чистим с завтра
+	now := time.Date(2026, 8, 18, 15, 0, 0, 0, time.UTC)
+	if got := futureShiftsFrom(now, 8); got.Format("2006-01-02") != "2026-08-19" {
+		t.Errorf("днём: чистим с %s, ожидалось 2026-08-19", got.Format("2006-01-02"))
+	}
+	// снятие ночью до границы клубных суток: идут ещё вчерашние сутки,
+	// значит «сегодня» это 17-е, а чистить надо с 18-го
+	night := time.Date(2026, 8, 18, 3, 0, 0, 0, time.UTC)
+	if got := futureShiftsFrom(night, 8); got.Format("2006-01-02") != "2026-08-18" {
+		t.Errorf("ночью: чистим с %s, ожидалось 2026-08-18", got.Format("2006-01-02"))
 	}
 }

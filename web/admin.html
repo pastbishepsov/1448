@@ -2851,8 +2851,11 @@ async function promoteStaff(){
 function armDemote(btn, id, nick){
   armButton(btn, 'Точно снять?', async () => {
     try{
-      await api('/admin/staff/' + id, {method:'DELETE'});
-      toast('✕ ' + nick + ' больше не админ');
+      const d = await api('/admin/staff/' + id, {method:'DELETE'});
+      // снятого сразу убирают из будущих смен — владельцу важно это увидеть,
+      // иначе в сетке недели останется дырка, о которой он не знал
+      toast('✕ ' + nick + ' больше не админ'
+            + (d.removed_shifts ? ' · снят с ' + d.removed_shifts + ' будущих смен' : ''));
       renderStaff();
     }catch(e){ toast('⚠ ' + e.message); }
   });
