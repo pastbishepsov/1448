@@ -45,8 +45,11 @@ type User struct {
 
 	AvatarID int `json:"avatar_id" gorm:"default:1"`
 
-	// Профиль гостя (Г8, миграция 040): всё опционально и стираемо (GDPR),
-	// значения в аудит не пишутся. Награды за заполнение — lifetime-ачивки.
+	// Профиль гостя (Г8, миграция 040; имя/фамилия — 043, страница
+	// регистрации Р9): всё опционально и стираемо (GDPR), значения в аудит
+	// не пишутся. Награды за заполнение — lifetime-ачивки.
+	FirstName        *string    `json:"first_name,omitempty" gorm:"size:64"`
+	LastName         *string    `json:"last_name,omitempty"  gorm:"size:64"`
 	BirthDate        *time.Time `json:"birth_date,omitempty" gorm:"type:date"`
 	Discord          *string    `json:"discord,omitempty"    gorm:"size:64"`
 	Telegram         *string    `json:"telegram,omitempty"   gorm:"size:64"`

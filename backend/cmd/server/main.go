@@ -255,6 +255,9 @@ func main() {
 	// same-origin — CORS не нужен, решение №10). Плюс манифест, SW и иконки.
 	if webDir := findWebDir(); webDir != "" {
 		r.StaticFile("/app", filepath.Join(webDir, "app.html"))
+		// страница регистрации (Р9, миграция 043): same-origin с /app —
+		// токены в localStorage общие, после реги PWA уже «вошло»
+		r.StaticFile("/register", filepath.Join(webDir, "register.html"))
 		r.StaticFile("/sw.js", filepath.Join(webDir, "sw.js"))
 		r.Static("/icons", filepath.Join(webDir, "icons"))
 		// .webmanifest нет во встроенной mime-таблице Go — тип ставим сами

@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070708">
+<title>14:48 — регистрация</title>
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<!--
+  ═══ 14:48 — СТРАНИЦА РЕГИСТРАЦИИ (Р9 GUEST.md, миграция 043) ═══
+  Раздаётся бэкендом на GET /register (same-origin с /app): токены пишутся в
+  те же ключи localStorage 1448_access/1448_refresh — после реги PWA «вошло».
+  Шаг 1 — обязательное (логин=ник, пароль, e-mail — e-mail обязателен ТОЛЬКО
+  здесь, сервер и быстрая рега шелла/PWA не ужесточены) + согласие RODO.
+  Шаг 2 — анкета Г8 целиком, всё опционально и стираемо; награды начисляет
+  сервер сам (+25 XP за поле, «Представился» за имя+фамилию, Р4).
+  Стиль — Noir (истина shell.html/app.html): чёрная база, красный акцент.
+  Язык ru/en/pl, ключ localStorage 1448_lang — общий с шеллом и PWA.
+-->
+<style>
+  :root{
+    /* ── 14:48 Noir — чёрная база, красный акцент (= app.html) ── */
+    --bg:#070708; --panel:#0f0f12; --card:#141417; --card2:#1c1c21; --line:#2b2b32;
+    --txt:#f2f0f2; --dim:#8d8d97;
+    --acc:#ff2740; --acc2:#c9ccd6; --acc3:#ff5563;
+    --red:#ff2740;
+    --glass:rgba(20,20,24,.55); --glass-2:rgba(28,28,33,.5);
+    --glass-brd:rgba(255,255,255,.08); --glass-hi:rgba(255,60,80,.28);
+    --blur:14px;
+    --aurora:linear-gradient(120deg,#ff2740 0%,#ff5563 50%,#7a0f1c 100%);
+    --sh-1:0 8px 30px rgba(0,0,0,.45); --sh-2:0 18px 50px rgba(0,0,0,.6);
+    --glow:0 0 24px rgba(255,39,64,.45); --glow-2:0 0 30px rgba(255,39,64,.35);
+    --hair:rgba(255,255,255,.055);
+    --spring:cubic-bezier(.22,1,.36,1); --smooth:cubic-bezier(.4,0,.2,1);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--txt);
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  button{font-family:inherit}
+  .hidden{display:none!important}
+  .muted{color:var(--dim); font-size:13px}
+  .cnum{font-variant-numeric:tabular-nums}
+
+  /* ── фирменный aurora-фон (= app.html) ── */
+  .aurora-bg{position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; background:var(--bg)}
+  .aurora-bg .blob{position:absolute; border-radius:50%; filter:blur(80px); opacity:.38; mix-blend-mode:screen; will-change:transform}
+  .aurora-bg .b1{width:88vw; height:88vw; left:-24vw; top:-18vw; background:radial-gradient(circle,#ff2740,transparent 65%); animation:drift1 26s var(--smooth) infinite alternate}
+  .aurora-bg .b2{width:80vw; height:80vw; right:-26vw; top:22vh; background:radial-gradient(circle,#8a0f1c,transparent 65%); animation:drift2 32s var(--smooth) infinite alternate}
+  .aurora-bg .b3{width:96vw; height:96vw; left:6vw; bottom:-38vw; background:radial-gradient(circle,#4a0a12,transparent 65%); animation:drift3 30s var(--smooth) infinite alternate}
+  .aurora-bg .grain{position:absolute; inset:0; opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  @keyframes drift1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(8vw,10vh) scale(1.18)}}
+  @keyframes drift2{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-9vw,12vh) scale(1.12)}}
+  @keyframes drift3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(6vw,-8vh) scale(1.22)}}
+
+  /* ═══ ФИРМЕННЫЙ ЗНАК «14:48» (docs/ТЗ-логотип-14-48.md): штрих #f2f0f2,
+     акцент #ff2740, пульс двоеточия 1s ease-out — подпись бренда ═══ */
+  @keyframes logo1448Pulse{0%{opacity:1}12%{opacity:.22}42%{opacity:1}100%{opacity:1}}
+  .logo1448{display:block; flex:none; overflow:visible}
+  .logo1448 .l-colon{animation:logo1448Pulse 1s ease-out infinite}
+  .logo-wrap{display:flex; justify-content:center}
+  @media (prefers-reduced-motion:reduce){ .logo1448 .l-colon{animation:none} }
+
+  /* ── каркас страницы ── */
+  .page{position:relative; z-index:1; min-height:100%; display:flex; flex-direction:column; align-items:center;
+        gap:22px; padding:calc(18px + env(safe-area-inset-top)) 18px calc(26px + env(safe-area-inset-bottom))}
+  .langbar{align-self:flex-end; display:flex; gap:4px; background:rgba(8,11,20,.6);
+           border:1px solid var(--glass-brd); border-radius:11px; padding:3px}
+  .langbar button{border:0; background:transparent; color:var(--dim); font-weight:700; font-size:12.5px;
+                  padding:7px 11px; border-radius:8px; cursor:pointer; min-height:32px}
+  .langbar button.on{background:var(--aurora); color:#fff; box-shadow:var(--glow)}
+  .head{display:flex; flex-direction:column; gap:8px; margin-top:2px}
+  .slogan{text-align:center; color:var(--dim)}
+
+  .card{width:min(430px,100%); border-radius:24px; padding:26px 24px;
+        background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2);
+        position:relative; overflow:hidden;
+        backdrop-filter:blur(var(--blur)) saturate(1.2); -webkit-backdrop-filter:blur(var(--blur)) saturate(1.2)}
+  .card::before{content:""; position:absolute; inset:0 0 auto 0; height:1px;
+    background:linear-gradient(90deg,transparent,var(--glass-hi),transparent)}
+  .card h2{margin:0 0 4px; font-size:20px}
+  .card .sub{color:var(--dim); font-size:13.5px; margin:0 0 18px; line-height:1.45}
+  .step{animation:stepIn .45s var(--spring)}
+  @keyframes stepIn{0%{opacity:0; transform:translateY(14px)}100%{opacity:1; transform:none}}
+
+  /* ── поля ── */
+  .fld{margin-bottom:12px}
+  .lbl{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--dim); font-weight:700; margin:0 2px 6px}
+  .input{width:100%; background:rgba(8,11,20,.7); border:1px solid var(--glass-brd); color:var(--txt);
+         padding:14px; border-radius:12px; font-size:16px; min-height:48px;
+         transition:border-color .2s, box-shadow .2s}
+  .input:focus{outline:none; border-color:var(--acc); box-shadow:0 0 0 3px rgba(255,39,64,.18)}
+  .input.bad{border-color:var(--red)}
+  .hint{color:var(--dim); font-size:12px; margin:5px 2px 0; line-height:1.4}
+  .ferr{color:var(--red); font-size:12.5px; margin:5px 2px 0; min-height:0; line-height:1.4}
+  .passwrap{position:relative}
+  .passwrap .input{padding-right:52px; margin:0}
+  .eye{position:absolute; right:6px; top:50%; transform:translateY(-50%); width:40px; height:40px;
+       border:0; border-radius:10px; background:transparent; color:var(--dim); cursor:pointer; font-size:17px}
+  .eye:hover{color:var(--txt)}
+
+  /* бейджи наград — форма «торгует» плюшками (Р4) */
+  .badge{display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; letter-spacing:.2px;
+         color:var(--acc3); background:rgba(255,39,64,.12); border:1px solid rgba(255,39,64,.3);
+         border-radius:999px; padding:3px 8px; white-space:nowrap}
+  .badge.neu{color:var(--acc2); background:rgba(201,204,214,.08); border-color:rgba(201,204,214,.2)}
+
+  /* ── чекбокс RODO ── */
+  .agree{display:flex; gap:10px; align-items:flex-start; margin:14px 2px 4px; cursor:pointer; user-select:none}
+  .agree input{position:absolute; opacity:0; pointer-events:none}
+  .cbox{flex:none; width:22px; height:22px; border-radius:7px; border:1px solid var(--glass-brd);
+        background:rgba(8,11,20,.7); display:flex; align-items:center; justify-content:center;
+        font-size:14px; color:#fff; transition:.15s; margin-top:1px}
+  .agree input:checked + .cbox{background:var(--aurora); border-color:transparent; box-shadow:var(--glow)}
+  .cbox svg{opacity:0; transition:.15s}
+  .agree input:checked + .cbox svg{opacity:1}
+  .agree .atxt{font-size:13px; color:var(--dim); line-height:1.45}
+  .agree .atxt a{color:var(--acc3); text-decoration:none; border-bottom:1px dotted var(--acc3)}
+
+  /* ── кнопки ── */
+  .btn{width:100%; border:0; border-radius:14px; padding:15px; font-size:16px; font-weight:700; color:#fff; cursor:pointer;
+       position:relative; overflow:hidden; background:var(--aurora); background-size:200% 100%; box-shadow:var(--glow);
+       min-height:48px;
+       transition:transform .2s var(--spring), box-shadow .25s var(--smooth), background-position .6s var(--smooth); z-index:0}
+  .btn::after{content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; z-index:1;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent); transform:skewX(-18deg)}
+  .btn:active{transform:scale(.97)}
+  .btn:disabled{opacity:.5; cursor:default}
+  .btn.ghost{background:var(--glass-2); box-shadow:none; border:1px solid var(--glass-brd); color:var(--txt)}
+  @media (hover:hover){
+    .btn:hover{transform:translateY(-2px) scale(1.015); box-shadow:0 10px 30px rgba(255,39,64,.5), var(--glow-2); background-position:100% 0}
+    .btn:hover::after{animation:shimmer .9s var(--smooth)}
+    .btn.ghost:hover{border-color:var(--acc); box-shadow:var(--glow)}
+  }
+  @keyframes shimmer{0%{left:-60%}100%{left:130%}}
+  .bonusline{display:flex; justify-content:center; margin-top:12px}
+  .footlink{text-align:center; margin-top:16px; font-size:13.5px; color:var(--dim)}
+  .footlink a{color:var(--acc3); text-decoration:none; font-weight:700}
+  .err{color:var(--red); font-size:14px; min-height:18px; margin:8px 2px 2px; text-align:center}
+
+  /* ── телефон: пикер страны ── */
+  .phonerow{display:flex; gap:8px}
+  .ccbtn{flex:none; display:flex; align-items:center; gap:7px; min-height:48px; padding:0 12px;
+         background:rgba(8,11,20,.7); border:1px solid var(--glass-brd); border-radius:12px;
+         color:var(--txt); font-size:15px; cursor:pointer; transition:border-color .2s}
+  .ccbtn:hover{border-color:var(--acc)}
+  .ccbtn .flag{font-size:19px; line-height:1}
+  .ccbtn .dial{font-weight:700; font-variant-numeric:tabular-nums}
+  .ccbtn .car{color:var(--dim); font-size:10px}
+  .phonerow .input{flex:1; min-width:0; margin:0}
+
+  /* ── модалки (страны / правила) ── */
+  .modal{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+         padding:18px; background:rgba(4,4,6,.66); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+         animation:fadeIn .2s var(--smooth)}
+  @keyframes fadeIn{0%{opacity:0}100%{opacity:1}}
+  .mcard{width:min(430px,100%); max-height:min(560px,86vh); display:flex; flex-direction:column;
+         background:var(--panel); border:1px solid var(--glass-brd); border-radius:20px; box-shadow:var(--sh-2);
+         padding:16px; animation:stepIn .3s var(--spring)}
+  .mhead{display:flex; align-items:center; gap:10px; margin-bottom:10px}
+  .mhead h3{margin:0; font-size:16px; flex:1}
+  .mclose{border:0; background:var(--card2); color:var(--dim); width:34px; height:34px; border-radius:10px;
+          font-size:15px; cursor:pointer}
+  .mclose:hover{color:var(--txt)}
+  .clist{flex:1; overflow-y:auto; overscroll-behavior:contain; margin-top:8px; border-radius:12px}
+  .citem{display:flex; align-items:center; gap:11px; width:100%; border:0; background:transparent; color:var(--txt);
+         padding:11px 10px; border-radius:11px; font-size:15px; cursor:pointer; text-align:left}
+  .citem:hover{background:var(--card2)}
+  .citem .flag{font-size:20px; flex:none}
+  .citem .cname{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .citem .dial{color:var(--dim); font-variant-numeric:tabular-nums}
+  .citem.on{background:rgba(255,39,64,.12)}
+  .rules-body{overflow-y:auto; color:var(--dim); font-size:13.5px; line-height:1.55; padding:2px 4px}
+
+  /* ── ДР: барабаны (механика кейс-рила — тянешь и крутишь) ── */
+  .wheels{display:flex; gap:8px; margin-top:2px}
+  .wcol{flex:1; min-width:0}
+  .wcap{text-align:center; font-size:11px; color:var(--dim); font-weight:700; letter-spacing:.4px;
+        text-transform:uppercase; margin-bottom:5px}
+  .wheel{position:relative; height:190px; border-radius:14px; overflow:hidden;
+         background:rgba(8,11,20,.7); border:1px solid var(--glass-brd);
+         touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none}
+  .wheel.drag{cursor:grabbing}
+  .wheel .wlist{position:absolute; left:0; right:0; top:50%; will-change:transform}
+  .wheel.anim .wlist{transition:transform .28s var(--spring)}
+  .witem{height:38px; display:flex; align-items:center; justify-content:center; font-size:15.5px;
+         color:var(--dim); font-variant-numeric:tabular-nums; overflow:hidden; white-space:nowrap}
+  .witem.on{color:var(--txt); font-weight:800}
+  .wsel{position:absolute; top:50%; left:7px; right:7px; height:38px; transform:translateY(-50%);
+        border-radius:10px; background:rgba(255,39,64,.09); border:1px solid rgba(255,39,64,.35); pointer-events:none}
+  .wheel::before,.wheel::after{content:""; position:absolute; left:0; right:0; height:64px; z-index:2; pointer-events:none}
+  .wheel::before{top:0; background:linear-gradient(180deg,rgba(8,10,14,.96),transparent)}
+  .wheel::after{bottom:0; background:linear-gradient(0deg,rgba(8,10,14,.96),transparent)}
+  .birthfoot{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px; min-height:22px}
+  .birthval{font-size:13.5px; color:var(--acc2); font-weight:700}
+  .birthval.unset{color:var(--dim); font-weight:400}
+  .blink{border:0; background:transparent; color:var(--dim); font-size:12.5px; cursor:pointer; padding:4px 2px;
+         border-bottom:1px dotted var(--dim)}
+  .blink:hover{color:var(--txt)}
+  #birthManual{margin-top:8px}
+  #birthManual .input{color-scheme:dark}
+
+  /* ── чипы (источник / игры) ── */
+  .chips{display:flex; flex-wrap:wrap; gap:8px}
+  .chip{border:1px solid var(--glass-brd); background:rgba(8,11,20,.6); color:var(--dim); border-radius:999px;
+        padding:9px 14px; font-size:13.5px; font-weight:700; cursor:pointer; min-height:38px;
+        transition:border-color .15s, color .15s, background .15s}
+  .chip:hover{border-color:var(--acc); color:var(--txt)}
+  .chip.on{background:rgba(255,39,64,.16); border-color:var(--acc); color:var(--txt); box-shadow:0 0 14px rgba(255,39,64,.25)}
+
+  /* ── аватары ── */
+  .avas{display:grid; grid-template-columns:repeat(6,1fr); gap:8px}
+  .ava{aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:24px;
+       background:rgba(8,11,20,.6); border:1px solid var(--glass-brd); border-radius:13px; cursor:pointer;
+       transition:border-color .15s, box-shadow .15s, transform .15s var(--spring)}
+  .ava:hover{transform:translateY(-2px)}
+  .ava.on{border-color:var(--acc); box-shadow:var(--glow); background:rgba(255,39,64,.12)}
+
+  .sep{height:1px; background:var(--hair); margin:16px 0}
+  .btnrow{display:flex; flex-direction:column; gap:9px; margin-top:16px}
+
+  /* ── финал: конфетти (канон кейс-реворда) ── */
+  .conf{position:fixed; top:-3vh; z-index:60; width:9px; height:15px; border-radius:2px; pointer-events:none;
+        animation:confFall 2.6s var(--smooth) forwards}
+  @keyframes confFall{0%{opacity:1; transform:translate(0,0) rotate(0)}100%{opacity:0; transform:translate(var(--cx),110vh) rotate(720deg)}}
+  .done-emoji{font-size:44px; text-align:center; margin-bottom:6px}
+  .done-stats{display:flex; flex-direction:column; gap:8px; margin:14px 0 2px}
+  .dstat{display:flex; align-items:center; gap:10px; background:rgba(8,11,20,.55); border:1px solid var(--glass-brd);
+         border-radius:13px; padding:11px 13px; font-size:14px}
+  .dstat .di{font-size:19px; flex:none}
+  .dstat b{color:var(--acc3)}
+
+  @media (prefers-reduced-motion:reduce){
+    .aurora-bg .blob{animation:none}
+    *{animation-duration:.001ms!important; transition-duration:.05ms!important}
+  }
+</style>
+</head>
+<body>
+<div class="aurora-bg">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="grain"></div>
+</div>
+
+<div class="page">
+  <div class="langbar" id="langBar">
+    <button data-lang="ru" onclick="setLang('ru')">RU</button>
+    <button data-lang="en" onclick="setLang('en')">EN</button>
+    <button data-lang="pl" onclick="setLang('pl')">PL</button>
+  </div>
+
+  <div class="head">
+    <div class="logo-wrap">
+      <svg class="logo1448" viewBox="-10 -10 336 120" style="height:56px" role="img" aria-label="14:48" focusable="false">
+        <g class="l-sand" fill="#ff2740"><path d="M272,45 Q281,38 290,45 L283,49.5 Q281,50.5 279,49.5 Z"/><rect x="279.6" y="54" width="2.8" height="14" rx="1.4"/><path d="M265,83 Q281,64 297,83 Q293,88.5 281,89 Q269,88.5 265,83 Z"/></g>
+        <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12,26 L34,7 L34,94"/>
+          <path d="M104,8 L60,62 L114,62 M104,8 L104,94"/>
+          <path d="M218,8 L174,62 L228,62 M218,8 L218,94"/>
+          <path d="M281,50 C258,40 254,8 281,8 C308,8 304,40 281,50 C258,60 254,92 281,92 C308,92 304,60 281,50 Z"/>
+        </g>
+        <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
+      </svg>
+    </div>
+    <div class="slogan" data-str="slogan"></div>
+  </div>
+
+  <!-- ═══ ШАГ 1: обязательное ═══ -->
+  <div class="card step" id="step1">
+    <h2 data-str="s1_title"></h2>
+    <p class="sub" data-str="s1_sub"></p>
+
+    <div class="fld">
+      <div class="lbl"><span data-str="lbl_login"></span></div>
+      <input id="fLogin" class="input" data-str-ph="ph_login" autocomplete="username"
+             autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32">
+      <div class="hint" data-str="hint_login"></div>
+      <div class="ferr" id="eLogin"></div>
+    </div>
+
+    <div class="fld">
+      <div class="lbl"><span data-str="lbl_pass"></span></div>
+      <div class="passwrap">
+        <input id="fPass" class="input" type="password" data-str-ph="ph_pass" autocomplete="new-password" maxlength="72">
+        <button type="button" class="eye" id="eyeBtn" onclick="togglePass()" aria-label="show">👁</button>
+      </div>
+      <div class="ferr" id="ePass"></div>
+    </div>
+
+    <div class="fld">
+      <input id="fPass2" class="input" type="password" data-str-ph="ph_pass2" autocomplete="new-password" maxlength="72">
+      <div class="ferr" id="ePass2"></div>
+    </div>
+
+    <div class="fld">
+      <div class="lbl"><span>E-mail</span></div>
+      <input id="fEmail" class="input" type="email" data-str-ph="ph_email" autocomplete="email"
+             autocapitalize="none" spellcheck="false" maxlength="255" inputmode="email">
+      <div class="ferr" id="eEmail"></div>
+    </div>
+
+    <label class="agree" id="agreeRow">
+      <input type="checkbox" id="fAgree">
+      <span class="cbox"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2.5 8.5 6 12 13.5 4.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="atxt"><span data-str="agree_1"></span> <a href="#" onclick="openRules(event)" data-str="agree_link"></a> <span data-str="agree_2"></span></span>
+    </label>
+    <div class="ferr" id="eAgree"></div>
+
+    <div class="err" id="regErr"></div>
+    <button class="btn" id="regBtn" onclick="submitReg()" data-str="btn_register"></button>
+    <div class="bonusline"><span class="badge">🎁 <span data-str="reg_bonus"></span></span></div>
+
+    <div class="footlink"><span data-str="have_acc"></span> <a id="appLink1" href="/app" data-str="open_app"></a></div>
+  </div>
+
+  <!-- ═══ ШАГ 2: анкета — всё опционально, всё с наградами (Р4) ═══ -->
+  <div class="card step hidden" id="step2">
+    <h2 data-str="s2_title"></h2>
+    <p class="sub" data-str="s2_sub"></p>
+
+    <div class="fld">
+      <div class="lbl"><span data-str="lbl_name"></span><span class="badge">⭐ <span data-str="badge_name"></span></span></div>
+      <input id="fFirst" class="input" data-str-ph="ph_first" autocomplete="given-name" maxlength="64" style="margin-bottom:8px">
+      <input id="fLast" class="input" data-str-ph="ph_last" autocomplete="family-name" maxlength="64">
+      <div class="ferr" id="eName"></div>
+    </div>
+
+    <div class="fld">
+      <div class="lbl"><span data-str="lbl_phone"></span><span class="badge neu" data-str="badge_phone"></span></div>
+      <div class="phonerow">
+        <button type="button" class="ccbtn" id="ccBtn" onclick="openCountries()">
+          <span class="flag" id="ccFlag"></span><span class="dial cnum" id="ccDial"></span><span class="car">▾</span>
+        </button>
+        <input id="fPhone" class="input" type="tel" inputmode="tel" data-str-ph="ph_phone" autocomplete="tel-national" maxlength="17">
+      </div>
+      <div class="ferr" id="ePhone"></div>
+    </div>
+
+    <div class="fld">
+      <div class="lbl"><span data-str="lbl_birth"></span><span class="badge">+25 XP</span></div>
+      <div class="wheels" id="birthWheels">
+        <div class="wcol"><div class="wcap" data-str="w_day"></div>
+          <div class="wheel" id="whDay"><div class="wsel"></div><div class="wlist"></div></div></div>
+        <div class="wcol" style="flex:1.6"><div class="wcap" data-str="w_month"></div>
+          <div class="wheel" id="whMonth"><div class="wsel"></div><div class="wlist"></div></div></div>
+        <div class="wcol" style="flex:1.2"><div class="wcap" data-str="w_year"></div>
+          <div class="wheel" id="whYear"><div class="wsel"></div><div class="wlist"></div></div></div>
+      </div>
+      <div id="birthManual" class="hidden">
+        <input id="fBirth" class="input" type="date">
+      </div>
+      <div class="birthfoot">
+        <span class="birthval unset" id="birthVal"></span>
+        <span style="display:flex; gap:14px">
+          <button type="button" class="blink hidden" id="birthClear" onclick="clearBirth()" data-str="birth_clear"></button>
+          <button type="button" class="blink" id="birthMode" onclick="toggleBirthMode()" data-str="birth_manual"></button>
+        </span>
+      </div>
+      <div class="ferr" id="eBirth"></div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="fld">
+      <div class="lbl"><span>Discord</span><span class="badge">+25 XP</span></div>
+      <input id="fDiscord" class="input" data-str-ph="ph_discord" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="65">
+      <div class="ferr" id="eDiscord"></div>
+    </div>
+
+    <div class="fld">
+      <div class="lbl"><span>Telegram</span><span class="badge">+25 XP</span></div>
+      <input id="fTelegram" class="input" data-str-ph="ph_telegram" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="65">
+      <div class="ferr" id="eTelegram"></div>
+    </div>
+
+    <div class="fld">
+      <div class="lbl"><span data-str="lbl_source"></span><span class="badge">+25 XP</span></div>
+      <div class="chips" id="srcChips"></div>
+      <input id="fSourceOther" class="input hidden" data-str-ph="ph_src_other" maxlength="32" style="margin-top:8px">
+      <div class="ferr" id="eSource"></div>
+    </div>
+
+    <div class="fld">
+      <div class="lbl"><span data-str="lbl_games"></span><span class="badge">+25 XP</span></div>
+      <div class="chips" id="gameChips"><span class="muted" data-str="games_loading"></span></div>
+      <div class="ferr" id="eGames"></div>
+    </div>
+
+    <div class="fld">
+      <div class="lbl"><span data-str="lbl_avatar"></span></div>
+      <div class="avas" id="avaGrid"></div>
+    </div>
+
+    <div class="err" id="profErr"></div>
+    <div class="btnrow">
+      <button class="btn" id="saveBtn" onclick="saveProfile()" data-str="btn_save"></button>
+      <button class="btn ghost" id="skipBtn" onclick="skipProfile()" data-str="btn_skip"></button>
+    </div>
+  </div>
+
+  <!-- ═══ ШАГ 3: готово ═══ -->
+  <div class="card step hidden" id="step3">
+    <div class="done-emoji">🎉</div>
+    <h2 style="text-align:center" id="doneTitle"></h2>
+    <p class="sub" style="text-align:center" data-str="done_sub"></p>
+    <div class="done-stats" id="doneStats"></div>
+    <div class="btnrow">
+      <a class="btn" id="appLink2" href="/app" style="display:flex; align-items:center; justify-content:center; text-decoration:none" data-str="open_app_btn"></a>
+    </div>
+    <div class="footlink" data-str="done_club"></div>
+  </div>
+
+  <div class="muted" style="text-align:center">14:48 · <span data-str="foot"></span></div>
+</div>
+
+<!-- модалка: выбор страны -->
+<div class="modal hidden" id="ccModal" onclick="if(event.target===this)closeCountries()">
+  <div class="mcard">
+    <div class="mhead"><h3 data-str="cc_title"></h3><button class="mclose" onclick="closeCountries()">✕</button></div>
+    <input class="input" id="ccSearch" data-str-ph="cc_search" autocapitalize="none" autocorrect="off" spellcheck="false" style="margin:0">
+    <div class="clist" id="ccList"></div>
+  </div>
+</div>
+
+<!-- модалка: правила (заглушка до текста владельца) -->
+<div class="modal hidden" id="rulesModal" onclick="if(event.target===this)closeRules()">
+  <div class="mcard">
+    <div class="mhead"><h3 data-str="rules_title"></h3><button class="mclose" onclick="closeRules()">✕</button></div>
+    <div class="rules-body" data-str="rules_stub"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* Раздаётся бэкендом на /register — API same-origin (решение №10);
+   ключ 1448_api — тот же оверрайд, что в shell/app; file:// — dev-фоллбэк. */
+const API = localStorage.getItem('1448_api') ||
+  (location.protocol.startsWith('http') ? location.origin + '/api/v1' : 'http://localhost:8080/api/v1');
+const APP_URL = API.replace(/\/api\/v1$/, '') + '/app';
+const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁','🐨','🐵','🐙']; // avatar_id 1..12 (= app.html)
+
+/* ═══ СЛОВАРИ ru/en/pl — ключ 1448_lang общий с шеллом и PWA ═══ */
+const RG_RU = {
+  title: '14:48 — регистрация',
+  slogan: 'Твой клуб — это игра',
+  s1_title: 'Регистрация',
+  s1_sub: 'Один аккаунт для клуба, приложения и наград.',
+  lbl_login: 'Логин', ph_login: 'Придумай ник',
+  hint_login: 'Логин — это твой ник: его видят в топах и чате клуба.',
+  lbl_pass: 'Пароль', ph_pass: 'Мин. 6 символов', ph_pass2: 'Повтори пароль',
+  ph_email: 'you@example.com',
+  agree_1: 'Принимаю', agree_link: 'правила клуба', agree_2: 'и согласен на обработку персональных данных (RODO).',
+  btn_register: 'Создать аккаунт',
+  reg_bonus: 'За регистрацию: Light-кейс + 5 SP',
+  have_acc: 'Уже с нами?', open_app: 'Открыть приложение',
+  s2_title: 'Добери награды',
+  s2_sub: 'Здесь всё необязательно: заполняй что хочешь — XP начислится сразу. Изменить или стереть можно в профиле в любой момент.',
+  lbl_name: 'Имя и фамилия', badge_name: '+25 XP за оба', ph_first: 'Имя', ph_last: 'Фамилия',
+  lbl_phone: 'Телефон', badge_phone: 'для связи и брони', ph_phone: '600 000 000',
+  lbl_birth: 'Дата рождения', w_day: 'День', w_month: 'Месяц', w_year: 'Год',
+  birth_unset: 'не указана — потяни барабаны',
+  birth_clear: 'стереть', birth_manual: 'ввести с клавиатуры', birth_wheels: 'крутить барабаны',
+  ph_discord: '@ник в Discord', ph_telegram: '@ник в Telegram',
+  lbl_source: 'Откуда узнал о нас?',
+  src_friend: 'Друг привёл', src_maps: 'Google / карты', src_insta: 'Instagram',
+  src_tiktok: 'TikTok', src_walk: 'Проходил мимо', src_other: 'Другое',
+  ph_src_other: 'Расскажи — до 32 символов',
+  lbl_games: 'Любимые игры · до 3', games_loading: 'каталог загружается…', games_none: 'каталог недоступен',
+  lbl_avatar: 'Аватар',
+  btn_save: 'Сохранить и забрать награды', btn_skip: 'Пропустить — заполню потом', saving: 'Сохраняю…',
+  done_title: 'Готово, {nick}!',
+  done_sub: 'Аккаунт создан. Кейс уже ждёт в приложении.',
+  done_case: 'Light-кейс + 5 SP — за регистрацию',
+  done_xp: '{n} XP уже на счету', done_ach: 'Ачивок за анкету: {n}',
+  open_app_btn: 'Открыть приложение',
+  done_club: 'В клубе просто войди на ПК своим ником и паролем.',
+  foot: 'регистрация',
+  cc_title: 'Код страны', cc_search: 'Страна или код',
+  rules_title: 'Правила клуба',
+  rules_stub: 'Здесь будет полный текст правил клуба и политики обработки персональных данных (RODO). Коротко: уважай гостей и оборудование; администратор может завершить сессию при нарушениях; данные используются только для работы клуба — аккаунт, брони, награды, подарок на день рождения — и стираются по твоему запросу в профиле или у администратора.',
+  err_generic: 'Что-то пошло не так — попробуй ещё раз',
+  err_login_short: 'Ник — от 3 символов', err_login_long: 'Ник — до 32 символов',
+  err_login_charset: 'Без кавычек, скобок и спецсимволов',
+  err_pass_short: 'Пароль — минимум 6 символов', err_pass2: 'Пароли не совпадают',
+  err_email: 'Похоже, это не e-mail', err_agree: 'Нужно согласие с правилами',
+  err_taken: 'Такой ник, e-mail или телефон уже заняты',
+  err_name: 'Только буквы, пробел, дефис и апостроф — до 64',
+  err_phone: 'Проверь номер: 4–14 цифр без кода страны',
+  err_phone_taken: 'Этот телефон уже привязан к другому аккаунту',
+  err_birth: 'Возраст — от 6 до 100 лет',
+  err_discord: '2–64 символа, без пробелов и кавычек', err_telegram: '2–64 символа, без пробелов и кавычек',
+  err_source: 'До 32 символов, без кавычек', err_games: 'До 3 игр из каталога',
+  months: ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'],
+  months_gen: ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'],
+  date_fmt: '{d} {m} {y}'
+};
+const RG_EN = {
+  title: '14:48 — sign up',
+  slogan: 'Your club is a game',
+  s1_title: 'Sign up',
+  s1_sub: 'One account for the club, the app and the rewards.',
+  lbl_login: 'Login', ph_login: 'Pick a nickname',
+  hint_login: 'Your login is your nickname — it shows up in club tops and chat.',
+  lbl_pass: 'Password', ph_pass: 'Min. 6 characters', ph_pass2: 'Repeat password',
+  ph_email: 'you@example.com',
+  agree_1: 'I accept the', agree_link: 'club rules', agree_2: 'and consent to personal data processing (GDPR/RODO).',
+  btn_register: 'Create account',
+  reg_bonus: 'Sign-up bonus: Light case + 5 SP',
+  have_acc: 'Already with us?', open_app: 'Open the app',
+  s2_title: 'Grab more rewards',
+  s2_sub: 'Everything here is optional: fill in what you like — XP lands instantly. Edit or erase any of it later in your profile.',
+  lbl_name: 'First and last name', badge_name: '+25 XP for both', ph_first: 'First name', ph_last: 'Last name',
+  lbl_phone: 'Phone', badge_phone: 'for contact & bookings', ph_phone: '600 000 000',
+  lbl_birth: 'Birthday', w_day: 'Day', w_month: 'Month', w_year: 'Year',
+  birth_unset: 'not set — drag the reels',
+  birth_clear: 'erase', birth_manual: 'type it instead', birth_wheels: 'spin the reels',
+  ph_discord: '@handle on Discord', ph_telegram: '@handle on Telegram',
+  lbl_source: 'How did you find us?',
+  src_friend: 'A friend', src_maps: 'Google / Maps', src_insta: 'Instagram',
+  src_tiktok: 'TikTok', src_walk: 'Walked by', src_other: 'Other',
+  ph_src_other: 'Tell us — up to 32 characters',
+  lbl_games: 'Favourite games · up to 3', games_loading: 'loading catalog…', games_none: 'catalog unavailable',
+  lbl_avatar: 'Avatar',
+  btn_save: 'Save & claim rewards', btn_skip: 'Skip — I’ll do it later', saving: 'Saving…',
+  done_title: 'Done, {nick}!',
+  done_sub: 'Account created. Your case is waiting in the app.',
+  done_case: 'Light case + 5 SP — for signing up',
+  done_xp: '{n} XP already on your account', done_ach: 'Profile achievements: {n}',
+  open_app_btn: 'Open the app',
+  done_club: 'At the club just log into a PC with your nickname and password.',
+  foot: 'sign up',
+  cc_title: 'Country code', cc_search: 'Country or code',
+  rules_title: 'Club rules',
+  rules_stub: 'The full club rules and personal data policy (GDPR/RODO) will live here. In short: respect other guests and the gear; staff may end a session on violations; your data is used only to run the club — account, bookings, rewards, birthday gift — and is erased on request in your profile or at the desk.',
+  err_generic: 'Something went wrong — try again',
+  err_login_short: 'Nickname — at least 3 characters', err_login_long: 'Nickname — up to 32 characters',
+  err_login_charset: 'No quotes, brackets or special characters',
+  err_pass_short: 'Password — at least 6 characters', err_pass2: 'Passwords don’t match',
+  err_email: 'That doesn’t look like an e-mail', err_agree: 'You need to accept the rules',
+  err_taken: 'This nickname, e-mail or phone is already taken',
+  err_name: 'Letters, space, hyphen and apostrophe only — up to 64',
+  err_phone: 'Check the number: 4–14 digits, no country code',
+  err_phone_taken: 'This phone is already linked to another account',
+  err_birth: 'Age must be 6 to 100',
+  err_discord: '2–64 characters, no spaces or quotes', err_telegram: '2–64 characters, no spaces or quotes',
+  err_source: 'Up to 32 characters, no quotes', err_games: 'Up to 3 games from the catalog',
+  months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+  months_gen: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+  date_fmt: '{m} {d}, {y}'
+};
+const RG_PL = {
+  title: '14:48 — rejestracja',
+  slogan: 'Twój klub to gra',
+  s1_title: 'Rejestracja',
+  s1_sub: 'Jedno konto do klubu, aplikacji i nagród.',
+  lbl_login: 'Login', ph_login: 'Wymyśl nick',
+  hint_login: 'Login to twój nick — widać go w topkach i czacie klubu.',
+  lbl_pass: 'Hasło', ph_pass: 'Min. 6 znaków', ph_pass2: 'Powtórz hasło',
+  ph_email: 'ty@example.com',
+  agree_1: 'Akceptuję', agree_link: 'regulamin klubu', agree_2: 'i wyrażam zgodę na przetwarzanie danych osobowych (RODO).',
+  btn_register: 'Załóż konto',
+  reg_bonus: 'Za rejestrację: skrzynka Light + 5 SP',
+  have_acc: 'Już z nami?', open_app: 'Otwórz aplikację',
+  s2_title: 'Zgarnij więcej nagród',
+  s2_sub: 'Tu wszystko jest opcjonalne: uzupełnij co chcesz — XP wpada od razu. Wszystko zmienisz lub usuniesz później w profilu.',
+  lbl_name: 'Imię i nazwisko', badge_name: '+25 XP za oba', ph_first: 'Imię', ph_last: 'Nazwisko',
+  lbl_phone: 'Telefon', badge_phone: 'do kontaktu i rezerwacji', ph_phone: '600 000 000',
+  lbl_birth: 'Data urodzenia', w_day: 'Dzień', w_month: 'Miesiąc', w_year: 'Rok',
+  birth_unset: 'nie podana — pociągnij bębny',
+  birth_clear: 'usuń', birth_manual: 'wpisz z klawiatury', birth_wheels: 'kręć bębnami',
+  ph_discord: '@nick na Discordzie', ph_telegram: '@nick na Telegramie',
+  lbl_source: 'Skąd o nas wiesz?',
+  src_friend: 'Od znajomego', src_maps: 'Google / mapy', src_insta: 'Instagram',
+  src_tiktok: 'TikTok', src_walk: 'Przechodziłem obok', src_other: 'Inne',
+  ph_src_other: 'Opowiedz — do 32 znaków',
+  lbl_games: 'Ulubione gry · do 3', games_loading: 'wczytuję katalog…', games_none: 'katalog niedostępny',
+  lbl_avatar: 'Awatar',
+  btn_save: 'Zapisz i odbierz nagrody', btn_skip: 'Pomiń — uzupełnię później', saving: 'Zapisuję…',
+  done_title: 'Gotowe, {nick}!',
+  done_sub: 'Konto założone. Skrzynka już czeka w aplikacji.',
+  done_case: 'Skrzynka Light + 5 SP — za rejestrację',
+  done_xp: '{n} XP już na koncie', done_ach: 'Osiągnięcia za profil: {n}',
+  open_app_btn: 'Otwórz aplikację',
+  done_club: 'W klubie po prostu zaloguj się na PC swoim nickiem i hasłem.',
+  foot: 'rejestracja',
+  cc_title: 'Kod kraju', cc_search: 'Kraj lub kod',
+  rules_title: 'Regulamin klubu',
+  rules_stub: 'Tu pojawi się pełny regulamin klubu i polityka danych osobowych (RODO). W skrócie: szanuj gości i sprzęt; obsługa może zakończyć sesję przy naruszeniach; dane służą wyłącznie działaniu klubu — konto, rezerwacje, nagrody, prezent urodzinowy — i są usuwane na twoje życzenie w profilu lub przy ladzie.',
+  err_generic: 'Coś poszło nie tak — spróbuj ponownie',
+  err_login_short: 'Nick — od 3 znaków', err_login_long: 'Nick — do 32 znaków',
+  err_login_charset: 'Bez cudzysłowów, nawiasów i znaków specjalnych',
+  err_pass_short: 'Hasło — minimum 6 znaków', err_pass2: 'Hasła się różnią',
+  err_email: 'To nie wygląda na e-mail', err_agree: 'Potrzebna zgoda na regulamin',
+  err_taken: 'Ten nick, e-mail lub telefon jest już zajęty',
+  err_name: 'Tylko litery, spacja, łącznik i apostrof — do 64',
+  err_phone: 'Sprawdź numer: 4–14 cyfr, bez kodu kraju',
+  err_phone_taken: 'Ten telefon jest już przypisany do innego konta',
+  err_birth: 'Wiek — od 6 do 100 lat',
+  err_discord: '2–64 znaki, bez spacji i cudzysłowów', err_telegram: '2–64 znaki, bez spacji i cudzysłowów',
+  err_source: 'Do 32 znaków, bez cudzysłowów', err_games: 'Do 3 gier z katalogu',
+  months: ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'],
+  months_gen: ['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'],
+  date_fmt: '{d} {m} {y}'
+};
+const DICTS = {ru: RG_RU, en: RG_EN, pl: RG_PL};
+
+let LANG = 'ru';
+try{
+  LANG = localStorage.getItem('1448_lang') ||
+    (navigator.language && navigator.language.toLowerCase().startsWith('pl') ? 'pl' :
+     navigator.language && navigator.language.toLowerCase().startsWith('en') ? 'en' : 'ru');
+}catch(e){}
+if(!DICTS[LANG]) LANG = 'ru';
+let STR = DICTS[LANG];
+function T(k){ return STR[k] !== undefined ? STR[k] : (RG_RU[k] !== undefined ? RG_RU[k] : k); }
+
+function applyStrings(){
+  document.documentElement.lang = LANG;
+  document.title = T('title');
+  document.querySelectorAll('[data-str]').forEach(el=>{ el.textContent = T(el.dataset.str); });
+  document.querySelectorAll('[data-str-ph]').forEach(el=>{ el.placeholder = T(el.dataset.strPh); });
+  document.querySelectorAll('#langBar button').forEach(b=>b.classList.toggle('on', b.dataset.lang===LANG));
+  document.getElementById('birthMode').textContent = T(birthManualMode ? 'birth_wheels' : 'birth_manual');
+}
+function setLang(l){
+  if(!DICTS[l]) return;
+  LANG = l; STR = DICTS[l];
+  try{ localStorage.setItem('1448_lang', l); }catch(e){}
+  applyStrings(); renderSrcChips(); wheels.month.render(); paintBirth();
+}
+
+/* ═══ Страны для телефона: Польша по умолчанию (+48) ═══ */
+const COUNTRIES = [
+  ['🇵🇱','Polska','+48'],['🇺🇦','Україна','+380'],['🇧🇾','Беларусь','+375'],['🇩🇪','Deutschland','+49'],
+  ['🇨🇿','Česko','+420'],['🇸🇰','Slovensko','+421'],['🇱🇹','Lietuva','+370'],['🇱🇻','Latvija','+371'],
+  ['🇪🇪','Eesti','+372'],['🇬🇧','United Kingdom','+44'],['🇮🇪','Ireland','+353'],['🇫🇷','France','+33'],
+  ['🇪🇸','España','+34'],['🇵🇹','Portugal','+351'],['🇮🇹','Italia','+39'],['🇳🇱','Nederland','+31'],
+  ['🇧🇪','België','+32'],['🇱🇺','Luxembourg','+352'],['🇦🇹','Österreich','+43'],['🇨🇭','Schweiz','+41'],
+  ['🇩🇰','Danmark','+45'],['🇸🇪','Sverige','+46'],['🇳🇴','Norge','+47'],['🇫🇮','Suomi','+358'],
+  ['🇮🇸','Ísland','+354'],['🇬🇷','Ελλάδα','+30'],['🇨🇾','Cyprus','+357'],['🇲🇹','Malta','+356'],
+  ['🇭🇺','Magyarország','+36'],['🇷🇴','România','+40'],['🇧🇬','България','+359'],['🇭🇷','Hrvatska','+385'],
+  ['🇸🇮','Slovenija','+386'],['🇷🇸','Srbija','+381'],['🇧🇦','Bosna i Hercegovina','+387'],['🇲🇪','Crna Gora','+382'],
+  ['🇲🇰','Makedonija','+389'],['🇦🇱','Shqipëria','+355'],['🇽🇰','Kosova','+383'],['🇲🇩','Moldova','+373'],
+  ['🇷🇺','Россия','+7'],['🇰🇿','Казахстан','+7'],['🇬🇪','Georgia','+995'],['🇦🇲','Armenia','+374'],
+  ['🇦🇿','Azərbaycan','+994'],['🇺🇿','Oʻzbekiston','+998'],['🇰🇬','Кыргызстан','+996'],['🇹🇯','Тоҷикистон','+992'],
+  ['🇹🇲','Türkmenistan','+993'],['🇹🇷','Türkiye','+90'],['🇮🇱','Israel','+972'],['🇺🇸','USA','+1'],
+  ['🇨🇦','Canada','+1'],['🇲🇽','México','+52'],['🇧🇷','Brasil','+55'],['🇦🇷','Argentina','+54'],
+  ['🇨🇱','Chile','+56'],['🇨🇴','Colombia','+57'],['🇮🇳','India','+91'],['🇨🇳','China','+86'],
+  ['🇯🇵','Japan','+81'],['🇰🇷','Korea','+82'],['🇻🇳','Việt Nam','+84'],['🇹🇭','Thailand','+66'],
+  ['🇵🇭','Philippines','+63'],['🇮🇩','Indonesia','+62'],['🇲🇾','Malaysia','+60'],['🇸🇬','Singapore','+65'],
+  ['🇦🇺','Australia','+61'],['🇳🇿','New Zealand','+64'],['🇦🇪','UAE','+971'],['🇸🇦','Saudi Arabia','+966'],
+  ['🇪🇬','Egypt','+20'],['🇲🇦','Maroc','+212'],['🇹🇳','Tunisie','+216'],['🇳🇬','Nigeria','+234'],
+  ['🇿🇦','South Africa','+27'],['🇰🇪','Kenya','+254']
+];
+let CC = COUNTRIES[0]; // Польша — стандарт
+function paintCC(){
+  document.getElementById('ccFlag').textContent = CC[0];
+  document.getElementById('ccDial').textContent = CC[2];
+}
+function openCountries(){
+  document.getElementById('ccModal').classList.remove('hidden');
+  const s = document.getElementById('ccSearch'); s.value=''; renderCC('');
+  if(matchMedia('(hover:hover)').matches) s.focus();
+}
+function closeCountries(){ document.getElementById('ccModal').classList.add('hidden'); }
+function renderCC(q){
+  q = q.trim().toLowerCase();
+  const list = document.getElementById('ccList');
+  list.innerHTML = '';
+  COUNTRIES.forEach(c=>{
+    if(q && !(c[1].toLowerCase().includes(q) || c[2].includes(q))) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'citem' + (c===CC ? ' on' : '');
+    b.innerHTML = `<span class="flag">${c[0]}</span><span class="cname"></span><span class="dial cnum">${c[2]}</span>`;
+    b.querySelector('.cname').textContent = c[1];
+    b.onclick = ()=>{ CC = c; paintCC(); closeCountries(); document.getElementById('fPhone').focus(); };
+    list.appendChild(b);
+  });
+}
+function openRules(e){ e.preventDefault(); document.getElementById('rulesModal').classList.remove('hidden'); }
+function closeRules(){ document.getElementById('rulesModal').classList.add('hidden'); }
+/* ═══ БАРАБАНЫ ДР — механика «зажал и тянешь», инерция, снап ═══
+   Требование основателя: отдельные зоны день/месяц/год, дата крутится,
+   пока не отпустишь кнопку. Pointer Events — мышь и палец одним кодом. */
+const ROW = 38; // высота строки, px (= .witem)
+function makeWheel(el, getItems, onChange){
+  const list = el.querySelector('.wlist');
+  const w = {pos: 0, len: 0};
+  function paint(){
+    const p = Math.max(-0.4, Math.min(w.len - 0.6, w.pos));
+    list.style.transform = 'translateY(' + (-(p + 0.5) * ROW) + 'px)';
+    const sel = Math.round(Math.max(0, Math.min(w.len - 1, p)));
+    for(let i = 0; i < list.children.length; i++)
+      list.children[i].classList.toggle('on', i === sel);
+  }
+  function render(){
+    const items = getItems();
+    w.len = items.length;
+    list.textContent = '';
+    items.forEach(t=>{
+      const d = document.createElement('div');
+      d.className = 'witem'; d.textContent = t;
+      list.appendChild(d);
+    });
+    w.pos = Math.max(0, Math.min(w.len - 1, Math.round(w.pos)));
+    paint();
+  }
+  function settle(target, fire){
+    target = Math.max(0, Math.min(w.len - 1, Math.round(target)));
+    el.classList.add('anim');
+    w.pos = target; paint();
+    if(fire !== false) onChange(target);
+  }
+  let drag = null, raf = 0;
+  el.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    cancelAnimationFrame(raf);
+    el.setPointerCapture(e.pointerId);
+    el.classList.remove('anim'); el.classList.add('drag');
+    drag = {y: e.clientY, pos: w.pos, vy: 0, t: performance.now(), moved: false};
+  });
+  el.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    const dy = e.clientY - drag.y;
+    if(Math.abs(dy) > 3) drag.moved = true;
+    const now = performance.now(), dt = Math.max(1, now - drag.t);
+    const np = Math.max(-0.4, Math.min(w.len - 0.6, drag.pos - dy / ROW));
+    drag.vy = (np - w.pos) / dt * 16; // строк за кадр (~60fps)
+    drag.t = now;
+    w.pos = np; paint();
+  });
+  function endDrag(e){
+    if(!drag) return;
+    const wasTap = !drag.moved, vy = drag.vy;
+    drag = null; el.classList.remove('drag');
+    if(wasTap){ // тап по соседней строке — шаг к ней
+      const r = el.getBoundingClientRect();
+      settle(w.pos + (e.clientY - r.top - r.height / 2) / ROW);
+      return;
+    }
+    let vel = Math.max(-1.1, Math.min(1.1, vy)); // инерция-докат, как у кейс-рила
+    if(Math.abs(vel) < 0.06){ settle(w.pos); return; }
+    el.classList.remove('anim');
+    const spin = ()=>{
+      w.pos = Math.max(-0.4, Math.min(w.len - 0.6, w.pos + vel));
+      vel *= 0.93; paint();
+      if(Math.abs(vel) > 0.02 && w.pos > -0.4 && w.pos < w.len - 0.6)
+        raf = requestAnimationFrame(spin);
+      else settle(w.pos);
+    };
+    raf = requestAnimationFrame(spin);
+  }
+  el.addEventListener('pointerup', endDrag);
+  el.addEventListener('pointercancel', endDrag);
+  el.addEventListener('wheel', e=>{ // колесо мыши — тоже листает
+    e.preventDefault();
+    cancelAnimationFrame(raf);
+    settle(w.pos + (e.deltaY > 0 ? 1 : -1));
+  }, {passive: false});
+  w.render = render;
+  w.set = (i, fire)=>settle(i, fire);
+  w.get = ()=>Math.round(Math.max(0, Math.min(w.len - 1, w.pos)));
+  render();
+  return w;
+}
+
+/* ── состояние ДР: барабаны всегда стоят на какой-то дате, но поле
+   «не указано», пока гость не крутанул сам (всё опционально, Г8) ── */
+const CY = new Date().getFullYear();
+const YEAR_MIN_AGE = 6, YEAR_MAX_AGE = 100; // = сервер (validateBirthDate)
+let birthTouched = false, birthManualMode = false;
+function daysInMonth(m, y){ return new Date(y, m + 1, 0).getDate(); }
+const yearAt = i => CY - YEAR_MIN_AGE - i;
+const wheels = {};
+function birthYMD(){
+  return {y: yearAt(wheels.year.get()), m: wheels.month.get(), d: wheels.day.get() + 1};
+}
+function onWheelChange(){
+  birthTouched = true;
+  const v = birthYMD();
+  const max = daysInMonth(v.m, v.y);
+  if(wheels.day.len !== max){ wheels.day.render(); if(v.d > max) wheels.day.set(max - 1, false); }
+  paintBirth();
+}
+function paintBirth(){
+  const el = document.getElementById('birthVal');
+  document.getElementById('birthClear').classList.toggle('hidden', !birthTouched);
+  if(!birthTouched){ el.textContent = T('birth_unset'); el.classList.add('unset'); return; }
+  const v = birthYMD();
+  el.textContent = T('date_fmt').replace('{d}', v.d).replace('{m}', T('months_gen')[v.m]).replace('{y}', v.y);
+  el.classList.remove('unset');
+  setErr('eBirth', '');
+  if(birthManualMode) document.getElementById('fBirth').value =
+    v.y + '-' + String(v.m + 1).padStart(2, '0') + '-' + String(v.d).padStart(2, '0');
+}
+function clearBirth(){
+  birthTouched = false;
+  document.getElementById('fBirth').value = '';
+  paintBirth();
+}
+function toggleBirthMode(){
+  birthManualMode = !birthManualMode;
+  document.getElementById('birthWheels').classList.toggle('hidden', birthManualMode);
+  document.getElementById('birthManual').classList.toggle('hidden', !birthManualMode);
+  document.getElementById('birthMode').textContent = T(birthManualMode ? 'birth_wheels' : 'birth_manual');
+  if(birthManualMode && birthTouched) paintBirth();
+}
+
+/* ═══ источник / игры / аватар ═══ */
+const SRC_KEYS = ['src_friend','src_maps','src_insta','src_tiktok','src_walk','src_other'];
+let srcSel = null;
+function renderSrcChips(){
+  const box = document.getElementById('srcChips');
+  box.textContent = '';
+  SRC_KEYS.forEach(k=>{
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (srcSel === k ? ' on' : '');
+    b.textContent = T(k);
+    b.onclick = ()=>{
+      srcSel = (srcSel === k) ? null : k;
+      document.getElementById('fSourceOther').classList.toggle('hidden', srcSel !== 'src_other');
+      setErr('eSource', '');
+      renderSrcChips();
+    };
+    box.appendChild(b);
+  });
+}
+let GAMES = null, gameSel = new Set();
+async function loadGames(){
+  if(GAMES !== null) return;
+  const box = document.getElementById('gameChips');
+  try{
+    const d = await api('/catalog', {}, false);
+    GAMES = (d && d.games) || [];
+  }catch(e){ GAMES = []; }
+  box.textContent = '';
+  if(!GAMES.length){
+    const s = document.createElement('span');
+    s.className = 'muted'; s.textContent = T('games_none');
+    box.appendChild(s); return;
+  }
+  GAMES.forEach(g=>{
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = g.name || g.id;
+    b.onclick = ()=>{
+      if(gameSel.has(g.id)) gameSel.delete(g.id);
+      else if(gameSel.size >= 3){ setErr('eGames', 'err_games'); return; }
+      else gameSel.add(g.id);
+      setErr('eGames', '');
+      b.classList.toggle('on', gameSel.has(g.id));
+    };
+    box.appendChild(b);
+  });
+}
+let avaSel = 1, avaTouched = false;
+function renderAvatars(){
+  const box = document.getElementById('avaGrid');
+  box.textContent = '';
+  AVATARS.forEach((a, i)=>{
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ava' + (avaSel === i + 1 ? ' on' : '');
+    b.textContent = a;
+    b.onclick = ()=>{ avaSel = i + 1; avaTouched = true; renderAvatars(); };
+    box.appendChild(b);
+  });
+}
+
+/* ═══ API и отправка ═══ */
+let TOKEN = null, ME = null;
+async function api(path, opts, auth){
+  opts = opts || {};
+  const h = Object.assign({'Content-Type': 'application/json'}, opts.headers || {});
+  if(auth !== false && TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
+  const r = await fetch(API + path, Object.assign({}, opts, {headers: h}));
+  let d = null; try{ d = await r.json(); }catch(e){}
+  if(!r.ok){
+    const err = new Error((d && d.message) || ('HTTP ' + r.status));
+    err.code = d && d.code; err.status = r.status;
+    throw err;
+  }
+  return d;
+}
+function setErr(id, key){
+  document.getElementById(id).textContent = key ? T(key) : '';
+}
+const badChars = /[\u0000-\u001f'"<>&`\\]/;
+function togglePass(){
+  const p1 = document.getElementById('fPass'), p2 = document.getElementById('fPass2');
+  const show = p1.type === 'password';
+  p1.type = p2.type = show ? 'text' : 'password';
+  document.getElementById('eyeBtn').textContent = show ? '🙈' : '👁';
+}
+
+async function submitReg(){
+  const login = document.getElementById('fLogin').value.trim();
+  const pass = document.getElementById('fPass').value;
+  const pass2 = document.getElementById('fPass2').value;
+  const email = document.getElementById('fEmail').value.trim();
+  ['eLogin','ePass','ePass2','eEmail','eAgree'].forEach(i=>setErr(i, ''));
+  document.getElementById('regErr').textContent = '';
+  let bad = false;
+  const rc = [...login].length;
+  if(rc < 3){ setErr('eLogin', 'err_login_short'); bad = true; }
+  else if(rc > 32){ setErr('eLogin', 'err_login_long'); bad = true; }
+  else if(badChars.test(login)){ setErr('eLogin', 'err_login_charset'); bad = true; }
+  if(pass.length < 6){ setErr('ePass', 'err_pass_short'); bad = true; }
+  else if(pass !== pass2){ setErr('ePass2', 'err_pass2'); bad = true; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ setErr('eEmail', 'err_email'); bad = true; }
+  if(!document.getElementById('fAgree').checked){ setErr('eAgree', 'err_agree'); bad = true; }
+  if(bad) return;
+  const btn = document.getElementById('regBtn');
+  btn.disabled = true;
+  try{
+    const d = await api('/auth/register', {method: 'POST',
+      body: JSON.stringify({nickname: login, password: pass, email: email})}, false);
+    TOKEN = d.access_token; ME = d.user;
+    try{ // те же ключи, что у PWA/шелла: /app после реги уже «вошло»
+      localStorage.setItem('1448_access', d.access_token);
+      localStorage.setItem('1448_refresh', d.refresh_token);
+    }catch(e){}
+    document.getElementById('step1').classList.add('hidden');
+    document.getElementById('step2').classList.remove('hidden');
+    window.scrollTo({top: 0, behavior: 'smooth'});
+    loadGames();
+  }catch(e){
+    if(e.status === 409){ document.getElementById('regErr').textContent = T('err_taken'); }
+    else if(e.code === 'nickname_charset'){ setErr('eLogin', 'err_login_charset'); }
+    else{ document.getElementById('regErr').textContent = e.message || T('err_generic'); }
+  }
+  btn.disabled = false;
+}
+
+/* поле → куда класть серверную ошибку PATCH /me */
+const PATCH_ERRS = {
+  bad_first_name: ['eName','err_name'], bad_last_name: ['eName','err_name'],
+  bad_phone: ['ePhone','err_phone'], phone_taken: ['ePhone','err_phone_taken'],
+  bad_birth_date: ['eBirth','err_birth'],
+  bad_discord: ['eDiscord','err_discord'], bad_telegram: ['eTelegram','err_telegram'],
+  bad_source: ['eSource','err_source'], bad_favorites: ['eGames','err_games']
+};
+const nameOk = s => /^[\p{L} \-’]+$/u.test(s) && /\p{L}/u.test(s) && [...s].length <= 64;
+
+async function saveProfile(){
+  ['eName','ePhone','eBirth','eDiscord','eTelegram','eSource','eGames'].forEach(i=>setErr(i, ''));
+  document.getElementById('profErr').textContent = '';
+  const patch = {language: LANG}; // язык страницы едет за гостем (Г9)
+  let achFields = 0, bad = false;
+  const first = document.getElementById('fFirst').value.trim().replace(/'/g, '’');
+  const last = document.getElementById('fLast').value.trim().replace(/'/g, '’');
+  if(first || last){
+    if((first && !nameOk(first)) || (last && !nameOk(last))){ setErr('eName', 'err_name'); bad = true; }
+    else{
+      if(first) patch.first_name = first;
+      if(last) patch.last_name = last;
+      if(first && last) achFields++;
+    }
+  }
+  const rawPhone = document.getElementById('fPhone').value.replace(/[^\d]/g, '').replace(/^0+/, '');
+  if(document.getElementById('fPhone').value.trim()){
+    if(rawPhone.length < 4 || rawPhone.length > 14){ setErr('ePhone', 'err_phone'); bad = true; }
+    else patch.phone = CC[2] + rawPhone;
+  }
+  if(birthTouched){
+    const v = birthYMD();
+    const bd = new Date(v.y, v.m, v.d);
+    let age = CY - v.y;
+    const now = new Date();
+    if(now.getMonth() < v.m || (now.getMonth() === v.m && now.getDate() < v.d)) age--;
+    if(age < YEAR_MIN_AGE || age > YEAR_MAX_AGE || bd.getDate() !== v.d){ setErr('eBirth', 'err_birth'); bad = true; }
+    else{
+      patch.birth_date = v.y + '-' + String(v.m + 1).padStart(2, '0') + '-' + String(v.d).padStart(2, '0');
+      achFields++;
+    }
+  }
+  [['fDiscord','discord','eDiscord','err_discord'], ['fTelegram','telegram','eTelegram','err_telegram']].forEach(f=>{
+    const raw = document.getElementById(f[0]).value.trim();
+    if(!raw) return;
+    const h = raw.replace(/^@/, '');
+    if([...h].length < 2 || [...h].length > 64 || /\s/.test(h) || badChars.test(h)){ setErr(f[2], f[3]); bad = true; }
+    else{ patch[f[1]] = h; achFields++; }
+  });
+  if(srcSel){
+    const val = srcSel === 'src_other' ? document.getElementById('fSourceOther').value.trim() : T(srcSel);
+    if(srcSel === 'src_other' && !val){ /* пустое «другое» — просто не шлём */ }
+    else if([...val].length > 32 || badChars.test(val)){ setErr('eSource', 'err_source'); bad = true; }
+    else{ patch.source = val; achFields++; }
+  }
+  if(gameSel.size){ patch.favorite_games = [...gameSel]; achFields++; }
+  if(patch.birth_date && patch.discord && patch.telegram && patch.source && patch.favorite_games)
+    achFields++; // «Анкета закрыта» — все 5 полей сида 040 разом
+  if(avaTouched) patch.avatar_id = avaSel;
+  if(bad) return;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true; document.getElementById('skipBtn').disabled = true;
+  btn.textContent = T('saving');
+  try{
+    ME = await api('/me', {method: 'PATCH', body: JSON.stringify(patch)});
+    showDone(achFields);
+  }catch(e){
+    const route = PATCH_ERRS[e.code];
+    if(route) setErr(route[0], route[1]);
+    else document.getElementById('profErr').textContent = e.message || T('err_generic');
+    btn.disabled = false; document.getElementById('skipBtn').disabled = false;
+    btn.textContent = T('btn_save');
+  }
+}
+function skipProfile(){
+  api('/me', {method: 'PATCH', body: JSON.stringify({language: LANG})}).catch(()=>{});
+  showDone(0);
+}
+
+function showDone(achFields){
+  document.getElementById('step2').classList.add('hidden');
+  const s3 = document.getElementById('step3');
+  s3.classList.remove('hidden');
+  document.getElementById('doneTitle').textContent =
+    T('done_title').replace('{nick}', (ME && ME.nickname) || '');
+  const stats = document.getElementById('doneStats');
+  stats.textContent = '';
+  const row = (icon, text)=>{
+    const d = document.createElement('div');
+    d.className = 'dstat';
+    const i = document.createElement('span'); i.className = 'di'; i.textContent = icon;
+    const t = document.createElement('span'); t.innerHTML = text;
+    d.appendChild(i); d.appendChild(t); stats.appendChild(d);
+  };
+  row('🎁', T('done_case'));
+  const xp = ME && ME.xp_total ? ME.xp_total : 0;
+  if(xp > 0) row('⚡', T('done_xp').replace('{n}', '<b>' + xp + '</b>'));
+  if(achFields > 0) row('⭐', T('done_ach').replace('{n}', '<b>' + achFields + '</b>'));
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  confetti();
+}
+function confetti(){
+  const colors = ['#ff2740','#ff5563','#f2f0f2','#c9ccd6','#7a0f1c'];
+  for(let i = 0; i < 44; i++){
+    const c = document.createElement('div');
+    c.className = 'conf';
+    c.style.left = Math.random() * 100 + 'vw';
+    c.style.background = colors[i % colors.length];
+    c.style.setProperty('--cx', (Math.random() * 40 - 20) + 'vw');
+    c.style.animationDelay = (Math.random() * .5) + 's';
+    document.body.appendChild(c);
+    setTimeout(()=>c.remove(), 3400);
+  }
+}
+
+/* ═══ init ═══ */
+(function init(){
+  document.getElementById('appLink1').href = APP_URL;
+  document.getElementById('appLink2').href = APP_URL;
+  paintCC();
+  renderSrcChips();
+  renderAvatars();
+  wheels.day = makeWheel(document.getElementById('whDay'),
+    ()=>{ const v = wheels.month ? birthYMD() : {m: 5, y: CY - 18};
+          return Array.from({length: daysInMonth(v.m, v.y)}, (_, i)=>i + 1); },
+    onWheelChange);
+  wheels.month = makeWheel(document.getElementById('whMonth'),
+    ()=>T('months'), onWheelChange);
+  wheels.year = makeWheel(document.getElementById('whYear'),
+    ()=>Array.from({length: YEAR_MAX_AGE - YEAR_MIN_AGE + 1}, (_, i)=>yearAt(i)),
+    onWheelChange);
+  // стартовая позиция: ~18 лет, 15 июня — но поле «не указано» до первого касания
+  wheels.day.set(14, false); wheels.month.set(5, false); wheels.year.set(12, false);
+  const fb = document.getElementById('fBirth');
+  fb.min = (CY - YEAR_MAX_AGE) + '-01-01';
+  fb.max = (CY - YEAR_MIN_AGE) + '-12-31';
+  fb.addEventListener('change', ()=>{
+    if(!fb.value) return;
+    const p = fb.value.split('-').map(Number);
+    const yi = CY - YEAR_MIN_AGE - p[0];
+    if(yi < 0 || yi > YEAR_MAX_AGE - YEAR_MIN_AGE) return;
+    wheels.year.set(yi, false); wheels.month.set(p[1] - 1, false);
+    wheels.day.render(); wheels.day.set(p[2] - 1, false);
+    birthTouched = true; paintBirth();
+  });
+  document.getElementById('ccSearch').addEventListener('input', e=>renderCC(e.target.value));
+  document.getElementById('fEmail').addEventListener('keydown', e=>{ if(e.key === 'Enter') submitReg(); });
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape'){ closeCountries(); closeRules(); } });
+  applyStrings();
+  paintBirth();
+})();
+</script>
+</body>
+</html>

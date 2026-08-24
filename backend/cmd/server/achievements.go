@@ -42,7 +42,8 @@ type playerStats struct {
 	VisitsMonth  int
 	MinutesMonth int
 	ActiveMonth  int
-	// анкета (Г8): бинарные факты профиля, profileStats() в profile.go
+	// анкета (Г8, 043): бинарные факты профиля, profileStats() в profile.go
+	ProfileName     int // имя И фамилия заполнены (одна ачивка за оба, 043)
 	ProfileBirth    int
 	ProfileGames    int
 	ProfileDiscord  int
@@ -106,6 +107,8 @@ func conditionValue(condType string, s playerStats) (int, bool) {
 		return s.KitchenToday, true
 	case "night_session_today":
 		return s.NightToday, true
+	case "profile_name":
+		return s.ProfileName, true
 	case "profile_birth":
 		return s.ProfileBirth, true
 	case "profile_games":

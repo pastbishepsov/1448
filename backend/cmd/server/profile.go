@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +30,7 @@ const (
 	maxProfileAge  = 100
 	maxHandleRunes = 64 // discord/telegram
 	maxSourceRunes = 32 // «откуда узнал»
+	maxNameRunes   = 64 // имя/фамилия (миграция 043, страница регистрации)
 )
 
 // validateProfilePatch — чистая проверка полей PATCH /me (тестируется отдельно).
@@ -93,6 +95,50 @@ func validateHandle(s string) (string, bool) {
 	return h, true
 }
 
+// validateName — имя/фамилия анкеты: 1–64 руны, только буквы плюс пробел,
+// дефис и апостроф; хотя бы одна буква (чистая, тест). ASCII-апостроф
+// (O'Brien) нормализуем в типографский U+2019 — прямая кавычка запрещена
+// инвариантом nicknameSafe (значения едут в разметку админки).
+func validateName(s string) (string, bool) {
+	n := strings.ReplaceAll(strings.TrimSpace(s), "'", "’")
+	if n == "" || utf8.RuneCountInString(n) > maxNameRunes {
+		return "", false
+	}
+	hasLetter := false
+	for _, r := range n {
+		switch {
+		case unicode.IsLetter(r):
+			hasLetter = true
+		case r == ' ' || r == '-' || r == '’':
+		default:
+			return "", false
+		}
+	}
+	return n, hasLetter
+}
+
+// validatePhone — телефон анкеты в E.164 (страница регистрации, 043):
+// оформительский мусор (пробелы, дефисы, скобки) срезаем, обязателен ведущий
+// «+», затем 6–15 цифр без ведущего нуля (чистая, тест). Верификация OTP —
+// отдельно (Г10, Twilio); здесь только формат.
+func validatePhone(s string) (string, bool) {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(s) {
+		switch {
+		case r >= '0' && r <= '9' || r == '+':
+			b.WriteRune(r)
+		case r == ' ' || r == '-' || r == '(' || r == ')':
+		default:
+			return "", false
+		}
+	}
+	p := b.String()
+	if len(p) < 7 || len(p) > 16 || p[0] != '+' || p[1] == '0' || strings.Count(p, "+") != 1 {
+		return "", false
+	}
+	return p, true
+}
+
 // validateFavorites — до 3 включённых игр каталога, без дублей (чистая, тест).
 func validateFavorites(list []string, games map[string]bool) ([]string, bool) {
 	if len(list) > maxFavGames {
@@ -114,6 +160,9 @@ func validateFavorites(list []string, games map[string]bool) ([]string, bool) {
 type patchMeRequest struct {
 	Nickname      *string   `json:"nickname"`
 	AvatarID      *int      `json:"avatar_id"`
+	FirstName     *string   `json:"first_name"`     // 043: "" = стереть
+	LastName      *string   `json:"last_name"`      // 043: "" = стереть
+	Phone         *string   `json:"phone"`          // 043: E.164; "" = стереть (без ачивки — награда за верификацию уедет в Г10)
 	BirthDate     *string   `json:"birth_date"`     // "2006-01-02"; "" = стереть
 	Discord       *string   `json:"discord"`        // "" = стереть
 	Telegram      *string   `json:"telegram"`       // с @ или без; "" = стереть
@@ -131,6 +180,7 @@ func profileStats(u *models.User) playerStats {
 		}
 		return 0
 	}
+	s.ProfileName = b(u.FirstName != nil && u.LastName != nil) // 043: одна ачивка за оба
 	s.ProfileBirth = b(u.BirthDate != nil)
 	s.ProfileGames = b(len(u.FavoriteGames) > 0)
 	s.ProfileDiscord = b(u.Discord != nil)
@@ -152,6 +202,7 @@ func handlePatchMe(c *gin.Context) {
 	}
 
 	if req.Nickname == nil && req.AvatarID == nil && req.BirthDate == nil &&
+		req.FirstName == nil && req.LastName == nil && req.Phone == nil &&
 		req.Discord == nil && req.Telegram == nil && req.Source == nil &&
 		req.FavoriteGames == nil && req.Language == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "empty", "message": "Нечего обновлять"})
@@ -198,6 +249,40 @@ func handlePatchMe(c *gin.Context) {
 			}
 			updates["birth_date"] = t
 		}
+	}
+	if req.Phone != nil { // 043: телефон — данные для связи, не «анкета» (без ачивки)
+		if s := strings.TrimSpace(*req.Phone); s == "" {
+			updates["phone"] = nil
+		} else {
+			p, ok := validatePhone(s)
+			if !ok {
+				c.JSON(http.StatusBadRequest, gin.H{"code": "bad_phone",
+					"message": "Телефон — в международном формате: + и 6–15 цифр"})
+				return
+			}
+			updates["phone"] = p
+		}
+	}
+	for _, f := range []struct { // 043: имя/фамилия — та же семантика стирания
+		val *string
+		col string
+	}{{req.FirstName, "first_name"}, {req.LastName, "last_name"}} {
+		if f.val == nil {
+			continue
+		}
+		profileTouched = true
+		if strings.TrimSpace(*f.val) == "" {
+			updates[f.col] = nil
+			continue
+		}
+		nm, ok := validateName(*f.val)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_" + f.col,
+				"message": map[string]string{"first_name": "Имя", "last_name": "Фамилия"}[f.col] +
+					": до 64 букв; допустимы пробел, дефис и апостроф"})
+			return
+		}
+		updates[f.col] = nm
 	}
 	for _, f := range []struct {
 		val *string
@@ -254,7 +339,15 @@ func handlePatchMe(c *gin.Context) {
 
 	if err := db.Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
 		if isDuplicate(err) {
-			c.JSON(http.StatusConflict, gin.H{"code": "nickname_taken", "message": "Никнейм уже занят"})
+			code, msg := "nickname_taken", "Никнейм уже занят"
+			if _, hasPhone := updates["phone"]; hasPhone { // 043: уникальность телефона
+				if _, hasNick := updates["nickname"]; hasNick {
+					code, msg = "taken", "Никнейм или телефон уже заняты"
+				} else {
+					code, msg = "phone_taken", "Этот телефон уже привязан к другому аккаунту"
+				}
+			}
+			c.JSON(http.StatusConflict, gin.H{"code": code, "message": msg})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})

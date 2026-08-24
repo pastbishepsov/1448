@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -95,6 +96,53 @@ func TestValidateHandle(t *testing.T) {
 	}
 	if _, ok := validateHandle(`ник"с кавычкой`); ok {
 		t.Error("кавычка — должно отбиться")
+	}
+}
+
+func TestValidateName(t *testing.T) { // 043: имя/фамилия со страницы регистрации
+	good := map[string]string{
+		"Ян":             "Ян",
+		"  Anna Maria  ": "Anna Maria",
+		"Kowalska-Nowak": "Kowalska-Nowak",
+		"O'Brien":        "O’Brien", // ASCII-апостроф → типографский
+		"Grzegorz":       "Grzegorz",
+		"Żółć-Łęcka":     "Żółć-Łęcka",
+	}
+	for in, want := range good {
+		if out, ok := validateName(in); !ok || out != want {
+			t.Errorf("validateName(%q) = (%q,%v), хотим (%q,true)", in, out, ok, want)
+		}
+	}
+	bad := []string{"", "   ", "-", "’ -", "Иван2", "имя<b>", `Q"Q`, "a\tb",
+		strings.Repeat("я", maxNameRunes+1)}
+	for _, in := range bad {
+		if out, ok := validateName(in); ok {
+			t.Errorf("validateName(%q) = (%q,true), должно отбиться", in, out)
+		}
+	}
+	if out, ok := validateName(strings.Repeat("я", maxNameRunes)); !ok || len([]rune(out)) != maxNameRunes {
+		t.Error("64 руны — граница, должно пройти")
+	}
+}
+
+func TestValidatePhone(t *testing.T) { // 043: телефон со страницы регистрации
+	good := map[string]string{
+		"+48 600 000 000":    "+48600000000",
+		"+48600000000":       "+48600000000",
+		"+7 (912) 345-67-89": "+79123456789",
+		"  +380501234567 ":   "+380501234567",
+	}
+	for in, want := range good {
+		if out, ok := validatePhone(in); !ok || out != want {
+			t.Errorf("validatePhone(%q) = (%q,%v), хотим (%q,true)", in, out, ok, want)
+		}
+	}
+	bad := []string{"", "600000000", "+0480000000", "48600000000", "+48 600 abc",
+		"+4860000+000", "+123", "+12345678901234567"}
+	for _, in := range bad {
+		if out, ok := validatePhone(in); ok {
+			t.Errorf("validatePhone(%q) = (%q,true), должно отбиться", in, out)
+		}
 	}
 }
 
