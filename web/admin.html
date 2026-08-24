@@ -234,6 +234,13 @@
   .uform{background:var(--card); border:1px solid var(--hair); border-radius:12px; padding:12px;
          margin-top:10px; display:flex; flex-direction:column; gap:9px}
   .uform .input{width:100%}
+  /* Е0-и5а: временный пароль показывается ОДИН раз — его диктуют вслух,
+     поэтому крупно, моноширинно и с разрядкой, чтобы не переспрашивали. */
+  .temppass{border:1px solid var(--acc); border-radius:11px; padding:12px;
+            background:rgba(255,39,64,.08); text-align:center}
+  .temppass .tp{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+                font-size:23px; font-weight:800; letter-spacing:2.5px; margin:6px 0 9px;
+                user-select:all; word-break:break-all}
   .segs{display:flex; gap:6px; flex-wrap:wrap}
   .segs button{border:1px solid var(--hair); background:transparent; color:var(--dim); border-radius:9px;
                padding:7px 12px; font-weight:700; font-size:12.5px; cursor:pointer}
@@ -1634,11 +1641,14 @@ async function setPCStatus(id, status){
 
 /* ── Карточка гостя (А2): профиль + действия формами + история ── */
 let drawerUserId = null, uData = null, uTab = 'sessions', uForm = null;
+// Е0-и5а: временный пароль держим в памяти ровно до ухода со шторки — он не
+// должен остаться на экране, когда у стойки уже другой гость.
+let tempPass = null;
 let depMethod = 'cash', caseTier = 'light';
 
 async function openUserDrawer(id, form){
   drawerPCId = null;
-  if (drawerUserId !== id) uChat = null; // Б3: чат прошлого гостя не показываем
+  if (drawerUserId !== id){ uChat = null; tempPass = null; } // Б3+Е0: чужой чат и чужой пароль не показываем
   drawerUserId = id;
   uForm = form || null;
   await loadUserDrawer();
@@ -1667,6 +1677,9 @@ function renderUserDrawer(){
     ${s.no_show_count ? `<tr><td class="muted">No-show</td><td>🕳 ${s.no_show_count} — брони сгорали без прихода</td></tr>` : ''}
     ${s.kitchen_unpaid_count ? `<tr><td class="muted">Кухня</td><td>🧾 не оплачено: <b>${fmtPLN(s.kitchen_unpaid_pln)} zł</b> (${s.kitchen_unpaid_count}) — расчёт у стойки</td></tr>` : ''}
     ${s.deposited_pln !== undefined ? `<tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>` : ''}
+    ${(u.first_name || u.last_name) ? `<tr><td class="muted">Имя</td><td>${esc(((u.first_name||'') + ' ' + (u.last_name||'')).trim())}</td></tr>` : ''}
+    ${u.phone ? `<tr><td class="muted">Телефон</td><td>${esc(u.phone)}</td></tr>` : ''}
+    ${u.email ? `<tr><td class="muted">E-mail</td><td>${esc(u.email)}</td></tr>` : ''}
     <tr><td class="muted">Был активен</td><td>${fmtTime(u.last_active_at)}</td></tr>
     <tr><td class="muted">Аккаунт с</td><td>${fmtDate(u.created_at)}</td></tr>
   </table>`;
@@ -1677,6 +1690,8 @@ function renderUserDrawer(){
       <button class="btn mini ${uForm==='xp'?'':'ghost'}" onclick="uFormToggle('xp')"><span data-ic="xp"></span>XP</button>
       <button class="btn mini ${uForm==='case'?'':'ghost'}" onclick="uFormToggle('case')"><span data-ic="chest"></span>Кейс</button>
       <button class="btn mini ${uForm==='redeem'?'':'ghost'}" onclick="uFormToggle('redeem')"><span data-ic="clock"></span>Время за монеты</button>
+      <button class="btn mini ${uForm==='edit'?'':'ghost'}" onclick="uFormToggle('edit')"><span data-ic="user"></span>Данные</button>
+      <button class="btn mini ${uForm==='pwd'?'':'ghost'}" onclick="uFormToggle('pwd')"><span data-ic="lock"></span>Пароль</button>
       ${u.status === 'banned'
         ? `<button class="btn ghost mini" onclick="unbanNow('${u.id}','${esc(u.nickname)}')"><span data-ic="unban"></span>Разбанить</button>`
         : `<button class="btn danger mini" onclick="armBan(this,'${u.id}','${esc(u.nickname)}')"><span data-ic="ban"></span>Бан</button>`}
@@ -1696,6 +1711,7 @@ function renderUserDrawer(){
 
 async function uFormToggle(f){
   uForm = (uForm === f) ? null : f;
+  if (uForm !== 'pwd') tempPass = null; // ушли с формы — пароль с экрана убрали
   if (uForm === 'redeem' && !zonesCache.length){
     try{ zonesCache = (await api('/admin/zones')).zones || []; }catch(e){}
   }
@@ -1713,6 +1729,47 @@ async function voidRedeem(id, userId){
     if (curTab === 'stats') renderReports();
     refresh();
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* Е0-и5а: сохранить правку данных гостя. Собираем дельту, а не всю форму. */
+async function submitGuestEdit(){
+  const u = uData.user;
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
+  const body = {};
+  const fields = [['e_nick','nickname'], ['e_first','first_name'], ['e_last','last_name'],
+                  ['e_phone','phone'], ['e_email','email']];
+  for (const [el, key] of fields){
+    const v = val(el);
+    if (v === null) continue;
+    if (v !== (u[key] || '')) body[key] = v;
+  }
+  if (!Object.keys(body).length){ toast('Ничего не изменилось'); return; }
+  try{
+    const d = await api('/admin/users/' + drawerUserId, {method:'PATCH', body:JSON.stringify(body)});
+    toast('✓ Обновлено: ' + (d.changed || []).join(', '));
+    uForm = null;
+    await openUserDrawer(drawerUserId);
+    if (curTab === 'users') renderUsersTable();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* Сброс пароля: подтверждение — тем же arm-паттерном, что бан и выключение
+   ПК (prompt/confirm в интерфейсе нет). */
+function armPwdReset(btn){
+  armButton(btn, '<span data-ic="lock"></span>Ещё раз — сбросить пароль', doPwdReset);
+}
+async function doPwdReset(){
+  try{
+    const d = await api('/admin/users/' + drawerUserId + '/password/reset', {method:'POST'});
+    tempPass = d.temp_password;
+    renderUserDrawer();
+    toast('🔑 Временный пароль выдан — продиктуй его гостю');
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function copyTempPass(){
+  if (!tempPass) return;
+  try{ await navigator.clipboard.writeText(tempPass); toast('✓ Скопировано'); }
+  catch(e){ toast('Выдели пароль и скопируй вручную'); } // file:// без https — буфер закрыт
 }
 
 async function submitRedeem(){
@@ -1796,6 +1853,32 @@ function uFormHtml(){
     <input id="g_xp" class="input" type="number" min="1" step="5" placeholder="Сколько XP (1–100000)" value="500">
     <input id="g_xp_r" class="input" placeholder="Причина (обязательно, попадёт в журнал)">
     <button class="btn" style="width:100%; justify-content:center" onclick="submitXP()">Начислить XP</button>
+  </div>`;
+  // Е0-и5а: правка данных. Отправляем ТОЛЬКО изменённые поля — иначе в
+  // журнале каждая правка выглядела бы как «поменяли всё сразу», и аудит
+  // перестал бы отвечать на вопрос «что именно тронули».
+  if (uForm === 'edit'){
+    const u = uData.user;
+    return `<div class="uform">
+    <input id="e_nick"  class="input" placeholder="Никнейм" value="${esc(u.nickname||'')}" maxlength="32">
+    <input id="e_first" class="input" placeholder="Имя" value="${esc(u.first_name||'')}" maxlength="64">
+    <input id="e_last"  class="input" placeholder="Фамилия" value="${esc(u.last_name||'')}" maxlength="64">
+    <input id="e_phone" class="input" placeholder="Телефон, например +48123456789" value="${esc(u.phone||'')}" maxlength="20">
+    <input id="e_email" class="input" placeholder="E-mail" value="${esc(u.email||'')}" maxlength="255">
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitGuestEdit()"><span data-ic="check"></span>Сохранить</button>
+    <div class="muted">Пустое поле стирает значение · ник стереть нельзя · в журнал попадёт список полей, но не сами значения</div>
+  </div>`;
+  }
+  if (uForm === 'pwd') return `<div class="uform">
+    ${tempPass ? `<div class="temppass">
+      <div class="muted">Временный пароль — продиктуй гостю</div>
+      <div class="tp">${esc(tempPass)}</div>
+      <button class="btn ghost mini" onclick="copyTempPass()">Скопировать</button>
+      <div class="muted" style="margin-top:8px">Показывается один раз. При входе гость задаст свой пароль сам.</div>
+    </div>` : `<div class="muted">Гость получит временный пароль и задаст свой при первом входе.
+      Пока он этого не сделал, сам сесть за ПК не сможет — но посадить его ты можешь.
+      Все его входы на других устройствах слетят.</div>
+    <button class="btn danger" style="width:100%; justify-content:center" onclick="armPwdReset(this)"><span data-ic="lock"></span>Сбросить пароль</button>`}
   </div>`;
   if (uForm === 'case') return `<div class="uform">
     <div class="segs">${['light','medium','heavy','titan','gods'].map(t =>
