@@ -193,3 +193,78 @@ func guestTakenReason(updates map[string]any) (code, message string) {
 		return "taken", "Уже занято одно из: " + strings.Join(labels, ", ")
 	}
 }
+
+// ── Е0-и3: поиск гостя по нику, телефону и имени ──────────────────────────
+//
+// До этого спринта админка искала ТОЛЬКО по нику (`nickname ILIKE`). У стойки
+// это тупик ровно в тех случаях, ради которых поиск и нужен: гость звонит
+// забронировать и называет телефон, а не ник; гость пришёл и говорит «я
+// Ковальский»; ник он вообще забыл — за этим и шёл. Телефон и имя лежат в
+// базе с миграций 001 и 043 — оставалось только начать по ним искать.
+
+// escapeLike — экранирует спецсимволы LIKE/ILIKE (чистая, тест). Без этого
+// поиск «50%» превращается в «покажи всех», а «_» матчит любой символ.
+// Экранирующий символ задаём явно через ESCAPE — дефолт в Postgres тот же,
+// но полагаться на него молча не стоит.
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+// phoneDigits — цифры из запроса (чистая, тест). Телефон у стойки называют
+// как придётся: «+48 123-456-789», «123 456 789», «...789». В базе он лежит
+// в E.164, поэтому сравниваем цифра к цифре. Меньше четырёх цифр не считаем
+// телефоном: «77» в нике «Гость-77» иначе тянуло бы за собой пол-клуба.
+const minPhoneQueryDigits = 4
+
+func phoneDigits(s string) string {
+	d := phoneDigitsRaw(s)
+	if len(d) < minPhoneQueryDigits {
+		return ""
+	}
+	return d
+}
+
+// guestMatchReason — по какому полю гость нашёлся (чистая, тест). У стойки
+// это половина смысла ответа: три Ковальских в списке бесполезны, а «нашёлся
+// по телефону» — уже ответ. Порядок проверок = порядок точности.
+func guestMatchReason(u *models.User, query string) string {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return ""
+	}
+	if strings.Contains(strings.ToLower(u.Nickname), q) {
+		return "ник"
+	}
+	if d := phoneDigits(query); d != "" && u.Phone != nil &&
+		strings.Contains(phoneDigitsRaw(*u.Phone), d) {
+		return "телефон"
+	}
+	first, last := "", ""
+	if u.FirstName != nil {
+		first = strings.ToLower(*u.FirstName)
+	}
+	if u.LastName != nil {
+		last = strings.ToLower(*u.LastName)
+	}
+	switch {
+	case first != "" && strings.Contains(first, q):
+		return "имя"
+	case last != "" && strings.Contains(last, q):
+		return "фамилия"
+	case strings.Contains(strings.TrimSpace(first+" "+last), q):
+		return "имя и фамилия"
+	}
+	return ""
+}
+
+// phoneDigitsRaw — цифры без порога длины (для значения из базы, а не запроса).
+func phoneDigitsRaw(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -117,18 +118,51 @@ func handleAdminOverview(c *gin.Context) {
 	})
 }
 
-// GET /admin/users?q=ник — гости (поиск, свежие сверху).
+// GET /admin/users?q=… — гости (поиск, свежие сверху).
+//
+// Е0-и3: ищем по нику, ТЕЛЕФОНУ и имени с фамилией, а не только по нику.
+// Телефон сравниваем цифра к цифре (`regexp_replace`), потому что у стойки
+// его называют как придётся, а в базе он лежит в E.164. Полное имя склеиваем
+// через COALESCE — иначе строка с одним пустым полем схлопывается в NULL и
+// «Ковальский» не находится, пока не заполнено имя.
+//
+// Про производительность честно: ILIKE '%…%' индексами не пользуется, это
+// seq scan. На масштабе клуба (тысячи гостей) — доли миллисекунды; когда
+// станет много, лечится триграммным индексом (pg_trgm), а не переписыванием
+// логики. Гнаться за этим сейчас — оптимизировать то, чего нет.
 func handleAdminUsers(c *gin.Context) {
 	q := db.Model(&models.User{}).Order("last_active_at DESC").Limit(100)
-	if s := c.Query("q"); s != "" {
-		q = q.Where("nickname ILIKE ?", "%"+s+"%")
+	s := strings.TrimSpace(c.Query("q"))
+	if s != "" {
+		like := "%" + escapeLike(s) + "%"
+		cond := db.Where(`nickname ILIKE ? ESCAPE '\'`, like).
+			Or(`first_name ILIKE ? ESCAPE '\'`, like).
+			Or(`last_name ILIKE ? ESCAPE '\'`, like).
+			Or(`TRIM(COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')) ILIKE ? ESCAPE '\'`, like)
+		if d := phoneDigits(s); d != "" {
+			cond = cond.Or(`regexp_replace(COALESCE(phone,''), '\D', '', 'g') LIKE ?`, "%"+d+"%")
+		}
+		q = q.Where(cond)
 	}
 	var users []models.User
 	if err := q.Find(&users).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"count": len(users), "users": users})
+	resp := gin.H{"count": len(users), "users": users}
+	if s != "" {
+		// Чем гость совпал — половина смысла ответа у стойки: три Ковальских
+		// в списке бесполезны, а «нашёлся по телефону» — уже ответ. Отдаём
+		// отдельной картой, чтобы не ломать форму `users` для админки.
+		matched := make(map[string]string, len(users))
+		for i := range users {
+			if r := guestMatchReason(&users[i], s); r != "" {
+				matched[users[i].ID.String()] = r
+			}
+		}
+		resp["matched"] = matched
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // setUserStatus — общий код бана/разбана.
