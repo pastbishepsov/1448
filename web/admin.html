@@ -750,6 +750,8 @@
           <input id="set_bkmax" class="input" type="number" min="0" max="20">
           <label class="muted" for="set_noshow">No-show: минут от начала брони до сгорания (0 — выкл)</label>
           <input id="set_noshow" class="input" type="number" min="0" max="120">
+          <label class="muted" for="set_bday">ДР-подарок: кейс имениннику (0 — выкл, 1 — light … 5 — gods; раз в год)</label>
+          <input id="set_bday" class="input" type="number" min="0" max="5">
           <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
           <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал. Лимиты не касаются владельца</div>
         </div>
@@ -3671,6 +3673,7 @@ async function renderSettings(){
     document.getElementById('set_bkminlvl').value = d.settings.booking_min_level;
     document.getElementById('set_bkmax').value = d.settings.max_active_bookings;
     document.getElementById('set_noshow').value = d.settings.no_show_min;
+    document.getElementById('set_bday').value = d.settings.birthday_case_tier;
   }catch(e){ toast('⚠ ' + e.message); }
 }
 async function saveSettings(){
@@ -3697,6 +3700,7 @@ async function saveSettings(){
     booking_min_level: parseInt(document.getElementById('set_bkminlvl').value),
     max_active_bookings: parseInt(document.getElementById('set_bkmax').value),
     no_show_min: parseInt(document.getElementById('set_noshow').value),
+    birthday_case_tier: parseInt(document.getElementById('set_bday').value),
   };
   for (const k in body){
     if (!Number.isInteger(body[k]) || body[k] < 0){ toast('⚠ Нужны целые неотрицательные числа'); return; }

@@ -24,6 +24,7 @@ const (
 	CaseSourceDeposit     CaseSource = "deposit" // легаси: выдача убрана 2026-07-23 (RESEARCH §4), старые кейсы в истории
 	CaseSourceLevelUp     CaseSource = "level_up"
 	CaseSourceAdminGrant  CaseSource = "admin_grant"
+	CaseSourceBirthday    CaseSource = "birthday" // Г8-и4: ДР-подарок (раз в год, настройка владельца)
 
 	DropTypeCoins  DropType = "coins"
 	DropTypeBuster DropType = "buster"

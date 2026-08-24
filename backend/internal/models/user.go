@@ -45,6 +45,15 @@ type User struct {
 
 	AvatarID int `json:"avatar_id" gorm:"default:1"`
 
+	// Профиль гостя (Г8, миграция 040): всё опционально и стираемо (GDPR),
+	// значения в аудит не пишутся. Награды за заполнение — lifetime-ачивки.
+	BirthDate        *time.Time `json:"birth_date,omitempty" gorm:"type:date"`
+	Discord          *string    `json:"discord,omitempty"    gorm:"size:64"`
+	Telegram         *string    `json:"telegram,omitempty"   gorm:"size:64"`
+	Source           *string    `json:"source,omitempty"     gorm:"size:32"`
+	FavoriteGames    []string   `json:"favorite_games"       gorm:"serializer:json;type:jsonb;not null;default:'[]'"`
+	BirthdayGiftYear int        `json:"-"                    gorm:"default:0"` // год последней выдачи ДР-подарка
+
 	RegisteredAt time.Time `json:"registered_at"`
 	LastActiveAt time.Time `json:"last_active_at"`
 	CreatedAt    time.Time `json:"created_at"`

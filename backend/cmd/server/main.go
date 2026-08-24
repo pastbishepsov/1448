@@ -375,6 +375,7 @@ func handleLogin(c *gin.Context) {
 	}
 
 	db.Model(&user).Update("last_active_at", time.Now())
+	checkBirthdayGift(user.ID) // Г8-и4: вдруг сегодня день рождения — подарок при входе
 	writeAuth(c, http.StatusOK, &user)
 }
 

@@ -458,6 +458,12 @@
   .modal{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2)}
   .overlay{backdrop-filter:blur(10px)}
 
+  /* — анкета (Г8) — */
+  .favstar{position:absolute; top:8px; left:8px; z-index:3; color:#ffd34d; font-size:15px; text-shadow:0 1px 6px rgba(0,0,0,.7)}
+  .favpick{display:flex; flex-wrap:wrap; gap:6px; margin-top:4px}
+  .favpick button{border:1px solid rgba(255,255,255,.14); background:transparent; color:var(--txt); border-radius:9px; padding:5px 10px; cursor:pointer; font-size:12px}
+  .favpick button.on{border-color:var(--acc); color:var(--acc); font-weight:700}
+
   /* — кухня (Г7): плитки меню и мои заказы — */
   .fooditem{display:flex; gap:12px; align-items:center; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:10px 12px; margin-bottom:10px}
   .fooditem.out{opacity:.45}
@@ -821,6 +827,15 @@
     <h2>Профиль</h2>
     <input id="pNick" class="input" style="margin-top:16px" placeholder="Никнейм">
     <div class="avapick" id="avaPick"></div>
+    <div class="muted" style="margin:12px 0 6px; font-weight:700">Анкета — +25 XP за каждое поле, полная — кейс 🎁</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
+      <input id="pBirth" class="input" type="date" title="Дата рождения">
+      <input id="pSource" class="input" placeholder="Откуда узнал о клубе" maxlength="32">
+      <input id="pDiscord" class="input" placeholder="Discord" maxlength="64">
+      <input id="pTelegram" class="input" placeholder="Telegram" maxlength="64">
+    </div>
+    <div class="muted" style="margin:10px 0 2px">Любимые игры (до 3) — поднимем их в витрине</div>
+    <div class="favpick" id="favPick"></div>
     <div class="qrblock" id="qrBlock">
       <canvas id="clubQR" width="132" height="132"></canvas>
       <div>
@@ -1021,6 +1036,7 @@ let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
 let sensProfile = null, sensProfileApplied = false;
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
 let menuData = null, myOrders = [], foodQty = {}, foodBusy = false, myUnpaidPln = 0; // Г7: кухня (Р10: постоплата)
+let lastFavsKey = ''; // Г8: витрина пересобирается при смене любимых игр
 let authMode = 'login';
 
 /* ═══════════════ API + refresh-токены ═══════════════ */
@@ -1131,6 +1147,9 @@ async function loadAll(){
     activeSession = sessions.find(s => !s.ended_at) || null;
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
     renderTop(); renderWallet(); renderSession(); renderSide(); renderLock();
+    // Г8-и5: любимые игры изменились → пересобрать витрину (звёзды и порядок)
+    const favsKey = (me.favorite_games || []).join();
+    if (favsKey !== lastFavsKey){ lastFavsKey = favsKey; if (CATALOG.games) renderCatalog(); }
     document.getElementById('casesBub').classList.toggle('hidden', !(cs.unopened > 0));
     document.getElementById('casesBub').textContent = cs.unopened;
   }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
@@ -1235,9 +1254,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && catFolder)
 function renderCatalog(){
   catGroups = buildCatGroups();
   catAppGroups = buildAppGroups();
+  const favs = (me && me.favorite_games) || []; // Г8-и5: любимые игры из анкеты
   const area = document.getElementById('catalogArea');
   const gameTile = ({g,i}) => `
     <div class="game${COVERS.has(g.id)?' hasart':''}" onclick="launch('games',${i})">
+      ${favs.includes(g.id) ? '<span class="favstar">★</span>' : ''}
       <div class="art"${coverStyle(g.id)}></div>
       <span class="tag">${esc(g.tag || g.name[0])}</span>
       <div class="gemblem">${ICONS[g.id] || ''}</div>
@@ -1284,7 +1305,10 @@ function renderCatalog(){
         <div class="f-name">${esc(name)}</div>
         <div class="f-cnt">${cnt}</div>
       </div>`;
-    const top = CATALOG.games.slice(0, TOP_GAMES);
+    // Г8-и5: любимые игры гостя всплывают в начало витрины (индексы родные)
+    const idx = CATALOG.games.map((g, i) => ({g, i}));
+    const favFirst = [...idx.filter(x => favs.includes(x.g.id)), ...idx.filter(x => !favs.includes(x.g.id))];
+    const top = favFirst.slice(0, TOP_GAMES);
     const platFolders = catGroups.map((g,i) => folderTile(
       `openCatFolder(${i})`,
       g.p ? (ICONS[g.p.id] || FOLDER_ICON) : FOLDER_ICON,
@@ -1300,8 +1324,8 @@ function renderCatalog(){
       s.items.slice(0,3).map(({a}) => icon(a)).join('') + (s.items.length > 3 ? '<b>+' + (s.items.length-3) + '</b>' : '')
     )).join('');
     area.innerHTML = `
-      <div class="sec-h"><h2>${UI.ctrl} Игры</h2><span class="cnt">самое популярное · всего ${CATALOG.games.length}</span></div>
-      <div class="games">${top.map((g,i) => gameTile({g,i})).join('')}</div>
+      <div class="sec-h"><h2>${UI.ctrl} Игры</h2><span class="cnt">${favs.length ? 'сначала твои любимые · ' : 'самое популярное · '}всего ${CATALOG.games.length}</span></div>
+      <div class="games">${top.map(x => gameTile(x)).join('')}</div>
       <div class="sec-h"><h2>${UI.rocket} Платформы</h2><span class="cnt">папки — внутри все игры платформы и её клиент</span></div>
       <div class="folders">${platFolders}</div>
       <div class="sec-h"><h2>${UI.apps} Приложения</h2><span class="cnt">папки — зайди и выбери</span></div>
@@ -1494,6 +1518,7 @@ function notifText(n){
       return '🍔 ' + nm + ': обновление заказа';
     }
     case 'kitchen_unpaid': return '🧾 Не забудь рассчитаться за кухню у стойки: ' + (p.total_pln||0) + ' zł';
+    case 'birthday_gift': return '🎂 С днём рождения! Клуб дарит кейс ' + (p.case_tier||'') + ' — открой его во вкладке «Кейсы»';
   }
   return '🔔 Обновление аккаунта';
 }
@@ -2633,15 +2658,35 @@ function drawClubQR(){
 }
 
 /* ═══════════════ ПРОФИЛЬ ═══════════════ */
+let profFavs = [];
 function openProfile(){
   document.getElementById('pNick').value = me.nickname;
   profAva = me.avatar_id || 1;
   const pick = document.getElementById('avaPick');
   pick.innerHTML = AVATARS.map((a,i) =>
     `<button class="${i+1===profAva?'on':''}" onclick="pickAva(${i+1})">${a}</button>`).join('');
+  // Г8: анкета
+  document.getElementById('pBirth').value = (me.birth_date || '').slice(0, 10);
+  document.getElementById('pDiscord').value = me.discord || '';
+  document.getElementById('pTelegram').value = me.telegram || '';
+  document.getElementById('pSource').value = me.source || '';
+  profFavs = [...(me.favorite_games || [])];
+  paintFavPick();
   document.getElementById('pErr').textContent = '';
   drawClubQR(); // М5: QR на /app
   document.getElementById('profOverlay').classList.add('show');
+}
+function paintFavPick(){
+  const games = (CATALOG.games || []);
+  document.getElementById('favPick').innerHTML = games.map(g =>
+    `<button class="${profFavs.includes(g.id)?'on':''}" onclick="pickFav('${g.id}')">${esc(g.name)}</button>`).join('')
+    || '<span class="muted">каталог игр пуст</span>';
+}
+function pickFav(id){
+  if (profFavs.includes(id)) profFavs = profFavs.filter(x => x !== id);
+  else if (profFavs.length < 3) profFavs.push(id);
+  else { toast('Любимых игр — до трёх'); return; }
+  paintFavPick();
 }
 function pickAva(id){
   profAva = id;
@@ -2649,9 +2694,20 @@ function pickAva(id){
 }
 async function saveProfile(){
   try{
-    await api('/me', {method:'PATCH', body:JSON.stringify({nickname:document.getElementById('pNick').value.trim(), avatar_id:profAva})});
-    closeOverlay('profOverlay'); toast('✓ Профиль обновлён');
+    const xpBefore = me.xp_total || 0;
+    await api('/me', {method:'PATCH', body:JSON.stringify({
+      nickname: document.getElementById('pNick').value.trim(),
+      avatar_id: profAva,
+      birth_date: document.getElementById('pBirth').value,
+      discord: document.getElementById('pDiscord').value.trim(),
+      telegram: document.getElementById('pTelegram').value.trim(),
+      source: document.getElementById('pSource').value.trim(),
+      favorite_games: profFavs,
+    })});
+    closeOverlay('profOverlay');
     await loadAll();
+    const dx = (me.xp_total || 0) - xpBefore;
+    toast(dx > 0 ? '🎉 Анкета: +' + dx + ' XP' : '✓ Профиль обновлён');
   }catch(e){ document.getElementById('pErr').textContent = e.message; }
 }
 

@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func strptr(s string) *string { return &s }
 func intptr(i int) *int       { return &i }
@@ -55,6 +58,69 @@ func TestNicknameSafe(t *testing.T) {
 	for _, tc := range cases {
 		if got := nicknameSafe(tc.nick); got != tc.ok {
 			t.Errorf("%s: nicknameSafe(%q) = %v, ожидалось %v", tc.name, tc.nick, got, tc.ok)
+		}
+	}
+}
+
+// ── Г8: валидации анкеты ──────────────────────────────────────────────
+
+func TestValidateBirthDate(t *testing.T) {
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	if _, ok := validateBirthDate("2010-05-10", now); !ok {
+		t.Error("16 лет — должно пройти")
+	}
+	if _, ok := validateBirthDate("2021-08-25", now); ok {
+		t.Error("4 года (ещё нет 6) — должно отбиться")
+	}
+	if _, ok := validateBirthDate("2020-08-24", now); !ok {
+		t.Error("ровно 6 лет сегодня — должно пройти")
+	}
+	if _, ok := validateBirthDate("1920-01-01", now); ok {
+		t.Error("106 лет — должно отбиться")
+	}
+	if _, ok := validateBirthDate("10.05.2010", now); ok {
+		t.Error("кривой формат — должно отбиться")
+	}
+}
+
+func TestValidateHandle(t *testing.T) {
+	if h, ok := validateHandle("@kotik_1448"); !ok || h != "kotik_1448" {
+		t.Errorf("@ должен срезаться: %q %v", h, ok)
+	}
+	if _, ok := validateHandle("a"); ok {
+		t.Error("1 символ — должно отбиться")
+	}
+	if _, ok := validateHandle("есть пробел"); ok {
+		t.Error("пробел — должно отбиться")
+	}
+	if _, ok := validateHandle(`ник"с кавычкой`); ok {
+		t.Error("кавычка — должно отбиться")
+	}
+}
+
+func TestValidateFavorites(t *testing.T) {
+	games := map[string]bool{"cs2": true, "dota2": true, "valorant": true, "fortnite": true}
+	if out, ok := validateFavorites([]string{"cs2", "dota2"}, games); !ok || len(out) != 2 {
+		t.Error("две игры из каталога — должно пройти")
+	}
+	if _, ok := validateFavorites([]string{"cs2", "dota2", "valorant", "fortnite"}, games); ok {
+		t.Error("4 игры — больше лимита, должно отбиться")
+	}
+	if _, ok := validateFavorites([]string{"cs2", "cs2"}, games); ok {
+		t.Error("дубль — должно отбиться")
+	}
+	if _, ok := validateFavorites([]string{"minecraft"}, games); ok {
+		t.Error("не из каталога — должно отбиться")
+	}
+	if out, ok := validateFavorites([]string{}, games); !ok || len(out) != 0 {
+		t.Error("пустой список (стирание) — должно пройти")
+	}
+}
+
+func TestIsLeapYear(t *testing.T) {
+	for y, want := range map[int]bool{2024: true, 2026: false, 2000: true, 1900: false} {
+		if isLeapYear(y) != want {
+			t.Errorf("isLeapYear(%d) != %v", y, want)
 		}
 	}
 }

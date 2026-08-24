@@ -42,6 +42,13 @@ type playerStats struct {
 	VisitsMonth  int
 	MinutesMonth int
 	ActiveMonth  int
+	// анкета (Г8): бинарные факты профиля, profileStats() в profile.go
+	ProfileBirth    int
+	ProfileGames    int
+	ProfileDiscord  int
+	ProfileTelegram int
+	ProfileSource   int
+	ProfileComplete int
 }
 
 // achCondition — разобранное условие ({"min":10} / {"count":1} / {"days":7}).
@@ -99,6 +106,18 @@ func conditionValue(condType string, s playerStats) (int, bool) {
 		return s.KitchenToday, true
 	case "night_session_today":
 		return s.NightToday, true
+	case "profile_birth":
+		return s.ProfileBirth, true
+	case "profile_games":
+		return s.ProfileGames, true
+	case "profile_discord":
+		return s.ProfileDiscord, true
+	case "profile_telegram":
+		return s.ProfileTelegram, true
+	case "profile_source":
+		return s.ProfileSource, true
+	case "profile_complete":
+		return s.ProfileComplete, true
 	}
 	return 0, false
 }

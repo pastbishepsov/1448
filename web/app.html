@@ -294,6 +294,10 @@
   .achrow{display:flex; gap:10px; padding:10px 0 8px; border-top:1px solid var(--hair); align-items:flex-start}
   .apbar{height:4px; background:rgba(255,255,255,.08); border-radius:99px; margin:5px 0 2px; overflow:hidden}
   .apbar i{display:block; height:100%; background:var(--acc); border-radius:99px}
+  .inp{width:100%; background:rgba(255,255,255,.05); border:1px solid var(--hair); border-radius:10px; padding:10px 12px; color:var(--txt); font:inherit}
+  .pfgames{display:flex; flex-wrap:wrap; gap:6px}
+  .pfg{border:1px solid var(--hair); background:transparent; color:var(--txt); border-radius:9px; padding:5px 10px; font-size:12px}
+  .pfg.on{border-color:var(--acc); color:var(--acc); font-weight:700}
   .ktrow{display:flex; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--hair)}
   .ktrow img{width:48px; height:48px; object-fit:cover; border-radius:10px; background:rgba(255,255,255,.06); flex:none}
   .ktrow .kph{width:48px; height:48px; border-radius:10px; background:rgba(255,255,255,.06); display:flex; align-items:center; justify-content:center; font-size:22px; flex:none}
@@ -511,6 +515,7 @@
         <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
         <div class="skel" style="width:90%; height:14px"></div>
       </div>
+      <div class="card hidden" id="profileCard"></div><!-- Г8: анкета -->
       <div class="card" id="achCard">
         <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
         <div class="skel" style="width:80%; height:14px"></div>
@@ -711,6 +716,18 @@ const STR = {
   kt_to_pc: ' — принесём к {c}',
   kt_pay_after: '. Расчёт у стойки после игры',
   kt_cancelled: '↩ Заказ отменён',
+  pf_title: 'Анкета',
+  pf_hint: '+25 XP за каждое поле, полная анкета — кейс 🎁. Всё необязательно и стирается в любой момент',
+  pf_done: 'Анкета заполнена — спасибо! Править можно в любой момент',
+  pf_open: 'Заполнить',
+  pf_close: 'Свернуть',
+  pf_save: 'Сохранить',
+  pf_saved: '✓ Сохранено',
+  pf_xp: '🎉 Анкета: +{n} XP',
+  pf_source: 'Откуда узнал о клубе',
+  pf_games: 'Любимые игры (до 3) — поднимем в витрине шелла',
+  pf_limit: 'Любимых игр — до трёх',
+  ntf_birthday: '🎂 С днём рождения! Клуб дарит кейс {t}',
   kt_st_new: 'ждёт', kt_st_accepted: 'принят', kt_st_preparing: 'готовим',
   kt_st_delivering: 'несём', kt_st_done: 'выдан', kt_st_cancelled: 'отменён',
   ntf_kt_accepted: '🍔 {n}: приняли, скоро займёмся',
@@ -1333,7 +1350,7 @@ async function loadProgress(){
   await loadSessions(); // журнал для истории (заодно live-карточка честная)
   renderProgress();
 }
-function renderProgress(){ renderRank(); renderTalents(); renderAch(); renderLb(); renderHist(); }
+function renderProgress(){ renderRank(); renderTalents(); renderAch(); renderLb(); renderHist(); renderProfileCard(); }
 
 /* ── ранг с лаврами и шкалой часов (М2-и1) ── */
 function renderRank(){
@@ -1908,6 +1925,71 @@ async function ktCancel(id){
   }catch(e){ toast(T('toast_err', {m: e.message})); }
 }
 
+/* ── Г8: анкета — карточка в «Прогрессе»: +25 XP за поле, полная — кейс ── */
+let pfGames = null, pfFavs = [], pfOpen = false, pfBusy = false;
+async function loadPfGames(){
+  if (pfGames) return;
+  try{ pfGames = ((await api('/catalog')).games || []).map(g => ({id: g.id, name: g.name})); }
+  catch(e){ pfGames = []; }
+}
+function renderProfileCard(){
+  const el = document.getElementById('profileCard');
+  if (!el || !me) return;
+  el.classList.remove('hidden');
+  const filled = [me.birth_date, (me.favorite_games||[]).length, me.discord, me.telegram, me.source]
+    .filter(Boolean).length;
+  if (!pfOpen){
+    el.innerHTML = `<h3>${esc(STR.pf_title)} <span class="muted cnum" style="font-weight:700">${filled}/5</span></h3>
+      <div class="muted" style="font-size:12.5px">${esc(filled >= 5 ? STR.pf_done : STR.pf_hint)}</div>
+      <button class="btn ghost" style="margin-top:10px" onclick="pfToggle()">${esc(STR.pf_open)}</button>`;
+    return;
+  }
+  const favBtn = g => `<button class="pfg ${pfFavs.includes(g.id)?'on':''}" onclick="pfFav('${g.id}')">${esc(g.name)}</button>`;
+  el.innerHTML = `<h3>${esc(STR.pf_title)} <span class="muted cnum" style="font-weight:700">${filled}/5</span></h3>
+    <div class="muted" style="font-size:12.5px; margin-bottom:8px">${esc(STR.pf_hint)}</div>
+    <div style="display:grid; gap:8px">
+      <input id="pf_birth" class="inp" type="date" value="${(me.birth_date||'').slice(0,10)}">
+      <input id="pf_source" class="inp" placeholder="${esc(STR.pf_source)}" maxlength="32" value="${esc(me.source||'')}">
+      <input id="pf_discord" class="inp" placeholder="Discord" maxlength="64" value="${esc(me.discord||'')}">
+      <input id="pf_telegram" class="inp" placeholder="Telegram" maxlength="64" value="${esc(me.telegram||'')}">
+    </div>
+    <div class="muted" style="margin:10px 0 4px; font-size:12.5px">${esc(STR.pf_games)}</div>
+    <div class="pfgames">${(pfGames||[]).map(favBtn).join('') || '<span class="muted">…</span>'}</div>
+    <div style="display:flex; gap:8px; margin-top:12px">
+      <button class="btn" style="flex:1" onclick="pfSave()">${esc(STR.pf_save)}</button>
+      <button class="btn ghost" style="flex:1" onclick="pfToggle()">${esc(STR.pf_close)}</button>
+    </div>`;
+}
+async function pfToggle(){
+  pfOpen = !pfOpen;
+  if (pfOpen){ await loadPfGames(); pfFavs = [...(me.favorite_games || [])]; }
+  renderProfileCard();
+}
+function pfFav(id){
+  if (pfFavs.includes(id)) pfFavs = pfFavs.filter(x => x !== id);
+  else if (pfFavs.length < 3) pfFavs.push(id);
+  else { toast(STR.pf_limit); return; }
+  renderProfileCard();
+}
+async function pfSave(){
+  if (pfBusy) return;
+  pfBusy = true;
+  try{
+    const xpBefore = me.xp_total || 0;
+    const v = id => (document.getElementById(id) || {value: ''}).value.trim();
+    await api('/me', {method:'PATCH', body:JSON.stringify({
+      birth_date: v('pf_birth'), discord: v('pf_discord'), telegram: v('pf_telegram'),
+      source: v('pf_source'), favorite_games: pfFavs,
+    })});
+    await loadMe();
+    pfOpen = false;
+    renderProfileCard();
+    const dx = (me.xp_total || 0) - xpBefore;
+    toast(dx > 0 ? T('pf_xp', {n: dx}) : STR.pf_saved);
+  }catch(e){ toast(T('toast_err', {m: e.message})); }
+  pfBusy = false;
+}
+
 /* ── уведомления (М4-и2): тосты очередью + лента; данные освежаются сами ── */
 async function loadNotifs(){
   let items;
@@ -1944,6 +2026,7 @@ function ntfText(n){
       return t;
     }
     case 'kitchen_unpaid': return T('ntf_kt_unpaid', {z: p.total_pln || 0});
+    case 'birthday_gift': return T('ntf_birthday', {t: p.case_tier || ''});
     case 'booking_cancel':
       return STR.ntf_bk_cancel + (p.start_time ? ' · ' + hm(p.start_time) : '') + (p.computer ? ' (' + p.computer + ')' : '');
     case 'booking_restore':
@@ -2001,7 +2084,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-24.5';
+const APP_VER = '2026-08-24.6';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
