@@ -258,10 +258,8 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 	userID := session.UserID.String()
 
 	now := time.Now()
-	minutes := int(math.Ceil(now.Sub(session.StartedAt).Minutes()))
-	if minutes < 0 {
-		minutes = 0
-	}
+	// Г2: паузы не тарифицируются и XP не приносят — минуты БЕЗ пауз, вверх.
+	minutes := effectiveMinutesCeil(session, now)
 
 	// Г1: финальный расчёт кошелька — доначислить хвост по РЕАЛЬНОМУ времени
 	// (вверх до целой минуты, как и XP). Дев-оверрайд минут ниже на деньги

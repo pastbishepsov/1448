@@ -172,11 +172,63 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 	return hitZero, err
 }
 
-// billSession — один тик одной сессии: доначислить прошедшие целые минуты,
-// разослать прогноз/предупреждения, обработать ноль и грейс.
+// billSession — один тик одной сессии: пауза/AFK (Г2), затем доначислить
+// прошедшие БЕЗ пауз целые минуты, разослать прогноз/предупреждения,
+// обработать ноль и грейс.
 func billSession(s *models.Session, now time.Time) bool {
 	rateGrosz := models.GroszFromPLN(s.EffectiveRatePLN)
 	grace := settingInt64("zero_grace_min", zeroGraceMinDef)
+	pauseLimit := settingInt64("pause_limit_min", pauseLimitMinDef)
+	afkStop := settingInt64("afk_stop_min", afkStopMinDef)
+	idle, idleKnown := shellIdleSec(s.ComputerID.String())
+
+	// — Пауза (Г2-и1): время и деньги стоят — до бюджета или возвращения —
+	if s.PausedAt != nil {
+		guestBack := idleKnown && idle <= afkBackIdleSec
+		byAfk := s.PausedBy != nil && *s.PausedBy == "afk"
+		switch {
+		case byAfk && guestBack: // гость шевельнул мышью — afk-пауза снимается сама
+			_ = resumePause(s, now)
+		case pauseBudgetLeftSec(s, pauseLimit, now) <= 0:
+			if byAfk { // AFK и паузный бюджет кончился — освобождаем ПК
+				if _, err := finishSession(s, nil, "afk"); err == nil {
+					log.Printf("биллинг: сессия %s завершена по AFK", s.ID)
+				}
+				return true
+			}
+			_ = resumePause(s, now) // ручная пауза упёрлась в лимит — время снова идёт
+			notifyUser(s.UserID, "pause_over", map[string]any{"limit_min": pauseLimit})
+		default:
+			return true // пауза идёт: не списываем и не пугаем
+		}
+	}
+
+	// — AFK-детект (Г2-и2): только с живым датчиком и включённой настройкой —
+	if afkStop > 0 && idleKnown && s.PausedAt == nil {
+		if idle >= int(afkStop)*60 {
+			if s.AfkWarnedAt == nil {
+				notifyUser(s.UserID, "afk_warn", map[string]any{"idle_min": idle / 60})
+				db.Model(&models.Session{}).Where("id = ?", s.ID).Update("afk_warned_at", now)
+				t := now
+				s.AfkWarnedAt = &t
+			}
+			if pauseLimit > 0 && pauseBudgetLeftSec(s, pauseLimit, now) > 0 {
+				if err := startPause(s, now, "afk"); err == nil {
+					notifyUser(s.UserID, "afk_pause", map[string]any{"limit_min": pauseLimit})
+				}
+				return true
+			}
+			if _, err := finishSession(s, nil, "afk"); err == nil {
+				log.Printf("биллинг: сессия %s завершена по AFK (пауза недоступна)", s.ID)
+			}
+			return true
+		}
+		if s.AfkWarnedAt != nil && idle <= afkBackIdleSec {
+			// вернулся после предупреждения — следующий AFK предупредит заново
+			db.Model(&models.Session{}).Where("id = ?", s.ID).Update("afk_warned_at", nil)
+			s.AfkWarnedAt = nil
+		}
+	}
 
 	// Кошелёк уже на нуле: минуты грейса не тарифицируем (додеп сбросит
 	// zero_since — и хвост доначислится следующим тиком), ждём истечения.
@@ -189,15 +241,22 @@ func billSession(s *models.Session, now time.Time) bool {
 		return true
 	}
 
-	elapsed := int(now.Sub(s.StartedAt).Minutes())
-	if elapsed < 0 {
-		elapsed = 0
-	}
+	// Минуты считаем БЕЗ пауз (Г2): пауза не тарифицируется.
+	elapsed := effectiveElapsedMinutes(s, now)
+	prevBilled := s.BilledMinutes
 
 	var user models.User
 	hitZero, err := settleSessionMinutes(s, &user, elapsed)
 	if err != nil {
 		return false
+	}
+
+	// Активные минуты (анти-фарм Г5): учтённые этим тиком минуты считаются
+	// активными, если гость не в простое — или датчика нет вовсе.
+	if billedDelta := s.BilledMinutes - prevBilled; billedDelta > 0 && (!idleKnown || idle < activeIdleSec) {
+		db.Model(&models.Session{}).Where("id = ? AND status = ?", s.ID, models.SessionStatusActive).
+			UpdateColumn("active_minutes", gorm.Expr("active_minutes + ?", billedDelta))
+		s.ActiveMinutes += billedDelta
 	}
 
 	left := minutesLeft(user.CoinMinutes, user.WalletGrosz, rateGrosz, s.MoneyMinutes)

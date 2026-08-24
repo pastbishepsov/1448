@@ -56,6 +56,8 @@ var settingBounds = map[string][2]int64{
 	"coin_burn_warn_days":       {0, 365},  // В4-3: за сколько дней предупредить гостя
 	"min_start_minutes":         {0, 1440}, // Г1-и3: порог старта сессии в минутах, 0 = пускать всех
 	"zero_grace_min":            {0, 60},   // Г1-и2: грейс на нуле кошелька до автозавершения
+	"pause_limit_min":           {0, 240},  // Г2-и1: лимит паузы на сессию, 0 = пауза выключена
+	"afk_stop_min":              {0, 240},  // Г2-и2: порог простоя до AFK-реакции, 0 = выкл
 }
 
 func currentSettings() gin.H {
@@ -75,6 +77,8 @@ func currentSettings() gin.H {
 		"coin_burn_warn_days":       settingInt64("coin_burn_warn_days", coinBurnWarnDays),
 		"min_start_minutes":         settingInt64("min_start_minutes", minStartMinutesDef),
 		"zero_grace_min":            settingInt64("zero_grace_min", zeroGraceMinDef),
+		"pause_limit_min":           settingInt64("pause_limit_min", pauseLimitMinDef),
+		"afk_stop_min":              settingInt64("afk_stop_min", afkStopMinDef),
 	}
 }
 

@@ -41,7 +41,15 @@ type Session struct {
 	Warn15At        *time.Time `json:"warn15_at,omitempty"`                // «осталось ~15 мин» отправлено
 	Warn5At         *time.Time `json:"warn5_at,omitempty"`                 // «осталось ~5 мин» отправлено
 	ZeroSince       *time.Time `json:"zero_since,omitempty"`               // кошелёк на нуле с … (грейс)
-	EndedReason     *string    `json:"ended_reason,omitempty" gorm:"size:16"` // manual|admin|balance (Г3: booking, Г2: afk)
+	EndedReason     *string    `json:"ended_reason,omitempty" gorm:"size:16"` // manual|admin|balance|afk (Г3: booking)
+
+	// Пауза и AFK (трек Г, Г2; миграция 033). Паузные поля меняют только
+	// startPause/resumePause (pause.go) и биллинг.
+	PausedAt       *time.Time `json:"paused_at,omitempty"`                  // пауза идёт с …
+	PausedTotalSec int        `json:"paused_total_sec" gorm:"default:0"`    // суммарная пауза, сек
+	PausedBy       *string    `json:"paused_by,omitempty" gorm:"size:8"`    // guest | afk
+	ActiveMinutes  int        `json:"active_minutes" gorm:"default:0"`      // минуты без простоя (анти-фарм Г5)
+	AfkWarnedAt    *time.Time `json:"afk_warned_at,omitempty"`              // afk_warn отправлен
 
 	CreatedAt time.Time `json:"created_at"`
 

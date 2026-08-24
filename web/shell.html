@@ -1131,7 +1131,9 @@ function renderWallet(){
   if (!zl || !me) return;
   zl.textContent = fmtZl(me.wallet_grosz);
   let txt = '', low = false;
-  if (activeSession){
+  if (activeSession && activeSession.paused_at){
+    txt = '· пауза'; // Г2: время стоит — прогноз «до HH:MM» не честен
+  } else if (activeSession){
     const rateGr = Math.round((activeSession.effective_rate_pln || 0) * 100);
     if (rateGr > 0){
       const left = (me.coin_minutes || 0) + Math.floor((me.wallet_grosz || 0) * 60 / rateGr);
@@ -1399,6 +1401,10 @@ function notifText(n){
     case 'grant_case': return '🎁 Тебе выдан кейс ' + (p.tier||'');
     case 'balance_low': return '⏳ Баланс кончается: осталось ~' + (p.minutes_left||0) + ' мин. Пополни у стойки';
     case 'balance_zero': return '🛑 Деньги кончились — сессия завершится через ' + (p.grace_min||0) + ' мин. Пополни у стойки, чтобы продолжить';
+    case 'pause_over': return '⏱ Лимит паузы исчерпан (' + (p.limit_min||0) + ' мин) — время снова идёт';
+    case 'afk_warn': return '💤 Ты давно не за компом — сессия скоро встанет на паузу или завершится';
+    case 'afk_pause': return '💤 AFK: сессия на паузе. Вернись и шевельни мышью — продолжим';
+    case 'session_moved': return '🖥 Тебя пересадили за ' + (p.computer||'другой ПК') + ' — сессия продолжается';
   }
   return '🔔 Обновление аккаунта';
 }
@@ -1472,19 +1478,32 @@ function renderSession(){
   el.classList.toggle('live', !!activeSession);
   if (activeSession){
     chip.classList.add('on');
-    el.innerHTML = `
+    const paused = !!activeSession.paused_at; // Г2: пауза — время и деньги стоят
+    el.innerHTML = paused ? `
+      <div class="sess-on">
+        <div>
+          <div class="muted">Пауза — время и деньги стоят</div>
+          <div class="sess-time">⏸ ${fmtHMS(effectiveSec())}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <button class="btn slim" onclick="resumeSession()">▶ Продолжить</button>
+          <button class="btn danger slim" onclick="endSession(null)">Завершить</button>
+        </div>
+      </div>` : `
       <div class="sess-on">
         <div>
           <div class="muted">Сессия идёт</div>
           <div class="sess-time" id="sessTime">00:00</div>
         </div>
         <div style="display:flex; flex-direction:column; gap:8px">
+          <button class="btn ghost slim" onclick="pauseSession()">⏸ Пауза</button>
           <button class="btn danger slim" onclick="endSession(null)">Завершить</button>
           <button class="btn ghost slim" title="dev: засчитать 150 минут" onclick="endSession(150)">+150 мин (dev)</button>
         </div>
       </div>`;
     if (timerIv) clearInterval(timerIv);
-    timerIv = setInterval(tickTimer, 1000); tickTimer();
+    if (!paused){ timerIv = setInterval(tickTimer, 1000); tickTimer(); }
+    else document.getElementById('timer').textContent = '⏸';
   } else {
     chip.classList.remove('on');
     if (timerIv) clearInterval(timerIv);
@@ -1499,14 +1518,36 @@ function renderSession(){
   }
 }
 
+/* Г2: секунды сессии БЕЗ пауз — как их считает сервер (billing/pause). */
+function effectiveSec(){
+  if (!activeSession) return 0;
+  let sec = Math.floor((Date.now() - new Date(activeSession.started_at)) / 1000)
+          - (activeSession.paused_total_sec || 0);
+  if (activeSession.paused_at) sec -= Math.floor((Date.now() - new Date(activeSession.paused_at)) / 1000);
+  return Math.max(0, sec);
+}
+function fmtHMS(sec){
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  return (h>0 ? h+':' : '') + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
 function tickTimer(){
   if (!activeSession) return;
-  const sec = Math.max(0, Math.floor((Date.now() - new Date(activeSession.started_at)) / 1000));
-  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
-  const t = (h>0 ? h+':' : '') + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  const t = fmtHMS(effectiveSec());
   const st = document.getElementById('sessTime');
   if (st) st.textContent = t;
   document.getElementById('timer').textContent = t;
+}
+
+/* Г2: пауза/продолжение с карточки сессии */
+async function pauseSession(){
+  try{ await api('/me/sessions/pause', {method:'POST', body:'{}'});
+    toast('⏸ Пауза — время и деньги стоят'); await loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function resumeSession(){
+  try{ await api('/me/sessions/resume', {method:'POST', body:'{}'});
+    toast('▶ Погнали дальше'); await loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 async function startSession(){
@@ -1560,6 +1601,10 @@ setInterval(async () => {
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
       if (!still){ toast('⏹ Сессия завершена'); await loadAll(); }
+      else if (!!still.paused_at !== !!activeSession.paused_at ||
+               (still.paused_total_sec || 0) !== (activeSession.paused_total_sec || 0)){
+        activeSession = still; renderSession(); // Г2: автопауза/автовозврат
+      }
     } else {
       const started = rows.find(s => s.status === 'active');
       if (started){ toast('▶ Сессия начата у стойки — играй!'); await loadAll(); }

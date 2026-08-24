@@ -730,6 +730,10 @@ const STR = {
   ntf_bal_low: '⏳ Осталось ~{m} мин — пополни у стойки',
   ntf_bal_zero: '🛑 Деньги кончились — сессия завершится через {g} мин',
   wal_balance: 'zł в кошельке',
+  ntf_pause_over: '⏱ Лимит паузы исчерпан ({l} мин) — время снова идёт',
+  ntf_afk_warn: '💤 Ты давно не за компом — сессия скоро встанет на паузу',
+  ntf_afk_pause: '💤 AFK: сессия на паузе — вернись за ПК',
+  ntf_moved: '🖥 Тебя пересадили за {c} — сессия продолжается',
   rate_line: '1 zł → {c} койнов · игра: +{m} койнов/мин',
   btn_topup: 'Пополнить',
   topup_title: 'Пополнение баланса',
@@ -1755,6 +1759,14 @@ function ntfText(n){
       return T('ntf_bal_low', {m: p.minutes_left || 0});
     case 'balance_zero':
       return T('ntf_bal_zero', {g: p.grace_min || 0});
+    case 'pause_over':
+      return T('ntf_pause_over', {l: p.limit_min || 0});
+    case 'afk_warn':
+      return STR.ntf_afk_warn;
+    case 'afk_pause':
+      return STR.ntf_afk_pause;
+    case 'session_moved':
+      return T('ntf_moved', {c: p.computer || 'ПК'});
   }
   return STR.ntf_default;
 }
@@ -1782,7 +1794,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-23.1';
+const APP_VER = '2026-08-23.2';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

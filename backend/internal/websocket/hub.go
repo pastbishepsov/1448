@@ -46,6 +46,11 @@ type Client struct {
 	conn       *websocket.Conn
 	send       chan []byte
 	hub        *Hub
+
+	// Последний простой ввода с этого ПК (Г2, AFK): агент кладёт idle_sec в
+	// session_tick; -1/отсутствие поля = датчика нет. Защищено hub.mu.
+	idleSec int
+	idleAt  time.Time
 }
 
 func (c *Client) writePump() {
@@ -245,11 +250,37 @@ func (h *Hub) Send(computerID string, msgType MessageType, payload any) error {
 	}
 }
 
+// ShellIdle — последний простой ввода с ПК (Г2, AFK): секунды + давность
+// сигнала. ok=false — датчика нет (агент не шлёт idle_sec или ПК офлайн).
+func (h *Hub) ShellIdle(computerID string) (idleSec int, age time.Duration, ok bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	c, found := h.clients[computerID]
+	if !found || c.idleAt.IsZero() || c.idleSec < 0 {
+		return 0, 0, false
+	}
+	return c.idleSec, time.Since(c.idleAt), true
+}
+
 // handleMessage — обработка входящих сообщений от Shell.
 func (h *Hub) handleMessage(c *Client, msg Message) {
 	switch msg.Type {
 	case MsgSessionTick:
 		log.Printf("Heartbeat от computer=%s", c.ComputerID)
+		// Г2: агент кладёт в heartbeat секунды простоя ввода (AFK-датчик).
+		// C#-сервис шлёт тик без payload — тогда датчика просто нет.
+		var p struct {
+			IdleSec *int `json:"idle_sec"`
+		}
+		if len(msg.Payload) > 0 {
+			_ = json.Unmarshal(msg.Payload, &p)
+		}
+		if p.IdleSec != nil {
+			h.mu.Lock()
+			c.idleSec = *p.IdleSec
+			c.idleAt = time.Now()
+			h.mu.Unlock()
+		}
 	case MsgAdminCall:
 		log.Printf("Вызов администратора от computer=%s", c.ComputerID)
 		if h.OnAdminCall != nil {

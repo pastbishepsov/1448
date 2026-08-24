@@ -325,7 +325,10 @@ func (a *agent) runWS() {
 
 func (a *agent) heartbeat(stop <-chan struct{}) {
 	runHeartbeat(60*time.Second, stop, func() error {
-		return a.wsSend(wsMessage{Type: "session_tick"})
+		// Г2: в heartbeat едет AFK-датчик — секунды простоя ввода
+		// (GetLastInputInfo, idle_windows.go; -1 = датчика нет).
+		payload, _ := json.Marshal(map[string]int{"idle_sec": idleSeconds()})
+		return a.wsSend(wsMessage{Type: "session_tick", Payload: payload})
 	})
 }
 
