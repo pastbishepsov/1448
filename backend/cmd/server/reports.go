@@ -246,9 +246,10 @@ func aggMoney(p period) moneyAgg {
 		Cnt   int64
 		Items int64
 	}
+	// Р7 (Г7): продажи «кошельком» — погашение обязательства, НЕ выручка
 	db.Model(&models.Sale{}).
 		Select("COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt, COALESCE(SUM(qty),0) AS items").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Scan(&goods)
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Scan(&goods)
 	a.GoodsPLN, a.GoodsSales, a.GoodsItems = goods.Pln, goods.Cnt, goods.Items
 	a.Revenue = math.Round((a.DepositsPLN+a.GoodsPLN)*100) / 100
 
@@ -274,7 +275,7 @@ func aggMoney(p period) moneyAgg {
 	}
 	rows = nil
 	db.Model(&models.Sale{}).Select("method, COALESCE(SUM(total_pln),0) AS pln").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
 		Group("method").Scan(&rows)
 	for _, r := range rows {
 		add(r.Method, r.Pln)
@@ -319,7 +320,7 @@ func handleReportMoney(c *gin.Context) {
 	rows = nil
 	db.Model(&models.Sale{}).
 		Select(dayExpr("created_at", reportHour)+" AS d, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
 		Group("d").Order("d").Scan(&rows)
 	for _, r := range rows {
 		v := get(r.D.Format("2006-01-02"))
@@ -365,7 +366,7 @@ func handleReportMoney(c *gin.Context) {
 	admRows = nil
 	db.Model(&models.Sale{}).
 		Select("created_by AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
 		Group("created_by").Scan(&admRows)
 	for _, r := range admRows {
 		a := getAdmin(r.AdminID)
@@ -392,8 +393,10 @@ func handleReportMoney(c *gin.Context) {
 		Pln   float64
 		Items int64
 	}
+	// штуки — полные (и кухня с кошельков тоже: владельцу важно, что едят);
+	// деньги — только выручка (Р7: wallet-продажи в неё не входят)
 	db.Model(&models.Sale{}).
-		Select("name, COALESCE(SUM(total_pln),0) AS pln, COALESCE(SUM(qty),0) AS items").
+		Select("name, COALESCE(SUM(total_pln) FILTER (WHERE method <> 'wallet'),0) AS pln, COALESCE(SUM(qty),0) AS items").
 		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
 		Group("name").Order("pln DESC").Limit(15).Scan(&goodRows)
 	topGoods := make([]gin.H, 0, len(goodRows))
@@ -433,6 +436,24 @@ func handleReportMoney(c *gin.Context) {
 		Select("COALESCE(-SUM(amount_grosz),0) AS grosz, COUNT(*) AS cnt").
 		Where("created_at >= ? AND created_at < ? AND amount_grosz < 0", p.From, p.To).
 		Scan(&walSpent)
+	// Г7: разрез списаний — время отдельно, кухня отдельно (Р7-строка в UI)
+	var walKinds []struct {
+		Kind  string
+		Grosz int64
+	}
+	db.Model(&models.WalletTransaction{}).
+		Select("kind, COALESCE(-SUM(amount_grosz),0) AS grosz").
+		Where("created_at >= ? AND created_at < ? AND amount_grosz < 0", p.From, p.To).
+		Group("kind").Scan(&walKinds)
+	spentSession, spentKitchen := int64(0), int64(0)
+	for _, k := range walKinds {
+		switch k.Kind {
+		case string(models.WalletTxSessionSpend):
+			spentSession = k.Grosz
+		case string(models.WalletTxKitchenSpend):
+			spentKitchen = k.Grosz
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"wallet": gin.H{
@@ -440,6 +461,8 @@ func handleReportMoney(c *gin.Context) {
 			"guests_with_balance": wal.Guests,
 			"period_spent_pln":    models.PLNFromGrosz(walSpent.Grosz),
 			"period_spends":       walSpent.Cnt,
+			"spent_session_pln":   models.PLNFromGrosz(spentSession), // время (Г1)
+			"spent_kitchen_pln":   models.PLNFromGrosz(spentKitchen), // кухня (Г7)
 		},
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
@@ -895,7 +918,7 @@ func handleReportStaff(c *gin.Context) {
 	}
 
 	var sales []models.Sale
-	db.Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Find(&sales)
+	db.Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Find(&sales)
 	for _, sl := range sales {
 		b := get(shiftOf(sl.CreatedAt))
 		b.goods += sl.TotalPLN
@@ -986,7 +1009,7 @@ func handleReportStaff(c *gin.Context) {
 	depRows = nil
 	db.Model(&models.Sale{}).
 		Select("created_by AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
 		Group("created_by").Scan(&depRows)
 	for _, r := range depRows {
 		w := who(r.AdminID)

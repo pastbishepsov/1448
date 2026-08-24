@@ -9,17 +9,21 @@ import (
 
 // Good — позиция ценника клуба (миграция 024, В2): цена и остаток.
 // Себестоимости нет осознанно — решение основателя 2026-08-18.
+// Г7 (038): описание и фото — карточка позиции для гостевой кухни.
 type Good struct {
-	ID        uuid.UUID `json:"id"         gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	ClubID    uuid.UUID `json:"club_id"    gorm:"type:uuid;not null"`
-	Name      string    `json:"name"       gorm:"size:64;not null"`
-	Category  string    `json:"category"   gorm:"size:32;not null;default:''"`
-	PricePLN  float64   `json:"price_pln"  gorm:"type:decimal(8,2);not null"`
-	Stock     int       `json:"stock"      gorm:"not null;default:0"`
-	LowStock  int       `json:"low_stock"  gorm:"not null;default:0"`
-	Sort      int       `json:"sort"       gorm:"not null;default:0"`
-	Active    bool      `json:"active"     gorm:"not null;default:true"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          uuid.UUID  `json:"id"         gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ClubID      uuid.UUID  `json:"club_id"    gorm:"type:uuid;not null"`
+	Name        string     `json:"name"       gorm:"size:64;not null"`
+	Category    string     `json:"category"   gorm:"size:32;not null;default:''"`
+	Description string     `json:"description"          gorm:"not null;default:''"`
+	PricePLN    float64    `json:"price_pln"  gorm:"type:decimal(8,2);not null"`
+	Stock       int        `json:"stock"      gorm:"not null;default:0"`
+	LowStock    int        `json:"low_stock"  gorm:"not null;default:0"`
+	Sort        int        `json:"sort"       gorm:"not null;default:0"`
+	Active      bool       `json:"active"     gorm:"not null;default:true"`
+	PhotoType   *string    `json:"-"          gorm:"size:32"` // MIME фото; байты НЕ в модели —
+	PhotoAt     *time.Time `json:"-"`                         // читаются/пишутся только raw-SQL (kitchen.go)
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 func (g *Good) BeforeCreate(tx *gorm.DB) error {

@@ -458,6 +458,21 @@
   .modal{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2)}
   .overlay{backdrop-filter:blur(10px)}
 
+  /* — кухня (Г7): плитки меню и мои заказы — */
+  .fooditem{display:flex; gap:12px; align-items:center; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:10px 12px; margin-bottom:10px}
+  .fooditem.out{opacity:.45}
+  .fooditem img{width:56px; height:56px; object-fit:cover; border-radius:10px; background:rgba(255,255,255,.05); flex:none}
+  .fooditem .fph{width:56px; height:56px; border-radius:10px; background:rgba(255,255,255,.05); display:flex; align-items:center; justify-content:center; font-size:26px; flex:none}
+  .fooditem .fbtns{display:flex; flex-direction:column; gap:6px; flex:none}
+  .fooditem .fbtns button{border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:var(--txt); border-radius:9px; padding:5px 10px; cursor:pointer; font-size:12px; font-weight:700; white-space:nowrap}
+  .fooditem .fbtns button:hover{border-color:var(--acc)}
+  .foodqty{display:flex; align-items:center; gap:8px; margin-top:5px}
+  .foodqty button{width:22px; height:22px; border-radius:6px; border:1px solid rgba(255,255,255,.14); background:transparent; color:var(--txt); cursor:pointer; line-height:1}
+  .foodorder{border:1px solid rgba(255,255,255,.09); border-radius:12px; padding:8px 12px; margin-bottom:8px; display:flex; align-items:center; gap:10px}
+  .foodorder .fst{font-size:11.5px; font-weight:800; letter-spacing:.4px; padding:3px 8px; border-radius:99px; background:rgba(255,255,255,.07); flex:none}
+  .foodorder.st-done .fst{background:rgba(61,220,132,.14); color:#3ddc84}
+  .foodorder.st-cancelled{opacity:.5}
+
   /* — прогресс ачивки (Г6) — */
   .ach .achbar{height:4px; background:rgba(255,255,255,.08); border-radius:99px; margin:6px 0 3px; overflow:hidden}
   .ach .achbar i{display:block; height:100%; background:var(--acc); border-radius:99px}
@@ -645,6 +660,7 @@
         <button id="st-top" onclick="sideTab('top')">Топ</button>
         <button id="st-ach" onclick="sideTab('ach')">Ачивки</button>
         <button id="st-hist" onclick="sideTab('hist')">История</button>
+        <button id="st-food" onclick="sideTab('food')" title="Кухня">🍔</button>
         <button id="st-book" onclick="sideTab('book')"><span data-ic="cal"></span></button>
         <button id="st-coins" onclick="sideTab('coins')"><span data-ic="coins"></span></button>
       </div>
@@ -1004,6 +1020,7 @@ let sensDPI = +(localStorage.getItem('1448_dpi') || 800);
 let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
 let sensProfile = null, sensProfileApplied = false;
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
+let menuData = null, myOrders = [], foodQty = {}, foodBusy = false; // Г7: кухня
 let authMode = 'login';
 
 /* ═══════════════ API + refresh-токены ═══════════════ */
@@ -1410,6 +1427,44 @@ setInterval(() => { if (me && chatOpen) loadChat(); }, 10000);
    Поллинг 12с; тосты очередью; loadAll с debounce — баланс/брони сами ── */
 let notifQ = [], notifPumping = false, notifReloadT = null;
 
+/* ── Г7: кухня — меню, заказ с кошелька или «у стойки», мои заказы ── */
+async function loadKitchen(){
+  try{
+    const [m, o] = await Promise.all([api('/me/menu'), api('/me/kitchen/orders')]);
+    menuData = m; myOrders = o.orders || [];
+    if (curTab === 'food') renderSide();
+  }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
+}
+function foodQ(id, d){
+  const max = (menuData && menuData.max_qty) || 5;
+  foodQty[id] = Math.min(max, Math.max(1, (foodQty[id] || 1) + d));
+  renderSide();
+}
+async function foodOrder(id, pay){
+  if (foodBusy) return;
+  foodBusy = true;
+  try{
+    const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:foodQty[id]||1, pay})});
+    const o = d.order;
+    toast('🍔 Заказ принят: ' + o.name + (o.qty>1?' ×'+o.qty:'')
+      + (o.computer ? ' — принесём к ' + o.computer : ' — забери у стойки')
+      + (pay==='counter' ? '. Оплата у стойки' : ''));
+    foodQty[id] = 1;
+    await loadKitchen();
+    loadAll(); // кошелёк в шапке
+  }catch(e){ toast('⚠ ' + e.message); }
+  foodBusy = false;
+}
+async function foodCancel(id){
+  try{
+    await api('/me/kitchen/orders/' + id + '/cancel', {method:'POST'});
+    toast('↩ Заказ отменён — деньги вернулись в кошелёк');
+    await loadKitchen();
+    loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+setInterval(() => { if (me && curTab === 'food') loadKitchen(); }, 15000);
+
 function notifText(n){
   const p = n.payload || {};
   switch (n.type){
@@ -1428,6 +1483,17 @@ function notifText(n){
     case 'booking_deadline': return '⏰ ПК уходит под бронь' + (p.start_time ? ' (' + chHM(p.start_time) + ')' : '') + ' — сессия завершена, баланс и XP сохранены';
     case 'booking_reminder': return '📅 Напоминание: твоя бронь в ' + (p.start_time ? chHM(p.start_time) : '—') + (p.computer ? ' (' + p.computer + ')' : '') + ' — через ~' + (p.minutes_left||0) + ' мин';
     case 'booking_no_show': return '🕳 Бронь ' + (p.start_time ? 'на ' + chHM(p.start_time) + ' ' : '') + 'сгорела: ты не пришёл вовремя';
+    case 'kitchen_status': {
+      const nm = (p.name||'заказ') + (p.qty > 1 ? ' ×' + p.qty : '');
+      switch (p.status){
+        case 'accepted': return '🍔 ' + nm + ': приняли, скоро займёмся';
+        case 'preparing': return '🍳 ' + nm + ': готовим';
+        case 'delivering': return '🚀 ' + nm + ': несём' + (p.computer ? ' к ' + p.computer : ' — забери у стойки');
+        case 'done': return '✅ ' + nm + ': выдан. Приятного аппетита!';
+        case 'cancelled': return '↩ ' + nm + ': отменён' + (p.refund_pln ? ', ' + p.refund_pln + ' zł вернулись в кошелёк' : '');
+      }
+      return '🍔 ' + nm + ': обновление заказа';
+    }
   }
   return '🔔 Обновление аккаунта';
 }
@@ -1447,6 +1513,7 @@ setInterval(async () => {
     if (!notifPumping) pumpNotif();
     clearTimeout(notifReloadT);
     notifReloadT = setTimeout(loadAll, 500); // баланс, брони, кейсы — сами
+    if (items.some(n => n.type === 'kitchen_status')) loadKitchen(); // Г7
   }catch(e){}
 }, 12000);
 setInterval(async () => {
@@ -1699,11 +1766,12 @@ attractPoke();
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
-  ['cases','talents','top','ach','hist','book','coins'].forEach(x =>
+  ['cases','talents','top','ach','hist','book','coins','food'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
   // студия сенсы живёт в топбаре — подсвечиваем её кнопку
   const tbSens = document.getElementById('tbSens');
   if (tbSens) tbSens.classList.toggle('active', t==='sens');
+  if (t === 'food') loadKitchen(); // Г7: меню и заказы — при открытии
   renderSide();
   FX.swap(document.getElementById('sideBody'));
 }
@@ -1799,6 +1867,42 @@ function renderSide(){
         return `<div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${lbl}</div>`
           + [...rest, ...got].map(achRow).join('');
       }).join('');
+  }
+  if (curTab === 'food'){
+    if (!menuData){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">Загружаю меню…</div>'; return; }
+    const stName = {new:'ждёт', accepted:'принят', preparing:'готовим', delivering:'несём', done:'выдан', cancelled:'отменён'};
+    const openO = myOrders.filter(o => !['done','cancelled'].includes(o.status));
+    const closedO = myOrders.filter(o => ['done','cancelled'].includes(o.status));
+    const ordRow = o => `<div class="foodorder st-${o.status}">
+      <span class="fst">${stName[o.status]||o.status}</span>
+      <span style="flex:1; min-width:0"><b>${o.name}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.paid==='counter'?' · оплата у стойки':''}</span>
+      ${o.can_cancel?`<button style="border:0; background:transparent; color:var(--dim); cursor:pointer; font-size:15px" title="отменить" onclick="foodCancel('${o.id}')">✕</button>`:''}
+    </div>`;
+    const cats = {};
+    (menuData.menu||[]).forEach(m => { (cats[m.category||''] = cats[m.category||''] || []).push(m); });
+    const ph = c => /напит|drink|кофе|чай/i.test(c) ? '🥤' : '🍔';
+    el.innerHTML =
+      (openO.length ? `<div class="muted" style="margin:2px 2px 8px; font-weight:800; letter-spacing:.4px">Мои заказы</div>` + openO.map(ordRow).join('') : '') +
+      ((menuData.menu||[]).length ? Object.entries(cats).map(([c, items]) => `
+        <div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${c || 'Меню'}</div>` +
+        items.map(m => {
+          const q = foodQty[m.id] || 1;
+          return `<div class="fooditem ${m.out?'out':''}">
+          ${m.photo ? `<img src="${API.replace('/api/v1','')}${m.photo}" alt="" loading="lazy">` : `<div class="fph">${ph(m.category||'')}</div>`}
+          <div style="flex:1; min-width:0">
+            <div style="font-weight:800">${m.name} · <span class="cnum">${fmtZl(Math.round(m.price_pln*100))}</span></div>
+            ${m.description?`<div class="muted" style="font-size:12px">${m.description}</div>`:''}
+            ${m.out ? '<div class="muted" style="font-size:12px">закончилось — загляни позже</div>' : `
+            <div class="foodqty"><button onclick="foodQ('${m.id}',-1)">−</button><b class="cnum">${q}</b><button onclick="foodQ('${m.id}',1)">+</button>
+              <span class="muted cnum" style="font-size:12px">= ${fmtZl(Math.round(m.price_pln*q*100))}</span></div>`}
+          </div>
+          ${m.out ? '' : `<div class="fbtns">
+            <button onclick="foodOrder('${m.id}','wallet')">💳 С кошелька</button>
+            <button onclick="foodOrder('${m.id}','counter')">🧾 У стойки</button>
+          </div>`}
+        </div>`;}).join('')).join('')
+      : '<div class="muted" style="text-align:center; padding:40px 0">🍽<br>Меню пока пустое.<br>Кухня появится, когда владелец заполнит ценник.</div>') +
+      (closedO.length ? `<div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">Недавние</div>` + closedO.map(ordRow).join('') : '');
   }
   if (curTab === 'coins'){
     if (!economy){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">Загрузка экономики…</div>'; return; }

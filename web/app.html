@@ -294,6 +294,14 @@
   .achrow{display:flex; gap:10px; padding:10px 0 8px; border-top:1px solid var(--hair); align-items:flex-start}
   .apbar{height:4px; background:rgba(255,255,255,.08); border-radius:99px; margin:5px 0 2px; overflow:hidden}
   .apbar i{display:block; height:100%; background:var(--acc); border-radius:99px}
+  .ktrow{display:flex; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--hair)}
+  .ktrow img{width:48px; height:48px; object-fit:cover; border-radius:10px; background:rgba(255,255,255,.06); flex:none}
+  .ktrow .kph{width:48px; height:48px; border-radius:10px; background:rgba(255,255,255,.06); display:flex; align-items:center; justify-content:center; font-size:22px; flex:none}
+  .ktqty{display:inline-flex; align-items:center; gap:7px}
+  .ktqty button{width:22px; height:22px; border-radius:6px; border:1px solid var(--hair); background:transparent; color:var(--txt)}
+  .ktbtns{display:flex; flex-direction:column; gap:5px; flex:none}
+  .ktbtns button{border:1px solid var(--hair); background:rgba(255,255,255,.05); color:var(--txt); border-radius:9px; padding:5px 9px; font-size:11.5px; font-weight:700; white-space:nowrap}
+  .ktst{font-size:11px; font-weight:800; padding:2px 8px; border-radius:99px; background:rgba(255,255,255,.08); flex:none}
   .achrow .aic{width:20px; height:20px; flex:none; color:var(--dim); margin-top:2px}
   .achrow .aic svg{width:100%; height:100%; display:block}
   .achrow.got .aic{color:var(--acc)}
@@ -474,6 +482,7 @@
         <div class="skel" style="width:45%; height:13px"></div>
       </div>
       <div class="card livecard hidden" id="liveCard"></div>
+      <div class="card hidden" id="kitchenCard"></div><!-- Г7: кухня -->
       <div class="card" id="bkCard">
         <h3 data-str="my_bookings"></h3>
         <div id="bkList">
@@ -688,6 +697,27 @@ const STR = {
   ach_cat_monthly: 'Месяца',
   ach_cat_lifetime: 'Навсегда',
   ach_reset: '⏳ до резета {t}',
+  kt_title: 'Кухня',
+  kt_open: 'Меню и заказ',
+  kt_close: 'Свернуть меню',
+  kt_empty: 'Меню пока пустое — появится, когда владелец заполнит ценник',
+  kt_wallet: '💳 С кошелька',
+  kt_counter: '🧾 У стойки',
+  kt_out: 'закончилось — загляни позже',
+  kt_orders: 'Мои заказы',
+  kt_ordered: '🍔 Заказ принят: {n}',
+  kt_to_pc: ' — принесём к {c}',
+  kt_at_counter: ' — забери у стойки',
+  kt_pay_counter: '. Оплата у стойки',
+  kt_cancelled: '↩ Заказ отменён — деньги вернулись',
+  kt_st_new: 'ждёт', kt_st_accepted: 'принят', kt_st_preparing: 'готовим',
+  kt_st_delivering: 'несём', kt_st_done: 'выдан', kt_st_cancelled: 'отменён',
+  ntf_kt_accepted: '🍔 {n}: приняли, скоро займёмся',
+  ntf_kt_preparing: '🍳 {n}: готовим',
+  ntf_kt_delivering: '🚀 {n}: несём',
+  ntf_kt_done: '✅ {n}: выдан. Приятного аппетита!',
+  ntf_kt_cancelled: '↩ {n}: отменён',
+  ntf_kt_refund: ', {z} zł вернулись в кошелёк',
   ach_reward_case: '+ кейс {t}',
   lb_title: 'Топ клуба',
   lb_me: 'Твоё место: #{n}',
@@ -998,13 +1028,13 @@ function fmtWhen(x){
 }
 function fmtDur(min){ return min % 60 === 0 ? T('dur_h', {n: min / 60}) : min + ' ' + STR.min_suffix; }
 
-function refreshClub(){ loadClub(); loadBookings(); loadSessions(); loadWaitlist(); }
+function refreshClub(){ loadClub(); loadBookings(); loadSessions(); loadWaitlist(); loadKitchen(); }
 
 /* поллинг главной (решение №4): только видимая вкладка «Клуб», в фоне тишина */
 function startPolls(){
   stopPolls();
   if (document.hidden || curTab !== 'club') return;
-  pollClubs = setInterval(() => { loadClub(); loadWaitlist(); }, 15000);
+  pollClubs = setInterval(() => { loadClub(); loadWaitlist(); loadKitchen(); }, 15000);
   pollSess = setInterval(loadSessions, 10000);
 }
 function stopPolls(){ clearInterval(pollClubs); clearInterval(pollSess); pollClubs = pollSess = null; }
@@ -1803,6 +1833,82 @@ function setChatView(v){
   if (v === 'chat') loadChat(); else renderNtf();
 }
 
+/* ── Г7: кухня — карточка на «Клубе»: заказы, меню, заказ в два тапа ── */
+let ktMenu = null, ktOrders = [], ktQty = {}, ktShowMenu = false, ktBusy = false;
+function ktZl(v){ return (+v).toFixed(2).replace('.', ',') + ' zł'; }
+async function loadKitchen(){
+  try{
+    const [m, o] = await Promise.all([api('/me/menu'), api('/me/kitchen/orders')]);
+    ktMenu = m; ktOrders = o.orders || [];
+  }catch(e){ return; }
+  renderKitchen();
+}
+function renderKitchen(){
+  const el = document.getElementById('kitchenCard');
+  if (!el || !ktMenu) return;
+  const menu = ktMenu.menu || [];
+  const openO = ktOrders.filter(o => !['done','cancelled'].includes(o.status));
+  if (!menu.length && !openO.length){ el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const stKey = s => STR['kt_st_' + s] || s;
+  const ordRow = o => `<div class="ktrow">
+    <span class="ktst">${esc(stKey(o.status))}</span>
+    <span style="flex:1; min-width:0"><b>${esc(o.name)}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${ktZl(o.total_pln)}</span></span>
+    ${o.can_cancel?`<button class="btn ghost slim" style="width:auto" onclick="ktCancel('${o.id}')">✕</button>`:''}
+  </div>`;
+  const ph = c => /напит|drink|кофе|чай/i.test(c) ? '🥤' : '🍔';
+  const item = m => {
+    const q = ktQty[m.id] || 1;
+    return `<div class="ktrow ${m.out?'out':''}" ${m.out?'style="opacity:.45"':''}>
+    ${m.photo ? `<img src="${API.replace('/api/v1','')}${m.photo}" alt="" loading="lazy">` : `<div class="kph">${ph(m.category||'')}</div>`}
+    <div style="flex:1; min-width:0">
+      <div style="font-weight:800">${esc(m.name)} · <span class="cnum">${ktZl(m.price_pln)}</span></div>
+      ${m.description?`<div class="muted" style="font-size:12px">${esc(m.description)}</div>`:''}
+      ${m.out ? `<div class="muted" style="font-size:12px">${esc(STR.kt_out)}</div>` : `
+      <div class="ktqty" style="margin-top:4px"><button onclick="ktQ('${m.id}',-1)">−</button><b class="cnum">${q}</b><button onclick="ktQ('${m.id}',1)">+</button>
+        <span class="muted cnum" style="font-size:12px">= ${ktZl(m.price_pln*q)}</span></div>`}
+    </div>
+    ${m.out ? '' : `<div class="ktbtns">
+      <button onclick="ktOrder('${m.id}','wallet')">${esc(STR.kt_wallet)}</button>
+      <button onclick="ktOrder('${m.id}','counter')">${esc(STR.kt_counter)}</button>
+    </div>`}
+  </div>`;
+  };
+  el.innerHTML = `<h3>${esc(STR.kt_title)}</h3>`
+    + (openO.length ? `<div class="muted" style="font-size:12.5px; margin:4px 0 2px; font-weight:700">${esc(STR.kt_orders)}</div>` + openO.map(ordRow).join('') : '')
+    + (menu.length ? `<button class="btn ghost" style="margin-top:10px" onclick="ktToggle()">${esc(ktShowMenu ? STR.kt_close : STR.kt_open)}</button>` : `<div class="muted" style="padding:6px 0">${esc(STR.kt_empty)}</div>`)
+    + (ktShowMenu ? menu.map(item).join('') : '');
+}
+function ktToggle(){ ktShowMenu = !ktShowMenu; renderKitchen(); }
+function ktQ(id, d){
+  const max = ktMenu && ktMenu.max_qty || 5;
+  ktQty[id] = Math.min(max, Math.max(1, (ktQty[id] || 1) + d));
+  renderKitchen();
+}
+async function ktOrder(id, pay){
+  if (ktBusy) return;
+  ktBusy = true;
+  try{
+    const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:ktQty[id]||1, pay})});
+    const o = d.order;
+    toast(T('kt_ordered', {n: o.name + (o.qty>1?' ×'+o.qty:'')})
+      + (o.computer ? T('kt_to_pc', {c: o.computer}) : STR.kt_at_counter)
+      + (pay==='counter' ? STR.kt_pay_counter : ''));
+    ktQty[id] = 1;
+    await loadKitchen();
+    loadMe(); // кошелёк
+  }catch(e){ toast(T('toast_err', {m: e.message})); }
+  ktBusy = false;
+}
+async function ktCancel(id){
+  try{
+    await api('/me/kitchen/orders/' + id + '/cancel', {method:'POST'});
+    toast(STR.kt_cancelled);
+    await loadKitchen();
+    loadMe();
+  }catch(e){ toast(T('toast_err', {m: e.message})); }
+}
+
 /* ── уведомления (М4-и2): тосты очередью + лента; данные освежаются сами ── */
 async function loadNotifs(){
   let items;
@@ -1820,6 +1926,7 @@ async function loadNotifs(){
   loadMe();
   if (items.some(n => n.type === 'booking_cancel' || n.type === 'booking_restore')) loadBookings();
   if (items.some(n => n.type === 'grant_case')) loadCases();
+  if (items.some(n => n.type === 'kitchen_status')) loadKitchen();
 }
 function pumpNotif(){
   if (!notifQ.length){ notifPumping = false; return; }
@@ -1830,6 +1937,14 @@ function pumpNotif(){
 function ntfText(n){
   const p = n.payload || {};
   switch (n.type){
+    case 'kitchen_status': {
+      const nm = (p.name || '…') + (p.qty > 1 ? ' ×' + p.qty : '');
+      const k = 'ntf_kt_' + p.status;
+      let t = STR[k] ? T(k, {n: nm}) : '🍔 ' + nm;
+      if (p.status === 'delivering' && p.computer) t += ' → ' + p.computer;
+      if (p.status === 'cancelled' && p.refund_pln) t += T('ntf_kt_refund', {z: p.refund_pln});
+      return t;
+    }
     case 'booking_cancel':
       return STR.ntf_bk_cancel + (p.start_time ? ' · ' + hm(p.start_time) : '') + (p.computer ? ' (' + p.computer + ')' : '');
     case 'booking_restore':
@@ -1887,7 +2002,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-24.3';
+const APP_VER = '2026-08-24.4';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

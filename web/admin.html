@@ -487,6 +487,7 @@
       <button id="r-bookings" onclick="nav('bookings')" aria-label="Брони"><span data-ic="cal"></span><span class="rlabel">Брони</span><span class="rbadge hidden" id="bkBadge"></span></button>
       <button id="r-catalog" onclick="nav('catalog')" aria-label="Каталог"><span data-ic="apps"></span><span class="rlabel">Каталог</span></button>
       <button id="r-goods" onclick="nav('goods')" aria-label="Товары"><span data-ic="box"></span><span class="rlabel">Товары</span><span class="rbadge hidden" id="goodsBadge"></span></button>
+      <button id="r-kitchen" onclick="nav('kitchen')" aria-label="Кухня"><span style="font-size:17px; line-height:1">🍔</span><span class="rlabel">Кухня</span><span class="rbadge hidden" id="kitBadge"></span></button>
       <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
       <div class="rzone zclub">Клуб</div>
       <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Отчёты"><span data-ic="chart"></span><span class="rlabel">Отчёты</span></button>
@@ -563,6 +564,13 @@
         <div class="tablewrap" id="catalogTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
 
+      <section id="s-kitchen" class="hidden">
+        <div class="card" style="margin-bottom:14px">
+          <h3 style="margin:0 0 4px">Кухня — очередь заказов</h3>
+          <div class="muted">Заказы гостей с шелла и мобилки. Поток: принял → готовим → несут → выдан. Wallet-заказ уже оплачен (это не выручка); «у стойки» — возьми деньги при выдаче и выбери способ.</div>
+        </div>
+        <div id="kitBoard"></div>
+      </section>
       <section id="s-goods" class="hidden">
         <!-- Спринт В2: продажа в один тап, лента смены и ценник с остатками.
              Платят только злотыми — решение основателя 18.08.2026. -->
@@ -804,7 +812,7 @@
    но не редактирует; fallback — прежняя группировка по зонам. */
 
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
-const SECTIONS = ['hall','users','bookings','catalog','goods','grants','stats','staff','settings'];
+const SECTIONS = ['hall','users','bookings','catalog','goods','kitchen','grants','stats','staff','settings'];
 const OWNER_SECTIONS = ['stats','settings']; // Б11: «Персонал» открыт admin'у read-only (график смен)
 let curTab = 'hall', refreshIv = null, me = null, lastSync = 0;
 
@@ -923,6 +931,7 @@ function nav(t){
   });
   if (t === 'catalog') renderCatalogTab();
   else if (t === 'goods') renderGoods();
+  else if (t === 'kitchen') renderKitchen();
   else if (t === 'stats') renderStats();
   else if (t === 'staff') renderStaff();
   else if (t === 'settings') renderSettings();
@@ -941,6 +950,7 @@ async function refresh(){
     bb.textContent = nb;
     bb.classList.toggle('hidden', !nb);
     loadBell(); // Б2: очередь вызовов (параллельно, не ждём)
+    kitBadgeLoad(); // Г7: бейдж кухни
     if (curTab === 'hall' && !hallEdit) await renderHall(); // в редакторе не дёргаем схему
     if (curTab === 'users') await renderUsersTable();
     if (curTab === 'bookings') await renderBookings();
@@ -1029,6 +1039,11 @@ function feedLine(m){
       ? 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł'
       : 'продано: ' + (d.name||'товар') + (d.qty > 1 ? ' ×' + d.qty : '')
         + ' · ' + (+d.total_pln||0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '');
+    case 'kitchen': return d.kind === 'cancel'
+      ? 'кухня: гость отменил заказ — ' + (d.name||'')
+      : 'кухня: новый заказ — ' + (d.name||'') + (d.qty > 1 ? ' ×' + d.qty : '')
+        + ' · ' + (+d.total_pln||0) + ' zł · ' + (d.nickname||'гость')
+        + (d.computer ? ' · ' + d.computer : '') + (d.paid === 'wallet' ? ' · оплачен' : ' · оплата у стойки');
     case 'coin_redeem': return (d.nickname||'гость') + ' взял ' + (d.minutes||0) + ' мин за '
       + (d.coins||0) + ' монет' + (d.zone ? ' · ' + d.zone : '');
     case 'ban': return (d.nickname||'гость') + ' забанен';
@@ -1073,6 +1088,7 @@ function handleLiveEvent(m){
   paintFeed();
   lastSync = Date.now();
   if (m.type === 'deposit' && drawerUserId) loadUserDrawer(); // открытая карточка гостя
+  if (m.type === 'kitchen') kitBadgeLoad(); // Г7: очередь и бейдж
   if (m.type === 'chat'){ // Б2/Б3: вызов/сообщение — колокол, тост, плитка, открытый тред
     const d = m.data || {};
     const inOpenChat = d.user_id && drawerUserId === d.user_id && uTab === 'chat';
@@ -2355,6 +2371,105 @@ function shiftDay(delta){
   renderShift();
 }
 
+/* ── Г7: кухня — очередь заказов гостей. Принял → готовим → несут → выдан;
+   wallet-заказ уже оплачен (не выручка, Р7), «у стойки» — деньги при выдаче ── */
+let kitData = [];
+const KIT_ST = {new:'новый', accepted:'принят', preparing:'готовим', delivering:'несут', done:'выдан', cancelled:'отменён'};
+async function kitBadgeLoad(){
+  try{
+    const d = await api('/admin/kitchen/orders');
+    kitData = d.orders || [];
+    const b = document.getElementById('kitBadge');
+    if (b){ b.textContent = d.open || 0; b.classList.toggle('hidden', !(d.open > 0)); }
+    if (curTab === 'kitchen') paintKitchen();
+  }catch(e){}
+}
+async function renderKitchen(){ await kitBadgeLoad(); }
+function kitNextBtns(o){
+  const b = [];
+  if (o.status === 'new') b.push(['accepted','Принял','']);
+  if (['new','accepted'].includes(o.status)) b.push(['preparing','Готовим','ghost ']);
+  if (['new','accepted','preparing'].includes(o.status)) b.push(['delivering','Несут','ghost ']);
+  return b;
+}
+function paintKitchen(){
+  const open = kitData.filter(o => !['done','cancelled'].includes(o.status));
+  const closed = kitData.filter(o => ['done','cancelled'].includes(o.status)).reverse();
+  const chip = s => `<span class="muted" style="font-weight:800; letter-spacing:.5px; text-transform:uppercase; font-size:11px; border:1px solid var(--hair, rgba(255,255,255,.12)); border-radius:99px; padding:2px 9px">${KIT_ST[s]||s}</span>`;
+  const card = o => `
+    <div class="card" style="margin-bottom:10px${['done','cancelled'].includes(o.status) ? '; opacity:.55' : ''}">
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        ${chip(o.status)}
+        <b>${esc(o.name)}${o.qty>1?' ×'+o.qty:''}</b>
+        <span class="muted">${fmtPLN(o.total_pln)} zł · ${o.paid === 'wallet' ? 'оплачен кошельком' : 'оплата у стойки при выдаче'}</span>
+        <span class="muted">${esc(o.nickname||'гость')}${o.computer ? ' · нести к ' + esc(o.computer) : ' · заберёт у стойки'}</span>
+        <span class="muted" style="margin-left:auto">${hhmm(o.created_at)}</span>
+      </div>
+      ${['done','cancelled'].includes(o.status) ? '' : `
+      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap">
+        ${kitNextBtns(o).map(([s,l,g]) => `<button class="btn ${g}mini" onclick="kitStatus('${o.id}','${s}')">${l}</button>`).join('')}
+        ${o.paid === 'wallet'
+          ? `<button class="btn mini" onclick="kitStatus('${o.id}','done')">✓ Выдан</button>`
+          : `<button class="btn mini" onclick="kitStatus('${o.id}','done','cash')">✓ Выдан · нал</button>
+             <button class="btn ghost mini" onclick="kitStatus('${o.id}','done','card')">карта</button>
+             <button class="btn ghost mini" onclick="kitStatus('${o.id}','done','blik')">BLIK</button>`}
+        <button class="btn ghost mini danger" onclick="armKitCancel(this,'${o.id}')">Отменить</button>
+      </div>`}
+    </div>`;
+  setHTML('kitBoard',
+    (open.length ? open.map(card).join('')
+      : '<div class="empty">🍔 Очередь пуста — заказы гостей с шелла и мобилки появятся тут сами</div>')
+    + (closed.length ? '<div class="muted" style="margin:16px 2px 8px; font-weight:700">За смену</div>' + closed.map(card).join('') : ''));
+}
+async function kitStatus(id, status, method){
+  try{
+    await api('/admin/kitchen/orders/' + id + '/status', {method:'POST', body:JSON.stringify({status, method})});
+    await kitBadgeLoad();
+    if (status === 'done') refresh(); // продажа появилась — выручка/лента
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function armKitCancel(btn, id){
+  if (btn.dataset.armed){ kitCancel(id); return; }
+  btn.dataset.armed = '1'; btn.textContent = 'Точно отменить?';
+  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; } }, 4000);
+}
+async function kitCancel(id){
+  try{
+    await api('/admin/kitchen/orders/' + id + '/cancel', {method:'POST'});
+    toast('✓ Заказ отменён — деньги и товар вернулись');
+    kitBadgeLoad();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function goodPhotoPick(inp, id){
+  const f = inp.files && inp.files[0];
+  if (!f) return;
+  try{
+    const img = await new Promise((res, rej) => {
+      const u = URL.createObjectURL(f), i = new Image();
+      i.onload = () => res(i); i.onerror = rej; i.src = u;
+    });
+    const k = Math.min(1, 512 / Math.max(img.width, img.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    const blob = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.82));
+    const r = await fetch(API + '/admin/goods/' + id + '/photo', {
+      method:'PUT', headers:{'Content-Type':'image/jpeg', 'Authorization':'Bearer ' + tokens().a}, body: blob});
+    if (!r.ok) throw new Error('фото не сохранилось');
+    toast('✓ Фото обновлено — гости увидят его на плитке кухни');
+    await renderGoods();
+    editGood(id);
+  }catch(e){ toast('⚠ ' + (e.message || 'фото не загрузилось')); }
+}
+async function goodPhotoDel(id){
+  try{
+    await api('/admin/goods/' + id + '/photo', {method:'DELETE'});
+    toast('✓ Фото убрано');
+    await renderGoods();
+    editGood(id);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 /* ── В2: товары, продажи и остатки (ADMIN.md, спринт В2; миграция 024).
    Продажа — один тап по плитке: у стойки лишний шаг стоит очереди, а ошибку
    снимает «Вернуть» в тосте (отмена вернёт товар на склад). Ценник правит
@@ -2439,6 +2554,7 @@ async function voidSale(id, quiet){
 
 function paintSales(d){
   setText('salesTotal', (d.date || '') + ' · ' + fmtPLN(d.total_pln || 0) + ' zł' +
+    (d.wallet_pln ? ' · кошельком: ' + fmtPLN(d.wallet_pln) + ' zł (не выручка)' : '') +
     (d.voided ? ' · отменено: ' + d.voided : ''));
   const rows = d.sales || [];
   setHTML('salesTable', rows.length === 0
@@ -2454,7 +2570,7 @@ function paintSales(d){
         <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}')">Отменить</button>`}</td>
       </tr>`).join('')}</table>`);
 }
-const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK'};
+const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK', wallet:'кошелёк'};
 
 /* отмена продажи — arm-confirm: деньги уходят из выручки смены */
 function armVoid(btn, id){
@@ -2489,6 +2605,7 @@ function editGood(id){
   <div class="uform">
     <input id="gd_name" class="input" placeholder="Название (Кола 0.5)" value="${esc(g.name||'')}">
     <input id="gd_cat" class="input" placeholder="Категория (Напитки)" value="${esc(g.category||'')}">
+    <textarea id="gd_desc" class="input" rows="2" placeholder="Описание для плитки кухни (гость видит его под названием)">${esc(g.description||'')}</textarea>
     <input id="gd_price" class="input" type="number" step="0.01" min="0.01" placeholder="Цена, zł" value="${g.price_pln ?? ''}">
     <input id="gd_low" class="input" type="number" min="0" placeholder="Порог «заканчивается» (0 — не следим)" value="${g.low_stock ?? 0}">
     ${isNew ? '<input id="gd_stock" class="input" type="number" min="0" placeholder="Начальный остаток" value="0">' : ''}
@@ -2497,6 +2614,14 @@ function editGood(id){
       <input id="gd_active" type="checkbox" ${g.active === false ? '' : 'checked'}> позиция в продаже
     </label>
     ${isNew ? '' : '<div class="muted">Остаток здесь не меняется — он живёт только движениями склада, иначе потери не посчитать.</div>'}
+    ${isNew ? '' : `
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+      ${g.photo ? `<img src="${API.replace('/api/v1','')}${g.photo}" style="width:56px; height:56px; object-fit:cover; border-radius:10px" alt="">` : '<span class="muted">Фото пока нет</span>'}
+      <label class="btn ghost mini" style="cursor:pointer">📷 ${g.photo ? 'Заменить' : 'Загрузить'} фото
+        <input type="file" accept="image/*" style="display:none" onchange="goodPhotoPick(this,'${g.id}')"></label>
+      ${g.photo ? `<button class="btn ghost mini" onclick="goodPhotoDel('${g.id}')">Убрать</button>` : ''}
+    </div>
+    <div class="muted">Фото сожмётся до 512px и попадёт на плитку кухни у гостей (Г7).</div>`}
     <div style="display:flex; gap:10px; flex-wrap:wrap">
       <button class="btn mini" onclick="saveGood('${g.id||''}')"><span data-ic="save"></span>Сохранить</button>
       ${isNew ? '' : `<button class="btn ghost mini" onclick="goodMoves('${g.id}')"><span data-ic="scroll"></span>История склада</button>`}
@@ -2513,6 +2638,7 @@ async function saveGood(id){
     price_pln: parseFloat(v('gd_price')),
     low_stock: parseInt(v('gd_low') || '0', 10),
     sort: parseInt(v('gd_sort') || '100', 10),
+    description: v('gd_desc'),
     active: document.getElementById('gd_active').checked,
   };
   if (!body.name){ toast('⚠ Нужно название'); return; }
@@ -2722,6 +2848,10 @@ function paintMoney(d){
                 {title:'обязательство клуба: предоплата, ещё не отсиженная временем · гостей с балансом: ' + wal.guests_with_balance})}
        ${repKpi('Списано с кошельков', fmtPLN(wal.period_spent_pln) + ' zł', undefined,
                 {title:'за период, ' + wal.period_spends + ' операций — НЕ выручка: она признана в момент пополнения'})}
+       ${repKpi('— из них время', fmtPLN(wal.spent_session_pln || 0) + ' zł', undefined,
+                {title:'поминутное списание за сессии (Г1)'})}
+       ${repKpi('— кухня', fmtPLN(wal.spent_kitchen_pln || 0) + ' zł', undefined,
+                {title:'заказы кухни кошельком (Г7) — тоже не выручка'})}
      </div>
      <div class="sect">Выручка по дням</div>
      ${repChart(days, x => x.value,

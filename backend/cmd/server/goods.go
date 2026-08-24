@@ -51,6 +51,7 @@ var goodErrors = map[string]string{
 	"bad_category":   "Категория: до 32 символов",
 	"bad_price":      fmt.Sprintf("Цена — от 0.01 до %.0f zł", maxGoodPrice),
 	"bad_low":        "Порог «заканчивается» — неотрицательное число",
+	"bad_description": fmt.Sprintf("Описание — до %d символов", maxGoodDescription),
 	"bad_qty":        fmt.Sprintf("Количество — от 1 до %d", maxSaleQty),
 	"bad_method":     "Оплата: наличные, карта или BLIK",
 	"bad_reason":     "Причина движения: supply или adjust",
@@ -77,6 +78,8 @@ func goodOut(g *models.Good) gin.H {
 		"id": g.ID, "name": g.Name, "category": g.Category, "price_pln": g.PricePLN,
 		"stock": g.Stock, "low_stock": g.LowStock, "sort": g.Sort, "active": g.Active,
 		"low": g.LowStock > 0 && g.Stock <= g.LowStock,
+		// Г7: карточка позиции для гостевой кухни
+		"description": g.Description, "photo": goodPhotoURL(g),
 	}
 }
 
@@ -105,14 +108,17 @@ func handleAdminGoods(c *gin.Context) {
 }
 
 type goodRequest struct {
-	Name     string   `json:"name"`
-	Category string   `json:"category"`
-	PricePLN *float64 `json:"price_pln"`
-	Stock    *int     `json:"stock"`
-	LowStock *int     `json:"low_stock"`
-	Sort     *int     `json:"sort"`
-	Active   *bool    `json:"active"`
+	Name        string   `json:"name"`
+	Category    string   `json:"category"`
+	Description *string  `json:"description"` // Г7: карточка для гостевой кухни
+	PricePLN    *float64 `json:"price_pln"`
+	Stock       *int     `json:"stock"`
+	LowStock    *int     `json:"low_stock"`
+	Sort        *int     `json:"sort"`
+	Active      *bool    `json:"active"`
 }
+
+const maxGoodDescription = 500 // символов; описание — пара строк на плитке, не статья
 
 // POST /admin/goods — новая позиция ценника (owner). Начальный остаток, если
 // задан, сразу ложится движением supply: остаток без следа не появляется.
@@ -151,6 +157,14 @@ func handleAdminGoodCreate(c *gin.Context) {
 		ClubID: club.ID, Name: strings.TrimSpace(req.Name),
 		Category: strings.TrimSpace(req.Category), PricePLN: price,
 		Stock: stock, LowStock: low, Active: true,
+	}
+	if req.Description != nil {
+		d := strings.TrimSpace(*req.Description)
+		if len([]rune(d)) > maxGoodDescription {
+			goodFail(c, http.StatusBadRequest, "bad_description")
+			return
+		}
+		g.Description = d
 	}
 	if req.Sort != nil {
 		g.Sort = *req.Sort
@@ -225,6 +239,17 @@ func handleAdminGoodUpdate(c *gin.Context) {
 		changes = append(changes, fmt.Sprintf("порог %d → %d", g.LowStock, low))
 	}
 	g.Name, g.Category, g.PricePLN, g.LowStock = name, category, price, low
+	if req.Description != nil { // Г7: описание для плитки кухни
+		d := strings.TrimSpace(*req.Description)
+		if len([]rune(d)) > maxGoodDescription {
+			goodFail(c, http.StatusBadRequest, "bad_description")
+			return
+		}
+		if d != g.Description {
+			g.Description = d
+			changes = append(changes, "описание обновлено")
+		}
+	}
 	if req.Sort != nil {
 		g.Sort = *req.Sort
 	}
@@ -520,17 +545,20 @@ func handleAdminSales(c *gin.Context) {
 	}
 	nick := nicknamesByID(ids)
 	out := make([]gin.H, 0, len(sales))
-	total, voided := 0.0, 0
+	total, walletTotal, voided := 0.0, 0.0, 0
 	for i := range sales {
 		out = append(out, saleOut(&sales[i], nick))
-		if sales[i].VoidedAt == nil {
-			total += sales[i].TotalPLN
-		} else {
+		switch {
+		case sales[i].VoidedAt != nil:
 			voided++
+		case sales[i].Method == "wallet": // Г7/Р7: кухня кошельком — не выручка
+			walletTotal += sales[i].TotalPLN
+		default:
+			total += sales[i].TotalPLN
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"date": key, "count": len(out), "sales": out,
-		"total_pln": roundPLN(total), "voided": voided})
+		"total_pln": roundPLN(total), "wallet_pln": roundPLN(walletTotal), "voided": voided})
 }
 
 // canVoidSale — чистая (тест в goods_test.go): владелец отменяет любую продажу,
@@ -572,6 +600,18 @@ func handleAdminSaleVoid(c *gin.Context) {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&sale).Updates(map[string]any{"voided_at": now, "voided_by": adminID}).Error; err != nil {
 			return err
+		}
+		// Г7: продажа «кошельком» — это выданный заказ кухни; отмена возвращает
+		// деньги в кошелёк гостя (иначе списание повисло бы без товара)
+		if sale.Method == "wallet" && sale.UserID != nil {
+			saleID := sale.ID
+			if _, err := walletApply(tx, walletOp{
+				UserID: *sale.UserID, Kind: models.WalletTxRefund,
+				Amount: models.GroszFromPLN(sale.TotalPLN), RefType: "sale", RefID: &saleID,
+				Note: "возврат: отмена продажи " + sale.Name, CreatedBy: &adminID,
+			}); err != nil {
+				return err
+			}
 		}
 		if sale.GoodID == nil { // позицию успели удалить — возвращать некуда
 			return nil

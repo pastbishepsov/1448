@@ -113,6 +113,10 @@ func main() {
 		me.GET("/waitlist", handleGetMyWaitlist)           // своя позиция в очереди (Б9, задел PWA)
 		me.POST("/waitlist", handleJoinWaitlist)           // встать в очередь самому (Б9)
 		me.DELETE("/waitlist", handleLeaveWaitlist)        // выйти из очереди (Б9)
+		me.GET("/menu", handleGetMyMenu)                             // меню кухни (Г7)
+		me.GET("/kitchen/orders", handleGetMyKitchenOrders)          // мои заказы (Г7)
+		me.POST("/kitchen/orders", handleMyKitchenOrderCreate)       // заказ: кошелёк или у стойки (Г7)
+		me.POST("/kitchen/orders/:id/cancel", handleMyKitchenOrderCancel) // передумал, пока не приняли (Г7)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
@@ -127,6 +131,7 @@ func main() {
 		v1.GET("/ws/admin", handleAdminWS)       // live-канал админки (спринт А6)
 		v1.GET("/catalog", handleGetCatalog)     // ← настоящий (гостевой экран + агент)
 		v1.GET("/cases/odds", handleGetCaseOdds) // таблица шансов кейсов (прозрачность, RESEARCH §4)
+		v1.GET("/goods/:id/photo", handleGoodPhoto) // фото позиции кухни — как статика обложек (Г7)
 
 		// Админка (role=admin/owner из users.role, миграция 008)
 		adm := v1.Group("/admin")
@@ -184,6 +189,9 @@ func main() {
 		adm.GET("/sales", handleAdminSales)
 		adm.POST("/sales", handleAdminSaleCreate)
 		adm.POST("/sales/:id/void", handleAdminSaleVoid)
+		adm.GET("/kitchen/orders", handleAdminKitchenOrders)              // очередь кухни (Г7)
+		adm.POST("/kitchen/orders/:id/status", handleAdminKitchenStatus)  // принял→готовит→несут→выдан (Г7)
+		adm.POST("/kitchen/orders/:id/cancel", handleAdminKitchenCancel)  // отмена с возвратами (Г7)
 
 		// Owner-only: статистика и настройки экономики (спринт А5)
 		own := adm.Group("")
@@ -197,6 +205,8 @@ func main() {
 		own.PATCH("/goods/:id", handleAdminGoodUpdate)
 		own.DELETE("/goods/:id", handleAdminGoodDelete)
 		own.GET("/goods/:id/moves", handleAdminGoodMoves)
+		own.PUT("/goods/:id/photo", handleAdminGoodPhotoPut)      // фото позиции (Г7)
+		own.DELETE("/goods/:id/photo", handleAdminGoodPhotoDelete)
 		own.GET("/reports/coins", handleReportCoins)  // В4-2: эмиссия и обязательства
 		own.GET("/coins/burn", handleCoinBurnPreview) // В4-3: кто потеряет монеты сейчас
 		own.POST("/coins/burn", handleCoinBurnRun)
