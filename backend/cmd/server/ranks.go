@@ -88,6 +88,9 @@ func handleGetEconomy(c *gin.Context) {
 	resp := gin.H{
 		"wallet_grosz": me.WalletGrosz,
 		"wallet_pln":   models.PLNFromGrosz(me.WalletGrosz),
+		// Г4: правила броней — клиенты показывают гейт и лимит честно
+		"booking_min_level":   settingInt64("booking_min_level", bookingMinLevelDef),
+		"max_active_bookings": settingInt64("max_active_bookings", maxActiveBookingsDef),
 		"hours_played": hours,
 		"rank": gin.H{
 			"level": rank.Level, "name": rank.Name, "min_hours": rank.MinHours,

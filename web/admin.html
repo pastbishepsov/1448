@@ -736,6 +736,12 @@
           <input id="set_bkbuf" class="input" type="number" min="0" max="240">
           <label class="muted" for="set_bklock">Бронь: за сколько минут ПК придержан под гостя</label>
           <input id="set_bklock" class="input" type="number" min="0" max="120">
+          <label class="muted" for="set_bkminlvl">Бронь открыта с уровня (0 — всем)</label>
+          <input id="set_bkminlvl" class="input" type="number" min="0" max="100">
+          <label class="muted" for="set_bkmax">Живых броней на гостя (0 — без лимита)</label>
+          <input id="set_bkmax" class="input" type="number" min="0" max="20">
+          <label class="muted" for="set_noshow">No-show: минут от начала брони до сгорания (0 — выкл)</label>
+          <input id="set_noshow" class="input" type="number" min="0" max="120">
           <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
           <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал. Лимиты не касаются владельца</div>
         </div>
@@ -1630,6 +1636,8 @@ function renderUserDrawer(){
     <tr><td class="muted">Монеты</td><td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td></tr>
     <tr><td class="muted">Роль · статус</td><td>${u.role} · <span class="st ${u.status}">${u.status}</span></td></tr>
     <tr><td class="muted">Наиграно</td><td>${s.hours_played} ч · сессий ${s.sessions_count}</td></tr>
+    <tr><td class="muted">Кошелёк</td><td><b>${((u.wallet_grosz||0)/100).toFixed(2).replace('.', ',')} zł</b>${u.coin_minutes ? ' · +' + u.coin_minutes + ' мин запаса' : ''}</td></tr>
+    ${s.no_show_count ? `<tr><td class="muted">No-show</td><td>🕳 ${s.no_show_count} — брони сгорали без прихода</td></tr>` : ''}
     ${s.deposited_pln !== undefined ? `<tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>` : ''}
     <tr><td class="muted">Был активен</td><td>${fmtTime(u.last_active_at)}</td></tr>
     <tr><td class="muted">Аккаунт с</td><td>${fmtDate(u.created_at)}</td></tr>
@@ -3512,6 +3520,9 @@ async function renderSettings(){
     document.getElementById('set_afk').value = d.settings.afk_stop_min;
     document.getElementById('set_bkbuf').value = d.settings.booking_buffer_min;
     document.getElementById('set_bklock').value = d.settings.booking_lock_min;
+    document.getElementById('set_bkminlvl').value = d.settings.booking_min_level;
+    document.getElementById('set_bkmax').value = d.settings.max_active_bookings;
+    document.getElementById('set_noshow').value = d.settings.no_show_min;
   }catch(e){ toast('⚠ ' + e.message); }
 }
 async function saveSettings(){
@@ -3535,6 +3546,9 @@ async function saveSettings(){
     afk_stop_min: parseInt(document.getElementById('set_afk').value),
     booking_buffer_min: parseInt(document.getElementById('set_bkbuf').value),
     booking_lock_min: parseInt(document.getElementById('set_bklock').value),
+    booking_min_level: parseInt(document.getElementById('set_bkminlvl').value),
+    max_active_bookings: parseInt(document.getElementById('set_bkmax').value),
+    no_show_min: parseInt(document.getElementById('set_noshow').value),
   };
   for (const k in body){
     if (!Number.isInteger(body[k]) || body[k] < 0){ toast('⚠ Нужны целые неотрицательные числа'); return; }

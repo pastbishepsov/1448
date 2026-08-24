@@ -743,6 +743,9 @@ const STR = {
   live_paused: 'Пауза — время и деньги стоят',
   ntf_bk_soon: '⏰ Твой ПК забронирован к {t} — осталось ~{m} мин',
   ntf_bk_deadline: '⏰ ПК ушёл под бронь ({t}) — сессия завершена, баланс цел',
+  ntf_bk_remind: '📅 Напоминание: бронь в {t} — через ~{m} мин',
+  ntf_bk_noshow: '🕳 Бронь на {t} сгорела — no-show',
+  book_locked: '🔒 Бронь откроется на LVL {l} — сейчас {n}. XP капает за игру!',
   btn_pause: '⏸ Пауза',
   btn_resume: '▶ Продолжить',
   rate_line: '1 zł → {c} койнов · игра: +{m} койнов/мин',
@@ -1210,6 +1213,16 @@ function slotTimes(day){
 }
 
 function buildSheet(){
+  // Г4-и1: бронь — привилегия уровня
+  const bkMinLvl = (economy && economy.booking_min_level) || 0;
+  if (bkMinLvl && me && me.level < bkMinLvl){
+    document.getElementById('dayChips').innerHTML = '';
+    document.getElementById('timeSlots').innerHTML = '';
+    document.getElementById('durChips').innerHTML = '';
+    document.getElementById('bkErr').textContent = T('book_locked', {l: bkMinLvl, n: me.level});
+    document.getElementById('bkGo').disabled = true;
+    return;
+  }
   document.getElementById('dayChips').innerHTML = [['today', STR.day_today], ['tomorrow', STR.day_tomorrow]]
     .map(([k, lbl]) => `<button class="chip${bkDay === k ? ' on' : ''}" onclick="setBkDay('${k}')">${esc(lbl)}</button>`).join('');
   const slots = slotTimes(bkDay);
@@ -1809,6 +1822,10 @@ function ntfText(n){
       return T('ntf_bk_soon', {t: p.start_time ? hm(p.start_time) : '—', m: p.minutes_left || 0});
     case 'booking_deadline':
       return T('ntf_bk_deadline', {t: p.start_time ? hm(p.start_time) : '—'});
+    case 'booking_reminder':
+      return T('ntf_bk_remind', {t: p.start_time ? hm(p.start_time) : '—', m: p.minutes_left || 0});
+    case 'booking_no_show':
+      return T('ntf_bk_noshow', {t: p.start_time ? hm(p.start_time) : '—'});
   }
   return STR.ntf_default;
 }
@@ -1836,7 +1853,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-24.1';
+const APP_VER = '2026-08-24.2';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

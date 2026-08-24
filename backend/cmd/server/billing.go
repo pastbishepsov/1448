@@ -349,6 +349,7 @@ func startWalletBillingJob() {
 		time.Sleep(15 * time.Second)
 		for {
 			billingSweep(time.Now())
+			bookingSweep(time.Now()) // Г4: напоминания и no-show броней
 			time.Sleep(billingTickSeconds * time.Second)
 		}
 	}()

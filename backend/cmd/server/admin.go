@@ -243,9 +243,16 @@ func handleAdminUserCard(c *gin.Context) {
 		})
 	}
 
+	// Г4-и3: счётчик no-show — копим факт для решений владельца о санкциях.
+	var noShows int64
+	db.Model(&models.Booking{}).
+		Where("user_id = ? AND status = ?", user.ID, models.BookingStatusNoShow).
+		Count(&noShows)
+
 	stats := gin.H{
 		"sessions_count": agg.Cnt,
 		"hours_played":   agg.Minutes / 60,
+		"no_show_count":  noShows,
 	}
 	if ownerView {
 		stats["deposited_pln"] = depSum

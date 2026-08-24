@@ -28,6 +28,13 @@ const (
 	bookingBufferMinDef int64 = 15 // настройка booking_buffer_min
 	bookingLockMinDef   int64 = 10 // настройка booking_lock_min
 	defaultPlannedMin         = 30 // посадка без planned_min: минимальный сеанс
+
+	// Г4: дисциплина броней
+	bookingMinLevelDef   int64 = 3  // настройка booking_min_level (0 = всем)
+	maxActiveBookingsDef int64 = 2  // настройка max_active_bookings (0 = без лимита)
+	noShowMinDef         int64 = 15 // настройка no_show_min (0 = выкл)
+	remindFirstMin             = 60 // первое напоминание: до брони ~час
+	remindLastMin              = 15 // второе: ~15 минут
 )
 
 // seatWindowMin — сколько ЦЕЛЫХ минут можно отсидеть до брони с учётом
@@ -74,6 +81,79 @@ func nextForeignBooking(computerID, userID uuid.UUID, now time.Time) *models.Boo
 		return nil
 	}
 	return &list[0]
+}
+
+// activeBookingsCount — живые брони гостя, чей конец ещё впереди (Г4-и2).
+func activeBookingsCount(userID uuid.UUID, now time.Time) int64 {
+	var n int64
+	db.Model(&models.Booking{}).
+		Where("user_id = ? AND status IN ?", userID, liveBookingStatuses).
+		Where("start_time + make_interval(mins => duration_min) > ?", now).
+		Count(&n)
+	return n
+}
+
+// bookingSweep — дисциплина броней на тике фонового джоба (Г4):
+// напоминания «через ~60/~15 минут» (по одному разу), затем no-show после
+// no_show_min от начала. Гость в клубе за другим ПК — бронь честно гасится
+// seated (человек пришёл), иначе no_show: гостю уведомление, счётчик в
+// карточке, освободившееся окно зовёт вейтлист (Б9).
+func bookingSweep(now time.Time) {
+	var live []models.Booking
+	db.Preload("Computer").
+		Where("status IN ?", liveBookingStatuses).
+		Where("start_time + make_interval(mins => duration_min) > ?", now).
+		Find(&live)
+	if len(live) == 0 {
+		return
+	}
+	noShow := settingInt64("no_show_min", noShowMinDef)
+	for i := range live {
+		b := &live[i]
+		pcName := ""
+		if b.Computer != nil {
+			pcName = b.Computer.Name
+		}
+		if leftMin := int(b.StartTime.Sub(now).Minutes()); leftMin >= 0 {
+			// до начала: напоминания
+			if leftMin <= remindLastMin && b.Remind15At == nil {
+				notifyUser(b.UserID, "booking_reminder", map[string]any{
+					"minutes_left": leftMin, "start_time": b.StartTime, "computer": pcName})
+				db.Model(b).Updates(map[string]any{"remind15_at": now, "remind60_at": now})
+			} else if leftMin <= remindFirstMin && b.Remind60At == nil {
+				notifyUser(b.UserID, "booking_reminder", map[string]any{
+					"minutes_left": leftMin, "start_time": b.StartTime, "computer": pcName})
+				db.Model(b).Update("remind60_at", now)
+			}
+			continue
+		}
+		// бронь началась: no-show по таймеру
+		if noShow <= 0 || now.Sub(b.StartTime) < time.Duration(noShow)*time.Minute {
+			continue
+		}
+		var inClub int64
+		db.Model(&models.Session{}).
+			Where("user_id = ? AND club_id = ? AND status = ?",
+				b.UserID, b.ClubID, models.SessionStatusActive).
+			Count(&inClub)
+		newStatus := models.BookingStatusNoShow
+		if inClub > 0 {
+			newStatus = models.BookingStatusSeated
+		}
+		res := db.Model(&models.Booking{}).
+			Where("id = ? AND status IN ?", b.ID, liveBookingStatuses).
+			Update("status", newStatus)
+		if res.Error != nil || res.RowsAffected == 0 {
+			continue
+		}
+		if newStatus == models.BookingStatusNoShow {
+			notifyUser(b.UserID, "booking_no_show", map[string]any{
+				"start_time": b.StartTime, "computer": pcName})
+			hub.AdminBroadcast("booking", map[string]any{
+				"kind": "no_show", "computer": pcName, "start_time": b.StartTime})
+			checkWaitlistNotify(b.ClubID) // окно освободилось — зовём очередь
+		}
+	}
 }
 
 // claimBookingOnSeat — посадка хозяина гасит его ближайшую бронь на этом ПК

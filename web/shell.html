@@ -1422,6 +1422,8 @@ function notifText(n){
     case 'session_moved': return '🖥 Тебя пересадили за ' + (p.computer||'другой ПК') + ' — сессия продолжается';
     case 'booking_soon': return '⏰ Этот ПК забронирован' + (p.start_time ? ' к ' + chHM(p.start_time) : '') + ' — осталось ~' + (p.minutes_left||0) + ' мин';
     case 'booking_deadline': return '⏰ ПК уходит под бронь' + (p.start_time ? ' (' + chHM(p.start_time) + ')' : '') + ' — сессия завершена, баланс и XP сохранены';
+    case 'booking_reminder': return '📅 Напоминание: твоя бронь в ' + (p.start_time ? chHM(p.start_time) : '—') + (p.computer ? ' (' + p.computer + ')' : '') + ' — через ~' + (p.minutes_left||0) + ' мин';
+    case 'booking_no_show': return '🕳 Бронь ' + (p.start_time ? 'на ' + chHM(p.start_time) + ' ' : '') + 'сгорела: ты не пришёл вовремя';
   }
   return '🔔 Обновление аккаунта';
 }
@@ -1797,7 +1799,10 @@ function renderSide(){
         ${cancellable ? `<button class="btn danger slim" style="padding:5px 9px; font-size:12px" onclick="cancelMyBooking('${b.id}')">✕</button>` : ''}
       </div>`;
     };
-    el.innerHTML = `
+    // Г4-и1: бронь — привилегия уровня; тем, кто ниже, показываем цель.
+    const bkMinLvl = (economy && economy.booking_min_level) || 0;
+    const bkLvlOk = !bkMinLvl || (me && me.level >= bkMinLvl);
+    const bkForm = bkLvlOk ? `
       <div class="card">
         <h3 style="margin-bottom:10px">Забронировать ПК</h3>
         <select id="bkClub" class="input">${opts || '<option value="">Клубы не загрузились</option>'}</select>
@@ -1810,7 +1815,13 @@ function renderSide(){
           <option value="180">3 часа</option><option value="300">5 часов</option>
         </select>
         <button class="btn" onclick="createBooking()">Забронировать</button>
-      </div>
+      </div>` : `
+      <div class="card" style="text-align:center">
+        <div style="font-size:32px">🔒</div>
+        <h3 style="margin:6px 0 4px">Бронь откроется на LVL ${bkMinLvl}</h3>
+        <div class="muted">Сейчас LVL ${me ? me.level : 1} — XP капает за каждую минуту игры</div>
+      </div>`;
+    el.innerHTML = bkForm + `
       ${live.length ? '<div class="card">' + live.map(row).join('') + '</div>' : '<div class="muted" style="text-align:center; margin:8px 0">Активных броней нет</div>'}
       ${past.length ? '<div class="muted" style="margin:10px 2px 6px">Прошлые</div><div class="card" style="opacity:.55">' + past.slice(0,10).map(row).join('') + '</div>' : ''}`;
   }

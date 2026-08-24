@@ -9,6 +9,7 @@ package main
 //     Предоплата и лимиты по уровню — после подключения платежей.
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -64,6 +65,23 @@ func handleCreateBooking(c *gin.Context) {
 	var club models.Club
 	if err := db.First(&club, "id = ? AND is_active = ?", c.Param("id"), true).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "club_not_found", "message": "Клуб не найден"})
+		return
+	}
+
+	// Г4-и1: бронь — привилегия уровня (0 = всем). Мотивация, не стена:
+	// клиенты показывают «откроется на LVL N», админский walk-in не гейтим.
+	var guest models.User
+	_ = db.First(&guest, "id = ?", userID).Error
+	if minLvl := settingInt64("booking_min_level", bookingMinLevelDef); minLvl > 0 && int64(guest.Level) < minLvl {
+		c.JSON(http.StatusConflict, gin.H{"code": "booking_level", "message": fmt.Sprintf(
+			"Бронь откроется на уровне %d — сейчас LVL %d. XP капает за каждую минуту игры", minLvl, guest.Level)})
+		return
+	}
+	// Г4-и2: лимит живых броней (0 = без лимита) — нельзя обвешать весь зал.
+	if maxB := settingInt64("max_active_bookings", maxActiveBookingsDef); maxB > 0 &&
+		activeBookingsCount(userID, time.Now()) >= maxB {
+		c.JSON(http.StatusConflict, gin.H{"code": "booking_limit", "message": fmt.Sprintf(
+			"У тебя уже %d живых брони — лимит. Отмени лишнюю или дождись её времени", maxB)})
 		return
 	}
 

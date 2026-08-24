@@ -31,6 +31,10 @@ type Booking struct {
 	Prepaid     bool      `json:"prepaid"      gorm:"not null;default:true"`
 	Notes       *string   `json:"notes,omitempty"`
 
+	// Г4 (миграция 035): напоминания отправлены (по одному разу).
+	Remind60At *time.Time `json:"remind60_at,omitempty" gorm:"column:remind60_at"`
+	Remind15At *time.Time `json:"remind15_at,omitempty" gorm:"column:remind15_at"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 

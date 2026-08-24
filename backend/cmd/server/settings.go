@@ -60,6 +60,9 @@ var settingBounds = map[string][2]int64{
 	"afk_stop_min":              {0, 240},  // Г2-и2: порог простоя до AFK-реакции, 0 = выкл
 	"booking_buffer_min":        {0, 240},  // Г3 (Р3): буфер до чужой брони при посадке
 	"booking_lock_min":          {0, 120},  // Г3 (Р3): за столько минут ПК придержан под бронь
+	"booking_min_level":         {0, 100},  // Г4-и1: бронь с этого уровня, 0 = всем
+	"max_active_bookings":       {0, 20},   // Г4-и2: живых броней на гостя, 0 = без лимита
+	"no_show_min":               {0, 120},  // Г4-и3: минут от начала брони до сгорания, 0 = выкл
 }
 
 func currentSettings() gin.H {
@@ -83,6 +86,9 @@ func currentSettings() gin.H {
 		"afk_stop_min":              settingInt64("afk_stop_min", afkStopMinDef),
 		"booking_buffer_min":        settingInt64("booking_buffer_min", bookingBufferMinDef),
 		"booking_lock_min":          settingInt64("booking_lock_min", bookingLockMinDef),
+		"booking_min_level":         settingInt64("booking_min_level", bookingMinLevelDef),
+		"max_active_bookings":       settingInt64("max_active_bookings", maxActiveBookingsDef),
+		"no_show_min":               settingInt64("no_show_min", noShowMinDef),
 	}
 }
 
