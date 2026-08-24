@@ -15,6 +15,7 @@ type UserProgress struct {
 	ActiveMinutes  int        `json:"active_minutes"   gorm:"default:0"`
 	Sessions       int        `json:"sessions"         gorm:"default:0"`
 	KitchenOrders  int        `json:"kitchen_orders"   gorm:"default:0"`
+	NightSessions  int        `json:"night_sessions"   gorm:"default:0"` // Г6: сессии, начатые ночью (22:00–07:59 клуба)
 	FirstSessionAt *time.Time `json:"first_session_at,omitempty"`
 }
 

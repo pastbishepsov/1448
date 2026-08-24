@@ -34,11 +34,14 @@ type playerStats struct {
 	ActiveToday  int
 	VisitsToday  int
 	KitchenToday int
+	NightToday   int
 	MinutesWeek  int
 	ActiveWeek   int
 	VisitsWeek   int
 	VisitStreak  int
 	VisitsMonth  int
+	MinutesMonth int
+	ActiveMonth  int
 }
 
 // achCondition — разобранное условие ({"min":10} / {"count":1} / {"days":7}).
@@ -88,8 +91,14 @@ func conditionValue(condType string, s playerStats) (int, bool) {
 		return s.VisitsWeek, true
 	case "visits_month":
 		return s.VisitsMonth, true
+	case "minutes_month":
+		return s.MinutesMonth, true
+	case "active_minutes_month":
+		return s.ActiveMonth, true
 	case "kitchen_today":
 		return s.KitchenToday, true
+	case "night_session_today":
+		return s.NightToday, true
 	}
 	return 0, false
 }
@@ -155,6 +164,7 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 		}
 		tier := a.RewardCaseTier
 		sp := a.RewardSkillpoints
+		xp := a.RewardXP
 		_ = db.Transaction(func(tx *gorm.DB) error {
 			ua := models.UserAchievement{UserID: userID, AchievementID: a.ID, EarnedAt: now, PeriodKey: pk}
 			if err := tx.Create(&ua).Error; err != nil {
@@ -166,6 +176,11 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 					return err
 				}
 			}
+			if xp > 0 { // Г6: XP-награда через общий applyXP (левел-апы честные)
+				if err := awardAchievementXP(tx, userID, int64(xp)); err != nil {
+					return err
+				}
+			}
 			if tier != nil {
 				if err := grantCase(tx, userID, nil, *tier, models.CaseSourceAchievement); err != nil {
 					return err
@@ -174,6 +189,31 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 			return nil
 		})
 	}
+}
+
+// awardAchievementXP — XP-награда достижения (Г6, Р5): тот же applyXP, что и
+// у сессий/грантов — с левел-апами, очками за уровень и кейсами за уровень.
+func awardAchievementXP(tx *gorm.DB, userID uuid.UUID, amount int64) error {
+	var user models.User
+	if err := tx.First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+	levels := applyXP(&user, amount)
+	if err := tx.Model(&models.User{}).Where("id = ?", userID).
+		Updates(map[string]any{
+			"level":                 user.Level,
+			"xp_current":            user.XPCurrent,
+			"xp_total":              user.XPTotal,
+			"skillpoints_available": user.SkillpointsAvailable,
+		}).Error; err != nil {
+		return err
+	}
+	for i := 0; i < levels; i++ {
+		if err := grantCase(tx, user.ID, nil, tierForLevel(user.Level), models.CaseSourceLevelUp); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GET /me/achievements — достижения с прогрессом и временем до резета (Г5).
@@ -220,6 +260,7 @@ func handleGetMyAchievements(c *gin.Context) {
 			"category":           a.Category,
 			"reward_skillpoints": a.RewardSkillpoints,
 			"reward_case_tier":   a.RewardCaseTier,
+			"reward_xp":          a.RewardXP,
 			"earned":             false, // для периодических — в ТЕКУЩЕМ периоде
 		}
 		if pk != nil {

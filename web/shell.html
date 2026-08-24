@@ -458,6 +458,10 @@
   .modal{background:var(--glass); border:1px solid var(--glass-brd); box-shadow:var(--sh-2)}
   .overlay{backdrop-filter:blur(10px)}
 
+  /* — прогресс ачивки (Г6) — */
+  .ach .achbar{height:4px; background:rgba(255,255,255,.08); border-radius:99px; margin:6px 0 3px; overflow:hidden}
+  .ach .achbar i{display:block; height:100%; background:var(--acc); border-radius:99px}
+
   /* — кошелёк в топбаре (Г1): предоплаченные деньги — */
   #walletChip .muted{ font-size:11px; font-weight:700; white-space:nowrap }
   #walletChip.low .gold-t, #walletChip.low .muted{ color:var(--acc) }
@@ -1765,14 +1769,36 @@ function renderSide(){
   if (curTab === 'ach'){
     if (!achievements){ el.innerHTML = ''; return; }
     const list = achievements.achievements || [];
-    const got = list.filter(a=>a.earned), rest = list.filter(a=>!a.earned);
-    el.innerHTML = `<div class="muted" style="margin-bottom:10px">Получено: <b class="green-t">${achievements.earned_count}</b> · Наиграно часов: <b>${Math.floor(achievements.hours_played||0)}</b></div>`
-      + [...got, ...rest].map(a => `
+    // Г6: таймер до фирменного резета 14:48
+    let resetTxt = '';
+    if (achievements.resets_at){
+      const ms = new Date(achievements.resets_at) - Date.now();
+      if (ms > 0){
+        const h = Math.floor(ms/3600000), m = Math.floor(ms%3600000/60000);
+        resetTxt = ' · ⏳ до резета ' + h + ':' + String(m).padStart(2,'0');
+      }
+    }
+    const achRow = a => {
+      const pr = a.progress, pct = pr && pr.target ? Math.min(100, 100*pr.value/pr.target) : 0;
+      return `
       <div class="card ach ${a.earned?'got':''}">
         <div class="st">${a.earned?UI.check:UI.lock}</div>
-        <div><div class="t">${a.title}</div><div class="d">${a.description||''}</div>
-        <div class="rw">${a.reward_skillpoints ? '+'+a.reward_skillpoints+' '+UI.sp+' ' : ''}${a.reward_case_tier ? '+ кейс '+a.reward_case_tier : ''}</div></div>
-      </div>`).join('');
+        <div style="flex:1; min-width:0"><div class="t">${a.title}</div><div class="d">${a.description||''}</div>
+        ${pr && !a.earned ? `<div class="achbar"><i style="width:${pct}%"></i></div><div class="d cnum">${pr.value} / ${pr.target}</div>` : ''}
+        <div class="rw">${a.reward_xp ? '+'+a.reward_xp+' XP ' : ''}${a.reward_skillpoints ? '+'+a.reward_skillpoints+' '+UI.sp+' ' : ''}${a.reward_case_tier ? '+ кейс '+a.reward_case_tier : ''}</div></div>
+      </div>`;
+    };
+    const near = a => { const p = a.progress; return p && p.target ? -(p.value/p.target) : 0; };
+    const CATS = [['daily','Дня — резет в 14:48'], ['weekly','Недели'], ['monthly','Месяца'], ['lifetime','Навсегда']];
+    el.innerHTML = `<div class="muted" style="margin-bottom:10px">Получено: <b class="green-t">${achievements.earned_count}</b> · Наиграно часов: <b>${Math.floor(achievements.hours_played||0)}</b>${resetTxt}</div>`
+      + CATS.map(([cat, lbl]) => {
+        const items = list.filter(a => a.category === cat);
+        if (!items.length) return '';
+        const rest = items.filter(a=>!a.earned).sort((x,y)=>near(x)-near(y)); // ближайшие к закрытию — сверху
+        const got = items.filter(a=>a.earned);
+        return `<div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${lbl}</div>`
+          + [...rest, ...got].map(achRow).join('');
+      }).join('');
   }
   if (curTab === 'coins'){
     if (!economy){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">Загрузка экономики…</div>'; return; }

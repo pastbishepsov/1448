@@ -16,6 +16,7 @@ type Achievement struct {
 	ConditionValue    string    `json:"-"                  gorm:"type:jsonb;not null"` // сырой JSON, напр. {"min":10}
 	RewardSkillpoints int       `json:"reward_skillpoints" gorm:"not null;default:0"`
 	RewardCaseTier    *CaseTier `json:"reward_case_tier,omitempty" gorm:"type:case_tier"`
+	RewardXP          int       `json:"reward_xp"          gorm:"not null;default:0"` // Г6: XP через общий applyXP (Р5: еда и «первые шаги» — не кейс)
 	IsActive          bool      `json:"is_active"          gorm:"not null;default:true"`
 	CreatedAt         time.Time `json:"created_at"`
 }

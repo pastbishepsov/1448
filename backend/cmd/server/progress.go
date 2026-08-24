@@ -30,14 +30,19 @@ func recordSessionProgress(userID uuid.UUID, minutes, activeMinutes int, started
 	if activeMinutes > minutes {
 		activeMinutes = minutes
 	}
-	db.Exec(`INSERT INTO user_progress (user_id, day_key, minutes, active_minutes, sessions, first_session_at)
-		VALUES (?, ?, ?, ?, 1, ?)
+	night := 0
+	if isNightHour(startedAt.In(clubLocation).Hour()) { // Г6: «Ночная смена»
+		night = 1
+	}
+	db.Exec(`INSERT INTO user_progress (user_id, day_key, minutes, active_minutes, sessions, night_sessions, first_session_at)
+		VALUES (?, ?, ?, ?, 1, ?, ?)
 		ON CONFLICT (user_id, day_key) DO UPDATE SET
 			minutes = user_progress.minutes + EXCLUDED.minutes,
 			active_minutes = user_progress.active_minutes + EXCLUDED.active_minutes,
 			sessions = user_progress.sessions + 1,
+			night_sessions = user_progress.night_sessions + EXCLUDED.night_sessions,
 			first_session_at = LEAST(user_progress.first_session_at, EXCLUDED.first_session_at)`,
-		userID, achDayKey(now), minutes, activeMinutes, startedAt)
+		userID, achDayKey(now), minutes, activeMinutes, night, startedAt)
 }
 
 // gatherPeriodicStats — статистика периодов для conditionMet (Г5).
@@ -57,6 +62,7 @@ func gatherPeriodicStats(userID uuid.UUID, now time.Time) playerStats {
 		s.ActiveToday = p.ActiveMinutes
 		s.VisitsToday = p.Sessions
 		s.KitchenToday = p.KitchenOrders
+		s.NightToday = p.NightSessions
 	}
 	for _, k := range achWeekDayKeys(now) {
 		if p, ok := byDay[k]; ok {
@@ -69,8 +75,12 @@ func gatherPeriodicStats(userID uuid.UUID, now time.Time) playerStats {
 	}
 	month := achMonthPrefix(now)
 	for k, p := range byDay {
-		if len(k) >= 7 && k[:7] == month && p.Sessions > 0 {
-			s.VisitsMonth++
+		if len(k) >= 7 && k[:7] == month {
+			s.MinutesMonth += p.Minutes
+			s.ActiveMonth += p.ActiveMinutes
+			if p.Sessions > 0 {
+				s.VisitsMonth++
+			}
 		}
 	}
 	// стрик: дни с визитом подряд, начиная с сегодняшних суток назад

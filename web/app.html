@@ -292,6 +292,8 @@
   .tal-btn.maxed{color:var(--dim)}
   /* ачивки */
   .achrow{display:flex; gap:10px; padding:10px 0 8px; border-top:1px solid var(--hair); align-items:flex-start}
+  .apbar{height:4px; background:rgba(255,255,255,.08); border-radius:99px; margin:5px 0 2px; overflow:hidden}
+  .apbar i{display:block; height:100%; background:var(--acc); border-radius:99px}
   .achrow .aic{width:20px; height:20px; flex:none; color:var(--dim); margin-top:2px}
   .achrow .aic svg{width:100%; height:100%; display:block}
   .achrow.got .aic{color:var(--acc)}
@@ -680,6 +682,12 @@ const STR = {
   ach_title: 'Ачивки',
   ach_got: '{a} из {b}',
   ach_reward_sp: '+{n} ✦',
+  ach_reward_xp: '+{n} XP',
+  ach_cat_daily: 'Дня — резет в 14:48',
+  ach_cat_weekly: 'Недели',
+  ach_cat_monthly: 'Месяца',
+  ach_cat_lifetime: 'Навсегда',
+  ach_reset: '⏳ до резета {t}',
   ach_reward_case: '+ кейс {t}',
   lb_title: 'Топ клуба',
   lb_me: 'Твоё место: #{n}',
@@ -1380,15 +1388,41 @@ function renderAch(){
   const el = document.getElementById('achCard');
   if (!el || !achievements) return;
   const list = achievements.achievements || [];
-  const got = list.filter(a => a.earned), rest = list.filter(a => !a.earned);
-  el.innerHTML = `<h3>${esc(STR.ach_title)} <span class="muted cnum" style="font-weight:700">${T('ach_got', {a: achievements.earned_count || 0, b: list.length})}</span></h3>` +
-    (list.length ? [...got, ...rest].map(a => `<div class="achrow ${a.earned ? 'got' : ''}">
+  let resetTxt = '';
+  if (achievements.resets_at){ // Г6: фирменный резет 14:48
+    const ms = new Date(achievements.resets_at) - Date.now();
+    if (ms > 0){
+      const h = Math.floor(ms/3600000), m = Math.floor(ms%3600000/60000);
+      resetTxt = `<div class="muted cnum" style="margin:2px 0 4px">${esc(T('ach_reset', {t: h + ':' + String(m).padStart(2,'0')}))}</div>`;
+    }
+  }
+  const row = a => {
+    const pr = a.progress, pct = pr && pr.target ? Math.min(100, 100*pr.value/pr.target) : 0;
+    const rw = [];
+    if (a.reward_xp) rw.push(T('ach_reward_xp', {n: a.reward_xp}));
+    if (a.reward_skillpoints) rw.push(T('ach_reward_sp', {n: a.reward_skillpoints}));
+    if (a.reward_case_tier) rw.push(T('ach_reward_case', {t: a.reward_case_tier}));
+    return `<div class="achrow ${a.earned ? 'got' : ''}">
       <span class="aic" data-ic="${a.earned ? 'check' : 'lock'}"></span>
       <div style="flex:1; min-width:0">
         <div class="ach-t">${esc(a.title)}</div>
         <div class="muted" style="font-size:12.5px">${esc(a.description || '')}</div>
-        ${a.reward_skillpoints || a.reward_case_tier ? `<div class="ach-rw cnum">${a.reward_skillpoints ? T('ach_reward_sp', {n: a.reward_skillpoints}) : ''}${a.reward_skillpoints && a.reward_case_tier ? ' · ' : ''}${a.reward_case_tier ? T('ach_reward_case', {t: a.reward_case_tier}) : ''}</div>` : ''}
-      </div></div>`).join('') : `<div class="muted" style="padding:4px 0">${esc(STR.ach_empty)}</div>`);
+        ${pr && !a.earned ? `<div class="apbar"><i style="width:${pct}%"></i></div><div class="muted cnum" style="font-size:11.5px">${pr.value} / ${pr.target}</div>` : ''}
+        ${rw.length ? `<div class="ach-rw cnum">${rw.join(' · ')}</div>` : ''}
+      </div></div>`;
+  };
+  const near = a => { const p = a.progress; return p && p.target ? -(p.value/p.target) : 0; };
+  const CATS = [['daily', STR.ach_cat_daily], ['weekly', STR.ach_cat_weekly],
+                ['monthly', STR.ach_cat_monthly], ['lifetime', STR.ach_cat_lifetime]];
+  el.innerHTML = `<h3>${esc(STR.ach_title)} <span class="muted cnum" style="font-weight:700">${T('ach_got', {a: achievements.earned_count || 0, b: list.length})}</span></h3>` + resetTxt +
+    (list.length ? CATS.map(([cat, lbl]) => {
+      const items = list.filter(a => a.category === cat);
+      if (!items.length) return '';
+      const rest = items.filter(a => !a.earned).sort((x, y) => near(x) - near(y));
+      const got = items.filter(a => a.earned);
+      return `<div class="muted" style="margin:10px 0 2px; font-weight:800">${esc(lbl)}</div>`
+        + [...rest, ...got].map(row).join('');
+    }).join('') : `<div class="muted" style="padding:4px 0">${esc(STR.ach_empty)}</div>`);
   mountIcons(el);
 }
 
@@ -1853,7 +1887,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-24.2';
+const APP_VER = '2026-08-24.3';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
