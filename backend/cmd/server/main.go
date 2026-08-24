@@ -140,6 +140,7 @@ func main() {
 		adm.GET("/overview", handleAdminOverview)
 		adm.GET("/users", handleAdminUsers)
 		adm.GET("/users/:id", handleAdminUserCard) // карточка гостя (спринт А2)
+		adm.PATCH("/users/:id", handleAdminGuestUpdate) // правка данных гостя (Е0-и1)
 		adm.POST("/users/:id/ban", handleAdminBan)
 		adm.POST("/users/:id/unban", handleAdminUnban)
 		adm.POST("/users/:id/deposit", handleAdminDeposit)
