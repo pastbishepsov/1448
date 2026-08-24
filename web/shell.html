@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>14:48 — Гостевой экран</title>
+<title>14:48</title>
 <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
@@ -464,6 +464,14 @@
   .favpick button{border:1px solid rgba(255,255,255,.14); background:transparent; color:var(--txt); border-radius:9px; padding:5px 10px; cursor:pointer; font-size:12px}
   .favpick button.on{border-color:var(--acc); color:var(--acc); font-weight:700}
 
+  /* — переключатель языка (Г9-и2) — */
+  .langsw{display:flex; gap:6px; justify-content:center; margin-top:14px}
+  .langsw button{border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:var(--dim);
+                 border-radius:8px; padding:5px 12px; cursor:pointer; font-size:12px; font-weight:800; letter-spacing:.4px}
+  .langsw button:hover{color:var(--txt); border-color:var(--acc)}
+  .langsw button.on{color:var(--txt); border-color:var(--acc); background:rgba(255,39,64,.12)}
+  .langsw.inline{justify-content:flex-start; margin:10px 0 0}
+
   /* — кухня (Г7): плитки меню и мои заказы — */
   .fooditem{display:flex; gap:12px; align-items:center; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:10px 12px; margin-bottom:10px}
   .fooditem.out{opacity:.45}
@@ -598,19 +606,20 @@
         <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
       </svg>
     </div>
-    <div class="slogan">Твой клуб — это игра</div>
+    <div class="slogan" data-str="slogan"></div>
   </div>
   <div class="authcard">
     <div class="tabs">
-      <button id="tabLogin" class="on" onclick="setMode('login')">Вход</button>
-      <button id="tabReg" onclick="setMode('register')">Регистрация</button>
+      <button id="tabLogin" class="on" onclick="setMode('login')" data-str="tab_login"></button>
+      <button id="tabReg" onclick="setMode('register')" data-str="tab_register"></button>
     </div>
-    <input id="nick" class="input" placeholder="Никнейм" autocomplete="off">
-    <input id="pass" class="input" type="password" placeholder="Пароль (мин. 6)" onkeydown="if(event.key==='Enter')submitAuth()">
+    <input id="nick" class="input" data-str-ph="ph_nick" autocomplete="off">
+    <input id="pass" class="input" type="password" data-str-ph="ph_pass" onkeydown="if(event.key==='Enter')submitAuth()">
     <div id="authErr" class="err"></div>
-    <button id="authBtn" class="btn" onclick="submitAuth()">Войти</button>
+    <button id="authBtn" class="btn" onclick="submitAuth()" data-str="btn_login"></button>
   </div>
-  <div class="muted">Сервер: <span id="srv"></span></div>
+  <div class="muted"><span data-str="server"></span> <span id="srv"></span></div>
+    <div id="authLang"></div>
 </div>
 
 <!-- ═══════════ SHELL ═══════════ -->
@@ -630,7 +639,7 @@
     <div class="tb-user" onclick="openProfile()">
       <div class="nick" id="hNick">—</div>
       <div class="sub">LVL <b id="hLvl">1</b> · <span class="rk" id="rankPill"
-        onclick="event.stopPropagation(); openRanks()" title="Ранг аккаунта — жми, чтобы увидеть все"><span
+        onclick="event.stopPropagation(); openRanks()" data-str-title="tb_rank_title"><span
         class="rank-em" id="rankEm">✦</span> <b id="rankName">—</b></span></div>
     </div>
     <div class="xpzone">
@@ -638,18 +647,18 @@
       <div class="xpnums"><span id="xpText">0 / 1000 XP</span><span id="xpLeft"></span></div>
     </div>
     <div class="res"><span class="ic" data-ic="coins"></span><span class="gold-t" id="coins">0</span></div>
-    <div class="res" id="walletChip" title="Кошелёк — предоплаченное время. Пополнение у стойки"><span class="ic" data-ic="wallet"></span><span class="gold-t" id="walletZl">—</span><span class="muted" id="walletEta"></span></div>
+    <div class="res" id="walletChip" data-str-title="tb_wallet_title"><span class="ic" data-ic="wallet"></span><span class="gold-t" id="walletZl">—</span><span class="muted" id="walletEta"></span></div>
     <div class="res"><span class="ic" data-ic="sp"></span><span class="cyan-t" id="sp">0</span></div>
     <div class="res timerchip" id="timerChip"><span class="ic" data-ic="timer"></span><span id="timer">00:00</span></div>
     <div class="clock" id="clock">--:--</div>
-    <div class="muted" id="agentDot" style="font-weight:700; white-space:nowrap"><span data-ic="monitor"></span> ПК ○</div>
-    <button class="tb-sens" id="tbSens" onclick="sideTab('sens')" title="Студия сенсы — настрой прицел под любую игру">
+    <div class="muted" id="agentDot" style="font-weight:700; white-space:nowrap"><span data-ic="monitor"></span> <span id="agentTxt"></span></div>
+    <button class="tb-sens" id="tbSens" onclick="sideTab('sens')" data-str-title="tb_sens_title">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M160,128a32,32,0,1,1-32-32A32,32,0,0,1,160,128Z" fill="var(--acc)" opacity=".45"/><path d="M232,120h-8.34A96.14,96.14,0,0,0,136,32.34V24a8,8,0,0,0-16,0v8.34A96.14,96.14,0,0,0,32.34,120H24a8,8,0,0,0,0,16h8.34A96.14,96.14,0,0,0,120,223.66V232a8,8,0,0,0,16,0v-8.34A96.14,96.14,0,0,0,223.66,136H232a8,8,0,0,0,0-16Zm-96,87.6V200a8,8,0,0,0-16,0v7.6A80.15,80.15,0,0,1,48.4,136H56a8,8,0,0,0,0-16H48.4A80.15,80.15,0,0,1,120,48.4V56a8,8,0,0,0,16,0V48.4A80.15,80.15,0,0,1,207.6,120H200a8,8,0,0,0,0,16h7.6A80.15,80.15,0,0,1,136,207.6ZM128,88a40,40,0,1,0,40,40A40,40,0,0,0,128,88Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,152Z"/></svg>
-      <span>Сенса</span>
+      <span data-str="tb_sens"></span>
     </button>
-    <button class="iconbtn" title="Инфо — правила монет и кейсов, лицензии" onclick="openInfo()"><span data-ic="info"></span></button>
-    <button class="iconbtn" onclick="toggleChat()"><span data-ic="bell"></span> Админ<span class="ch-badge hidden" id="chatBadge"></span></button>
-    <button class="iconbtn" title="Выйти" onclick="logout()">⏻</button>
+    <button class="iconbtn" data-str-title="tb_info_title" onclick="openInfo()"><span data-ic="info"></span></button>
+    <button class="iconbtn" onclick="toggleChat()"><span data-ic="bell"></span> <span data-str="tb_admin"></span><span class="ch-badge hidden" id="chatBadge"></span></button>
+    <button class="iconbtn" data-str-title="tb_logout_title" onclick="logout()">⏻</button>
   </div>
 
   <div class="main">
@@ -661,12 +670,12 @@
     <div class="side">
       <div class="sesscard" id="sessCard"><!-- JS --></div>
       <div class="sidetabs">
-        <button id="st-cases" class="on" onclick="sideTab('cases')">Кейсы<span class="bub hidden" id="casesBub">0</span></button>
-        <button id="st-talents" onclick="sideTab('talents')">Таланты</button>
-        <button id="st-top" onclick="sideTab('top')">Топ</button>
-        <button id="st-ach" onclick="sideTab('ach')">Ачивки</button>
-        <button id="st-hist" onclick="sideTab('hist')">История</button>
-        <button id="st-food" onclick="sideTab('food')" title="Кухня">🍔</button>
+        <button id="st-cases" class="on" onclick="sideTab('cases')"><span data-str="tab_cases"></span><span class="bub hidden" id="casesBub">0</span></button>
+        <button id="st-talents" onclick="sideTab('talents')" data-str="tab_talents"></button>
+        <button id="st-top" onclick="sideTab('top')" data-str="tab_top"></button>
+        <button id="st-ach" onclick="sideTab('ach')" data-str="tab_ach"></button>
+        <button id="st-hist" onclick="sideTab('hist')" data-str="tab_hist"></button>
+        <button id="st-food" onclick="sideTab('food')" data-str-title="tab_food_title">🍔</button>
         <button id="st-book" onclick="sideTab('book')"><span data-ic="cal"></span></button>
         <button id="st-coins" onclick="sideTab('coins')"><span data-ic="coins"></span></button>
       </div>
@@ -680,10 +689,10 @@
 <div id="zeroOverlay" class="hidden" style="position:fixed; inset:0; z-index:70; background:rgba(4,4,5,.86); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; text-align:center">
   <div>
     <div style="font-size:46px">🛑</div>
-    <div style="font-size:26px; font-weight:800; margin-top:10px">Деньги кончились</div>
-    <div class="muted" style="margin-top:8px">Пополни у стойки — иначе сессия завершится через</div>
+    <div style="font-size:26px; font-weight:800; margin-top:10px" data-str="zero_title"></div>
+    <div class="muted" style="margin-top:8px" data-str="zero_sub"></div>
     <div id="zeroCount" style="font-size:44px; font-weight:800; color:var(--acc); margin-top:6px">—</div>
-    <div class="muted" style="margin-top:10px">Баланс и XP за отыгранное время никуда не денутся</div>
+    <div class="muted" style="margin-top:10px" data-str="zero_note"></div>
   </div>
 </div>
 
@@ -691,13 +700,13 @@
 
 <!-- Б3 (ADMIN.md): панель связи с админом — вызов + переписка -->
 <div id="chatPanel" class="chatpanel hidden">
-  <div class="ch-head"><span data-ic="bell"></span> Связь с админом
-    <button class="iconbtn" style="margin-left:auto" onclick="toggleChat()" aria-label="Закрыть">✕</button>
+  <div class="ch-head"><span data-ic="bell"></span> <span data-str="ch_head"></span>
+    <button class="iconbtn" style="margin-left:auto" onclick="toggleChat()" data-str-title="ch_close" aria-label="✕">✕</button>
   </div>
   <div class="ch-list" id="chatList"></div>
   <div class="ch-row">
-    <button class="btn slim" style="padding:9px 12px" onclick="adminCall()" title="Позвать админа к ПК"><span data-ic="bell"></span></button>
-    <input id="chatText" maxlength="500" placeholder="Написать админу…"
+    <button class="btn slim" style="padding:9px 12px" onclick="adminCall()" data-str-title="ch_call_title"><span data-ic="bell"></span></button>
+    <input id="chatText" maxlength="500" data-str-ph="ch_ph"
            onkeydown="if(event.key==='Enter')chatSend()">
     <button class="btn slim" style="padding:9px 14px" onclick="chatSend()">➤</button>
   </div>
@@ -705,12 +714,12 @@
 
 <div id="caseOverlay" class="overlay">
   <div class="modal">
-    <h2 id="coTitle">Открываем кейс…</h2>
+    <h2 id="coTitle"></h2>
     <div class="dropbox" id="coBox" data-ic="chest"></div>
     <div id="coResult" class="hidden">
       <div class="bignum" id="coAmount"></div>
       <div class="muted" id="coType"></div>
-      <button class="btn" style="margin-top:20px" onclick="closeOverlay('caseOverlay'); loadAll()">Забрать</button>
+      <button class="btn" style="margin-top:20px" onclick="closeOverlay('caseOverlay'); loadAll()" data-str="co_take"></button>
     </div>
   </div>
 </div>
@@ -718,32 +727,32 @@
 <div id="lvlOverlay" class="overlay" onclick="this.classList.remove('show')">
   <div class="modal" style="border-color:var(--gold); position:relative; overflow:hidden">
     <div class="lvl-rays"></div>
-    <div class="muted">НОВЫЙ УРОВЕНЬ</div>
+    <div class="muted" data-str="lvl_new"></div>
     <div class="bignum" id="lvlNum">2</div>
-    <div class="muted" id="lvlBonus">+1 очко навыка</div>
+    <div class="muted" id="lvlBonus"></div>
   </div>
 </div>
 
 <div id="rankOverlay" class="overlay" onclick="if(event.target===this)closeOverlay('rankOverlay')">
   <div class="modal ranks-modal">
     <div class="ranks-head">
-      <h2>Ранги аккаунта</h2>
+      <h2 data-str="ranks_title"></h2>
       <button class="iconbtn" onclick="closeOverlay('rankOverlay')">✕</button>
     </div>
-    <div class="muted" style="margin:-4px 0 12px; font-size:13px">Растут за наигранные часы. Бонусы складываются с талантами.</div>
+    <div class="muted" style="margin:-4px 0 12px; font-size:13px" data-str="ranks_note"></div>
     <div id="ranksList"></div>
   </div>
 </div>
 
 <div id="endOverlay" class="overlay">
   <div class="modal">
-    <h2>Сессия завершена</h2>
+    <h2 data-str="end_title"></h2>
     <div style="display:flex; gap:12px; justify-content:center; margin:22px 0">
       <div class="res" style="font-size:17px"><span class="ic" data-ic="xp"></span><span class="cyan-t" id="eoXP">+0 XP</span></div>
       <div class="res" style="font-size:17px"><span class="ic" data-ic="coins"></span><span class="gold-t" id="eoCoins">+0</span></div>
     </div>
     <div class="muted" id="eoExtra"></div>
-    <button class="btn" style="margin-top:18px" onclick="closeOverlay('endOverlay')">Ок</button>
+    <button class="btn" style="margin-top:18px" onclick="closeOverlay('endOverlay')" data-str="ok"></button>
   </div>
 </div>
 
@@ -759,12 +768,13 @@
     <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
   </svg>
   <div class="lock-clock" id="lockClock">--:--</div>
-  <div class="lock-sub">ПК заблокирован — начни сессию, чтобы играть</div>
+  <div class="lock-sub" data-str="lock_sub"></div>
   <div class="lock-card">
-    <button class="btn" onclick="startSession()">▶ Начать сессию</button>
+    <button class="btn" onclick="startSession()" data-str="btn_start"></button>
     <div class="lock-user" id="lockUser"></div>
-    <button class="btn ghost" onclick="logout()">Сменить аккаунт</button>
-    <div class="lock-info"><a href="#" onclick="openInfo();return false">правила монет и кейсов</a></div>
+    <button class="btn ghost" onclick="logout()" data-str="btn_switch_acc"></button>
+    <div class="lock-info"><a href="#" onclick="openInfo();return false" data-str="lock_rules"></a></div>
+    <div id="lockLang"></div>
   </div>
 </div>
 
@@ -785,10 +795,10 @@
 <div id="oddsOverlay" class="overlay" onclick="if(event.target===this)closeOverlay('oddsOverlay')">
   <div class="modal ranks-modal">
     <div class="ranks-head">
-      <h2>Шансы дропа</h2>
+      <h2 data-str="odds_title"></h2>
       <button class="iconbtn" onclick="closeOverlay('oddsOverlay')">✕</button>
     </div>
-    <div class="muted" style="margin:-4px 0 12px; font-size:13px">Дроп считает сервер — проценты по тирам открыты.</div>
+    <div class="muted" style="margin:-4px 0 12px; font-size:13px" data-str="odds_note"></div>
     <div id="oddsBody"></div>
   </div>
 </div>
@@ -796,26 +806,26 @@
 <div id="infoOverlay" class="overlay" onclick="if(event.target===this)closeOverlay('infoOverlay')">
   <div class="modal ranks-modal">
     <div class="ranks-head">
-      <h2>Инфо</h2>
+      <h2 data-str="info_title"></h2>
       <button class="iconbtn" onclick="closeOverlay('infoOverlay')">✕</button>
     </div>
     <div id="infoBody">
       <div class="info-sec">
-        <h3>Монеты и кейсы — правила</h3>
+        <h3 data-str="info_h_coins"></h3>
         <ul>
-          <li>Монеты и дропы кейсов — внутриигровые ценности клуба: они <b>не выводятся</b> в деньги, <b>не обмениваются</b> на деньги или товары и <b>не передаются</b> другим игрокам.</li>
-          <li>Кейсы не продаются и не привязаны к пополнениям — выдаются бесплатно: за игру, новые уровни и достижения.</li>
-          <li>Дроп считает сервер (crypto/rand) и показывается как выпал — без «подкруток». Таблица шансов открыта: кнопка «<span data-ic="percent"></span>» на любом кейсе, там же версия и дата таблицы.</li>
-          <li>Таланты и ранг могут только повышать шанс редких тиров — в пользу игрока.</li>
+          <li data-str-html="info_li1"></li>
+          <li data-str-html="info_li2"></li>
+          <li data-str-html="info_li3"></li>
+          <li data-str-html="info_li4"></li>
         </ul>
       </div>
       <div class="info-sec">
-        <h3>Иконки и лицензии</h3>
+        <h3 data-str="info_h_lic"></h3>
         <ul>
-          <li>Интерфейс — <b>Phosphor Icons</b> (MIT, phosphoricons.com).</li>
-          <li>Логотипы платформ и игр — <b>Simple Icons</b> (CC0, simpleicons.org).</li>
-          <li>Кейсы, ранги и таланты — глифы <b>game-icons.net</b> (CC BY 3.0): Lorc, Delapouite и соавторы.</li>
-          <li>Обложки игр — арт правообладателей (Valve CDN / SteamGridDB), используется для навигации по каталогу клуба.</li>
+          <li data-str-html="info_lic1"></li>
+          <li data-str-html="info_lic2"></li>
+          <li data-str-html="info_lic3"></li>
+          <li data-str-html="info_lic4"></li>
         </ul>
       </div>
     </div>
@@ -824,29 +834,33 @@
 
 <div id="profOverlay" class="overlay">
   <div class="modal">
-    <h2>Профиль</h2>
-    <input id="pNick" class="input" style="margin-top:16px" placeholder="Никнейм">
+    <h2 data-str="prof_title"></h2>
+    <input id="pNick" class="input" style="margin-top:16px" data-str-ph="ph_nick">
     <div class="avapick" id="avaPick"></div>
-    <div class="muted" style="margin:12px 0 6px; font-weight:700">Анкета — +25 XP за каждое поле, полная — кейс 🎁</div>
+    <div class="muted" style="margin:12px 0 6px; font-weight:700" data-str="prof_form_hint"></div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
-      <input id="pBirth" class="input" type="date" title="Дата рождения">
-      <input id="pSource" class="input" placeholder="Откуда узнал о клубе" maxlength="32">
+      <input id="pBirth" class="input" type="date" data-str-title="prof_birth_title">
+      <input id="pSource" class="input" data-str-ph="prof_source_ph" maxlength="32">
       <input id="pDiscord" class="input" placeholder="Discord" maxlength="64">
       <input id="pTelegram" class="input" placeholder="Telegram" maxlength="64">
     </div>
-    <div class="muted" style="margin:10px 0 2px">Любимые игры (до 3) — поднимем их в витрине</div>
+    <div class="muted" style="margin:10px 0 2px" data-str="prof_fav_hint"></div>
     <div class="favpick" id="favPick"></div>
     <div class="qrblock" id="qrBlock">
       <canvas id="clubQR" width="132" height="132"></canvas>
       <div>
-        <div class="qt">Клуб в кармане</div>
-        <div class="qs">Наведи камеру телефона — брони, кейсы, прогресс и чат в гостевом приложении <b>/app</b>.</div>
+        <div class="qt" data-str="qr_title"></div>
+        <div class="qs" data-str-html="qr_sub"></div>
       </div>
     </div>
     <div id="pErr" class="err"></div>
     <div style="display:flex; gap:10px">
-      <button class="btn ghost" onclick="closeOverlay('profOverlay')">Отмена</button>
-      <button class="btn" onclick="saveProfile()">Сохранить</button>
+      <div style="width:100%; display:flex; align-items:center; gap:8px; margin-bottom:4px">
+        <span class="muted" style="flex:1; font-size:12.5px" data-str="lang_line"></span>
+        <span id="profLang"></span>
+      </div>
+      <button class="btn ghost" onclick="closeOverlay('profOverlay')" data-str="prof_cancel"></button>
+      <button class="btn" onclick="saveProfile()" data-str="prof_save"></button>
     </div>
   </div>
 </div>
@@ -855,6 +869,1116 @@
 /* ═══════════════ КОНФИГ ═══════════════ */
 const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
 document.getElementById('srv').textContent = API;
+
+/* ═══════════════ Г9-и2: ЯЗЫКИ ШЕЛЛА (ru/en/pl) ═══════════════
+   Язык — пресет профиля (users.language, миграция 041): выбирается на
+   лок-экране или в профиле, хранится в localStorage для мгновенного старта
+   и в аккаунте — чтобы ехать за гостем на любой ПК клуба. Ключи RU —
+   источник истины; EN/PL зеркалят их полностью (проверяется патчером),
+   а Object.assign поверх RU страхует от дыр в переводе. */
+/* русский — источник истины */
+const SH_RU = {
+  page_title: "14:48 — Гостевой экран",
+  slogan: "Твой клуб — это игра",
+  tab_login: "Вход",
+  tab_register: "Регистрация",
+  ph_nick: "Никнейм",
+  ph_pass: "Пароль (мин. 6)",
+  btn_login: "Войти",
+  btn_register: "Создать аккаунт",
+  server: "Сервер:",
+  err_generic: "Ошибка",
+  lock_sub: "ПК заблокирован — начни сессию, чтобы играть",
+  btn_start: "▶ Начать сессию",
+  btn_switch_acc: "Сменить аккаунт",
+  lock_rules: "правила монет и кейсов",
+  lock_user: "Вошёл как {n} · LVL {l}",
+  attract_free: "свободно <b>{f}</b> из {t}",
+  tb_rank_title: "Ранг аккаунта — жми, чтобы увидеть все",
+  tb_wallet_title: "Кошелёк — предоплаченное время. Пополнение у стойки",
+  tb_pc_on: "ПК ●",
+  tb_pc_off: "ПК ○",
+  tb_pc_title_on: "shell-agent запущен: программы запускаются с ПК",
+  tb_pc_title_off: "shell-agent не найден: работают только протоколы браузера",
+  tb_sens: "Сенса",
+  tb_sens_title: "Студия сенсы — настрой прицел под любую игру",
+  tb_info_title: "Инфо — правила монет и кейсов, лицензии",
+  tb_admin: "Админ",
+  tb_logout_title: "Выйти",
+  xp_left: "до уровня: {n} XP",
+  eta_pause: "· пауза",
+  eta_till: "· до {t}",
+  eta_booking: " ⏰ бронь",
+  eta_topup: "· пополни у стойки",
+  cat_games: "Игры",
+  cat_platforms: "Платформы",
+  cat_apps: "Приложения",
+  cat_fav_first: "сначала твои любимые · ",
+  cat_popular: "самое популярное · ",
+  cat_total: "всего {n}",
+  cat_plat_hint: "папки — внутри все игры платформы и её клиент",
+  cat_apps_hint: "папки — зайди и выбери",
+  grp_comm: "Коммуникация",
+  grp_sys: "Системные",
+  grp_other: "Другие",
+  grp_other_games: "Другие игры",
+  app_sound: "Звук",
+  app_mouse: "Мышь",
+  app_display: "Дисплей",
+  back: "← Назад",
+  open_client: "▶ Открыть клиент",
+  plat_client: "клиент платформы",
+  client: "клиент",
+  catalog_empty: "каталог игр пуст",
+  pl_game_1: "игра",
+  pl_game_2: "игры",
+  pl_game_5: "игр",
+  pl_app_1: "приложение",
+  pl_app_2: "приложения",
+  pl_app_5: "приложений",
+  n_games: "{n} {w}",
+  n_apps: "{n} {w}",
+  launching: "🚀 Запускаю {n}…",
+  launch_agent_err: "⚠ {m}",
+  launch_agent_err_def: "ошибка агента",
+  launch_on_pc: "🖥 {n} запускается на игровом ПК клуба",
+  launch_failed: "⚠ Не удалось запустить: {id}",
+  ch_head: "Связь с админом",
+  ch_close: "Закрыть",
+  ch_call_title: "Позвать админа к ПК",
+  ch_ph: "Написать админу…",
+  ch_empty: "Напиши админу — или позови его кнопкой слева",
+  ch_call_sent: "🛎 вызов отправлен · {t}",
+  ch_admin: "админ · ",
+  toast_admin_called: "🛎 Администратор вызван — уже идёт",
+  toast_admin_called_short: "🛎 Администратор вызван",
+  toast_admin_already: "🛎 {m}",
+  toast_admin_already_def: "Администратор уже позван",
+  toast_agent_nolink: "⚠ {m}",
+  toast_agent_nolink_def: "агент без связи с сервером",
+  toast_no_server: "⚠ Нет связи с сервером — вызов не дошёл, подойди к стойке",
+  toast_not_sent: "⚠ {m}",
+  toast_not_sent_def: "не отправилось",
+  toast_admin_reply: "💬 Ответ администратора — открой «Админ»",
+  sess_paused: "Пауза — время и деньги стоят",
+  sess_running: "Сессия идёт",
+  sess_none: "Сессия не начата",
+  sess_ready: "Готов играть?",
+  btn_resume: "▶ Продолжить",
+  btn_finish: "Завершить",
+  btn_pause: "⏸ Пауза",
+  btn_dev150: "+150 мин (dev)",
+  btn_dev150_title: "dev: засчитать 150 минут",
+  toast_paused: "⏸ Пауза — время и деньги стоят",
+  toast_resumed: "▶ Погнали дальше",
+  toast_sess_started: "▶ Сессия на «{c}» началась. Играй!",
+  toast_sess_started_desk: "▶ Сессия начата у стойки — играй!",
+  toast_sess_ended: "⏹ Сессия завершена",
+  pc_default: "ПК",
+  zero_title: "Деньги кончились",
+  zero_sub: "Пополни у стойки — иначе сессия завершится через",
+  zero_note: "Баланс и XP за отыгранное время никуда не денутся",
+  co_opening: "Открываем кейс…",
+  co_drop: "Твой дроп!",
+  co_coins: "монет · кейс {t}",
+  co_buster: "бустер кэшбека · кейс {t}",
+  co_take: "Забрать",
+  lvl_new: "НОВЫЙ УРОВЕНЬ",
+  lvl_bonus: "+1 очко навыка",
+  end_title: "Сессия завершена",
+  ok: "Ок",
+  end_daily: "☀ первый визит дня: +{n} XP",
+  end_levels: "уровней получено: {n}",
+  end_bonus_case: "бонусный кейс: {t}",
+  end_double_case: "двойной дроп: {t}",
+  ranks_title: "Ранги аккаунта",
+  ranks_note: "Растут за наигранные часы. Бонусы складываются с талантами.",
+  rank_here: "ТЫ ЗДЕСЬ",
+  rank_from_start: "с самого старта",
+  rank_from_hours: "от {n} ч игры",
+  rank_base: "базовые ставки",
+  perk_coins: "койны ×{n}",
+  perk_case: "кейс +{n}%",
+  perk_tier: "тир +{n}%",
+  ranks_loading: "Ранги ещё грузятся…",
+  odds_title: "Шансы дропа",
+  odds_note: "Дроп считает сервер — проценты по тирам открыты.",
+  odds_loading: "Загружаю…",
+  odds_error: "⚠ Не удалось загрузить шансы: {m}",
+  odds_bonus_tier: "тир бонусного кейса · {p}",
+  odds_bonus_title: "Шанс, что бонусный кейс за сессию окажется этого тира",
+  odds_coins: "монеты {a}–{b}",
+  odds_buster: "бустер кэшбека +{n}%",
+  odds_jackpot: "джекпот {n} монет",
+  odds_footer: "Дроп считает сервер (crypto/rand) — что выпало, то и показываем, без «подкруток». Таланты и ранг могут только повышать шанс редких тиров.",
+  odds_version: "Таблица шансов v{v} от {d}{rtp}.",
+  odds_rtp: " · RTP клуба ×{n}",
+  odds_chip_title: "Шансы дропа — открытая таблица",
+  info_title: "Инфо",
+  info_h_coins: "Монеты и кейсы — правила",
+  info_li1: "Монеты и дропы кейсов — внутриигровые ценности клуба: они <b>не выводятся</b> в деньги, <b>не обмениваются</b> на деньги или товары и <b>не имеют</b> денежной стоимости.",
+  info_li2: "Кейсы не продаются и не привязаны к пополнениям — выдаются бесплатно: за игру, новые уровни и достижения.",
+  info_li3: "Дроп считает сервер (crypto/rand) и показывается как выпал — без «подкруток». Таблица шансов открыта: кнопка «{ic}» на любом кейсе.",
+  info_li4: "Таланты и ранг могут только повышать шанс редких тиров — в пользу игрока.",
+  info_h_lic: "Иконки и лицензии",
+  info_lic1: "Интерфейс — <b>Phosphor Icons</b> (MIT, phosphoricons.com).",
+  info_lic2: "Логотипы платформ и игр — <b>Simple Icons</b> (CC0, simpleicons.org).",
+  info_lic3: "Кейсы, ранги и таланты — глифы <b>game-icons.net</b> (CC BY 3.0): Lorc, Delapouite и соавторы.",
+  info_lic4: "Обложки игр — арт правообладателей (Valve CDN / SteamGridDB), используется для навигации по каталогу клуба.",
+  prof_title: "Профиль",
+  prof_form_hint: "Анкета — +25 XP за каждое поле, полная — кейс 🎁",
+  prof_birth_title: "Дата рождения",
+  prof_source_ph: "Откуда узнал о клубе",
+  prof_fav_hint: "Любимые игры (до 3) — поднимем их в витрине",
+  prof_cancel: "Отмена",
+  prof_save: "Сохранить",
+  qr_title: "Клуб в кармане",
+  qr_sub: "Наведи камеру телефона — брони, кейсы, прогресс и чат в гостевом приложении <b>/app</b>.",
+  toast_prof_saved: "✓ Профиль обновлён",
+  toast_prof_xp: "🎉 Анкета: +{n} XP",
+  toast_fav_limit: "Любимых игр — до трёх",
+  tab_cases: "Кейсы",
+  tab_talents: "Таланты",
+  tab_top: "Топ",
+  tab_ach: "Ачивки",
+  tab_hist: "История",
+  tab_food_title: "Кухня",
+  cases_empty: "Кейсов пока нет.<br>Играй, поднимай уровень, выполняй ачивки.",
+  cases_odds_link: "шансы дропа",
+  case_opened_coins: "открыт: +{n} {ic}",
+  case_opened_buster: "открыт: +{n}% кэшбек",
+  case_expired: "сгорел",
+  case_source: "источник: {s}",
+  case_expires_in: "сгорит через {n} дн",
+  open_hint: "ОТКРЫТЬ ▸",
+  tal_free: "Свободные очки: {n}",
+  tal_now: "сейчас: {e}",
+  tal_next: "→ {e}",
+  toast_tal_up: "✦ Талант прокачан",
+  top_my_place: "Твоё место: {n}",
+  top_empty: "Пока пусто",
+  ach_head: "Получено: {a} · Наиграно часов: {h}",
+  ach_reset: " · ⏳ до резета {t}",
+  ach_cat_daily: "Дня — резет в 14:48",
+  ach_cat_weekly: "Недели",
+  ach_cat_monthly: "Месяца",
+  ach_cat_lifetime: "Навсегда",
+  food_loading: "Загружаю меню…",
+  food_st_new: "ждёт",
+  food_st_accepted: "принят",
+  food_st_preparing: "готовим",
+  food_st_delivering: "несём",
+  food_st_done: "выдан",
+  food_st_cancelled: "отменён",
+  food_paid: "оплачен",
+  food_unpaid: "оплати у стойки",
+  food_unpaid_sum: "К оплате у стойки: {z} — рассчитаешься, когда доиграешь",
+  food_my_orders: "Мои заказы",
+  food_menu: "Меню",
+  food_recent: "Недавние",
+  food_out: "закончилось — загляни позже",
+  food_order: "🍽 Заказать",
+  food_cancel_title: "отменить",
+  food_empty: "Меню пока пустое.<br>Кухня появится, когда владелец заполнит ценник.",
+  toast_order_ok: "🍔 Заказ принят: {n}",
+  toast_order_to_pc: " — принесём к {c}",
+  toast_order_pay: ". Расчёт у стойки после игры",
+  toast_order_cancelled: "↩ Заказ отменён",
+  bk_title: "Забронировать ПК",
+  bk_clubs_fail: "Клубы не загрузились",
+  bk_free: "свободно {f}/{t}",
+  bk_1h: "1 час",
+  bk_2h: "2 часа",
+  bk_3h: "3 часа",
+  bk_5h: "5 часов",
+  bk_btn: "Забронировать",
+  bk_locked_title: "Бронь откроется на LVL {l}",
+  bk_locked_sub: "Сейчас LVL {n} — XP капает за каждую минуту игры",
+  bk_none: "Активных броней нет",
+  bk_past: "Прошлые",
+  bk_no_prepaid: " · без предоплаты",
+  bk_min: "{n} мин",
+  toast_bk_noclub: "⚠ Клуб не выбран",
+  toast_bk_nodate: "⚠ Укажи дату и время",
+  toast_bk_ok: "📅 Бронь: {c} · {t}",
+  toast_bk_ok_free: " · без предоплаты ✨",
+  toast_bk_cancelled: "✕ Бронь отменена",
+  hist_empty: "История сессий пуста",
+  hist_now: "идёт сейчас",
+  eco_loading: "Загрузка экономики…",
+  rank_line: "Ранг {n}/7 · наиграно {h} ч",
+  rank_max: "Максимальный ранг — выше некуда",
+  rank_next: "Ещё {n} ч до «{r}»",
+  btn_all_ranks: "Все ранги и бонусы",
+  calc_title: "Калькулятор койнов",
+  calc_sub: "Что накапает за сессию с учётом ранга и талантов",
+  calc_time: "{t} игры",
+  calc_h: "{n} ч ",
+  calc_m: "{n} мин",
+  calc_zero: "0 мин",
+  calc_coins_base: "Койны: база ({m} × {r})",
+  calc_rank_mult: "+ ранг ×{n}",
+  calc_xp_base: "XP: база ({m} × {r})",
+  calc_xp_boost: "+ «Разгон опыта» +{n}%",
+  calc_coins_lbl: "койнов",
+  how_title: "Как образуются койны",
+  how_base: "Базовая ставка — <b style=\"color:var(--txt)\">{n} койна/мин</b> за время за ПК.<br>",
+  how_rank: "Множитель ранга «{r}» — <b class=\"plus\">×{c}</b> к койнам, <b class=\"plus\">×{x}</b> к опыту.<br>",
+  how_mint: "Талант «Монетный двор» — при пополнении баланса <b class=\"plus\">+{n}%</b> койнов (курс {r} койнов за 1 zł).<br>",
+  how_tail: "Чем выше ранг (больше наиграно часов), тем больше койнов и XP, и тем чаще падают кейсы: сейчас <b style=\"color:var(--txt)\">{n}%</b> за сессию.",
+  sens_title: "Студия сенсы",
+  sens_sub: "Перенеси свою сенсу из одной игры в другую — прицел останется тем же",
+  sens_step1: "<b style=\"color:var(--acc)\">Шаг 1.</b> DPI мыши (посмотри в софте мыши)",
+  sens_ai_title: "🎯 AI-калибратор",
+  sens_ai_sub: "Не знаешь свою идеальную сенсу? Постреляй по мишеням — байесовский поиск найдёт оптимум и проверит его слепым A/B. ~7 минут.",
+  sens_ai_btn: "Подобрать стреляя",
+  sens_step2: "<b style=\"color:var(--acc)\">Шаг 2.</b> Из какой игры переносим и куда",
+  sens_from: "Из игры",
+  sens_val: "Сенса",
+  sens_swap: "⇅ поменять местами",
+  sens_to: "В игру",
+  sens_result: "Результат",
+  sens_copy: "Скопировать «{v}»",
+  sens_copy_hint: "Впиши это значение в настройках «{g}»",
+  sens_cloud_title: "☁ Сенса едет за тобой",
+  sens_cloud_sub: "Сохрани DPI и сенсу в свой аккаунт — и на любом ПК сети 14:48 они подставятся сами. ",
+  sens_save: "Сохранить в аккаунт",
+  sens_cm360: "см / 360°",
+  sens_edpi: "eDPI (из игры)",
+  sens_explain: "<b style=\"color:var(--txt)\">см / 360°</b> — сколько сантиметров провести мышью для полного разворота. Это и есть «мышечная память»: сохраняем её — прицел не сбивается.<br><b style=\"color:var(--txt)\">eDPI</b> = DPI × сенса — эффективная чувствительность для сравнения внутри игры.",
+  sens_all_title: "Твоя сенса во всех играх",
+  sens_all_sub: "Одинаковый прицел (см/360) — готовые значения для каждой игры",
+  sens_games_note: "Значения точны для CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. Другие игры добавим по запросу.",
+  sens_source: "· исходная",
+  sens_synced: "✓ Синхронизировано{n}.",
+  sens_synced_n: " · {n} {w}",
+  pl_sync_1: "игра",
+  pl_sync_n: "игр(ы)",
+  sens_not_saved: "Пока не сохранено.",
+  sens_calib: "<br><b style=\"color:var(--acc)\">Калибратор нашёл {s}</b> (CS2 · {cm} см/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">подставить</a>",
+  toast_calib_applied: "Сенса калибратора подставлена: CS2 {s}",
+  toast_popup_blocked: "Браузер заблокировал окно — открой web/aim.html вручную",
+  toast_sens_saved: "💾 Сенса сохранена — подставится на любом ПК клуба",
+  toast_copied: "📋 Скопировано: {v}",
+  toast_value: "Значение: {v}",
+  mouse_checking: "🖱 Проверяю мышь…",
+  mouse_title: "🖱 Твоя мышь",
+  mouse_hint_agent: "Запусти 14:48 на игровом ПК (в киоске/с агентом) — и студия сама проверит акселерацию и подскажет DPI.<br><br>",
+  mouse_manual: "Пока вручную: <b style=\"color:var(--txt)\">Windows → Параметры → Мышь → Дополнительно → сними галку «Повысить точность установки указателя»</b>.",
+  mouse_accel_on: "⚠ Акселерация включена",
+  mouse_accel_off_btn: "Выключить",
+  mouse_accel_ok: "✓ Акселерация выключена",
+  mouse_accel_good: "отлично для аима",
+  mouse_speed: "{s} Скорость указателя: {n}/20",
+  mouse_speed_ideal: "1:1 — идеально",
+  mouse_speed_rec: "рекомендуется 10/20",
+  mouse_vendor: "🎛 Софт мыши: <b style=\"color:var(--txt)\">{v}</b>",
+  mouse_vendor_hint: "Открой его, чтобы посмотреть свой DPI и вписать выше.",
+  mouse_vendor_none: "Софт мыши не найден. DPI обычно указан в приложении мыши (Logitech G HUB, Razer Synapse и т.п.) или на сайте производителя.",
+  toast_accel_off: "🖱 Акселерация выключена — прицел стал честнее",
+  toast_accel_fail: "⚠ {m}",
+  toast_accel_fail_def: "не удалось",
+  toast_agent_down: "⚠ Агент недоступен",
+  lang_line: "🌐 Язык",
+  ntf_at_time: " на {t}",
+  ntf_to_time: " к {t}",
+  ntf_dash_time: " — {t}",
+  ntf_paren_pc: " ({c})",
+  ntf_bk_cancel: "📅 Админ отменил твою бронь",
+  ntf_bk_restore: "📅 Твоя бронь возвращена",
+  ntf_deposit: "💰 +{c} монет — депозит {a} zł",
+  ntf_grant_xp: "⚡ Тебе начислено +{n} XP",
+  ntf_lvl: " → LVL {l} 🎉",
+  ntf_grant_case: "🎁 Тебе выдан кейс {t}",
+  ntf_bal_low: "⏳ Баланс кончается: осталось ~{m} мин. Пополни у стойки",
+  ntf_bal_zero: "🛑 Деньги кончились — сессия завершится через {g} мин. Пополни у стойки, чтобы продолжить",
+  ntf_pause_over: "⏱ Лимит паузы исчерпан ({l} мин) — время снова идёт",
+  ntf_afk_warn: "💤 Ты давно не за компом — сессия скоро встанет на паузу или завершится",
+  ntf_afk_pause: "💤 AFK: сессия на паузе. Вернись и шевельни мышью — продолжим",
+  ntf_moved: "🖥 Тебя пересадили за {c} — сессия продолжается",
+  ntf_other_pc: "другой ПК",
+  ntf_bk_soon: "⏰ Этот ПК забронирован{t} — осталось ~{m} мин",
+  ntf_bk_deadline: "⏰ ПК уходит под бронь{t} — сессия завершена, баланс и XP сохранены",
+  ntf_bk_remind: "📅 Напоминание: твоя бронь в {t}{c} — через ~{m} мин",
+  ntf_bk_noshow: "🕳 Бронь{t} сгорела: ты не пришёл вовремя",
+  ntf_order: "заказ",
+  ntf_kt_accepted: "🍔 {n}: приняли, скоро займёмся",
+  ntf_kt_preparing: "🍳 {n}: готовим",
+  ntf_kt_delivering: "🚀 {n}: несём{c}",
+  ntf_kt_done: "✅ {n}: выдан. Приятного аппетита! Расчёт у стойки, когда доиграешь",
+  ntf_kt_paid: "💚 {n}: оплачен — спасибо!",
+  ntf_kt_cancelled: "↩ {n}: отменён",
+  ntf_kt_other: "🍔 {n}: обновление заказа",
+  ntf_kt_unpaid: "🧾 Не забудь рассчитаться за кухню у стойки: {z} zł",
+  ntf_birthday: "🎂 С днём рождения! Клуб дарит кейс {t} — открой его во вкладке «Кейсы»",
+  ntf_default: "🔔 Обновление аккаунта",
+  ach_reward_case: "+ кейс {t}",
+  rk_1: "Новичок",
+  rk_2: "Завсегдатай",
+  rk_3: "Ветеран",
+  rk_4: "Мастер",
+  rk_5: "Элита",
+  rk_6: "Легенда",
+  rk_7: "Бессмертный",
+  calc_min_short: "{n}м",
+  calc_h_short: "{n}ч",
+};
+
+/* english */
+const SH_EN = {
+  page_title: "14:48 — Guest screen",
+  slogan: "Your club is a game",
+  tab_login: "Sign in",
+  tab_register: "Sign up",
+  ph_nick: "Nickname",
+  ph_pass: "Password (min. 6)",
+  btn_login: "Sign in",
+  btn_register: "Create account",
+  server: "Server:",
+  err_generic: "Error",
+  lock_sub: "PC locked — start a session to play",
+  btn_start: "▶ Start session",
+  btn_switch_acc: "Switch account",
+  lock_rules: "coin & case rules",
+  lock_user: "Signed in as {n} · LVL {l}",
+  attract_free: "<b>{f}</b> of {t} free",
+  tb_rank_title: "Account rank — tap to see them all",
+  tb_wallet_title: "Wallet — prepaid time. Top up at the desk",
+  tb_pc_on: "PC ●",
+  tb_pc_off: "PC ○",
+  tb_pc_title_on: "shell-agent running: programs launch on this PC",
+  tb_pc_title_off: "shell-agent not found: only browser protocols work",
+  tb_sens: "Sens",
+  tb_sens_title: "Sensitivity studio — tune your aim for any game",
+  tb_info_title: "Info — coin & case rules, licenses",
+  tb_admin: "Admin",
+  tb_logout_title: "Sign out",
+  xp_left: "to next level: {n} XP",
+  eta_pause: "· paused",
+  eta_till: "· until {t}",
+  eta_booking: " ⏰ booking",
+  eta_topup: "· top up at the desk",
+  cat_games: "Games",
+  cat_platforms: "Platforms",
+  cat_apps: "Apps",
+  cat_fav_first: "your favorites first · ",
+  cat_popular: "most popular · ",
+  cat_total: "{n} total",
+  cat_plat_hint: "folders — every game of the platform and its client inside",
+  cat_apps_hint: "folders — open and pick",
+  grp_comm: "Communication",
+  grp_sys: "System",
+  grp_other: "Other",
+  grp_other_games: "Other games",
+  app_sound: "Sound",
+  app_mouse: "Mouse",
+  app_display: "Display",
+  back: "← Back",
+  open_client: "▶ Open client",
+  plat_client: "platform client",
+  client: "client",
+  catalog_empty: "game catalog is empty",
+  pl_game_1: "game",
+  pl_game_2: "games",
+  pl_game_5: "games",
+  pl_app_1: "app",
+  pl_app_2: "apps",
+  pl_app_5: "apps",
+  n_games: "{n} {w}",
+  n_apps: "{n} {w}",
+  launching: "🚀 Launching {n}…",
+  launch_agent_err: "⚠ {m}",
+  launch_agent_err_def: "agent error",
+  launch_on_pc: "🖥 {n} is starting on the club PC",
+  launch_failed: "⚠ Could not launch: {id}",
+  ch_head: "Talk to the admin",
+  ch_close: "Close",
+  ch_call_title: "Call the admin to your PC",
+  ch_ph: "Message the admin…",
+  ch_empty: "Write to the admin — or call them with the button on the left",
+  ch_call_sent: "🛎 call sent · {t}",
+  ch_admin: "admin · ",
+  toast_admin_called: "🛎 Admin called — on the way",
+  toast_admin_called_short: "🛎 Admin called",
+  toast_admin_already: "🛎 {m}",
+  toast_admin_already_def: "Admin is already called",
+  toast_agent_nolink: "⚠ {m}",
+  toast_agent_nolink_def: "agent has no link to the server",
+  toast_no_server: "⚠ No server connection — the call did not go through, come to the desk",
+  toast_not_sent: "⚠ {m}",
+  toast_not_sent_def: "not sent",
+  toast_admin_reply: "💬 Admin replied — open “Admin”",
+  sess_paused: "Paused — time and money stand still",
+  sess_running: "Session running",
+  sess_none: "No session yet",
+  sess_ready: "Ready to play?",
+  btn_resume: "▶ Resume",
+  btn_finish: "Finish",
+  btn_pause: "⏸ Pause",
+  btn_dev150: "+150 min (dev)",
+  btn_dev150_title: "dev: count 150 minutes",
+  toast_paused: "⏸ Paused — time and money stand still",
+  toast_resumed: "▶ Back in",
+  toast_sess_started: "▶ Session on “{c}” started. Play!",
+  toast_sess_started_desk: "▶ Session started at the desk — play!",
+  toast_sess_ended: "⏹ Session finished",
+  pc_default: "PC",
+  zero_title: "Out of money",
+  zero_sub: "Top up at the desk — otherwise the session ends in",
+  zero_note: "Your balance and the XP you earned stay with you",
+  co_opening: "Opening the case…",
+  co_drop: "Your drop!",
+  co_coins: "coins · {t} case",
+  co_buster: "cashback booster · {t} case",
+  co_take: "Claim",
+  lvl_new: "NEW LEVEL",
+  lvl_bonus: "+1 skill point",
+  end_title: "Session finished",
+  ok: "OK",
+  end_daily: "☀ first visit of the day: +{n} XP",
+  end_levels: "levels gained: {n}",
+  end_bonus_case: "bonus case: {t}",
+  end_double_case: "double drop: {t}",
+  ranks_title: "Account ranks",
+  ranks_note: "They grow with hours played. Bonuses stack with talents.",
+  rank_here: "YOU ARE HERE",
+  rank_from_start: "from the very start",
+  rank_from_hours: "from {n} h played",
+  rank_base: "base rates",
+  perk_coins: "coins ×{n}",
+  perk_case: "case +{n}%",
+  perk_tier: "tier +{n}%",
+  ranks_loading: "Ranks are still loading…",
+  odds_title: "Drop odds",
+  odds_note: "The server rolls the drop — tier percentages are open.",
+  odds_loading: "Loading…",
+  odds_error: "⚠ Could not load the odds: {m}",
+  odds_bonus_tier: "bonus case tier · {p}",
+  odds_bonus_title: "Chance that the session bonus case is of this tier",
+  odds_coins: "coins {a}–{b}",
+  odds_buster: "cashback booster +{n}%",
+  odds_jackpot: "jackpot {n} coins",
+  odds_footer: "The server rolls the drop (crypto/rand) — what dropped is what you see, no tweaking. Talents and rank can only raise the chance of rare tiers.",
+  odds_version: "Odds table v{v} of {d}{rtp}.",
+  odds_rtp: " · club RTP ×{n}",
+  odds_chip_title: "Drop odds — the table is open",
+  info_title: "Info",
+  info_h_coins: "Coins and cases — the rules",
+  info_li1: "Coins and case drops are in-club virtual values: they <b>cannot be cashed out</b>, <b>cannot be exchanged</b> for money or goods and <b>have no</b> monetary value.",
+  info_li2: "Cases are not sold and not tied to top-ups — they are given for free: for playing, new levels and achievements.",
+  info_li3: "The server rolls the drop (crypto/rand) and shows it as it fell — no tweaking. The odds table is open: the “{ic}” button on any case.",
+  info_li4: "Talents and rank can only raise the chance of rare tiers — in the player’s favor.",
+  info_h_lic: "Icons and licenses",
+  info_lic1: "Interface — <b>Phosphor Icons</b> (MIT, phosphoricons.com).",
+  info_lic2: "Platform and game logos — <b>Simple Icons</b> (CC0, simpleicons.org).",
+  info_lic3: "Cases, ranks and talents — <b>game-icons.net</b> glyphs (CC BY 3.0): Lorc, Delapouite and contributors.",
+  info_lic4: "Game covers — rights holders’ art (Valve CDN / SteamGridDB), used for navigating the club catalog.",
+  prof_title: "Profile",
+  prof_form_hint: "Profile form — +25 XP per field, full one — a case 🎁",
+  prof_birth_title: "Date of birth",
+  prof_source_ph: "How did you find the club?",
+  prof_fav_hint: "Favorite games (up to 3) — we pin them first in the showcase",
+  prof_cancel: "Cancel",
+  prof_save: "Save",
+  qr_title: "The club in your pocket",
+  qr_sub: "Point your phone camera — bookings, cases, progress and chat in the guest app <b>/app</b>.",
+  toast_prof_saved: "✓ Profile updated",
+  toast_prof_xp: "🎉 Profile form: +{n} XP",
+  toast_fav_limit: "Up to three favorite games",
+  tab_cases: "Cases",
+  tab_talents: "Talents",
+  tab_top: "Top",
+  tab_ach: "Achievements",
+  tab_hist: "History",
+  tab_food_title: "Kitchen",
+  cases_empty: "No cases yet.<br>Play, level up, earn achievements.",
+  cases_odds_link: "drop odds",
+  case_opened_coins: "opened: +{n} {ic}",
+  case_opened_buster: "opened: +{n}% cashback",
+  case_expired: "expired",
+  case_source: "source: {s}",
+  case_expires_in: "expires in {n} d",
+  open_hint: "OPEN ▸",
+  tal_free: "Free points: {n}",
+  tal_now: "now: {e}",
+  tal_next: "→ {e}",
+  toast_tal_up: "✦ Talent upgraded",
+  top_my_place: "Your place: {n}",
+  top_empty: "Empty so far",
+  ach_head: "Earned: {a} · Hours played: {h}",
+  ach_reset: " · ⏳ resets in {t}",
+  ach_cat_daily: "Daily — resets at 14:48",
+  ach_cat_weekly: "Weekly",
+  ach_cat_monthly: "Monthly",
+  ach_cat_lifetime: "Forever",
+  food_loading: "Loading the menu…",
+  food_st_new: "waiting",
+  food_st_accepted: "accepted",
+  food_st_preparing: "cooking",
+  food_st_delivering: "on the way",
+  food_st_done: "served",
+  food_st_cancelled: "cancelled",
+  food_paid: "paid",
+  food_unpaid: "pay at the desk",
+  food_unpaid_sum: "To pay at the desk: {z} — settle up when you finish playing",
+  food_my_orders: "My orders",
+  food_menu: "Menu",
+  food_recent: "Recent",
+  food_out: "sold out — check back later",
+  food_order: "🍽 Order",
+  food_cancel_title: "cancel",
+  food_empty: "The menu is empty for now.<br>The kitchen appears once the owner fills the price list.",
+  toast_order_ok: "🍔 Order placed: {n}",
+  toast_order_to_pc: " — we’ll bring it to {c}",
+  toast_order_pay: ". Pay at the desk after your game",
+  toast_order_cancelled: "↩ Order cancelled",
+  bk_title: "Book a PC",
+  bk_clubs_fail: "Clubs did not load",
+  bk_free: "{f}/{t} free",
+  bk_1h: "1 hour",
+  bk_2h: "2 hours",
+  bk_3h: "3 hours",
+  bk_5h: "5 hours",
+  bk_btn: "Book it",
+  bk_locked_title: "Booking unlocks at LVL {l}",
+  bk_locked_sub: "You are LVL {n} — XP drips for every minute of play",
+  bk_none: "No active bookings",
+  bk_past: "Past",
+  bk_no_prepaid: " · no prepayment",
+  bk_min: "{n} min",
+  toast_bk_noclub: "⚠ No club selected",
+  toast_bk_nodate: "⚠ Pick a date and time",
+  toast_bk_ok: "📅 Booked: {c} · {t}",
+  toast_bk_ok_free: " · no prepayment ✨",
+  toast_bk_cancelled: "✕ Booking cancelled",
+  hist_empty: "Session history is empty",
+  hist_now: "running now",
+  eco_loading: "Loading the economy…",
+  rank_line: "Rank {n}/7 · {h} h played",
+  rank_max: "Top rank — nowhere higher",
+  rank_next: "{n} h more to “{r}”",
+  btn_all_ranks: "All ranks and bonuses",
+  calc_title: "Coin calculator",
+  calc_sub: "What a session pays with your rank and talents",
+  calc_time: "{t} of play",
+  calc_h: "{n} h ",
+  calc_m: "{n} min",
+  calc_zero: "0 min",
+  calc_coins_base: "Coins: base ({m} × {r})",
+  calc_rank_mult: "+ rank ×{n}",
+  calc_xp_base: "XP: base ({m} × {r})",
+  calc_xp_boost: "+ “XP boost” +{n}%",
+  calc_coins_lbl: "coins",
+  how_title: "How coins are made",
+  how_base: "Base rate — <b style=\"color:var(--txt)\">{n} coins/min</b> for time at the PC.<br>",
+  how_rank: "Rank “{r}” multiplier — <b class=\"plus\">×{c}</b> to coins, <b class=\"plus\">×{x}</b> to XP.<br>",
+  how_mint: "“Coin mint” talent — <b class=\"plus\">+{n}%</b> coins on top-ups ({r} coins per 1 zł).<br>",
+  how_tail: "The higher your rank (more hours played), the more coins and XP you get and the more often cases drop: currently <b style=\"color:var(--txt)\">{n}%</b> per session.",
+  sens_title: "Sensitivity studio",
+  sens_sub: "Carry your sens from one game to another — the aim stays the same",
+  sens_step1: "<b style=\"color:var(--acc)\">Step 1.</b> Mouse DPI (check your mouse software)",
+  sens_ai_title: "🎯 AI calibrator",
+  sens_ai_sub: "Don’t know your perfect sens? Shoot some targets — a Bayesian search finds the optimum and verifies it with a blind A/B. ~7 minutes.",
+  sens_ai_btn: "Find it by shooting",
+  sens_step2: "<b style=\"color:var(--acc)\">Step 2.</b> Which game we convert from and to",
+  sens_from: "From game",
+  sens_val: "Sens",
+  sens_swap: "⇅ swap",
+  sens_to: "To game",
+  sens_result: "Result",
+  sens_copy: "Copy “{v}”",
+  sens_copy_hint: "Put this value into the settings of “{g}”",
+  sens_cloud_title: "☁ Your sens travels with you",
+  sens_cloud_sub: "Save DPI and sens to your account — and they apply themselves on any 14:48 PC. ",
+  sens_save: "Save to account",
+  sens_cm360: "cm / 360°",
+  sens_edpi: "eDPI (in game)",
+  sens_explain: "<b style=\"color:var(--txt)\">cm / 360°</b> — how many centimeters of mouse travel make a full turn. That is muscle memory: keep it and your aim never breaks.<br><b style=\"color:var(--txt)\">eDPI</b> = DPI × sens — effective sensitivity for comparing inside one game.",
+  sens_all_title: "Your sens in every game",
+  sens_all_sub: "The same aim (cm/360) — ready values for each game",
+  sens_games_note: "Values are exact for CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. More games on request.",
+  sens_source: "· source",
+  sens_synced: "✓ Synced{n}.",
+  sens_synced_n: " · {n} {w}",
+  pl_sync_1: "game",
+  pl_sync_n: "games",
+  sens_not_saved: "Not saved yet.",
+  sens_calib: "<br><b style=\"color:var(--acc)\">The calibrator found {s}</b> (CS2 · {cm} cm/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">apply</a>",
+  toast_calib_applied: "Calibrator sens applied: CS2 {s}",
+  toast_popup_blocked: "The browser blocked the window — open web/aim.html manually",
+  toast_sens_saved: "💾 Sens saved — it will apply on any club PC",
+  toast_copied: "📋 Copied: {v}",
+  toast_value: "Value: {v}",
+  mouse_checking: "🖱 Checking the mouse…",
+  mouse_title: "🖱 Your mouse",
+  mouse_hint_agent: "Run 14:48 on a club PC (kiosk/agent) — the studio will check acceleration itself and suggest the DPI.<br><br>",
+  mouse_manual: "For now by hand: <b style=\"color:var(--txt)\">Windows → Settings → Mouse → Additional → uncheck “Enhance pointer precision”</b>.",
+  mouse_accel_on: "⚠ Acceleration is on",
+  mouse_accel_off_btn: "Turn off",
+  mouse_accel_ok: "✓ Acceleration is off",
+  mouse_accel_good: "perfect for aiming",
+  mouse_speed: "{s} Pointer speed: {n}/20",
+  mouse_speed_ideal: "1:1 — perfect",
+  mouse_speed_rec: "10/20 recommended",
+  mouse_vendor: "🎛 Mouse software: <b style=\"color:var(--txt)\">{v}</b>",
+  mouse_vendor_hint: "Open it to see your DPI and type it in above.",
+  mouse_vendor_none: "No mouse software found. The DPI is usually in the mouse app (Logitech G HUB, Razer Synapse etc.) or on the box.",
+  toast_accel_off: "🖱 Acceleration off — your aim just got honest",
+  toast_accel_fail: "⚠ {m}",
+  toast_accel_fail_def: "did not work",
+  toast_agent_down: "⚠ Agent unavailable",
+  lang_line: "🌐 Language",
+  ntf_at_time: " at {t}",
+  ntf_to_time: " for {t}",
+  ntf_dash_time: " — {t}",
+  ntf_paren_pc: " ({c})",
+  ntf_bk_cancel: "📅 The admin cancelled your booking",
+  ntf_bk_restore: "📅 Your booking is restored",
+  ntf_deposit: "💰 +{c} coins — top-up {a} zł",
+  ntf_grant_xp: "⚡ You were granted +{n} XP",
+  ntf_lvl: " → LVL {l} 🎉",
+  ntf_grant_case: "🎁 You got a {t} case",
+  ntf_bal_low: "⏳ Balance is running out: ~{m} min left. Top up at the desk",
+  ntf_bal_zero: "🛑 Out of money — the session ends in {g} min. Top up at the desk to keep playing",
+  ntf_pause_over: "⏱ Pause limit spent ({l} min) — the clock is running again",
+  ntf_afk_warn: "💤 You’ve been away — the session will pause or end soon",
+  ntf_afk_pause: "💤 AFK: session paused. Come back and move the mouse — we continue",
+  ntf_moved: "🖥 You were moved to {c} — the session continues",
+  ntf_other_pc: "another PC",
+  ntf_bk_soon: "⏰ This PC is booked{t} — ~{m} min left",
+  ntf_bk_deadline: "⏰ The PC goes to a booking{t} — session ended, balance and XP are safe",
+  ntf_bk_remind: "📅 Reminder: your booking at {t}{c} — in ~{m} min",
+  ntf_bk_noshow: "🕳 The booking{t} burned: you did not come in time",
+  ntf_order: "order",
+  ntf_kt_accepted: "🍔 {n}: accepted, on it soon",
+  ntf_kt_preparing: "🍳 {n}: cooking",
+  ntf_kt_delivering: "🚀 {n}: on the way{c}",
+  ntf_kt_done: "✅ {n}: served. Enjoy! Pay at the desk when you finish playing",
+  ntf_kt_paid: "💚 {n}: paid — thank you!",
+  ntf_kt_cancelled: "↩ {n}: cancelled",
+  ntf_kt_other: "🍔 {n}: order update",
+  ntf_kt_unpaid: "🧾 Don’t forget to pay for the kitchen at the desk: {z} zł",
+  ntf_birthday: "🎂 Happy birthday! The club gifts you a {t} case — open it in the “Cases” tab",
+  ntf_default: "🔔 Account update",
+  ach_reward_case: "+ {t} case",
+  rk_1: "Rookie",
+  rk_2: "Regular",
+  rk_3: "Veteran",
+  rk_4: "Master",
+  rk_5: "Elite",
+  rk_6: "Legend",
+  rk_7: "Immortal",
+  calc_min_short: "{n}m",
+  calc_h_short: "{n}h",
+};
+
+/* polski */
+const SH_PL = {
+  page_title: "14:48 — Ekran gościa",
+  slogan: "Twój klub to gra",
+  tab_login: "Logowanie",
+  tab_register: "Rejestracja",
+  ph_nick: "Nick",
+  ph_pass: "Hasło (min. 6)",
+  btn_login: "Zaloguj się",
+  btn_register: "Załóż konto",
+  server: "Serwer:",
+  err_generic: "Błąd",
+  lock_sub: "PC zablokowany — zacznij sesję, żeby grać",
+  btn_start: "▶ Zacznij sesję",
+  btn_switch_acc: "Zmień konto",
+  lock_rules: "zasady monet i skrzynek",
+  lock_user: "Zalogowany jako {n} · LVL {l}",
+  attract_free: "wolne <b>{f}</b> z {t}",
+  tb_rank_title: "Ranga konta — kliknij, żeby zobaczyć wszystkie",
+  tb_wallet_title: "Portfel — opłacony z góry czas. Doładowanie przy ladzie",
+  tb_pc_on: "PC ●",
+  tb_pc_off: "PC ○",
+  tb_pc_title_on: "shell-agent działa: programy uruchamiają się na tym PC",
+  tb_pc_title_off: "shell-agent nie znaleziony: działają tylko protokoły przeglądarki",
+  tb_sens: "Czułość",
+  tb_sens_title: "Studio czułości — ustaw celownik pod każdą grę",
+  tb_info_title: "Info — zasady monet i skrzynek, licencje",
+  tb_admin: "Admin",
+  tb_logout_title: "Wyloguj",
+  xp_left: "do poziomu: {n} XP",
+  eta_pause: "· pauza",
+  eta_till: "· do {t}",
+  eta_booking: " ⏰ rezerwacja",
+  eta_topup: "· doładuj przy ladzie",
+  cat_games: "Gry",
+  cat_platforms: "Platformy",
+  cat_apps: "Aplikacje",
+  cat_fav_first: "najpierw twoje ulubione · ",
+  cat_popular: "najpopularniejsze · ",
+  cat_total: "łącznie {n}",
+  cat_plat_hint: "foldery — w środku wszystkie gry platformy i jej klient",
+  cat_apps_hint: "foldery — wejdź i wybierz",
+  grp_comm: "Komunikacja",
+  grp_sys: "Systemowe",
+  grp_other: "Inne",
+  grp_other_games: "Inne gry",
+  app_sound: "Dźwięk",
+  app_mouse: "Mysz",
+  app_display: "Ekran",
+  back: "← Wstecz",
+  open_client: "▶ Otwórz klienta",
+  plat_client: "klient platformy",
+  client: "klient",
+  catalog_empty: "katalog gier jest pusty",
+  pl_game_1: "gra",
+  pl_game_2: "gry",
+  pl_game_5: "gier",
+  pl_app_1: "aplikacja",
+  pl_app_2: "aplikacje",
+  pl_app_5: "aplikacji",
+  n_games: "{n} {w}",
+  n_apps: "{n} {w}",
+  launching: "🚀 Uruchamiam {n}…",
+  launch_agent_err: "⚠ {m}",
+  launch_agent_err_def: "błąd agenta",
+  launch_on_pc: "🖥 {n} uruchamia się na klubowym PC",
+  launch_failed: "⚠ Nie udało się uruchomić: {id}",
+  ch_head: "Kontakt z adminem",
+  ch_close: "Zamknij",
+  ch_call_title: "Zawołaj admina do PC",
+  ch_ph: "Napisz do admina…",
+  ch_empty: "Napisz do admina — albo zawołaj go przyciskiem obok",
+  ch_call_sent: "🛎 wezwanie wysłane · {t}",
+  ch_admin: "admin · ",
+  toast_admin_called: "🛎 Admin wezwany — już idzie",
+  toast_admin_called_short: "🛎 Admin wezwany",
+  toast_admin_already: "🛎 {m}",
+  toast_admin_already_def: "Admin już został wezwany",
+  toast_agent_nolink: "⚠ {m}",
+  toast_agent_nolink_def: "agent bez połączenia z serwerem",
+  toast_no_server: "⚠ Brak połączenia z serwerem — wezwanie nie doszło, podejdź do lady",
+  toast_not_sent: "⚠ {m}",
+  toast_not_sent_def: "nie wysłano",
+  toast_admin_reply: "💬 Odpowiedź admina — otwórz „Admin”",
+  sess_paused: "Pauza — czas i pieniądze stoją",
+  sess_running: "Sesja trwa",
+  sess_none: "Sesja nie rozpoczęta",
+  sess_ready: "Gotowy do gry?",
+  btn_resume: "▶ Wznów",
+  btn_finish: "Zakończ",
+  btn_pause: "⏸ Pauza",
+  btn_dev150: "+150 min (dev)",
+  btn_dev150_title: "dev: zalicz 150 minut",
+  toast_paused: "⏸ Pauza — czas i pieniądze stoją",
+  toast_resumed: "▶ Jedziemy dalej",
+  toast_sess_started: "▶ Sesja na „{c}” wystartowała. Graj!",
+  toast_sess_started_desk: "▶ Sesja włączona przy ladzie — graj!",
+  toast_sess_ended: "⏹ Sesja zakończona",
+  pc_default: "PC",
+  zero_title: "Środki się skończyły",
+  zero_sub: "Doładuj przy ladzie — inaczej sesja zakończy się za",
+  zero_note: "Saldo i XP za rozegrany czas zostają z tobą",
+  co_opening: "Otwieramy skrzynkę…",
+  co_drop: "Twój drop!",
+  co_coins: "monet · skrzynka {t}",
+  co_buster: "booster cashbacku · skrzynka {t}",
+  co_take: "Odbierz",
+  lvl_new: "NOWY POZIOM",
+  lvl_bonus: "+1 punkt umiejętności",
+  end_title: "Sesja zakończona",
+  ok: "OK",
+  end_daily: "☀ pierwsza wizyta dnia: +{n} XP",
+  end_levels: "zdobyte poziomy: {n}",
+  end_bonus_case: "skrzynka bonusowa: {t}",
+  end_double_case: "podwójny drop: {t}",
+  ranks_title: "Rangi konta",
+  ranks_note: "Rosną za rozegrane godziny. Bonusy sumują się z talentami.",
+  rank_here: "TU JESTEŚ",
+  rank_from_start: "od samego startu",
+  rank_from_hours: "od {n} godz. gry",
+  rank_base: "stawki bazowe",
+  perk_coins: "monety ×{n}",
+  perk_case: "skrzynka +{n}%",
+  perk_tier: "tier +{n}%",
+  ranks_loading: "Rangi jeszcze się ładują…",
+  odds_title: "Szanse dropu",
+  odds_note: "Drop losuje serwer — procenty tierów są jawne.",
+  odds_loading: "Ładuję…",
+  odds_error: "⚠ Nie udało się wczytać szans: {m}",
+  odds_bonus_tier: "tier skrzynki bonusowej · {p}",
+  odds_bonus_title: "Szansa, że bonusowa skrzynka za sesję będzie tego tieru",
+  odds_coins: "monety {a}–{b}",
+  odds_buster: "booster cashbacku +{n}%",
+  odds_jackpot: "jackpot {n} monet",
+  odds_footer: "Drop losuje serwer (crypto/rand) — co wypadło, to pokazujemy, bez „podkręcania”. Talenty i ranga mogą tylko zwiększać szansę rzadkich tierów.",
+  odds_version: "Tabela szans v{v} z {d}{rtp}.",
+  odds_rtp: " · RTP klubu ×{n}",
+  odds_chip_title: "Szanse dropu — jawna tabela",
+  info_title: "Info",
+  info_h_coins: "Monety i skrzynki — zasady",
+  info_li1: "Monety i dropy skrzynek to wewnętrzne wartości klubu: <b>nie wypłacamy</b> ich na pieniądze, <b>nie wymieniamy</b> na pieniądze ani towary i <b>nie mają</b> wartości pieniężnej.",
+  info_li2: "Skrzynki nie są sprzedawane ani powiązane z wpłatami — dostajesz je za darmo: za grę, nowe poziomy i osiągnięcia.",
+  info_li3: "Drop losuje serwer (crypto/rand) i pokazuje tak, jak wypadł — bez „podkręcania”. Tabela szans jest jawna: przycisk „{ic}” na każdej skrzynce.",
+  info_li4: "Talenty i ranga mogą tylko zwiększać szansę rzadkich tierów — na korzyść gracza.",
+  info_h_lic: "Ikony i licencje",
+  info_lic1: "Interfejs — <b>Phosphor Icons</b> (MIT, phosphoricons.com).",
+  info_lic2: "Logotypy platform i gier — <b>Simple Icons</b> (CC0, simpleicons.org).",
+  info_lic3: "Skrzynki, rangi i talenty — glify <b>game-icons.net</b> (CC BY 3.0): Lorc, Delapouite i współautorzy.",
+  info_lic4: "Okładki gier — grafika właścicieli praw (Valve CDN / SteamGridDB), używana do nawigacji po katalogu klubu.",
+  prof_title: "Profil",
+  prof_form_hint: "Ankieta — +25 XP za każde pole, pełna — skrzynka 🎁",
+  prof_birth_title: "Data urodzenia",
+  prof_source_ph: "Skąd wiesz o klubie?",
+  prof_fav_hint: "Ulubione gry (do 3) — podbijemy je w witrynie",
+  prof_cancel: "Anuluj",
+  prof_save: "Zapisz",
+  qr_title: "Klub w kieszeni",
+  qr_sub: "Skieruj aparat telefonu — rezerwacje, skrzynki, postęp i czat w aplikacji gościa <b>/app</b>.",
+  toast_prof_saved: "✓ Profil zaktualizowany",
+  toast_prof_xp: "🎉 Ankieta: +{n} XP",
+  toast_fav_limit: "Ulubione gry — maksymalnie trzy",
+  tab_cases: "Skrzynki",
+  tab_talents: "Talenty",
+  tab_top: "Top",
+  tab_ach: "Osiągnięcia",
+  tab_hist: "Historia",
+  tab_food_title: "Kuchnia",
+  cases_empty: "Nie masz jeszcze skrzynek.<br>Graj, zdobywaj poziomy i osiągnięcia.",
+  cases_odds_link: "szanse dropu",
+  case_opened_coins: "otwarta: +{n} {ic}",
+  case_opened_buster: "otwarta: +{n}% cashbacku",
+  case_expired: "wygasła",
+  case_source: "źródło: {s}",
+  case_expires_in: "wygaśnie za {n} dni",
+  open_hint: "OTWÓRZ ▸",
+  tal_free: "Wolne punkty: {n}",
+  tal_now: "teraz: {e}",
+  tal_next: "→ {e}",
+  toast_tal_up: "✦ Talent podbity",
+  top_my_place: "Twoje miejsce: {n}",
+  top_empty: "Na razie pusto",
+  ach_head: "Zdobyte: {a} · Rozegrane godziny: {h}",
+  ach_reset: " · ⏳ do resetu {t}",
+  ach_cat_daily: "Dnia — reset o 14:48",
+  ach_cat_weekly: "Tygodnia",
+  ach_cat_monthly: "Miesiąca",
+  ach_cat_lifetime: "Na zawsze",
+  food_loading: "Ładuję menu…",
+  food_st_new: "czeka",
+  food_st_accepted: "przyjęte",
+  food_st_preparing: "gotujemy",
+  food_st_delivering: "niesiemy",
+  food_st_done: "wydane",
+  food_st_cancelled: "anulowane",
+  food_paid: "opłacone",
+  food_unpaid: "zapłać przy ladzie",
+  food_unpaid_sum: "Do zapłaty przy ladzie: {z} — rozliczysz się po grze",
+  food_my_orders: "Moje zamówienia",
+  food_menu: "Menu",
+  food_recent: "Ostatnie",
+  food_out: "wyprzedane — zajrzyj później",
+  food_order: "🍽 Zamów",
+  food_cancel_title: "anuluj",
+  food_empty: "Menu jest na razie puste.<br>Kuchnia pojawi się, gdy właściciel uzupełni cennik.",
+  toast_order_ok: "🍔 Zamówienie przyjęte: {n}",
+  toast_order_to_pc: " — przyniesiemy do {c}",
+  toast_order_pay: ". Płatność przy ladzie po grze",
+  toast_order_cancelled: "↩ Zamówienie anulowane",
+  bk_title: "Zarezerwuj PC",
+  bk_clubs_fail: "Kluby się nie wczytały",
+  bk_free: "wolne {f}/{t}",
+  bk_1h: "1 godzina",
+  bk_2h: "2 godziny",
+  bk_3h: "3 godziny",
+  bk_5h: "5 godzin",
+  bk_btn: "Rezerwuję",
+  bk_locked_title: "Rezerwacje od LVL {l}",
+  bk_locked_sub: "Masz LVL {n} — XP kapie za każdą minutę gry",
+  bk_none: "Brak aktywnych rezerwacji",
+  bk_past: "Minione",
+  bk_no_prepaid: " · bez przedpłaty",
+  bk_min: "{n} min",
+  toast_bk_noclub: "⚠ Nie wybrano klubu",
+  toast_bk_nodate: "⚠ Podaj datę i godzinę",
+  toast_bk_ok: "📅 Rezerwacja: {c} · {t}",
+  toast_bk_ok_free: " · bez przedpłaty ✨",
+  toast_bk_cancelled: "✕ Rezerwacja anulowana",
+  hist_empty: "Historia sesji jest pusta",
+  hist_now: "trwa teraz",
+  eco_loading: "Ładuję ekonomię…",
+  rank_line: "Ranga {n}/7 · rozegrane {h} godz.",
+  rank_max: "Najwyższa ranga — wyżej się nie da",
+  rank_next: "Jeszcze {n} godz. do „{r}”",
+  btn_all_ranks: "Wszystkie rangi i bonusy",
+  calc_title: "Kalkulator monet",
+  calc_sub: "Ile nakapie za sesję z twoją rangą i talentami",
+  calc_time: "{t} gry",
+  calc_h: "{n} godz. ",
+  calc_m: "{n} min",
+  calc_zero: "0 min",
+  calc_coins_base: "Monety: baza ({m} × {r})",
+  calc_rank_mult: "+ ranga ×{n}",
+  calc_xp_base: "XP: baza ({m} × {r})",
+  calc_xp_boost: "+ „Przyspieszenie XP” +{n}%",
+  calc_coins_lbl: "monet",
+  how_title: "Jak powstają monety",
+  how_base: "Stawka bazowa — <b style=\"color:var(--txt)\">{n} monety/min</b> za czas przy PC.<br>",
+  how_rank: "Mnożnik rangi „{r}” — <b class=\"plus\">×{c}</b> do monet, <b class=\"plus\">×{x}</b> do XP.<br>",
+  how_mint: "Talent „Mennica” — przy doładowaniu <b class=\"plus\">+{n}%</b> monet (kurs {r} monet za 1 zł).<br>",
+  how_tail: "Im wyższa ranga (więcej rozegranych godzin), tym więcej monet i XP oraz częstsze skrzynki: teraz <b style=\"color:var(--txt)\">{n}%</b> za sesję.",
+  sens_title: "Studio czułości",
+  sens_sub: "Przenieś czułość z jednej gry do drugiej — celownik zostanie ten sam",
+  sens_step1: "<b style=\"color:var(--acc)\">Krok 1.</b> DPI myszy (sprawdź w sofcie myszy)",
+  sens_ai_title: "🎯 AI-kalibrator",
+  sens_ai_sub: "Nie znasz swojej idealnej czułości? Postrzelaj do tarcz — bayesowskie szukanie znajdzie optimum i sprawdzi je ślepym A/B. ~7 minut.",
+  sens_ai_btn: "Dobierz strzelając",
+  sens_step2: "<b style=\"color:var(--acc)\">Krok 2.</b> Z której gry przenosimy i dokąd",
+  sens_from: "Z gry",
+  sens_val: "Czułość",
+  sens_swap: "⇅ zamień miejscami",
+  sens_to: "Do gry",
+  sens_result: "Wynik",
+  sens_copy: "Skopiuj „{v}”",
+  sens_copy_hint: "Wpisz tę wartość w ustawieniach „{g}”",
+  sens_cloud_title: "☁ Czułość jedzie z tobą",
+  sens_cloud_sub: "Zapisz DPI i czułość na koncie — a na każdym PC sieci 14:48 podstawią się same. ",
+  sens_save: "Zapisz na koncie",
+  sens_cm360: "cm / 360°",
+  sens_edpi: "eDPI (z gry)",
+  sens_explain: "<b style=\"color:var(--txt)\">cm / 360°</b> — ile centymetrów myszy trzeba na pełny obrót. To właśnie pamięć mięśniowa: zachowujemy ją — celownik się nie psuje.<br><b style=\"color:var(--txt)\">eDPI</b> = DPI × czułość — efektywna czułość do porównań w jednej grze.",
+  sens_all_title: "Twoja czułość we wszystkich grach",
+  sens_all_sub: "Ten sam celownik (cm/360) — gotowe wartości dla każdej gry",
+  sens_games_note: "Wartości są dokładne dla CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. Inne gry dodamy na życzenie.",
+  sens_source: "· źródłowa",
+  sens_synced: "✓ Zsynchronizowano{n}.",
+  sens_synced_n: " · {n} {w}",
+  pl_sync_1: "gra",
+  pl_sync_n: "gier",
+  sens_not_saved: "Jeszcze nie zapisano.",
+  sens_calib: "<br><b style=\"color:var(--acc)\">Kalibrator znalazł {s}</b> (CS2 · {cm} cm/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">zastosuj</a>",
+  toast_calib_applied: "Czułość z kalibratora podstawiona: CS2 {s}",
+  toast_popup_blocked: "Przeglądarka zablokowała okno — otwórz web/aim.html ręcznie",
+  toast_sens_saved: "💾 Czułość zapisana — podstawi się na każdym PC klubu",
+  toast_copied: "📋 Skopiowano: {v}",
+  toast_value: "Wartość: {v}",
+  mouse_checking: "🖱 Sprawdzam mysz…",
+  mouse_title: "🖱 Twoja mysz",
+  mouse_hint_agent: "Uruchom 14:48 na klubowym PC (kiosk/agent) — studio samo sprawdzi akcelerację i podpowie DPI.<br><br>",
+  mouse_manual: "Na razie ręcznie: <b style=\"color:var(--txt)\">Windows → Ustawienia → Mysz → Dodatkowe → odznacz „Zwiększ precyzję wskaźnika”</b>.",
+  mouse_accel_on: "⚠ Akceleracja włączona",
+  mouse_accel_off_btn: "Wyłącz",
+  mouse_accel_ok: "✓ Akceleracja wyłączona",
+  mouse_accel_good: "idealnie do aimu",
+  mouse_speed: "{s} Prędkość wskaźnika: {n}/20",
+  mouse_speed_ideal: "1:1 — idealnie",
+  mouse_speed_rec: "zalecane 10/20",
+  mouse_vendor: "🎛 Soft myszy: <b style=\"color:var(--txt)\">{v}</b>",
+  mouse_vendor_hint: "Otwórz go, żeby zobaczyć swoje DPI i wpisać powyżej.",
+  mouse_vendor_none: "Nie znaleziono softu myszy. DPI zwykle jest w aplikacji myszy (Logitech G HUB, Razer Synapse itp.) albo na pudełku.",
+  toast_accel_off: "🖱 Akceleracja wyłączona — celownik zrobił się uczciwy",
+  toast_accel_fail: "⚠ {m}",
+  toast_accel_fail_def: "nie udało się",
+  toast_agent_down: "⚠ Agent niedostępny",
+  lang_line: "🌐 Język",
+  ntf_at_time: " na {t}",
+  ntf_to_time: " na {t}",
+  ntf_dash_time: " — {t}",
+  ntf_paren_pc: " ({c})",
+  ntf_bk_cancel: "📅 Admin anulował twoją rezerwację",
+  ntf_bk_restore: "📅 Twoja rezerwacja wróciła",
+  ntf_deposit: "💰 +{c} monet — wpłata {a} zł",
+  ntf_grant_xp: "⚡ Przyznano ci +{n} XP",
+  ntf_lvl: " → LVL {l} 🎉",
+  ntf_grant_case: "🎁 Dostałeś skrzynkę {t}",
+  ntf_bal_low: "⏳ Saldo się kończy: zostało ~{m} min. Doładuj przy ladzie",
+  ntf_bal_zero: "🛑 Środki się skończyły — sesja zakończy się za {g} min. Doładuj przy ladzie, żeby grać dalej",
+  ntf_pause_over: "⏱ Limit pauzy wyczerpany ({l} min) — czas znowu leci",
+  ntf_afk_warn: "💤 Długo cię nie ma — sesja zaraz stanie na pauzie albo się zakończy",
+  ntf_afk_pause: "💤 AFK: sesja na pauzie. Wróć i rusz myszką — jedziemy dalej",
+  ntf_moved: "🖥 Przesadzono cię na {c} — sesja trwa dalej",
+  ntf_other_pc: "inny PC",
+  ntf_bk_soon: "⏰ Ten PC jest zarezerwowany{t} — zostało ~{m} min",
+  ntf_bk_deadline: "⏰ PC idzie pod rezerwację{t} — sesja zakończona, saldo i XP są całe",
+  ntf_bk_remind: "📅 Przypomnienie: twoja rezerwacja o {t}{c} — za ~{m} min",
+  ntf_bk_noshow: "🕳 Rezerwacja{t} przepadła: nie przyszedłeś na czas",
+  ntf_order: "zamówienie",
+  ntf_kt_accepted: "🍔 {n}: przyjęte, zaraz się zajmiemy",
+  ntf_kt_preparing: "🍳 {n}: gotujemy",
+  ntf_kt_delivering: "🚀 {n}: niesiemy{c}",
+  ntf_kt_done: "✅ {n}: wydane. Smacznego! Płatność przy ladzie po grze",
+  ntf_kt_paid: "💚 {n}: opłacone — dziękujemy!",
+  ntf_kt_cancelled: "↩ {n}: anulowane",
+  ntf_kt_other: "🍔 {n}: aktualizacja zamówienia",
+  ntf_kt_unpaid: "🧾 Nie zapomnij zapłacić za kuchnię przy ladzie: {z} zł",
+  ntf_birthday: "🎂 Wszystkiego najlepszego! Klub daje ci skrzynkę {t} — otwórz ją w zakładce „Skrzynki”",
+  ntf_default: "🔔 Aktualizacja konta",
+  ach_reward_case: "+ skrzynka {t}",
+  rk_1: "Nowicjusz",
+  rk_2: "Bywalec",
+  rk_3: "Weteran",
+  rk_4: "Mistrz",
+  rk_5: "Elita",
+  rk_6: "Legenda",
+  rk_7: "Nieśmiertelny",
+  calc_min_short: "{n}m",
+  calc_h_short: "{n}h",
+};
+
+const SH_LANGS = {ru: SH_RU, en: SH_EN, pl: SH_PL};
+let LANG = 'ru';
+try{ LANG = localStorage.getItem('1448_lang') || 'ru'; }catch(e){}
+if (!SH_LANGS[LANG]) LANG = 'ru';
+let STR = Object.assign({}, SH_RU, SH_LANGS[LANG]);
+
+/* T('key', {n: 5}) — строка с подстановками {n}; пустые ключи не роняют UI */
+function T(key, vars){
+  return String(STR[key] == null ? '' : STR[key])
+    .replace(/\{(\w+)\}/g, (_, n) => vars && vars[n] != null ? vars[n] : '');
+}
+/* статичная разметка: data-str (текст), data-str-html (разметка внутри),
+   data-str-ph (placeholder), data-str-title (подсказка) */
+function applyStrings(){
+  document.documentElement.lang = LANG;
+  document.title = STR.page_title;
+  document.querySelectorAll('[data-str]').forEach(el => { el.textContent = STR[el.dataset.str] || ''; });
+  document.querySelectorAll('[data-str-html]').forEach(el => { el.innerHTML = STR[el.dataset.strHtml] || ''; });
+  document.querySelectorAll('[data-str-ph]').forEach(el => { el.placeholder = STR[el.dataset.strPh] || ''; });
+  document.querySelectorAll('[data-str-title]').forEach(el => { el.title = STR[el.dataset.strTitle] || ''; });
+}
+/* смена языка: сразу в localStorage, в аккаунт — если гость вошёл; перезагрузка
+   применяет словарь целиком (проще и честнее точечной перерисовки) */
+/* Г9-и2: чей язык главнее. Правило — побеждает последнее осознанное действие
+   гостя, а не «кто позже загрузился»:
+     · переключил язык на лок-экране ДО входа → помечаем выбор «pending» и
+       после входа отправляем в профиль (клубный ПК не навяжет ему прошлый);
+     · вошёл без своего выбора → язык приезжает из аккаунта и едет за гостем
+       на любой ПК сети (перезагрузка применяет словарь целиком). */
+function applyProfileLang(u){
+  const l = u && u.language;
+  let pending = null;
+  try{ pending = localStorage.getItem('1448_lang_pending'); }catch(e){}
+  if (pending && SH_LANGS[pending]){
+    try{ localStorage.removeItem('1448_lang_pending'); }catch(e){}
+    if (pending !== l) api('/me', {method:'PATCH', body:JSON.stringify({language: pending})}).catch(()=>{});
+    return false; // гость только что выбрал сам — ничего не перебиваем
+  }
+  if (!l || !SH_LANGS[l] || l === LANG) return false;
+  try{ localStorage.setItem('1448_lang', l); }catch(e){ return false; }
+  location.reload();
+  return true;
+}
+async function setLang(l){
+  if (!SH_LANGS[l] || l === LANG) return;
+  try{ localStorage.setItem('1448_lang', l); }catch(e){}
+  if (tokens().a){
+    try{ await api('/me', {method:'PATCH', body:JSON.stringify({language: l})}); }catch(e){}
+  }else{
+    try{ localStorage.setItem('1448_lang_pending', l); }catch(e){} // допишем в профиль после входа
+  }
+  location.reload();
+}
+function langSwitch(cls){
+  return '<div class="langsw ' + (cls || '') + '">' +
+    ['ru','en','pl'].map(l => '<button class="' + (l === LANG ? 'on' : '') +
+      '" onclick="setLang(\'' + l + '\')">' + l.toUpperCase() + '</button>').join('') + '</div>';
+}
+
 
 const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁','🐨','🐵','🐙']; // avatar_id 1..12
 
@@ -1078,7 +2202,7 @@ function setMode(m){
   authMode = m;
   document.getElementById('tabLogin').classList.toggle('on', m==='login');
   document.getElementById('tabReg').classList.toggle('on', m==='register');
-  document.getElementById('authBtn').textContent = m==='login' ? 'Войти' : 'Создать аккаунт';
+  document.getElementById('authBtn').textContent = m==='login' ? STR.btn_login : STR.btn_register;
   document.getElementById('authErr').textContent = '';
 }
 
@@ -1095,7 +2219,7 @@ async function submitAuth(){
     setTokens(d.access_token, d.refresh_token);
     me = d.user;
     enterShell();
-  }catch(e){ err.textContent = e.message || 'Ошибка'; }
+  }catch(e){ err.textContent = e.message || STR.err_generic; }
   btn.disabled = false;
 }
 
@@ -1131,7 +2255,9 @@ async function loadAll(){
       api('/me/bookings'), api('/me/economy'), api('/me/sensitivity'),
     ]);
     const prevLvl = me ? me.level : null;
-    me = m.user || m; cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
+    me = m.user || m;
+    if (applyProfileLang(me)) return; // Г9-и2: язык приехал из аккаунта
+    cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
     sessions = ss.sessions || [];
     bookingDeadline = ss.booking_deadline || null; // Г3: ПК уйдёт под бронь
     bookings = bk.bookings || [];
@@ -1165,10 +2291,10 @@ function renderTop(){
   FX.countUp(document.getElementById('coins'), me.coins_balance);
   FX.countUp(document.getElementById('sp'), me.skillpoints_available);
   document.getElementById('xpText').textContent = fmt(me.xp_current) + ' / ' + fmt(need) + ' XP';
-  document.getElementById('xpLeft').textContent = 'до уровня: ' + fmt(Math.max(0, need - me.xp_current)) + ' XP';
+  document.getElementById('xpLeft').textContent = T('xp_left', {n: fmt(Math.max(0, need - me.xp_current))});
   document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
   if (economy && economy.rank){
-    document.getElementById('rankName').textContent = economy.rank.name;
+    document.getElementById('rankName').textContent = rankName(economy.rank.name);
     document.getElementById('rankEm').textContent = RANK_EM[economy.rank.level] || '✦';
   }
 }
@@ -1184,7 +2310,7 @@ function renderWallet(){
   zl.textContent = fmtZl(me.wallet_grosz);
   let txt = '', low = false;
   if (activeSession && activeSession.paused_at){
-    txt = '· пауза'; // Г2: время стоит — прогноз «до HH:MM» не честен
+    txt = STR.eta_pause; // Г2: время стоит — прогноз «до HH:MM» не честен
   } else if (activeSession){
     const rateGr = Math.round((activeSession.effective_rate_pln || 0) * 100);
     if (rateGr > 0){
@@ -1193,10 +2319,10 @@ function renderWallet(){
       if (left > 0){
         let till = new Date(Date.now() + left * 60000), byBooking = false;
         if (bookingDeadline && new Date(bookingDeadline) < till){ till = new Date(bookingDeadline); byBooking = true; } // Г3
-        txt = '· до ' + String(till.getHours()).padStart(2, '0') + ':' + String(till.getMinutes()).padStart(2, '0')
-            + (byBooking ? ' ⏰ бронь' : '');
+        txt = T('eta_till', {t: String(till.getHours()).padStart(2, '0') + ':' + String(till.getMinutes()).padStart(2, '0')})
+            + (byBooking ? STR.eta_booking : '');
         if (byBooking) low = low || (till - Date.now() <= 15 * 60000);
-      } else txt = '· пополни у стойки';
+      } else txt = STR.eta_topup;
     }
   }
   eta.textContent = txt;
@@ -1204,12 +2330,25 @@ function renderWallet(){
 }
 
 /* ═══════════════ КАТАЛОГ ═══════════════ */
-function plural(n, forms){ // 1 игра / 2 игры / 5 игр
+/* Г9-и2: ru и pl делят правило 1 / 2-4 / 5+; en — просто one/many */
+function plural(n, forms){
+  if (LANG === 'en') return n === 1 ? forms[0] : forms[2];
   const m10 = n % 10, m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return forms[0];
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
   return forms[2];
 }
+function plGame(n){ return plural(n, [STR.pl_game_1, STR.pl_game_2, STR.pl_game_5]); }
+function plApp(n){ return plural(n, [STR.pl_app_1, STR.pl_app_2, STR.pl_app_5]); }
+/* имена групп и системных приложений приходят из каталога данными (сервер их
+   не переводит) — переводим только на показ, сравнения в коде не трогаем */
+const GRP_KEYS = {'Коммуникация':'grp_comm', 'Системные':'grp_sys', 'Другие':'grp_other', 'Другие игры':'grp_other_games'};
+const APP_KEYS = {'Звук':'app_sound', 'Мышь':'app_mouse', 'Дисплей':'app_display'};
+function grpName(n){ return GRP_KEYS[n] ? STR[GRP_KEYS[n]] : n; }
+const RANK_KEYS = {'Новичок':'rk_1', 'Завсегдатай':'rk_2', 'Ветеран':'rk_3', 'Мастер':'rk_4',
+                   'Элита':'rk_5', 'Легенда':'rk_6', 'Бессмертный':'rk_7'};
+function rankName(n){ return RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
+function appName(n){ return APP_KEYS[n] ? STR[APP_KEYS[n]] : n; }
 /* Каталог в три ряда: (1) популярные игры плитками — сразу запускаются,
    (2) платформы-папки (Steam, Riot...) — внутри игры платформы и её клиент,
    (3) папки приложений: Коммуникация / Системные / Другие (группа = subtitle).
@@ -1262,15 +2401,15 @@ function renderCatalog(){
       <div class="art"${coverStyle(g.id)}></div>
       <span class="tag">${esc(g.tag || g.name[0])}</span>
       <div class="gemblem">${ICONS[g.id] || ''}</div>
-      <div class="meta"><div class="n">${esc(g.name)}</div><div class="s">${esc(g.sub)}</div></div>
+      <div class="meta"><div class="n">${esc(g.name)}</div><div class="s">${esc(grpName(g.sub))}</div></div>
     </div>`;
   const appTile = (cat,a,i) => `
     <div class="app" onclick="launch('${cat}',${i})">
       <div class="aicon">${ICONS[a.id] || `<span class="em">${a.em||'▪'}</span>`}</div>
-      <div class="n">${esc(a.name)}</div>
+      <div class="n">${esc(appName(a.name))}</div>
     </div>`;
   const icon = it => ICONS[it.id] || `<b>${esc(it.tag || (it.em||'') || it.name[0])}</b>`;
-  const backBtn = `<button class="plat-btn" onclick="closeCatFolder()">← Назад</button>`;
+  const backBtn = `<button class="plat-btn" onclick="closeCatFolder()">${esc(STR.back)}</button>`;
 
   // ── внутри папки платформы: плитка клиента (понятно, куда жать) + её игры ──
   const gr = catFolder && catFolder.t === 'plat' && catGroups.find(x => x.name === catFolder.name);
@@ -1281,18 +2420,18 @@ function renderCatalog(){
       <div class="game client" onclick="launch('platforms',${gr.pi})">
         <div class="art"></div>
         <div class="gemblem">${ICONS[gr.p.id] || FOLDER_ICON}</div>
-        <div class="meta"><div class="n">${esc(gr.p.name)}</div><div class="s">▶ Открыть клиент</div></div>
+        <div class="meta"><div class="n">${esc(gr.p.name)}</div><div class="s">${esc(STR.open_client)}</div></div>
       </div>` : '';
     area.innerHTML = `
-      <div class="folder-top">${backBtn}${gr.p ? (ICONS[gr.p.id]||'') : ''}<h2>${esc(gr.name)}</h2>
-        <span class="cnt">${n ? n + ' ' + plural(n, ['игра','игры','игр']) : 'клиент платформы'}</span></div>
+      <div class="folder-top">${backBtn}${gr.p ? (ICONS[gr.p.id]||'') : ''}<h2>${esc(grpName(gr.name))}</h2>
+        <span class="cnt">${n ? T('n_games', {n: n, w: plGame(n)}) : esc(STR.plat_client)}</span></div>
       <div class="games">${clientTile}${gr.items.map(gameTile).join('')}</div>`;
   }
   // ── внутри папки приложений (Коммуникация / Системные / Другие / свои) ──
   else if (ag){
     area.innerHTML = `
-      <div class="folder-top">${backBtn}${APPGRP_ICONS[ag.name] || FOLDER_ICON}<h2>${esc(ag.name)}</h2>
-        <span class="cnt">${ag.items.length} ${plural(ag.items.length, ['приложение','приложения','приложений'])}</span></div>
+      <div class="folder-top">${backBtn}${APPGRP_ICONS[ag.name] || FOLDER_ICON}<h2>${esc(grpName(ag.name))}</h2>
+        <span class="cnt">${T('n_apps', {n: ag.items.length, w: plApp(ag.items.length)})}</span></div>
       <div class="apps">${ag.items.map(({a,i}) => appTile(ag.sys ? 'system' : 'apps', a, i)).join('')}</div>`;
   }
   // ── главный экран: (1) популярные игры, (2) платформы, (3) папки приложений ──
@@ -1302,7 +2441,7 @@ function renderCatalog(){
       <div class="folder" onclick="${onclick}">
         <div class="f-icon">${iconHtml}</div>
         <div class="f-prev">${preview}</div>
-        <div class="f-name">${esc(name)}</div>
+        <div class="f-name">${esc(grpName(name))}</div>
         <div class="f-cnt">${cnt}</div>
       </div>`;
     // Г8-и5: любимые игры гостя всплывают в начало витрины (индексы родные)
@@ -1313,22 +2452,22 @@ function renderCatalog(){
       `openCatFolder(${i})`,
       g.p ? (ICONS[g.p.id] || FOLDER_ICON) : FOLDER_ICON,
       g.name,
-      g.items.length ? g.items.length + ' ' + plural(g.items.length, ['игра','игры','игр']) : 'клиент',
+      g.items.length ? T('n_games', {n: g.items.length, w: plGame(g.items.length)}) : STR.client,
       g.items.slice(0,3).map(({g}) => icon(g)).join('') + (g.items.length > 3 ? '<b>+' + (g.items.length-3) + '</b>' : '')
     )).join('');
     const appFolders = catAppGroups.map((s,i) => folderTile(
       `openAppGroup(${i})`,
       APPGRP_ICONS[s.name] || FOLDER_ICON,
       s.name,
-      s.items.length + ' ' + plural(s.items.length, ['приложение','приложения','приложений']),
+      T('n_apps', {n: s.items.length, w: plApp(s.items.length)}),
       s.items.slice(0,3).map(({a}) => icon(a)).join('') + (s.items.length > 3 ? '<b>+' + (s.items.length-3) + '</b>' : '')
     )).join('');
     area.innerHTML = `
-      <div class="sec-h"><h2>${UI.ctrl} Игры</h2><span class="cnt">${favs.length ? 'сначала твои любимые · ' : 'самое популярное · '}всего ${CATALOG.games.length}</span></div>
+      <div class="sec-h"><h2>${UI.ctrl} ${esc(STR.cat_games)}</h2><span class="cnt">${favs.length ? esc(STR.cat_fav_first) : esc(STR.cat_popular)}${T('cat_total', {n: CATALOG.games.length})}</span></div>
       <div class="games">${top.map(x => gameTile(x)).join('')}</div>
-      <div class="sec-h"><h2>${UI.rocket} Платформы</h2><span class="cnt">папки — внутри все игры платформы и её клиент</span></div>
+      <div class="sec-h"><h2>${UI.rocket} ${esc(STR.cat_platforms)}</h2><span class="cnt">${esc(STR.cat_plat_hint)}</span></div>
       <div class="folders">${platFolders}</div>
-      <div class="sec-h"><h2>${UI.apps} Приложения</h2><span class="cnt">папки — зайди и выбери</span></div>
+      <div class="sec-h"><h2>${UI.apps} ${esc(STR.cat_apps)}</h2><span class="cnt">${esc(STR.cat_apps_hint)}</span></div>
       <div class="folders">${appFolders}</div>`;
   }
   // оживление: наклон тайлов + появление со stagger
@@ -1341,14 +2480,14 @@ async function launch(cat, i){
   const item = CATALOG[cat][i];
   // 0) нативный киоск (WebView2): запуск через C#-мост
   if (NATIVE && item.id){
-    if (nativePost({cmd:'launch', id:item.id})){ toast('🚀 Запускаю ' + item.name + '…'); return; }
+    if (nativePost({cmd:'launch', id:item.id})){ toast(T('launching', {n: appName(item.name)})); return; }
   }
   // 1) через агента (запускает всё: exe, протоколы, настройки)
   if (agentOnline && item.id){
     try{
       const r = await fetch(AGENT + '/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({app_id:item.id})});
-      if (r.ok){ toast('🚀 Запускаю ' + item.name + '…'); return; }
-      if (r.status !== 404){ const d = await r.json().catch(()=>({})); toast('⚠ ' + (d.message||'ошибка агента')); return; }
+      if (r.ok){ toast(T('launching', {n: appName(item.name)})); return; }
+      if (r.status !== 404){ const d = await r.json().catch(()=>({})); toast(T('launch_agent_err', {m: d.message || STR.launch_agent_err_def})); return; }
       // 404 = нет в allowlist агента → пробуем fallback ниже
     }catch(e){ agentOnline = false; renderAgentDot(); }
   }
@@ -1358,14 +2497,14 @@ async function launch(cat, i){
   // системные настройки Windows открываются протоколом прямо из браузера
   const proto = l.type === 'proto' ? l.uri : BROWSER_PROTO[item.id];
   if (proto){
-    toast('🚀 Запускаю ' + item.name + '…');
+    toast(T('launching', {n: appName(item.name)}));
     const f = document.createElement('iframe');
     f.style.display = 'none'; f.src = proto;
     document.body.appendChild(f); setTimeout(()=>f.remove(), 3000);
     return;
   }
   // требует установленной программы на игровом ПК (запустится в киоске/через агента)
-  toast('🖥 ' + item.name + ' запускается на игровом ПК клуба');
+  toast(T('launch_on_pc', {n: appName(item.name)}));
 }
 // протоколы Windows, работающие из браузера без агента (для type:'agent')
 const BROWSER_PROTO = { sound:'ms-settings:sound', display:'ms-settings:display', mouse:'ms-settings:mousetouchpad' };
@@ -1375,25 +2514,25 @@ async function adminCall(){
   // работает из браузера без агента; киоск/агент остаются fallback'ом.
   try{
     await api('/me/chat', {method:'POST', body:JSON.stringify({kind:'call'})});
-    toast('🛎 Администратор вызван — уже идёт');
+    toast(STR.toast_admin_called);
     loadChat(); // вызов появится в переписке (Б3)
     return;
   }catch(e){
-    if (e.code === 'too_fast'){ toast('🛎 ' + (e.message || 'Администратор уже позван')); return; }
+    if (e.code === 'too_fast'){ toast(T('toast_admin_already', {m: e.message || STR.toast_admin_already_def})); return; }
     if (e.message === 'unauthorized') return; // logout уже сработал
     // сервер недоступен — пробуем локальные пути ниже
   }
-  if (NATIVE && nativePost({cmd:'admin_call'})){ toast('🛎 Администратор вызван'); return; }
+  if (NATIVE && nativePost({cmd:'admin_call'})){ toast(STR.toast_admin_called_short); return; }
   if (agentOnline){
     try{
       const r = await fetch(AGENT + '/admin-call', {method:'POST'});
-      if (r.ok){ toast('🛎 Администратор вызван — уже идёт'); return; }
+      if (r.ok){ toast(STR.toast_admin_called); return; }
       const d = await r.json().catch(()=>({}));
-      toast('⚠ ' + (d.message || 'агент без связи с сервером'));
+      toast(T('toast_agent_nolink', {m: d.message || STR.toast_agent_nolink_def}));
       return;
     }catch(e){ agentOnline = false; renderAgentDot(); }
   }
-  toast('⚠ Нет связи с сервером — вызов не дошёл, подойди к стойке');
+  toast(STR.toast_no_server);
 }
 
 /* ── Б3 (ADMIN.md, зона связки): панель чата с админом.
@@ -1417,10 +2556,10 @@ function chRender(){
   const el = document.getElementById('chatList');
   if (!el) return;
   el.innerHTML = chatMsgs.length === 0
-    ? '<div class="ch-sys">Напиши админу — или позови его кнопкой слева</div>'
+    ? `<div class="ch-sys">${esc(STR.ch_empty)}</div>`
     : chatMsgs.map(m => m.kind === 'call'
-      ? `<div class="ch-sys">🛎 вызов отправлен · ${chHM(m.created_at)}</div>`
-      : `<div class="ch-m${m.sender === 'guest' ? ' mine' : ''}">${esc(m.text)}<i>${m.sender === 'staff' ? 'админ · ' : ''}${chHM(m.created_at)}</i></div>`).join('');
+      ? `<div class="ch-sys">${T('ch_call_sent', {t: chHM(m.created_at)})}</div>`
+      : `<div class="ch-m${m.sender === 'guest' ? ' mine' : ''}">${esc(m.text)}<i>${m.sender === 'staff' ? esc(STR.ch_admin) : ''}${chHM(m.created_at)}</i></div>`).join('');
   el.scrollTop = el.scrollHeight;
 }
 async function loadChat(full){
@@ -1443,7 +2582,7 @@ async function chatSend(){
     await api('/me/chat', {method:'POST', body:JSON.stringify({kind:'text', text})});
     inp.value = '';
     await loadChat();
-  }catch(e){ toast('⚠ ' + (e.message || 'не отправилось')); }
+  }catch(e){ toast(T('toast_not_sent', {m: e.message || STR.toast_not_sent_def})); }
 }
 setInterval(() => { if (me && chatOpen) loadChat(); }, 10000);
 
@@ -1470,9 +2609,9 @@ async function foodOrder(id){
   try{
     const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:foodQty[id]||1})});
     const o = d.order;
-    toast('🍔 Заказ принят: ' + o.name + (o.qty>1?' ×'+o.qty:'')
-      + (o.computer ? ' — принесём к ' + o.computer : '')
-      + '. Расчёт у стойки после игры');
+    toast(T('toast_order_ok', {n: o.name + (o.qty>1 ? ' ×'+o.qty : '')})
+      + (o.computer ? T('toast_order_to_pc', {c: o.computer}) : '')
+      + STR.toast_order_pay);
     foodQty[id] = 1;
     await loadKitchen();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -1481,7 +2620,7 @@ async function foodOrder(id){
 async function foodCancel(id){
   try{
     await api('/me/kitchen/orders/' + id + '/cancel', {method:'POST'});
-    toast('↩ Заказ отменён');
+    toast(STR.toast_order_cancelled);
     await loadKitchen();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -1490,37 +2629,40 @@ setInterval(() => { if (me && curTab === 'food') loadKitchen(); }, 15000);
 function notifText(n){
   const p = n.payload || {};
   switch (n.type){
-    case 'booking_cancel': return '📅 Админ отменил твою бронь' + (p.start_time ? ' на ' + chHM(p.start_time) : '') + (p.computer ? ' (' + p.computer + ')' : '');
-    case 'booking_restore': return '📅 Твоя бронь возвращена' + (p.start_time ? ' — ' + chHM(p.start_time) : '');
-    case 'deposit': return '💰 +' + (p.coins||0) + ' монет — депозит ' + (p.amount_pln||0) + ' zł';
-    case 'grant_xp': return '⚡ Тебе начислено +' + (p.amount||0) + ' XP' + (p.levels_gained > 0 ? ' → LVL ' + p.level + ' 🎉' : '');
-    case 'grant_case': return '🎁 Тебе выдан кейс ' + (p.tier||'');
-    case 'balance_low': return '⏳ Баланс кончается: осталось ~' + (p.minutes_left||0) + ' мин. Пополни у стойки';
-    case 'balance_zero': zeroGraceMin = p.grace_min || 2; return '🛑 Деньги кончились — сессия завершится через ' + (p.grace_min||0) + ' мин. Пополни у стойки, чтобы продолжить';
-    case 'pause_over': return '⏱ Лимит паузы исчерпан (' + (p.limit_min||0) + ' мин) — время снова идёт';
-    case 'afk_warn': return '💤 Ты давно не за компом — сессия скоро встанет на паузу или завершится';
-    case 'afk_pause': return '💤 AFK: сессия на паузе. Вернись и шевельни мышью — продолжим';
-    case 'session_moved': return '🖥 Тебя пересадили за ' + (p.computer||'другой ПК') + ' — сессия продолжается';
-    case 'booking_soon': return '⏰ Этот ПК забронирован' + (p.start_time ? ' к ' + chHM(p.start_time) : '') + ' — осталось ~' + (p.minutes_left||0) + ' мин';
-    case 'booking_deadline': return '⏰ ПК уходит под бронь' + (p.start_time ? ' (' + chHM(p.start_time) + ')' : '') + ' — сессия завершена, баланс и XP сохранены';
-    case 'booking_reminder': return '📅 Напоминание: твоя бронь в ' + (p.start_time ? chHM(p.start_time) : '—') + (p.computer ? ' (' + p.computer + ')' : '') + ' — через ~' + (p.minutes_left||0) + ' мин';
-    case 'booking_no_show': return '🕳 Бронь ' + (p.start_time ? 'на ' + chHM(p.start_time) + ' ' : '') + 'сгорела: ты не пришёл вовремя';
+    case 'booking_cancel': return STR.ntf_bk_cancel + (p.start_time ? T('ntf_at_time', {t: chHM(p.start_time)}) : '')
+      + (p.computer ? T('ntf_paren_pc', {c: p.computer}) : '');
+    case 'booking_restore': return STR.ntf_bk_restore + (p.start_time ? T('ntf_dash_time', {t: chHM(p.start_time)}) : '');
+    case 'deposit': return T('ntf_deposit', {c: p.coins||0, a: p.amount_pln||0});
+    case 'grant_xp': return T('ntf_grant_xp', {n: p.amount||0}) + (p.levels_gained > 0 ? T('ntf_lvl', {l: p.level}) : '');
+    case 'grant_case': return T('ntf_grant_case', {t: p.tier||''});
+    case 'balance_low': return T('ntf_bal_low', {m: p.minutes_left||0});
+    case 'balance_zero': zeroGraceMin = p.grace_min || 2; return T('ntf_bal_zero', {g: p.grace_min||0});
+    case 'pause_over': return T('ntf_pause_over', {l: p.limit_min||0});
+    case 'afk_warn': return STR.ntf_afk_warn;
+    case 'afk_pause': return STR.ntf_afk_pause;
+    case 'session_moved': return T('ntf_moved', {c: p.computer || STR.ntf_other_pc});
+    case 'booking_soon': return T('ntf_bk_soon', {t: p.start_time ? T('ntf_to_time', {t: chHM(p.start_time)}) : '', m: p.minutes_left||0});
+    case 'booking_deadline': return T('ntf_bk_deadline', {t: p.start_time ? T('ntf_paren_pc', {c: chHM(p.start_time)}) : ''});
+    case 'booking_reminder': return T('ntf_bk_remind', {t: p.start_time ? chHM(p.start_time) : '—',
+      c: p.computer ? T('ntf_paren_pc', {c: p.computer}) : '', m: p.minutes_left||0});
+    case 'booking_no_show': return T('ntf_bk_noshow', {t: p.start_time ? T('ntf_at_time', {t: chHM(p.start_time)}) : ''});
     case 'kitchen_status': {
-      const nm = (p.name||'заказ') + (p.qty > 1 ? ' ×' + p.qty : '');
+      const nm = (p.name || STR.ntf_order) + (p.qty > 1 ? ' ×' + p.qty : '');
+      const pc = p.computer ? T('ntf_to_time', {t: p.computer}) : '';
       switch (p.status){
-        case 'accepted': return '🍔 ' + nm + ': приняли, скоро займёмся';
-        case 'preparing': return '🍳 ' + nm + ': готовим';
-        case 'delivering': return '🚀 ' + nm + ': несём' + (p.computer ? ' к ' + p.computer : '');
-        case 'done': return '✅ ' + nm + ': выдан. Приятного аппетита! Расчёт у стойки, когда доиграешь';
-        case 'paid': return '💚 ' + nm + ': оплачен — спасибо!';
-        case 'cancelled': return '↩ ' + nm + ': отменён';
+        case 'accepted': return T('ntf_kt_accepted', {n: nm});
+        case 'preparing': return T('ntf_kt_preparing', {n: nm});
+        case 'delivering': return T('ntf_kt_delivering', {n: nm, c: pc});
+        case 'done': return T('ntf_kt_done', {n: nm});
+        case 'paid': return T('ntf_kt_paid', {n: nm});
+        case 'cancelled': return T('ntf_kt_cancelled', {n: nm});
       }
-      return '🍔 ' + nm + ': обновление заказа';
+      return T('ntf_kt_other', {n: nm});
     }
-    case 'kitchen_unpaid': return '🧾 Не забудь рассчитаться за кухню у стойки: ' + (p.total_pln||0) + ' zł';
-    case 'birthday_gift': return '🎂 С днём рождения! Клуб дарит кейс ' + (p.case_tier||'') + ' — открой его во вкладке «Кейсы»';
+    case 'kitchen_unpaid': return T('ntf_kt_unpaid', {z: p.total_pln||0});
+    case 'birthday_gift': return T('ntf_birthday', {t: p.case_tier||''});
   }
-  return '🔔 Обновление аккаунта';
+  return STR.ntf_default;
 }
 function pumpNotif(){
   if (!notifQ.length){ notifPumping = false; return; }
@@ -1546,7 +2688,7 @@ setInterval(async () => {
   try{
     const d = await api('/me/chat/unread');
     const n = d.count | 0;
-    if (n > chatUnread) toast('💬 Ответ администратора — открой «Админ»');
+    if (n > chatUnread) toast(STR.toast_admin_reply);
     chatUnread = n;
     paintChatBadge();
   }catch(e){}
@@ -1562,7 +2704,7 @@ if (NATIVE){
     const d = e.data || {};
     if (d.evt === 'session_start' || d.evt === 'session_end') loadAll();
     if (d.evt === 'xp_update') loadAll();
-    if (d.evt === 'launch_failed') toast('⚠ Не удалось запустить: ' + (d.id||''));
+    if (d.evt === 'launch_failed') toast(T('launch_failed', {id: d.id || ''}));
   });
 }
 
@@ -1572,9 +2714,9 @@ let agentOnline = false;
 
 function renderAgentDot(){
   const el = document.getElementById('agentDot');
-  el.innerHTML = UI.monitor + (agentOnline ? ' ПК ●' : ' ПК ○');
+  el.innerHTML = UI.monitor + ' ' + (agentOnline ? STR.tb_pc_on : STR.tb_pc_off);
   el.style.color = agentOnline ? 'var(--green)' : 'var(--dim)';
-  el.title = agentOnline ? 'shell-agent запущен: программы запускаются с ПК' : 'shell-agent не найден: работают только протоколы браузера';
+  el.title = agentOnline ? STR.tb_pc_title_on : STR.tb_pc_title_off;
 }
 
 async function pingAgent(){
@@ -1597,23 +2739,23 @@ function renderSession(){
     el.innerHTML = paused ? `
       <div class="sess-on">
         <div>
-          <div class="muted">Пауза — время и деньги стоят</div>
+          <div class="muted">${esc(STR.sess_paused)}</div>
           <div class="sess-time">⏸ ${fmtHMS(effectiveSec())}</div>
         </div>
         <div style="display:flex; flex-direction:column; gap:8px">
-          <button class="btn slim" onclick="resumeSession()">▶ Продолжить</button>
-          <button class="btn danger slim" onclick="endSession(null)">Завершить</button>
+          <button class="btn slim" onclick="resumeSession()">${esc(STR.btn_resume)}</button>
+          <button class="btn danger slim" onclick="endSession(null)">${esc(STR.btn_finish)}</button>
         </div>
       </div>` : `
       <div class="sess-on">
         <div>
-          <div class="muted">Сессия идёт</div>
+          <div class="muted">${esc(STR.sess_running)}</div>
           <div class="sess-time" id="sessTime">00:00</div>
         </div>
         <div style="display:flex; flex-direction:column; gap:8px">
-          <button class="btn ghost slim" onclick="pauseSession()">⏸ Пауза</button>
-          <button class="btn danger slim" onclick="endSession(null)">Завершить</button>
-          <button class="btn ghost slim" title="dev: засчитать 150 минут" onclick="endSession(150)">+150 мин (dev)</button>
+          <button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>
+          <button class="btn danger slim" onclick="endSession(null)">${esc(STR.btn_finish)}</button>
+          <button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>
         </div>
       </div>`;
     if (timerIv) clearInterval(timerIv);
@@ -1625,10 +2767,10 @@ function renderSession(){
     el.innerHTML = `
       <div class="sess-on">
         <div>
-          <div class="muted">Сессия не начата</div>
-          <div style="font-weight:800; font-size:17px; margin-top:2px">Готов играть?</div>
+          <div class="muted">${esc(STR.sess_none)}</div>
+          <div style="font-weight:800; font-size:17px; margin-top:2px">${esc(STR.sess_ready)}</div>
         </div>
-        <button class="btn slim" onclick="startSession()">▶ Начать сессию</button>
+        <button class="btn slim" onclick="startSession()">${esc(STR.btn_start)}</button>
       </div>`;
   }
 }
@@ -1673,19 +2815,19 @@ function tickTimer(){
 /* Г2: пауза/продолжение с карточки сессии */
 async function pauseSession(){
   try{ await api('/me/sessions/pause', {method:'POST', body:'{}'});
-    toast('⏸ Пауза — время и деньги стоят'); await loadAll();
+    toast(STR.toast_paused); await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
 }
 async function resumeSession(){
   try{ await api('/me/sessions/resume', {method:'POST', body:'{}'});
-    toast('▶ Погнали дальше'); await loadAll();
+    toast(STR.toast_resumed); await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
 async function startSession(){
   try{
     const d = await api('/me/sessions/start', {method:'POST', body:'{}'});
-    toast('▶ Сессия на «' + (d.computer||'ПК') + '» началась. Играй!');
+    toast(T('toast_sess_started', {c: d.computer || STR.pc_default}));
     await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -1697,10 +2839,10 @@ async function endSession(devMinutes){
     document.getElementById('eoXP').textContent = '+' + fmt(d.xp_earned) + ' XP';
     document.getElementById('eoCoins').textContent = '+' + fmt(d.coins_earned);
     let extra = [];
-    if (d.daily_bonus_xp > 0) extra.push('☀ первый визит дня: +' + d.daily_bonus_xp + ' XP');
-    if (d.levels_gained > 0) extra.push('уровней получено: ' + d.levels_gained);
-    if (d.bonus_case) extra.push(UI.chest + ' бонусный кейс: ' + esc(d.bonus_case_tier||''));
-    if (d.bonus_case_tier_2) extra.push(UI.chest + UI.chest + ' двойной дроп: ' + esc(d.bonus_case_tier_2));
+    if (d.daily_bonus_xp > 0) extra.push(T('end_daily', {n: d.daily_bonus_xp}));
+    if (d.levels_gained > 0) extra.push(T('end_levels', {n: d.levels_gained}));
+    if (d.bonus_case) extra.push(UI.chest + ' ' + T('end_bonus_case', {t: esc(d.bonus_case_tier||'')}));
+    if (d.bonus_case_tier_2) extra.push(UI.chest + UI.chest + ' ' + T('end_double_case', {t: esc(d.bonus_case_tier_2)}));
     document.getElementById('eoExtra').innerHTML = extra.join(' · ');
     document.getElementById('endOverlay').classList.add('show');
     if (d.levels_gained > 0) setTimeout(()=>showLevelUp(d.user.level), 400);
@@ -1720,7 +2862,7 @@ function renderLock(){
   const lock = document.getElementById('lockOverlay');
   lock.classList.toggle('show', inShell && !activeSession);
   if (!(inShell && !activeSession)) attractOff(); // лок ушёл (сессия/логаут) — заставку долой
-  if (me) document.getElementById('lockUser').textContent = 'Вошёл как ' + me.nickname + ' · LVL ' + me.level;
+  if (me) document.getElementById('lockUser').textContent = T('lock_user', {n: me.nickname, l: me.level});
 }
 
 // Поллинг: сессию завершили извне — лок сам опустится; сессию НАЧАЛ админ
@@ -1733,7 +2875,7 @@ setInterval(async () => {
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
-      if (!still){ toast('⏹ Сессия завершена'); await loadAll(); }
+      if (!still){ toast(STR.toast_sess_ended); await loadAll(); }
       else if (!!still.paused_at !== !!activeSession.paused_at ||
                (still.paused_total_sec || 0) !== (activeSession.paused_total_sec || 0) ||
                (still.zero_since || '') !== (activeSession.zero_since || '')){
@@ -1741,7 +2883,7 @@ setInterval(async () => {
       }
     } else {
       const started = rows.find(s => s.status === 'active');
-      if (started){ toast('▶ Сессия начата у стойки — играй!'); await loadAll(); }
+      if (started){ toast(STR.toast_sess_started_desk); await loadAll(); }
     }
     if (activeSession){ // Г1: свежий кошелёк и прогноз, пока идёт списание
       try{
@@ -1760,7 +2902,7 @@ let attractT = null, attractIv = null;
 function attractFreeText(){
   let free = 0, total = 0;
   clubs.forEach(c => { free += c.computers_free || 0; total += c.computers_total || 0; });
-  return total ? `свободно <b>${free}</b> из ${total}` : '';
+  return total ? T('attract_free', {f: free, t: total}) : '';
 }
 function attractShow(){
   if (!document.getElementById('lockOverlay').classList.contains('show')) return;
@@ -1804,31 +2946,32 @@ function sideTab(t){
 function renderSide(){
   const el = document.getElementById('sideBody');
   if (curTab === 'cases'){
-    if (!cases.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+UI.chest+'<br>Кейсов пока нет.<br>Играй, поднимай уровень, выполняй ачивки.<br><a href="#" style="color:var(--dim)" onclick="openOdds(event,\'\',\'\');return false">шансы дропа</a></div>'; return; }
+    if (!cases.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+UI.chest+'<br>'+STR.cases_empty+'<br><a href="#" style="color:var(--dim)" onclick="openOdds(event,\'\',\'\');return false">'+esc(STR.cases_odds_link)+'</a></div>'; return; }
     el.innerHTML = cases.map(c => {
       const t = TIER[c.tier] || TIER.light;
       const opened = !!c.opened_at;
       const expired = !opened && c.expires_at && new Date(c.expires_at) < new Date();
       const daysLeft = c.expires_at ? Math.ceil((new Date(c.expires_at) - Date.now()) / 86400000) : null;
       let sub;
-      if (opened) sub = 'открыт: ' + (c.drop_type==='coins' ? '+'+fmt(c.drop_amount)+' '+UI.coins : '+'+c.drop_amount+'% кэшбек');
-      else if (expired) sub = UI.fire+' сгорел';
-      else sub = 'источник: ' + c.source + (daysLeft !== null
-        ? ` · <span style="color:${daysLeft <= 3 ? 'var(--red)' : 'var(--dim)'}">сгорит через ${daysLeft} дн</span>` : '');
+      if (opened) sub = c.drop_type==='coins' ? T('case_opened_coins', {n: fmt(c.drop_amount), ic: UI.coins})
+                                                : T('case_opened_buster', {n: c.drop_amount});
+      else if (expired) sub = UI.fire + ' ' + esc(STR.case_expired);
+      else sub = T('case_source', {s: c.source}) + (daysLeft !== null
+        ? ` · <span style="color:${daysLeft <= 3 ? 'var(--red)' : 'var(--dim)'}">${T('case_expires_in', {n: daysLeft})}</span>` : '');
       const dead = opened || expired;
       return `<div class="card case-i tier-${c.tier} ${dead?'opened':''}" ${dead?'':`onclick="openCase('${c.id}','${c.tier}')"`}>
         <div class="box" style="background:${t.c}22; border:1px solid ${t.c}">${expired?UI.fire:t.em}</div>
         <div><div class="t" style="color:${t.c}">${c.tier}</div>
         <div class="muted" style="font-size:11.5px">${sub}</div></div>
-        <button class="odds-chip" title="Шансы дропа — открытая таблица" onclick="openOdds(event,'${c.tier}','${c.club_id||''}')">${UI.percent}</button>
-        ${dead?'':'<div class="open-hint">ОТКРЫТЬ ▸</div>'}
+        <button class="odds-chip" title="${esc(STR.odds_chip_title)}" onclick="openOdds(event,'${c.tier}','${c.club_id||''}')">${UI.percent}</button>
+        ${dead?'':'<div class="open-hint">'+esc(STR.open_hint)+'</div>'}
       </div>`;
     }).join('');
   }
   if (curTab === 'talents'){
     if (!talents){ el.innerHTML = ''; return; }
     const sp = talents.skillpoints_available;
-    let html = `<div class="muted" style="margin-bottom:10px">Свободные очки: <b class="cyan-t">${sp}</b></div>`;
+    let html = `<div class="muted" style="margin-bottom:10px">${T('tal_free', {n: '<b class="cyan-t">' + sp + '</b>'})}</div>`;
     for (const br of ['strength','agility','intellect']){
       const list = (talents.talents||[]).filter(t => t.branch === br);
       if (!list.length) continue;
@@ -1837,7 +2980,7 @@ function renderSide(){
           <div class="top"><div class="n">${t.name}</div><div class="lv">${t.current_level}/${t.max_level}</div></div>
           <div class="d">${t.description||''}</div>
           <div class="row">
-            <div class="eff">${t.current_level>0 ? 'сейчас: '+t.effect_now : ''} ${t.current_level<t.max_level ? '→ '+t.effect_next : ''}</div>
+            <div class="eff">${t.current_level>0 ? T('tal_now', {e: t.effect_now}) : ''} ${t.current_level<t.max_level ? T('tal_next', {e: t.effect_next}) : ''}</div>
             <button class="inv" ${(!t.unlocked || sp<1 || t.current_level>=t.max_level)?'disabled':''}
               onclick="invest('${t.id}')">${t.unlocked ? (t.current_level>=t.max_level?'MAX':'+1 '+UI.sp) : 'LVL '+t.min_user_level}</button>
           </div>
@@ -1856,8 +2999,8 @@ function renderSide(){
         <div class="lvlpill" style="font-size:11px; padding:3px 8px">LVL <b>${r.level}</b></div>
         <div class="xp">${fmt(r.xp_total)} XP</div>
       </div>`).join('');
-    const myRank = leaderboard.me && leaderboard.me.rank ? `<div class="muted" style="text-align:center; margin-top:10px">Твоё место: <b class="cyan-t">#${leaderboard.me.rank}</b></div>` : '';
-    el.innerHTML = `<div class="card">${rows || '<div class="muted">Пока пусто</div>'}</div>` + myRank;
+    const myRank = leaderboard.me && leaderboard.me.rank ? `<div class="muted" style="text-align:center; margin-top:10px">${T('top_my_place', {n: '<b class="cyan-t">#' + leaderboard.me.rank + '</b>'})}</div>` : '';
+    el.innerHTML = `<div class="card">${rows || '<div class="muted">' + esc(STR.top_empty) + '</div>'}</div>` + myRank;
   }
   if (curTab === 'ach'){
     if (!achievements){ el.innerHTML = ''; return; }
@@ -1868,7 +3011,7 @@ function renderSide(){
       const ms = new Date(achievements.resets_at) - Date.now();
       if (ms > 0){
         const h = Math.floor(ms/3600000), m = Math.floor(ms%3600000/60000);
-        resetTxt = ' · ⏳ до резета ' + h + ':' + String(m).padStart(2,'0');
+        resetTxt = T('ach_reset', {t: h + ':' + String(m).padStart(2,'0')});
       }
     }
     const achRow = a => {
@@ -1878,12 +3021,13 @@ function renderSide(){
         <div class="st">${a.earned?UI.check:UI.lock}</div>
         <div style="flex:1; min-width:0"><div class="t">${a.title}</div><div class="d">${a.description||''}</div>
         ${pr && !a.earned ? `<div class="achbar"><i style="width:${pct}%"></i></div><div class="d cnum">${pr.value} / ${pr.target}</div>` : ''}
-        <div class="rw">${a.reward_xp ? '+'+a.reward_xp+' XP ' : ''}${a.reward_skillpoints ? '+'+a.reward_skillpoints+' '+UI.sp+' ' : ''}${a.reward_case_tier ? '+ кейс '+a.reward_case_tier : ''}</div></div>
+        <div class="rw">${a.reward_xp ? '+'+a.reward_xp+' XP ' : ''}${a.reward_skillpoints ? '+'+a.reward_skillpoints+' '+UI.sp+' ' : ''}${a.reward_case_tier ? T('ach_reward_case', {t: a.reward_case_tier}) : ''}</div></div>
       </div>`;
     };
     const near = a => { const p = a.progress; return p && p.target ? -(p.value/p.target) : 0; };
-    const CATS = [['daily','Дня — резет в 14:48'], ['weekly','Недели'], ['monthly','Месяца'], ['lifetime','Навсегда']];
-    el.innerHTML = `<div class="muted" style="margin-bottom:10px">Получено: <b class="green-t">${achievements.earned_count}</b> · Наиграно часов: <b>${Math.floor(achievements.hours_played||0)}</b>${resetTxt}</div>`
+    const CATS = [['daily', STR.ach_cat_daily], ['weekly', STR.ach_cat_weekly],
+                  ['monthly', STR.ach_cat_monthly], ['lifetime', STR.ach_cat_lifetime]];
+    el.innerHTML = `<div class="muted" style="margin-bottom:10px">${T('ach_head', {a: '<b class="green-t">' + achievements.earned_count + '</b>', h: '<b>' + Math.floor(achievements.hours_played||0) + '</b>'})}${resetTxt}</div>`
       + CATS.map(([cat, lbl]) => {
         const items = list.filter(a => a.category === cat);
         if (!items.length) return '';
@@ -1894,23 +3038,24 @@ function renderSide(){
       }).join('');
   }
   if (curTab === 'food'){
-    if (!menuData){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">Загружаю меню…</div>'; return; }
-    const stName = {new:'ждёт', accepted:'принят', preparing:'готовим', delivering:'несём', done:'выдан', cancelled:'отменён'};
+    if (!menuData){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+esc(STR.food_loading)+'</div>'; return; }
+    const stName = {new: STR.food_st_new, accepted: STR.food_st_accepted, preparing: STR.food_st_preparing,
+                    delivering: STR.food_st_delivering, done: STR.food_st_done, cancelled: STR.food_st_cancelled};
     const openO = myOrders.filter(o => o.unpaid || !['done','cancelled'].includes(o.status));
     const closedO = myOrders.filter(o => !o.unpaid && ['done','cancelled'].includes(o.status));
     const ordRow = o => `<div class="foodorder st-${o.status}">
-      <span class="fst">${o.pay_method ? 'оплачен' : (stName[o.status]||o.status)}</span>
-      <span style="flex:1; min-width:0"><b>${o.name}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.unpaid?' · <b style="color:var(--acc)">оплати у стойки</b>':''}</span>
-      ${o.can_cancel?`<button style="border:0; background:transparent; color:var(--dim); cursor:pointer; font-size:15px" title="отменить" onclick="foodCancel('${o.id}')">✕</button>`:''}
+      <span class="fst">${o.pay_method ? esc(STR.food_paid) : (stName[o.status]||o.status)}</span>
+      <span style="flex:1; min-width:0"><b>${o.name}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.unpaid?' · <b style="color:var(--acc)">'+esc(STR.food_unpaid)+'</b>':''}</span>
+      ${o.can_cancel?`<button style="border:0; background:transparent; color:var(--dim); cursor:pointer; font-size:15px" title="${esc(STR.food_cancel_title)}" onclick="foodCancel('${o.id}')">✕</button>`:''}
     </div>`;
     const cats = {};
     (menuData.menu||[]).forEach(m => { (cats[m.category||''] = cats[m.category||''] || []).push(m); });
-    const ph = c => /напит|drink|кофе|чай/i.test(c) ? '🥤' : '🍔';
+    const ph = c => /напит|drink|кофе|чай|napó|napo|kawa|herbat|coffee|tea/i.test(c) ? '🥤' : '🍔';
     el.innerHTML =
-      (myUnpaidPln > 0 ? `<div class="foodorder" style="border-color:var(--acc)"><span class="fst" style="background:rgba(255,59,92,.15); color:var(--acc)">🧾</span><span style="flex:1"><b>К оплате у стойки: <span class="cnum">${fmtZl(Math.round(myUnpaidPln*100))}</span></b> — рассчитаешься, когда доиграешь</span></div>` : '') +
-      (openO.length ? `<div class="muted" style="margin:2px 2px 8px; font-weight:800; letter-spacing:.4px">Мои заказы</div>` + openO.map(ordRow).join('') : '') +
+      (myUnpaidPln > 0 ? `<div class="foodorder" style="border-color:var(--acc)"><span class="fst" style="background:rgba(255,59,92,.15); color:var(--acc)">🧾</span><span style="flex:1"><b>${T('food_unpaid_sum', {z: '<span class="cnum">' + fmtZl(Math.round(myUnpaidPln*100)) + '</span>'})}</b></span></div>` : '') +
+      (openO.length ? `<div class="muted" style="margin:2px 2px 8px; font-weight:800; letter-spacing:.4px">${esc(STR.food_my_orders)}</div>` + openO.map(ordRow).join('') : '') +
       ((menuData.menu||[]).length ? Object.entries(cats).map(([c, items]) => `
-        <div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${c || 'Меню'}</div>` +
+        <div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${c ? esc(grpName(c)) : esc(STR.food_menu)}</div>` +
         items.map(m => {
           const q = foodQty[m.id] || 1;
           return `<div class="fooditem ${m.out?'out':''}">
@@ -1918,19 +3063,19 @@ function renderSide(){
           <div style="flex:1; min-width:0">
             <div style="font-weight:800">${m.name} · <span class="cnum">${fmtZl(Math.round(m.price_pln*100))}</span></div>
             ${m.description?`<div class="muted" style="font-size:12px">${m.description}</div>`:''}
-            ${m.out ? '<div class="muted" style="font-size:12px">закончилось — загляни позже</div>' : `
+            ${m.out ? '<div class="muted" style="font-size:12px">'+esc(STR.food_out)+'</div>' : `
             <div class="foodqty"><button onclick="foodQ('${m.id}',-1)">−</button><b class="cnum">${q}</b><button onclick="foodQ('${m.id}',1)">+</button>
               <span class="muted cnum" style="font-size:12px">= ${fmtZl(Math.round(m.price_pln*q*100))}</span></div>`}
           </div>
           ${m.out ? '' : `<div class="fbtns">
-            <button onclick="foodOrder('${m.id}')">🍽 Заказать</button>
+            <button onclick="foodOrder('${m.id}')">${esc(STR.food_order)}</button>
           </div>`}
         </div>`;}).join('')).join('')
-      : '<div class="muted" style="text-align:center; padding:40px 0">🍽<br>Меню пока пустое.<br>Кухня появится, когда владелец заполнит ценник.</div>') +
-      (closedO.length ? `<div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">Недавние</div>` + closedO.map(ordRow).join('') : '');
+      : '<div class="muted" style="text-align:center; padding:40px 0">🍽<br>'+STR.food_empty+'</div>') +
+      (closedO.length ? `<div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${esc(STR.food_recent)}</div>` + closedO.map(ordRow).join('') : '');
   }
   if (curTab === 'coins'){
-    if (!economy){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">Загрузка экономики…</div>'; return; }
+    if (!economy){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+esc(STR.eco_loading)+'</div>'; return; }
     el.innerHTML = renderCalc();
     return;
   }
@@ -1940,7 +3085,7 @@ function renderSide(){
     return;
   }
   if (curTab === 'book'){
-    const opts = clubs.map(c => `<option value="${c.id}">${esc(c.name)} · свободно ${c.computers_free}/${c.computers_total}</option>`).join('');
+    const opts = clubs.map(c => `<option value="${c.id}">${esc(c.name)} · ${T('bk_free', {f: c.computers_free, t: c.computers_total})}</option>`).join('');
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     const live = bookings.filter(b => (b.status==='pending'||b.status==='confirmed') && new Date(b.start_time) > new Date());
     const past = bookings.filter(b => !live.includes(b));
@@ -1948,9 +3093,9 @@ function renderSide(){
       const d = new Date(b.start_time);
       const dt = String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
       const cancellable = (b.status==='pending'||b.status==='confirmed') && new Date(b.start_time) > new Date();
-      return `<div class="sess-item"><span><b>${dt}</b> · ${b.duration_min} мин</span>
+      return `<div class="sess-item"><span><b>${dt}</b> · ${T('bk_min', {n: b.duration_min})}</span>
         <span class="muted">${esc(b.computer ? b.computer.name : '')}</span>
-        <span class="badge">${b.status}${b.prepaid===false?' · без предоплаты':''}</span>
+        <span class="badge">${b.status}${b.prepaid===false?esc(STR.bk_no_prepaid):''}</span>
         ${cancellable ? `<button class="btn danger slim" style="padding:5px 9px; font-size:12px" onclick="cancelMyBooking('${b.id}')">✕</button>` : ''}
       </div>`;
     };
@@ -1959,35 +3104,35 @@ function renderSide(){
     const bkLvlOk = !bkMinLvl || (me && me.level >= bkMinLvl);
     const bkForm = bkLvlOk ? `
       <div class="card">
-        <h3 style="margin-bottom:10px">Забронировать ПК</h3>
-        <select id="bkClub" class="input">${opts || '<option value="">Клубы не загрузились</option>'}</select>
+        <h3 style="margin-bottom:10px">${esc(STR.bk_title)}</h3>
+        <select id="bkClub" class="input">${opts || '<option value="">' + esc(STR.bk_clubs_fail) + '</option>'}</select>
         <div style="display:flex; gap:8px">
           <input id="bkDate" class="input" type="date" value="${tomorrow}">
           <input id="bkTime" class="input" type="time" value="18:00">
         </div>
         <select id="bkDur" class="input">
-          <option value="60">1 час</option><option value="120" selected>2 часа</option>
-          <option value="180">3 часа</option><option value="300">5 часов</option>
+          <option value="60">${esc(STR.bk_1h)}</option><option value="120" selected>${esc(STR.bk_2h)}</option>
+          <option value="180">${esc(STR.bk_3h)}</option><option value="300">${esc(STR.bk_5h)}</option>
         </select>
-        <button class="btn" onclick="createBooking()">Забронировать</button>
+        <button class="btn" onclick="createBooking()">${esc(STR.bk_btn)}</button>
       </div>` : `
       <div class="card" style="text-align:center">
         <div style="font-size:32px">🔒</div>
-        <h3 style="margin:6px 0 4px">Бронь откроется на LVL ${bkMinLvl}</h3>
-        <div class="muted">Сейчас LVL ${me ? me.level : 1} — XP капает за каждую минуту игры</div>
+        <h3 style="margin:6px 0 4px">${T('bk_locked_title', {l: bkMinLvl})}</h3>
+        <div class="muted">${T('bk_locked_sub', {n: me ? me.level : 1})}</div>
       </div>`;
     el.innerHTML = bkForm + `
-      ${live.length ? '<div class="card">' + live.map(row).join('') + '</div>' : '<div class="muted" style="text-align:center; margin:8px 0">Активных броней нет</div>'}
-      ${past.length ? '<div class="muted" style="margin:10px 2px 6px">Прошлые</div><div class="card" style="opacity:.55">' + past.slice(0,10).map(row).join('') + '</div>' : ''}`;
+      ${live.length ? '<div class="card">' + live.map(row).join('') + '</div>' : '<div class="muted" style="text-align:center; margin:8px 0">' + esc(STR.bk_none) + '</div>'}
+      ${past.length ? '<div class="muted" style="margin:10px 2px 6px">' + esc(STR.bk_past) + '</div><div class="card" style="opacity:.55">' + past.slice(0,10).map(row).join('') + '</div>' : ''}`;
   }
   if (curTab === 'hist'){
-    if (!sessions.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">История сессий пуста</div>'; return; }
+    if (!sessions.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+esc(STR.hist_empty)+'</div>'; return; }
     el.innerHTML = '<div class="card">' + sessions.map(s => {
       const d = new Date(s.started_at);
       const dt = String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
       return `<div class="sess-item"><span>${dt}</span>
-        ${s.ended_at ? `<span class="cyan-t">+${fmt(s.xp_earned)} XP</span><span class="gold-t">+${fmt(s.coins_earned)} ${UI.coins}</span><span class="badge">${s.minutes_total} мин</span>`
-                     : '<span class="badge" style="color:var(--green)">идёт сейчас</span>'}
+        ${s.ended_at ? `<span class="cyan-t">+${fmt(s.xp_earned)} XP</span><span class="gold-t">+${fmt(s.coins_earned)} ${UI.coins}</span><span class="badge">${T('bk_min', {n: s.minutes_total})}</span>`
+                     : '<span class="badge" style="color:var(--green)">' + esc(STR.hist_now) + '</span>'}
       </div>`;
     }).join('') + '</div>';
   }
@@ -2002,17 +3147,17 @@ async function loadClubs(){
 
 async function createBooking(){
   const clubID = document.getElementById('bkClub').value;
-  if (!clubID){ toast('⚠ Клуб не выбран'); return; }
+  if (!clubID){ toast(STR.toast_bk_noclub); return; }
   const date = document.getElementById('bkDate').value;
   const time = document.getElementById('bkTime').value;
-  if (!date || !time){ toast('⚠ Укажи дату и время'); return; }
+  if (!date || !time){ toast(STR.toast_bk_nodate); return; }
   const start = new Date(date + 'T' + time);
   try{
     const d = await api('/clubs/' + clubID + '/bookings', {method:'POST', body:JSON.stringify({
       start_time: start.toISOString(),
       duration_min: parseInt(document.getElementById('bkDur').value),
     })});
-    toast('📅 Бронь: ' + d.computer + ' · ' + time + (d.prepaid===false ? ' · без предоплаты ✨' : ''));
+    toast(T('toast_bk_ok', {c: d.computer, t: time}) + (d.prepaid===false ? STR.toast_bk_ok_free : ''));
     await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -2020,7 +3165,7 @@ async function createBooking(){
 async function cancelMyBooking(id){
   try{
     await api('/me/bookings/' + id, {method:'DELETE'});
-    toast('✕ Бронь отменена');
+    toast(STR.toast_bk_cancelled);
     await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -2028,7 +3173,7 @@ async function cancelMyBooking(id){
 async function invest(id){
   try{
     await api('/me/talents/invest', {method:'POST', body:JSON.stringify({talent_id:id})});
-    toast('✦ Талант прокачан');
+    toast(STR.toast_tal_up);
     await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -2049,60 +3194,60 @@ function calcCompute(m){
 
 function calcTimeLabel(){
   const h = Math.floor(calcMinutes/60), m = calcMinutes%60;
-  return ((h?h+' ч ':'') + (m?m+' мин':'') || '0 мин') + ' игры';
+  return T('calc_time', {t: (h ? T('calc_h', {n: h}) : '') + (m ? T('calc_m', {n: m}) : '') || STR.calc_zero});
 }
 
 function calcBreakHtml(c){
   const t = economy.talents, rk = economy.rank, r = economy.rates;
   return `
-    <div class="row"><span>Койны: база (${calcMinutes} × ${r.coins_per_min})</span><b>${fmt(c.baseCoins)}</b></div>
-    <div class="row"><span>+ ранг ×${rk.coin_mult}</span><b class="plus">+${fmt(c.rankCoinBonus)}</b></div>
-    <div class="row"><span>XP: база (${calcMinutes} × ${r.xp_per_min})</span><b>${fmt(c.baseXp)}</b></div>
-    ${t.xp_boost>0?`<div class="row"><span>+ «Разгон опыта» +${Math.round(t.xp_boost*100)}%</span><b class="plus">+${fmt(c.talentXpBonus)}</b></div>`:''}
-    <div class="row"><span>+ ранг ×${rk.xp_mult}</span><b class="plus">+${fmt(c.rankXpBonus)}</b></div>`;
+    <div class="row"><span>${T('calc_coins_base', {m: calcMinutes, r: r.coins_per_min})}</span><b>${fmt(c.baseCoins)}</b></div>
+    <div class="row"><span>${T('calc_rank_mult', {n: rk.coin_mult})}</span><b class="plus">+${fmt(c.rankCoinBonus)}</b></div>
+    <div class="row"><span>${T('calc_xp_base', {m: calcMinutes, r: r.xp_per_min})}</span><b>${fmt(c.baseXp)}</b></div>
+    ${t.xp_boost>0?`<div class="row"><span>${T('calc_xp_boost', {n: Math.round(t.xp_boost*100)})}</span><b class="plus">+${fmt(c.talentXpBonus)}</b></div>`:''}
+    <div class="row"><span>${T('calc_rank_mult', {n: rk.xp_mult})}</span><b class="plus">+${fmt(c.rankXpBonus)}</b></div>`;
 }
 
 function renderCalc(){
   const e = economy, rk = e.rank, c = calcCompute(calcMinutes);
-  let prog = 100, progText = UI.laurels+' Максимальный ранг — выше некуда';
+  let prog = 100, progText = UI.laurels + ' ' + esc(STR.rank_max);
   if (e.next_rank){
     const span = e.next_rank.min_hours - rk.min_hours;
     prog = Math.max(0, Math.min(100, Math.round(100*(e.hours_played - rk.min_hours)/span)));
-    progText = `Ещё ${e.next_rank.hours_left} ч до «${esc(e.next_rank.name)}»`;
+    progText = T('rank_next', {n: e.next_rank.hours_left, r: esc(rankName(e.next_rank.name))});
   }
   const presets = [30,60,180,300];
   return `
   <div class="card">
     <div class="calc-rank">
       <div class="badge-em">${RANK_EM[rk.level]||'✦'}</div>
-      <div><div class="rn">${esc(rk.name)}</div>
-      <div class="muted" style="font-size:12px">Ранг ${rk.level}/7 · наиграно ${e.hours_played} ч</div></div>
+      <div><div class="rn">${esc(rankName(rk.name))}</div>
+      <div class="muted" style="font-size:12px">${T('rank_line', {n: rk.level, h: e.hours_played})}</div></div>
     </div>
     <div class="rank-prog"><i style="width:${prog}%"></i></div>
     <div class="muted" style="font-size:12px; margin-bottom:10px">${progText}</div>
-    <button class="btn ghost slim" style="width:100%" onclick="openRanks()">${UI.laurels} Все ранги и бонусы</button>
+    <button class="btn ghost slim" style="width:100%" onclick="openRanks()">${UI.laurels} ${esc(STR.btn_all_ranks)}</button>
   </div>
   <div class="card">
-    <div style="font-weight:800; margin-bottom:2px">Калькулятор койнов</div>
-    <div class="muted" style="font-size:12.5px; margin-bottom:8px">Что накапает за сессию с учётом ранга и талантов</div>
+    <div style="font-weight:800; margin-bottom:2px">${esc(STR.calc_title)}</div>
+    <div class="muted" style="font-size:12.5px; margin-bottom:8px">${esc(STR.calc_sub)}</div>
     <div class="presets">
-      ${presets.map(p=>`<button class="${calcMinutes===p?'on':''}" onclick="setPreset(${p})">${p<60?p+'м':(p/60)+'ч'}</button>`).join('')}
+      ${presets.map(p=>`<button class="${calcMinutes===p?'on':''}" onclick="setPreset(${p})">${p<60?T('calc_min_short',{n:p}):T('calc_h_short',{n:p/60})}</button>`).join('')}
     </div>
     <input class="calc-slider" type="range" min="15" max="600" step="15" value="${calcMinutes}" oninput="calcSlide(this.value)">
     <div class="muted" style="text-align:center; font-weight:700" id="calcTime">${calcTimeLabel()}</div>
     <div class="calc-out">
-      <div class="box"><div class="v gold-t cnum" id="calcCoins">${fmt(c.coins)}</div><div class="l">${UI.coins} койнов</div></div>
+      <div class="box"><div class="v gold-t cnum" id="calcCoins">${fmt(c.coins)}</div><div class="l">${UI.coins} ${esc(STR.calc_coins_lbl)}</div></div>
       <div class="box"><div class="v cyan-t cnum" id="calcXp">${fmt(c.xp)}</div><div class="l">${UI.xp} XP</div></div>
     </div>
     <div class="calc-break" id="calcBreak">${calcBreakHtml(c)}</div>
   </div>
   <div class="card">
-    <div style="font-weight:800; margin-bottom:6px">Как образуются койны</div>
+    <div style="font-weight:800; margin-bottom:6px">${esc(STR.how_title)}</div>
     <div class="muted" style="font-size:12.5px; line-height:1.7">
-      Базовая ставка — <b style="color:var(--txt)">${e.rates.coins_per_min} койна/мин</b> за время за ПК.<br>
-      Множитель ранга «${esc(rk.name)}» — <b class="plus">×${rk.coin_mult}</b> к койнам, <b class="plus">×${rk.xp_mult}</b> к опыту.<br>
-      ${e.talents.coin_mint>0?`Талант «Монетный двор» — при пополнении баланса <b class="plus">+${Math.round(e.talents.coin_mint*100)}%</b> койнов (курс ${e.rates.deposit_coins_per_pln} койнов за 1 zł).<br>`:''}
-      Чем выше ранг (больше наиграно часов), тем больше койнов и XP, и тем чаще падают кейсы: сейчас <b style="color:var(--txt)">${Math.round(e.session_case_chance*100)}%</b> за сессию.
+      ${T('how_base', {n: e.rates.coins_per_min})}
+      ${T('how_rank', {r: esc(rankName(rk.name)), c: rk.coin_mult, x: rk.xp_mult})}
+      ${e.talents.coin_mint>0?T('how_mint', {n: Math.round(e.talents.coin_mint*100), r: e.rates.deposit_coins_per_pln}):''}
+      ${T('how_tail', {n: Math.round(e.session_case_chance*100)})}
     </div>
   </div>`;
 }
@@ -2118,27 +3263,27 @@ function calcSlide(v){
 
 /* ═══════════════ КАРТОЧКА ВСЕХ РАНГОВ ═══════════════ */
 function openRanks(){
-  if (!economy || !economy.ranks){ toast('Ранги ещё грузятся…'); return; }
+  if (!economy || !economy.ranks){ toast(STR.ranks_loading); return; }
   const cur = economy.rank ? economy.rank.level : 1;
   const rows = economy.ranks.map(r => {
     const state = r.level === cur ? 'current' : (r.level < cur ? 'reached' : 'locked');
     // бонусы показываем только там, где они есть (ранг 1 — «чистая база»)
     const perks = [];
     if (r.xp_mult > 1)          perks.push(`${UI.xp} XP ×${r.xp_mult}`);
-    if (r.coin_mult > 1)        perks.push(`${UI.coins} койны ×${r.coin_mult}`);
-    if (r.case_chance_bonus > 0) perks.push(`${UI.chest} кейс +${Math.round(r.case_chance_bonus*100)}%`);
-    if (r.tier_boost > 0)       perks.push(`${UI.sp} тир +${Math.round(r.tier_boost*100)}%`);
+    if (r.coin_mult > 1)        perks.push(`${UI.coins} ${T('perk_coins', {n: r.coin_mult})}`);
+    if (r.case_chance_bonus > 0) perks.push(`${UI.chest} ${T('perk_case', {n: Math.round(r.case_chance_bonus*100)})}`);
+    if (r.tier_boost > 0)       perks.push(`${UI.sp} ${T('perk_tier', {n: Math.round(r.tier_boost*100)})}`);
     const perksHtml = perks.length
       ? perks.map(p=>`<span class="perk">${p}</span>`).join('')
-      : '<span class="perk">базовые ставки</span>';
+      : '<span class="perk">' + esc(STR.rank_base) + '</span>';
     return `<div class="rank-row ${state}">
       <div class="rk-em">${RANK_EM[r.level]||'✦'}</div>
       <div class="rk-body">
-        <div class="rk-name">${esc(r.name)}</div>
-        <div class="rk-hours">${r.min_hours === 0 ? 'с самого старта' : 'от ' + r.min_hours + ' ч игры'}</div>
+        <div class="rk-name">${esc(rankName(r.name))}</div>
+        <div class="rk-hours">${r.min_hours === 0 ? esc(STR.rank_from_start) : T('rank_from_hours', {n: r.min_hours})}</div>
         <div class="rk-perks">${perksHtml}</div>
       </div>
-      ${r.level === cur ? '<span class="now">ТЫ ЗДЕСЬ</span>' : ''}
+      ${r.level === cur ? '<span class="now">' + esc(STR.rank_here) + '</span>' : ''}
     </div>`;
   }).join('');
   document.getElementById('ranksList').innerHTML = rows;
@@ -2156,9 +3301,9 @@ function renderSens(){
   const opt = (sel) => SENS_GAMES.map(g => `<option value="${g.id}" ${g.id===sel?'selected':''}>${esc(g.name)}</option>`).join('');
   return `
   <div class="card">
-    <div style="font-weight:800; margin-bottom:2px">${UI.cross} Студия сенсы</div>
-    <div class="muted" style="font-size:12.5px; margin-bottom:10px">Перенеси свою сенсу из одной игры в другую — прицел останется тем же</div>
-    <label class="muted" style="font-size:12px"><b style="color:var(--acc)">Шаг 1.</b> DPI мыши (посмотри в софте мыши)</label>
+    <div style="font-weight:800; margin-bottom:2px">${UI.cross} ${esc(STR.sens_title)}</div>
+    <div class="muted" style="font-size:12.5px; margin-bottom:10px">${esc(STR.sens_sub)}</div>
+    <label class="muted" style="font-size:12px">${STR.sens_step1}</label>
     <input class="input" id="sensDpi" type="number" min="100" max="32000" step="50" value="${sensDPI}" oninput="sensUpdate()" style="margin:4px 0 8px">
     <div class="presets">
       ${[400,800,1600,3200].map(d=>`<button class="${sensDPI===d?'on':''}" onclick="setDpiPreset(${d})">${d}</button>`).join('')}
@@ -2166,84 +3311,83 @@ function renderSens(){
   </div>
 
   <div class="card" style="border-color:rgba(255,39,64,.25)">
-    <div style="font-weight:800; margin-bottom:4px">🎯 AI-калибратор</div>
+    <div style="font-weight:800; margin-bottom:4px">${esc(STR.sens_ai_title)}</div>
     <div class="muted" style="font-size:12px; line-height:1.6; margin-bottom:10px">
-      Не знаешь свою идеальную сенсу? Постреляй по мишеням — байесовский поиск найдёт оптимум и проверит его слепым A/B. ~7 минут.${aimResultLine()}
+      ${esc(STR.sens_ai_sub)}${aimResultLine()}
     </div>
-    <button class="btn slim" style="width:100%" onclick="openAimCal()">Подобрать стреляя</button>
+    <button class="btn slim" style="width:100%" onclick="openAimCal()">${esc(STR.sens_ai_btn)}</button>
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:12px; margin-bottom:8px"><b style="color:var(--acc)">Шаг 2.</b> Из какой игры переносим и куда</div>
+    <div class="muted" style="font-size:12px; margin-bottom:8px">${STR.sens_step2}</div>
     <div class="sens-row">
       <div style="flex:1">
-        <label class="muted" style="font-size:12px">Из игры</label>
+        <label class="muted" style="font-size:12px">${esc(STR.sens_from)}</label>
         <select class="input" id="sensFrom" onchange="sensUpdate()">${opt(sensFrom)}</select>
       </div>
       <div style="width:96px">
-        <label class="muted" style="font-size:12px">Сенса</label>
+        <label class="muted" style="font-size:12px">${esc(STR.sens_val)}</label>
         <input class="input" id="sensVal" type="number" min="0" step="0.01" value="${sensVal}" oninput="sensUpdate()">
       </div>
     </div>
     <div style="text-align:center; margin:8px 0">
-      <button class="btn ghost slim" onclick="sensSwap()" style="width:auto">⇅ поменять местами</button>
+      <button class="btn ghost slim" onclick="sensSwap()" style="width:auto">${esc(STR.sens_swap)}</button>
     </div>
     <div class="sens-row">
       <div style="flex:1">
-        <label class="muted" style="font-size:12px">В игру</label>
+        <label class="muted" style="font-size:12px">${esc(STR.sens_to)}</label>
         <select class="input" id="sensTo" onchange="sensUpdate()">${opt(sensTo)}</select>
       </div>
       <div style="width:96px">
-        <label class="muted" style="font-size:12px">Результат</label>
+        <label class="muted" style="font-size:12px">${esc(STR.sens_result)}</label>
         <div class="sens-result" id="sensResult">${res.toFixed(3)}</div>
       </div>
     </div>
-    <button class="btn slim" style="width:100%; margin-top:10px" onclick="sensCopy()">${UI.clip} Скопировать «<span id="sensCopyVal">${res.toFixed(3)}</span>»</button>
-    <div class="muted" style="font-size:12px; text-align:center; margin-top:6px">Впиши это значение в настройках «${esc(gt.name)}»</div>
+    <button class="btn slim" style="width:100%; margin-top:10px" onclick="sensCopy()">${UI.clip} ${T('sens_copy', {v: '<span id="sensCopyVal">' + res.toFixed(3) + '</span>'})}</button>
+    <div class="muted" style="font-size:12px; text-align:center; margin-top:6px">${T('sens_copy_hint', {g: esc(gt.name)})}</div>
   </div>
 
   <div class="card" style="border-color:rgba(255,39,64,.25)">
-    <div style="font-weight:800; margin-bottom:4px">☁ Сенса едет за тобой</div>
+    <div style="font-weight:800; margin-bottom:4px">${esc(STR.sens_cloud_title)}</div>
     <div class="muted" style="font-size:12px; line-height:1.6; margin-bottom:10px">
-      Сохрани DPI и сенсу в свой аккаунт — и на любом ПК сети 14:48 они подставятся сами. ${sensSyncStatus()}
+      ${esc(STR.sens_cloud_sub)}${sensSyncStatus()}
     </div>
-    <button class="btn slim" style="width:100%" onclick="sensSave()">${UI.save} Сохранить в аккаунт</button>
+    <button class="btn slim" style="width:100%" onclick="sensSave()">${UI.save} ${esc(STR.sens_save)}</button>
   </div>
 
   <div class="card">
     <div class="sens-metrics">
-      <div class="box"><div class="v cnum" id="sensCm">${sensCm360(gf,sensVal,sensDPI).toFixed(1)}</div><div class="l">см / 360°</div></div>
-      <div class="box"><div class="v cnum" id="sensEdpi">${Math.round(sensDPI*sensVal)}</div><div class="l">eDPI (из игры)</div></div>
+      <div class="box"><div class="v cnum" id="sensCm">${sensCm360(gf,sensVal,sensDPI).toFixed(1)}</div><div class="l">${esc(STR.sens_cm360)}</div></div>
+      <div class="box"><div class="v cnum" id="sensEdpi">${Math.round(sensDPI*sensVal)}</div><div class="l">${esc(STR.sens_edpi)}</div></div>
     </div>
     <div class="muted" style="font-size:12px; margin-top:8px; line-height:1.6">
-      <b style="color:var(--txt)">см / 360°</b> — сколько сантиметров провести мышью для полного разворота. Это и есть «мышечная память»: сохраняем её — сохраняем прицел.<br>
-      <b style="color:var(--txt)">eDPI</b> = DPI × сенса — эффективная чувствительность для сравнения внутри игры.
+      ${STR.sens_explain}
     </div>
   </div>
 
   <div class="card">
-    <div style="font-weight:800; margin-bottom:2px">${UI.clip} Твоя сенса во всех играх</div>
-    <div class="muted" style="font-size:12px; margin-bottom:10px">Одинаковый прицел (см/360) — готовые значения для каждой игры</div>
+    <div style="font-weight:800; margin-bottom:2px">${UI.clip} ${esc(STR.sens_all_title)}</div>
+    <div class="muted" style="font-size:12px; margin-bottom:10px">${esc(STR.sens_all_sub)}</div>
     <div id="sensAll">${sensAllGamesHtml()}</div>
   </div>
 
   <div class="card" id="mouseBlock">
-    <div class="muted" style="text-align:center; padding:14px 0">🖱 Проверяю мышь…</div>
+    <div class="muted" style="text-align:center; padding:14px 0">${esc(STR.mouse_checking)}</div>
   </div>
 
   <div class="card">
     <div class="muted" style="font-size:12px; line-height:1.6">
-      Значения точны для CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. Другие игры добавим по запросу.
+      ${esc(STR.sens_games_note)}
     </div>
   </div>`;
 }
 
 /* — блок «Твоя мышь» (S2, через shell-agent) — */
 function mouseFallbackHtml(){
-  return `<div style="font-weight:800; margin-bottom:6px">🖱 Твоя мышь</div>
+  return `<div style="font-weight:800; margin-bottom:6px">${esc(STR.mouse_title)}</div>
     <div class="muted" style="font-size:12px; line-height:1.6">
-      Запусти 14:48 на игровом ПК (в киоске/с агентом) — и студия сама проверит акселерацию и подскажет DPI.<br><br>
-      Пока вручную: <b style="color:var(--txt)">Windows → Параметры → Мышь → Дополнительно → сними галку «Повысить точность установки указателя»</b>. Она незаметно ломает прицел.
+      ${STR.mouse_hint_agent}
+      ${STR.mouse_manual}
     </div>`;
 }
 
@@ -2251,17 +3395,17 @@ function mouseInfoHtml(m){
   if (!m || !m.available) return mouseFallbackHtml();
   const speedOk = m.pointer_speed === 10;
   const accelRow = m.accel
-    ? `<div class="mouse-row bad"><span>⚠ Акселерация включена</span>
-         <button class="btn danger slim" style="width:auto; padding:6px 12px" onclick="mouseAccelOff()">Выключить</button></div>`
-    : `<div class="mouse-row ok"><span>✓ Акселерация выключена</span><b>отлично для аима</b></div>`;
+    ? `<div class="mouse-row bad"><span>${esc(STR.mouse_accel_on)}</span>
+         <button class="btn danger slim" style="width:auto; padding:6px 12px" onclick="mouseAccelOff()">${esc(STR.mouse_accel_off_btn)}</button></div>`
+    : `<div class="mouse-row ok"><span>${esc(STR.mouse_accel_ok)}</span><b>${esc(STR.mouse_accel_good)}</b></div>`;
   const speedRow = `<div class="mouse-row ${speedOk?'ok':'warn'}">
-      <span>${speedOk?'✓':'⚠'} Скорость указателя: ${m.pointer_speed}/20</span>
-      <b>${speedOk?'1:1 — идеально':'рекомендуется 10/20'}</b></div>`;
+      <span>${T('mouse_speed', {s: speedOk?'✓':'⚠', n: m.pointer_speed})}</span>
+      <b>${esc(speedOk ? STR.mouse_speed_ideal : STR.mouse_speed_rec)}</b></div>`;
   const vendorRow = (m.vendors && m.vendors.length)
-    ? `<div class="mouse-row"><span>🎛 Софт мыши: <b style="color:var(--txt)">${m.vendors.map(esc).join(', ')}</b></span></div>
-       <div class="muted" style="font-size:12px; margin-top:6px">Открой его, чтобы посмотреть свой DPI и вписать выше.</div>`
-    : `<div class="muted" style="font-size:12px">Софт мыши не найден. DPI обычно указан в приложении мыши (Logitech G HUB, Razer Synapse и т.п.) или на сайте производителя.</div>`;
-  return `<div style="font-weight:800; margin-bottom:8px">🖱 Твоя мышь</div>${accelRow}${speedRow}${vendorRow}`;
+    ? `<div class="mouse-row"><span>${T('mouse_vendor', {v: m.vendors.map(esc).join(', ')})}</span></div>
+       <div class="muted" style="font-size:12px; margin-top:6px">${esc(STR.mouse_vendor_hint)}</div>`
+    : `<div class="muted" style="font-size:12px">${esc(STR.mouse_vendor_none)}</div>`;
+  return `<div style="font-weight:800; margin-bottom:8px">${esc(STR.mouse_title)}</div>${accelRow}${speedRow}${vendorRow}`;
 }
 
 async function loadMouseInfo(){
@@ -2277,9 +3421,9 @@ async function loadMouseInfo(){
 async function mouseAccelOff(){
   try{
     const r = await fetch(AGENT + '/mouse-accel-off', {method:'POST'});
-    if (r.ok){ toast('🖱 Акселерация выключена — прицел стал честнее'); loadMouseInfo(); }
-    else { const d = await r.json().catch(()=>({})); toast('⚠ ' + (d.message||'не удалось')); }
-  }catch(e){ toast('⚠ Агент недоступен'); }
+    if (r.ok){ toast(STR.toast_accel_off); loadMouseInfo(); }
+    else { const d = await r.json().catch(()=>({})); toast(T('toast_accel_fail', {m: d.message || STR.toast_accel_fail_def})); }
+  }catch(e){ toast(STR.toast_agent_down); }
 }
 
 // «Твоя сенса во всех играх» — cm/360 одинаковый, показываем sens+eDPI для каждой.
@@ -2289,7 +3433,7 @@ function sensAllGamesHtml(){
     const s = sensConvert(gf, g, sensVal);
     const isFrom = g.id === sensFrom;
     return `<div class="sg-row ${isFrom?'from':''}">
-      <span class="sg-name">${esc(g.name)}${isFrom?' <span class="muted" style="font-weight:400">· исходная</span>':''}</span>
+      <span class="sg-name">${esc(g.name)}${isFrom?' <span class="muted" style="font-weight:400">' + esc(STR.sens_source) + '</span>':''}</span>
       <b class="sg-sens">${s.toFixed(3)}</b>
       <span class="sg-edpi">${Math.round(sensDPI*s)} eDPI</span>
     </div>`;
@@ -2331,8 +3475,8 @@ function sensSwap(){
 function sensCopy(){
   const v = document.getElementById('sensResult').textContent;
   navigator.clipboard?.writeText(v).then(
-    () => toast('📋 Скопировано: ' + v),
-    () => toast('Значение: ' + v)
+    () => toast(T('toast_copied', {v: v})),
+    () => toast(T('toast_value', {v: v}))
   );
 }
 
@@ -2340,9 +3484,9 @@ function sensSyncStatus(){
   if (sensProfile && sensProfile.saved){
     const g = sensProfile.games || {};
     const n = Object.keys(g).length;
-    return `<span style="color:var(--green)">✓ Синхронизировано${n?` · ${n} ${n===1?'игра':'игр(ы)'}`:''}.</span>`;
+    return `<span style="color:var(--green)">${T('sens_synced', {n: n ? T('sens_synced_n', {n: n, w: n === 1 ? STR.pl_sync_1 : STR.pl_sync_n}) : ''})}</span>`;
   }
-  return '<span style="color:var(--dim)">Пока не сохранено.</span>';
+  return '<span style="color:var(--dim)">' + esc(STR.sens_not_saved) + '</span>';
 }
 
 /* — AI-калибратор (web/aim.html): подбор сенсы стрельбой, мост через localStorage — */
@@ -2355,17 +3499,17 @@ function aimResult(){
 }
 function aimResultLine(){
   const r = aimResult();
-  return r ? `<br><b style="color:var(--acc)">Калибратор нашёл ${r.sens}</b> (CS2 · ${r.cm360} см/360) — <a href="#" onclick="aimApply();return false" style="color:var(--txt)">подставить</a>` : '';
+  return r ? T('sens_calib', {s: r.sens, cm: r.cm360}) : '';
 }
 function aimApply(){
   const r = aimResult(); if (!r) return;
   if (r.dpi) sensDPI = r.dpi;
   sensFrom = 'cs2'; sensVal = r.sens;
-  sideTab('sens'); toast('Сенса калибратора подставлена: CS2 ' + r.sens);
+  sideTab('sens'); toast(T('toast_calib_applied', {s: r.sens}));
 }
 function openAimCal(){
   const w = window.open('aim.html?' + new URLSearchParams({dpi: sensDPI, sens: sensVal}), '_blank');
-  if (!w) toast('Браузер заблокировал окно — открой web/aim.html вручную');
+  if (!w) toast(STR.toast_popup_blocked);
 }
 
 async function sensSave(){
@@ -2378,7 +3522,7 @@ async function sensSave(){
   try{
     const d = await api('/me/sensitivity', {method:'PUT', body:JSON.stringify({dpi: sensDPI, games})});
     sensProfile = {dpi: d.dpi, games: d.games, saved: true};
-    toast('💾 Сенса сохранена — подставится на любом ПК клуба');
+    toast(STR.toast_sens_saved);
     renderSide();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -2395,12 +3539,12 @@ async function openOdds(ev, tier, clubId){
   const body = document.getElementById('oddsBody');
   const key = clubId || '';
   if (!oddsCache[key]){
-    body.innerHTML = '<div class="muted">Загружаю…</div>';
+    body.innerHTML = '<div class="muted">' + esc(STR.odds_loading) + '</div>';
     try{
       const r = await fetch(API + '/cases/odds' + (key ? '?club_id=' + encodeURIComponent(key) : ''));
       if (!r.ok) throw new Error('HTTP ' + r.status);
       oddsCache[key] = await r.json();
-    }catch(e){ body.innerHTML = '<div class="muted">⚠ Не удалось загрузить шансы: ' + esc(e.message) + '</div>'; return; }
+    }catch(e){ body.innerHTML = '<div class="muted">' + T('odds_error', {m: esc(e.message)}) + '</div>'; return; }
   }
   body.innerHTML = oddsHtml(oddsCache[key], tier || '');
 }
@@ -2410,22 +3554,21 @@ function oddsHtml(d, cur){
     const tc = (TIER[t.tier] || TIER.light).c;
     return `<div class="odds-tier ${t.tier === cur ? 'cur' : ''}">
       <div class="oh" style="color:${tc}">${(TIER[t.tier] || {}).em || ''} ${t.tier}
-        <span class="pct" title="Шанс, что бонусный кейс за сессию окажется этого тира">тир бонусного кейса · ${pctF(t.bonus_roll_pct)}</span></div>
-      <div class="odds-row"><span class="l">${UI.coins} монеты ${fmt(t.coins_min)}–${fmt(t.coins_max)}</span><b>${pctF(t.coins_pct)}</b></div>
-      <div class="odds-row"><span class="l">${UI.xp} бустер кэшбека +${t.buster_boost_pct}%</span><b>${pctF(t.buster_pct)}</b></div>
-      <div class="odds-row"><span class="l">${UI.chest} джекпот ${fmt(t.jackpot_amount)} монет</span><b>${pctF(t.jackpot_pct)}</b></div>
+        <span class="pct" title="${esc(STR.odds_bonus_title)}">${T('odds_bonus_tier', {p: pctF(t.bonus_roll_pct)})}</span></div>
+      <div class="odds-row"><span class="l">${UI.coins} ${T('odds_coins', {a: fmt(t.coins_min), b: fmt(t.coins_max)})}</span><b>${pctF(t.coins_pct)}</b></div>
+      <div class="odds-row"><span class="l">${UI.xp} ${T('odds_buster', {n: t.buster_boost_pct})}</span><b>${pctF(t.buster_pct)}</b></div>
+      <div class="odds-row"><span class="l">${UI.chest} ${T('odds_jackpot', {n: fmt(t.jackpot_amount)})}</span><b>${pctF(t.jackpot_pct)}</b></div>
     </div>`;
   }).join('');
-  const rtp = (d.rtp_modifier && d.rtp_modifier !== 1) ? ` · RTP клуба ×${d.rtp_modifier}` : '';
-  return rows + `<div class="odds-note">Дроп считает сервер (crypto/rand) — что выпало, то и показываем, без «подкруток».
-    Таланты и ранг могут только повышать шанс редких тиров.<br>Таблица шансов v${d.version} от ${d.updated_at}${rtp}.</div>`;
+  const rtp = (d.rtp_modifier && d.rtp_modifier !== 1) ? T('odds_rtp', {n: d.rtp_modifier}) : '';
+  return rows + `<div class="odds-note">${esc(STR.odds_footer)}<br>${T('odds_version', {v: d.version, d: d.updated_at, rtp: rtp})}</div>`;
 }
 function openInfo(){ document.getElementById('infoOverlay').classList.add('show'); }
 
 async function openCase(id, tier){
   const t = TIER[tier] || TIER.light;
   const ov = document.getElementById('caseOverlay');
-  document.getElementById('coTitle').textContent = 'Открываем кейс…';
+  document.getElementById('coTitle').textContent = STR.co_opening;
   const box = document.getElementById('coBox');
   box.style.background = 'transparent'; box.style.border = '2px solid '+t.c; box.innerHTML = UI.chest;
   box.style.animation = 'pulse .5s infinite';
@@ -2435,15 +3578,15 @@ async function openCase(id, tier){
     const d = await api('/me/cases/'+id+'/open', {method:'POST', body:'{}'});
     setTimeout(() => {
       box.style.animation = 'none';
-      document.getElementById('coTitle').textContent = 'Твой дроп!';
+      document.getElementById('coTitle').textContent = STR.co_drop;
       if (d.drop_type === 'coins'){
         box.innerHTML = UI.coins;
         document.getElementById('coAmount').textContent = '+' + fmt(d.drop_amount);
-        document.getElementById('coType').textContent = 'монет · кейс ' + d.tier;
+        document.getElementById('coType').textContent = T('co_coins', {t: d.tier});
       } else {
         box.innerHTML = UI.xp;
         document.getElementById('coAmount').textContent = '+' + d.drop_amount + '%';
-        document.getElementById('coType').textContent = 'бустер кэшбека · кейс ' + d.tier;
+        document.getElementById('coType').textContent = T('co_buster', {t: d.tier});
       }
       document.getElementById('coResult').classList.remove('hidden');
       // «сочный» момент: конфетти тем гуще, чем выше тир
@@ -2673,6 +3816,8 @@ function openProfile(){
   profFavs = [...(me.favorite_games || [])];
   paintFavPick();
   document.getElementById('pErr').textContent = '';
+  const pl = document.getElementById('profLang');
+  if (pl) pl.innerHTML = langSwitch('inline'); // Г9-и2: язык прямо в профиле
   drawClubQR(); // М5: QR на /app
   document.getElementById('profOverlay').classList.add('show');
 }
@@ -2680,12 +3825,12 @@ function paintFavPick(){
   const games = (CATALOG.games || []);
   document.getElementById('favPick').innerHTML = games.map(g =>
     `<button class="${profFavs.includes(g.id)?'on':''}" onclick="pickFav('${g.id}')">${esc(g.name)}</button>`).join('')
-    || '<span class="muted">каталог игр пуст</span>';
+    || '<span class="muted">' + esc(STR.catalog_empty) + '</span>';
 }
 function pickFav(id){
   if (profFavs.includes(id)) profFavs = profFavs.filter(x => x !== id);
   else if (profFavs.length < 3) profFavs.push(id);
-  else { toast('Любимых игр — до трёх'); return; }
+  else { toast(STR.toast_fav_limit); return; }
   paintFavPick();
 }
 function pickAva(id){
@@ -2707,7 +3852,7 @@ async function saveProfile(){
     closeOverlay('profOverlay');
     await loadAll();
     const dx = (me.xp_total || 0) - xpBefore;
-    toast(dx > 0 ? '🎉 Анкета: +' + dx + ' XP' : '✓ Профиль обновлён');
+    toast(dx > 0 ? T('toast_prof_xp', {n: dx}) : STR.toast_prof_saved);
   }catch(e){ document.getElementById('pErr').textContent = e.message; }
 }
 
@@ -2839,11 +3984,17 @@ document.addEventListener('click', e => {
 });
 
 /* ═══════════════ СТАРТ ═══════════════ */
-mountIcons(); // статичные [data-ic] в топбаре/оверлеях
+applyStrings();  // Г9-и2: статичная разметка на языке гостя
+mountIcons();    // статичные [data-ic] в топбаре/оверлеях
+['authLang', 'lockLang'].forEach(id => {   // переключатель до входа: гость выбирает язык сразу
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = langSwitch();
+});
 (async function init(){
   if (tokens().a || tokens().r){
     try{
       me = await api('/me');
+      if (applyProfileLang(me)) return;   // язык профиля главнее — перезагрузимся на нём
       enterShell();
       return;
     }catch(e){ clearTokens(); }
