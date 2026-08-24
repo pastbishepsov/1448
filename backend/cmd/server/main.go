@@ -89,6 +89,7 @@ func main() {
 		me.Use(authMiddleware())                           // всё под /me требует JWT
 		me.GET("", handleGetMe)                            // ← настоящий
 		me.PATCH("", handlePatchMe)                        // ← настоящий
+		me.POST("/password", handleChangeMyPassword)       // смена своего пароля (Е0-и2)
 		me.GET("/cases", handleGetMyCases)                 // ← настоящий
 		me.POST("/cases/:id/open", handleOpenCase)         // ← настоящий
 		me.GET("/talents", handleGetMyTalents)             // ← настоящий
@@ -141,6 +142,7 @@ func main() {
 		adm.GET("/users", handleAdminUsers)
 		adm.GET("/users/:id", handleAdminUserCard) // карточка гостя (спринт А2)
 		adm.PATCH("/users/:id", handleAdminGuestUpdate) // правка данных гостя (Е0-и1)
+		adm.POST("/users/:id/password/reset", handleAdminPasswordReset) // временный пароль (Е0-и2)
 		adm.POST("/users/:id/ban", handleAdminBan)
 		adm.POST("/users/:id/unban", handleAdminUnban)
 		adm.POST("/users/:id/deposit", handleAdminDeposit)
@@ -385,12 +387,18 @@ func handleLogin(c *gin.Context) {
 }
 
 func writeAuth(c *gin.Context, status int, user *models.User) {
-	access, err := signToken(user.ID.String(), string(user.Role), tokenTypeAccess, accessTTL)
+	writeAuthAt(c, status, user, time.Now())
+}
+
+// writeAuthAt — пара токенов с явным моментом выдачи (Е0-и2: смена пароля
+// подписывает пару моментом собственной отсечки).
+func writeAuthAt(c *gin.Context, status int, user *models.User, issued time.Time) {
+	access, err := signTokenAt(user.ID.String(), string(user.Role), tokenTypeAccess, accessTTL, issued)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "token_error", "message": "Не удалось создать токен"})
 		return
 	}
-	refresh, err := signToken(user.ID.String(), string(user.Role), tokenTypeRefresh, refreshTTL)
+	refresh, err := signTokenAt(user.ID.String(), string(user.Role), tokenTypeRefresh, refreshTTL, issued)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "token_error", "message": "Не удалось создать токен"})
 		return

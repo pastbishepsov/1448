@@ -66,6 +66,16 @@ func handleStartSession(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_user", "message": "Некорректный пользователь"})
 		return
 	}
+	// Е0-и2: с временным паролем гость сам не садится — его знает и админ,
+	// который пароль выдал. Проверка стоит ЗДЕСЬ, а не в startSessionFor:
+	// посадку админом (Б8) она блокировать не должна, у стойки человека
+	// опознали лично, и это надёжнее пароля.
+	var u models.User
+	if db.Select("must_change_password").First(&u, "id = ?", userID).Error == nil && u.MustChangePassword {
+		c.JSON(http.StatusConflict, gin.H{"code": "password_change_required",
+			"message": "Сначала задай свой пароль вместо временного"})
+		return
+	}
 	var req startSessionRequest
 	_ = c.ShouldBindJSON(&req) // тело необязательно
 	code, resp := startSessionFor(userID, req.ComputerID, req.PlannedMin)

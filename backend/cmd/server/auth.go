@@ -25,7 +25,14 @@ const (
 // signToken подписывает JWT заданного типа (access/refresh) и времени жизни.
 // role едет в claims — по ней adminMiddleware пускает в /admin/*.
 func signToken(userID, role, typ string, ttl time.Duration) (string, error) {
-	now := time.Now()
+	return signTokenAt(userID, role, typ, ttl, time.Now())
+}
+
+// signTokenAt — то же, но с явным моментом выдачи. Нужен смене пароля (Е0-и2):
+// отсечка tokens_valid_from округляется ВВЕРХ до секунды, и свежая пара
+// подписывается ровно этим моментом — она переживает отсечку по построению,
+// а не потому, что успела в ту же секунду.
+func signTokenAt(userID, role, typ string, ttl time.Duration, now time.Time) (string, error) {
 	claims := jwt.MapClaims{
 		"sub":  userID,
 		"role": role,
@@ -62,6 +69,15 @@ func tokenType(claims jwt.MapClaims) string {
 func claimString(claims jwt.MapClaims, key string) string {
 	v, _ := claims[key].(string)
 	return v
+}
+
+// claimIssuedAt — момент выдачи из iat (0, если прочитать не вышло).
+// Нужен отсечке tokens_valid_from при сбросе пароля (Е0-и2).
+func claimIssuedAt(claims jwt.MapClaims) int64 {
+	if v, ok := claims["iat"].(float64); ok {
+		return int64(v)
+	}
+	return 0
 }
 
 // claimExpiry — срок токена из exp.
@@ -137,6 +153,16 @@ func handleRefresh(c *gin.Context) {
 	}
 	if user.Status == models.UserStatusBanned {
 		c.JSON(http.StatusForbidden, gin.H{"code": "banned", "message": "Аккаунт заблокирован"})
+		return
+	}
+	// Е0-и2: смена пароля рвёт ВСЕ живые refresh'ы гостя, включая те, что мы
+	// никогда не видели, — отзыв по jti (миграция 010) их не достаёт.
+	// Проверка стоит здесь, потому что пользователь уже прочитан из базы;
+	// в authMiddleware её нет сознательно — он не ходит в БД, а access живёт
+	// ≤15 минут (принятый компромисс проекта, STATUS.md).
+	if tokenIssuedBefore(claimIssuedAt(claims), user.TokensValidFrom) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "token_revoked",
+			"message": "Пароль менялся — войди заново"})
 		return
 	}
 

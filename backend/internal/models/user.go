@@ -59,6 +59,12 @@ type User struct {
 	Language         string     `json:"language"             gorm:"size:2;not null;default:ru"` // Г9: ru|en|pl, едет за гостем
 	StreakFreezes    int        `json:"streak_freezes"       gorm:"not null;default:0"` // Г6-и4: запас заморозок стрика
 
+	// Сброс пароля админом (Е0-и2, миграция 044). Флаг едет клиенту — по нему
+	// шелл и PWA поднимают экран обязательной смены; момент отсечки токенов
+	// наружу не отдаём, он служебный.
+	MustChangePassword bool       `json:"must_change_password" gorm:"not null;default:false"`
+	TokensValidFrom    *time.Time `json:"-"`
+
 	RegisteredAt time.Time `json:"registered_at"`
 	LastActiveAt time.Time `json:"last_active_at"`
 	CreatedAt    time.Time `json:"created_at"`
