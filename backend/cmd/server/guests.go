@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -267,4 +268,153 @@ func phoneDigitsRaw(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// ── Е0-и4: один способ опознать гостя для поиска, посадки и брони ──────────
+//
+// До этого посадка и walk-in бронь требовали ТОЧНЫЙ ник. У стойки это тот же
+// тупик, что и в поиске: гость звонит забронировать и называет телефон,
+// приходит и называет фамилию. Резолвер делит правила поиска (и3) с
+// `/admin/users` — чтобы «нашёлся в поиске» и «сажается по этому же запросу»
+// никогда не разъезжались.
+//
+// Главное правило — НИКОГДА не брать первого попавшегося. Посадить не того
+// гостя значит списать деньги с чужого кошелька; на неоднозначность отвечаем
+// 409 со списком кандидатов, и выбор делает человек.
+
+// guestSearchCondition — общее условие поиска гостя (и3): ник, телефон
+// цифра-к-цифре, имя, фамилия, «имя фамилия».
+func guestSearchCondition(s string) *gorm.DB {
+	like := "%" + escapeLike(s) + "%"
+	cond := db.Where(`nickname ILIKE ? ESCAPE '\'`, like).
+		Or(`first_name ILIKE ? ESCAPE '\'`, like).
+		Or(`last_name ILIKE ? ESCAPE '\'`, like).
+		Or(`TRIM(COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')) ILIKE ? ESCAPE '\'`, like)
+	if d := phoneDigits(s); d != "" {
+		cond = cond.Or(`regexp_replace(COALESCE(phone,''), '\D', '', 'g') LIKE ?`, "%"+d+"%")
+	}
+	return cond
+}
+
+// maxGuestCandidates — сколько кандидатов показываем при неоднозначности.
+// Больше пяти у стойки не читают: это уже не «выбери», а «ищи заново».
+const maxGuestCandidates = 5
+
+// resolveGuest — опознать ГОСТЯ (role=player) по нику, телефону или имени.
+// Возвращает либо ровно одного, либо код ошибки и список кандидатов.
+//
+// Точное совпадение бьёт частичное: гость с ником «Ян» садится по запросу
+// «Ян», даже когда в клубе есть «Янек» и «Яна». Без этого правила частые
+// короткие ники стали бы неразрешимо неоднозначными.
+func resolveGuest(query string) (*models.User, string, []models.User) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return nil, "guest_empty", nil
+	}
+	player := func() *gorm.DB {
+		return db.Model(&models.User{}).Where("role = ?", models.UserRolePlayer)
+	}
+
+	// 1. Точный ник (регистр не важен: уникальный индекс регистрозависим,
+	//    поэтому теоретически «Egor» и «egor» сосуществуют — тогда падаем
+	//    в общий разбор ниже, а не выбираем произвольного).
+	var exact []models.User
+	player().Where("LOWER(nickname) = LOWER(?)", q).Limit(2).Find(&exact)
+	if len(exact) == 1 {
+		return &exact[0], "", nil
+	}
+
+	// 2. Точный телефон — цифра к цифре: «+48 123-456-789» и «123456789»
+	//    это один и тот же номер.
+	if d := phoneDigits(q); d != "" {
+		var byPhone []models.User
+		player().Where(`regexp_replace(COALESCE(phone,''), '\D', '', 'g') = ?`, d).
+			Limit(2).Find(&byPhone)
+		if len(byPhone) == 1 {
+			return &byPhone[0], "", nil
+		}
+	}
+
+	// 3. Частичное совпадение по всем ключам сразу.
+	var found []models.User
+	player().Where(guestSearchCondition(q)).
+		Order("last_active_at DESC").Limit(maxGuestCandidates + 1).Find(&found)
+	switch len(found) {
+	case 0:
+		return nil, "guest_not_found", nil
+	case 1:
+		return &found[0], "", nil
+	default:
+		if len(found) > maxGuestCandidates {
+			found = found[:maxGuestCandidates]
+		}
+		return nil, "guest_ambiguous", found
+	}
+}
+
+// guestCandidates — кандидаты для тела 409: столько, чтобы человек узнал
+// своего гостя, и ни поля больше.
+func guestCandidates(list []models.User, query string) []gin.H {
+	out := make([]gin.H, 0, len(list))
+	for i := range list {
+		u := &list[i]
+		name := strings.TrimSpace(strDeref(u.FirstName) + " " + strDeref(u.LastName))
+		item := gin.H{"id": u.ID, "nickname": u.Nickname, "matched_by": guestMatchReason(u, query)}
+		if name != "" {
+			item["name"] = name
+		}
+		if u.Phone != nil {
+			item["phone"] = *u.Phone
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func strDeref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// lookupGuestForAction — опознание гостя для посадки и брони.
+//
+// Поле `guest` — новое и умное (ник, телефон, имя). Поле `nickname` остаётся
+// СТРОГИМ: так его понимала админка до Е0, и менять смысл живого поля молча
+// нельзя — «посадить Гостя» не должно вдруг начать спрашивать «которого из
+// Гость-1, Гость-77». Пишет ответ сам; вернул nil — обработчику выходить.
+func lookupGuestForAction(c *gin.Context, guest, nickname string) *models.User {
+	if strings.TrimSpace(guest) == "" {
+		if strings.TrimSpace(nickname) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "guest_empty",
+				"message": "Нужен ник, телефон или имя гостя"})
+			return nil
+		}
+		var user models.User
+		if err := db.First(&user, "nickname = ? AND role = ?",
+			nickname, models.UserRolePlayer).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found",
+				"message": "Гость с таким ником не найден"})
+			return nil
+		}
+		return &user
+	}
+
+	user, code, cands := resolveGuest(guest)
+	switch code {
+	case "":
+		return user
+	case "guest_ambiguous":
+		c.JSON(http.StatusConflict, gin.H{"code": code,
+			"message":    "Под запрос подходит несколько гостей — выбери нужного",
+			"candidates": guestCandidates(cands, guest)})
+	case "guest_empty":
+		c.JSON(http.StatusBadRequest, gin.H{"code": code,
+			"message": "Нужен ник, телефон или имя гостя"})
+	default:
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found",
+			"message": "Гость не найден: ни по нику, ни по телефону, ни по имени"})
+	}
+	return nil
 }

@@ -161,3 +161,46 @@ func TestGuestMatchReason(t *testing.T) {
 		}
 	}
 }
+
+// Е0-и4: карточки кандидатов для 409. Проверяем, что отдаём ровно столько,
+// сколько нужно человеку у стойки, чтобы узнать своего гостя.
+func TestGuestCandidates(t *testing.T) {
+	s := func(v string) *string { return &v }
+	list := []models.User{
+		{Nickname: "KowalPro", FirstName: s("Ян"), LastName: s("Ковальский"), Phone: s("+48111222333")},
+		{Nickname: "anna", LastName: s("Ковальская")}, // без имени и телефона
+		{Nickname: "ghost"}, // вообще без данных
+	}
+	out := guestCandidates(list, "Ковальск")
+	if len(out) != 3 {
+		t.Fatalf("кандидатов %d, ждали 3", len(out))
+	}
+
+	full := out[0]
+	if full["nickname"] != "KowalPro" || full["name"] != "Ян Ковальский" ||
+		full["phone"] != "+48111222333" || full["matched_by"] != "фамилия" {
+		t.Errorf("полная карточка собрана неверно: %v", full)
+	}
+
+	// Пустые поля НЕ отдаём: «имя: » и «телефон: » в списке выбора — шум,
+	// который мешает ровно тому, ради чего список показан.
+	partial := out[1]
+	if partial["name"] != "Ковальская" {
+		t.Errorf("имя из одной фамилии собрано неверно: %v", partial["name"])
+	}
+	if _, has := partial["phone"]; has {
+		t.Errorf("телефона нет — ключа быть не должно: %v", partial)
+	}
+	bare := out[2]
+	for _, k := range []string{"name", "phone"} {
+		if _, has := bare[k]; has {
+			t.Errorf("у гостя без данных не должно быть ключа %q: %v", k, bare)
+		}
+	}
+	if bare["matched_by"] != "" {
+		t.Errorf("гость без совпадения: matched_by должен быть пустым, получили %v", bare["matched_by"])
+	}
+	if len(guestCandidates(nil, "что угодно")) != 0 {
+		t.Error("пустой список кандидатов должен давать пустой ответ")
+	}
+}

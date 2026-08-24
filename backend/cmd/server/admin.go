@@ -134,15 +134,9 @@ func handleAdminUsers(c *gin.Context) {
 	q := db.Model(&models.User{}).Order("last_active_at DESC").Limit(100)
 	s := strings.TrimSpace(c.Query("q"))
 	if s != "" {
-		like := "%" + escapeLike(s) + "%"
-		cond := db.Where(`nickname ILIKE ? ESCAPE '\'`, like).
-			Or(`first_name ILIKE ? ESCAPE '\'`, like).
-			Or(`last_name ILIKE ? ESCAPE '\'`, like).
-			Or(`TRIM(COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')) ILIKE ? ESCAPE '\'`, like)
-		if d := phoneDigits(s); d != "" {
-			cond = cond.Or(`regexp_replace(COALESCE(phone,''), '\D', '', 'g') LIKE ?`, "%"+d+"%")
-		}
-		q = q.Where(cond)
+		// Условие общее с резолвером посадки и брони (Е0-и4): «нашёлся
+		// в поиске» и «сажается по этому же запросу» разъезжаться не должны.
+		q = q.Where(guestSearchCondition(s))
 	}
 	var users []models.User
 	if err := q.Find(&users).Error; err != nil {
@@ -561,16 +555,16 @@ func handleAdminSeatGuest(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Nickname   string `json:"nickname" binding:"required"`
+		Nickname   string `json:"nickname"`    // строгий ник (как понимала админка до Е0)
+		Guest      string `json:"guest"`       // Е0-и4: ник, телефон ИЛИ имя
 		PlannedMin *int   `json:"planned_min"` // Г3: сколько гость планирует (для ПК с бронью)
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужен ник гостя"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужен ник, телефон или имя гостя"})
 		return
 	}
-	var user models.User
-	if err := db.First(&user, "nickname = ?", req.Nickname).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость с таким ником не найден"})
+	user := lookupGuestForAction(c, req.Guest, req.Nickname) // 404 и 409 пишет сам
+	if user == nil {
 		return
 	}
 	if ok, code := canTargetUser(user.Role, user.ID.String(), c.GetString("user_id")); !ok {
@@ -631,7 +625,8 @@ func handleAdminCancelBooking(c *gin.Context) {
 // пересечения — bookingOverlaps (те же правила, что у брони игрока).
 func handleAdminCreateBooking(c *gin.Context) {
 	var req struct {
-		Nickname    string  `json:"nickname" binding:"required"`
+		Nickname    string  `json:"nickname"` // строгий ник (как понимала админка до Е0)
+		Guest       string  `json:"guest"`    // Е0-и4: ник, телефон ИЛИ имя
 		ComputerID  *string `json:"computer_id"`
 		StartTime   string  `json:"start_time" binding:"required"` // RFC3339
 		DurationMin int     `json:"duration_min"`
@@ -658,9 +653,8 @@ func handleAdminCreateBooking(c *gin.Context) {
 		return
 	}
 
-	var user models.User
-	if err := db.First(&user, "nickname = ? AND role = ?", req.Nickname, models.UserRolePlayer).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость с таким ником не найден"})
+	user := lookupGuestForAction(c, req.Guest, req.Nickname) // 404 и 409 пишет сам
+	if user == nil {
 		return
 	}
 
