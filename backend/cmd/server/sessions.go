@@ -448,12 +448,17 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 		}
 	}
 
-	// Достижения: часы, входы, депозиты.
-	checkAchievements(session.UserID, playerStats{
-		HoursPlayed:  userHoursPlayed(userID),
-		LoginCount:   1,
-		DepositCount: userDepositCount(userID),
-	})
+	// Г5: суточный прогресс (топливо периодических ачивок, резет 14:48) +
+	// проверка ВСЕХ достижений — lifetime и периодических. Дев-оверрайд минут
+	// честно тестирует и ачивки (пишется как активные минуты).
+	devOverride := minutesOverride != nil && os.Getenv("SERVER_ENV") != "production"
+	recordSessionProgress(session.UserID, minutes, session.ActiveMinutes, session.StartedAt, now, devOverride)
+	stats := gatherPeriodicStats(session.UserID, now)
+	stats.HoursPlayed = userHoursPlayed(userID)
+	stats.LoginCount = 1
+	stats.DepositCount = userDepositCount(userID)
+	stats.BookingsCount = userBookingsCount(userID)
+	checkAchievements(session.UserID, stats)
 
 	// Команда на ПК: завершить и заблокировать (если Shell подключён).
 	notifyShell(session.ComputerID.String(), websocket.MsgSessionEnd, gin.H{

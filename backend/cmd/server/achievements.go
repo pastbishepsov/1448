@@ -1,5 +1,15 @@
 package main
 
+// Достижения: движок условий и наград (спринт 4 + трек Г/Г5).
+//
+// Г5 оживил схему, лежавшую в БД с миграции 005: категории daily/weekly/
+// monthly с period_key. Периодическая ачивка выдаётся один раз ЗА ПЕРИОД
+// (ключ — periodKeyFor, фирменный резет 14:48, periods.go) и снова в
+// следующем; lifetime — один раз навсегда, как раньше. Топливо условий —
+// user_progress (progress.go): минуты/активные минуты/визиты по ачивочным
+// суткам, стрик визитов. Награды прежним путём: очки навыков + кейс
+// (CaseSourceAchievement).
+
 import (
 	"encoding/json"
 	"net/http"
@@ -14,33 +24,83 @@ import (
 
 // playerStats — статистика игрока для проверки условий достижений.
 type playerStats struct {
-	HoursPlayed  int
-	LoginCount   int
-	DepositCount int
+	// lifetime
+	HoursPlayed   int
+	LoginCount    int
+	DepositCount  int
+	BookingsCount int
+	// периоды (Г5): ачивочные сутки/неделя/месяц от 14:48
+	MinutesToday int
+	ActiveToday  int
+	VisitsToday  int
+	KitchenToday int
+	MinutesWeek  int
+	ActiveWeek   int
+	VisitsWeek   int
+	VisitStreak  int
+	VisitsMonth  int
 }
 
-// conditionMet — выполнено ли условие достижения при данной статистике игрока.
-// Чистая функция (тестируется в achievements_test.go).
-// Поддержаны типы: hours_played, login_count, deposit_count. Остальные — по мере появления механик.
-func conditionMet(condType, condValueJSON string, s playerStats) bool {
-	var cv struct {
-		Min *int `json:"min"`
+// achCondition — разобранное условие ({"min":10} / {"count":1} / {"days":7}).
+type achCondition struct {
+	Min   *int `json:"min"`
+	Count *int `json:"count"`
+	Days  *int `json:"days"`
+}
+
+func (c achCondition) threshold() int {
+	switch {
+	case c.Min != nil:
+		return *c.Min
+	case c.Count != nil:
+		return *c.Count
+	case c.Days != nil:
+		return *c.Days
 	}
-	_ = json.Unmarshal([]byte(condValueJSON), &cv)
-	min := 0
-	if cv.Min != nil {
-		min = *cv.Min
-	}
+	return 1
+}
+
+// conditionValue — текущее значение игрока для типа условия; ok=false — тип
+// ещё не поддержан механикой (win_streak и будущие).
+func conditionValue(condType string, s playerStats) (int, bool) {
 	switch condType {
 	case "hours_played":
-		return s.HoursPlayed >= min
+		return s.HoursPlayed, true
 	case "login_count":
-		return s.LoginCount >= min
+		return s.LoginCount, true
 	case "deposit_count":
-		return s.DepositCount >= min
-	default:
-		return false
+		return s.DepositCount, true
+	case "bookings_count":
+		return s.BookingsCount, true
+	case "daily_visit":
+		return s.VisitsToday, true
+	case "visit_streak":
+		return s.VisitStreak, true
+	case "minutes_today":
+		return s.MinutesToday, true
+	case "active_minutes_today":
+		return s.ActiveToday, true
+	case "minutes_week":
+		return s.MinutesWeek, true
+	case "active_minutes_week":
+		return s.ActiveWeek, true
+	case "visits_week":
+		return s.VisitsWeek, true
+	case "visits_month":
+		return s.VisitsMonth, true
+	case "kitchen_today":
+		return s.KitchenToday, true
 	}
+	return 0, false
+}
+
+// conditionMet — выполнено ли условие достижения (чистая функция, тесты в
+// achievements_test.go).
+func conditionMet(condType, condValueJSON string, s playerStats) bool {
+	var cv achCondition
+	_ = json.Unmarshal([]byte(condValueJSON), &cv)
+	v, ok := conditionValue(condType, s)
+	return ok && v >= cv.threshold()
 }
 
 // userHoursPlayed — суммарные часы игрока по завершённым сессиям.
@@ -53,20 +113,41 @@ func userHoursPlayed(userID string) int {
 	return int(totalMin / 60)
 }
 
-// checkAchievements — выдать новые lifetime-достижения и их награды (best-effort).
+// userBookingsCount — сколько броней гость создавал за всё время (Г6: «первая бронь»).
+func userBookingsCount(userID string) int {
+	var n int64
+	db.Model(&models.Booking{}).Where("user_id = ?", userID).Count(&n)
+	return int(n)
+}
+
+// checkAchievements — выдать заработанные достижения и награды (best-effort).
+// Lifetime — один раз навсегда; периодические (Г5) — один раз за период
+// periodKeyFor (фирменный резет 14:48), в новом периоде выдаются заново.
 func checkAchievements(userID uuid.UUID, stats playerStats) {
+	now := time.Now()
+
 	var earned []models.UserAchievement
 	db.Where("user_id = ?", userID).Find(&earned)
 	have := map[string]bool{}
 	for _, e := range earned {
-		have[e.AchievementID] = true
+		pk := ""
+		if e.PeriodKey != nil {
+			pk = *e.PeriodKey
+		}
+		have[e.AchievementID+"|"+pk] = true
+		have[e.AchievementID+"|"] = have[e.AchievementID+"|"] || pk == "" // lifetime-метка
 	}
 
 	var defs []models.Achievement
-	db.Where("category = ? AND is_active = ?", "lifetime", true).Find(&defs)
+	db.Where("is_active = ?", true).Find(&defs)
 
 	for _, a := range defs {
-		if have[a.ID] {
+		pk := periodKeyFor(a.Category, now)
+		key := a.ID + "|"
+		if pk != nil {
+			key = a.ID + "|" + *pk
+		}
+		if have[key] {
 			continue
 		}
 		if !conditionMet(a.ConditionType, a.ConditionValue, stats) {
@@ -75,7 +156,7 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 		tier := a.RewardCaseTier
 		sp := a.RewardSkillpoints
 		_ = db.Transaction(func(tx *gorm.DB) error {
-			ua := models.UserAchievement{UserID: userID, AchievementID: a.ID, EarnedAt: time.Now()}
+			ua := models.UserAchievement{UserID: userID, AchievementID: a.ID, EarnedAt: now, PeriodKey: pk}
 			if err := tx.Create(&ua).Error; err != nil {
 				return err
 			}
@@ -95,22 +176,43 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 	}
 }
 
-// GET /me/achievements — список достижений с отметкой о получении.
+// GET /me/achievements — достижения с прогрессом и временем до резета (Г5).
 func handleGetMyAchievements(c *gin.Context) {
 	userID := c.GetString("user_id")
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_user", "message": "Некорректный пользователь"})
+		return
+	}
+	now := time.Now()
+
+	stats := gatherPeriodicStats(uid, now)
+	stats.HoursPlayed = userHoursPlayed(userID)
+	stats.LoginCount = 1
+	stats.DepositCount = userDepositCount(userID)
+	stats.BookingsCount = userBookingsCount(userID)
 
 	var defs []models.Achievement
 	db.Where("is_active = ?", true).Order("category").Find(&defs)
 
 	var earned []models.UserAchievement
 	db.Where("user_id = ?", userID).Find(&earned)
-	earnedAt := map[string]time.Time{}
+	earnedAt := map[string]time.Time{} // ключ id|period
 	for _, e := range earned {
-		earnedAt[e.AchievementID] = e.EarnedAt
+		pk := ""
+		if e.PeriodKey != nil {
+			pk = *e.PeriodKey
+		}
+		earnedAt[e.AchievementID+"|"+pk] = e.EarnedAt
 	}
 
 	out := make([]gin.H, 0, len(defs))
 	for _, a := range defs {
+		pk := periodKeyFor(a.Category, now)
+		key := a.ID + "|"
+		if pk != nil {
+			key = a.ID + "|" + *pk
+		}
 		item := gin.H{
 			"id":                 a.ID,
 			"title":              a.Title,
@@ -118,18 +220,35 @@ func handleGetMyAchievements(c *gin.Context) {
 			"category":           a.Category,
 			"reward_skillpoints": a.RewardSkillpoints,
 			"reward_case_tier":   a.RewardCaseTier,
-			"earned":             false,
+			"earned":             false, // для периодических — в ТЕКУЩЕМ периоде
 		}
-		if t, ok := earnedAt[a.ID]; ok {
+		if pk != nil {
+			item["period_key"] = *pk
+		}
+		if t, ok := earnedAt[key]; ok {
 			item["earned"] = true
 			item["earned_at"] = t
+		}
+		// прогресс к цели — если механика уже считает этот тип
+		var cv achCondition
+		_ = json.Unmarshal([]byte(a.ConditionValue), &cv)
+		if v, ok := conditionValue(a.ConditionType, stats); ok {
+			target := cv.threshold()
+			if v > target {
+				v = target
+			}
+			item["progress"] = gin.H{"value": v, "target": target}
 		}
 		out = append(out, item)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"hours_played": userHoursPlayed(userID),
+		"hours_played": stats.HoursPlayed,
 		"earned_count": len(earned),
 		"achievements": out,
+		// Г5: фирменный резет — все периоды перещёлкиваются в 14:48 клуба
+		"resets_at":   nextAchReset(now),
+		"day_key":     achDayKey(now),
+		"period_keys": gin.H{"daily": periodKeyFor("daily", now), "weekly": periodKeyFor("weekly", now), "monthly": periodKeyFor("monthly", now)},
 	})
 }
