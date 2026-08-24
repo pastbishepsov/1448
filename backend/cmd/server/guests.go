@@ -380,11 +380,26 @@ func strDeref(s *string) string {
 
 // lookupGuestForAction — опознание гостя для посадки и брони.
 //
-// Поле `guest` — новое и умное (ник, телефон, имя). Поле `nickname` остаётся
-// СТРОГИМ: так его понимала админка до Е0, и менять смысл живого поля молча
-// нельзя — «посадить Гостя» не должно вдруг начать спрашивать «которого из
-// Гость-1, Гость-77». Пишет ответ сам; вернул nil — обработчику выходить.
-func lookupGuestForAction(c *gin.Context, guest, nickname string) *models.User {
+// Три ключа, по убыванию точности:
+//
+//	guest_id — гостя ВЫБРАЛИ из списка кандидатов (Е0-и5б). Обращаемся по
+//	  идентичности: слать обратно имя и искать заново — значит допускать,
+//	  что второй поиск ответит иначе, чем тот, из которого человек выбирал.
+//	guest    — умный ключ: ник, телефон ИЛИ имя.
+//	nickname — СТРОГИЙ ник: так его понимала админка до Е0, и менять смысл
+//	  живого поля молча нельзя — «посадить Гостя» не должно вдруг начать
+//	  спрашивать «которого из Гость-1, Гость-77».
+//
+// Пишет ответ сам; вернул nil — обработчику выходить.
+func lookupGuestForAction(c *gin.Context, guestID, guest, nickname string) *models.User {
+	if id := strings.TrimSpace(guestID); id != "" {
+		var user models.User
+		if err := db.First(&user, "id = ? AND role = ?", id, models.UserRolePlayer).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость не найден"})
+			return nil
+		}
+		return &user
+	}
 	if strings.TrimSpace(guest) == "" {
 		if strings.TrimSpace(nickname) == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"code": "guest_empty",

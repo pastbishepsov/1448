@@ -236,6 +236,17 @@
   .uform .input{width:100%}
   /* Е0-и5а: временный пароль показывается ОДИН раз — его диктуют вслух,
      поэтому крупно, моноширинно и с разрядкой, чтобы не переспрашивали. */
+  /* Е0-и5б: чем гость совпал с запросом. Три Ковальских в списке бесполезны,
+     а «нашёлся по телефону» — уже ответ. */
+  .mchip{font-size:10.5px; font-weight:700; color:var(--dim); border:1px solid var(--hair);
+         border-radius:5px; padding:1px 6px; margin-left:7px; white-space:nowrap}
+  .cands{display:flex; flex-direction:column; gap:7px; margin-top:9px}
+  .cands button{display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left;
+                background:var(--card); border:1px solid var(--hair); border-radius:10px;
+                padding:9px 11px; color:var(--txt); cursor:pointer; font-family:inherit}
+  .cands button:hover{border-color:var(--acc)}
+  .cands b{font-size:13.5px}
+  .cands span{font-size:11.5px; color:var(--dim)}
   .temppass{border:1px solid var(--acc); border-radius:11px; padding:12px;
             background:rgba(255,39,64,.08); text-align:center}
   .temppass .tp{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
@@ -474,7 +485,7 @@
     </div>
     <div class="gsearch" id="gsearch">
       <span data-ic="search"></span>
-      <input id="gq" placeholder="Гость или ПК…" autocomplete="off" aria-label="Глобальный поиск">
+      <input id="gq" placeholder="Гость, телефон или ПК…" autocomplete="off" aria-label="Глобальный поиск">
       <kbd>/</kbd>
       <kbd onclick="palOpen()" title="Палитра команд (Ctrl+K)" style="cursor:pointer">Ctrl K</kbd>
       <div id="gqDrop" class="gqdrop hidden"></div>
@@ -542,7 +553,7 @@
 
       <section id="s-users" class="hidden">
         <div class="toolrow">
-          <input id="uq" class="input" placeholder="Поиск по нику…" autocomplete="off" style="min-width:230px">
+          <input id="uq" class="input" placeholder="Ник, телефон или имя…" autocomplete="off" style="min-width:230px">
         </div>
         <div class="tablewrap" id="usersTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
@@ -879,7 +890,7 @@ async function api(path, opts = {}, retry = true){
     logout(); throw new Error('unauthorized');
   }
   const data = await res.json().catch(()=>({}));
-  if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code});
+  if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code, data});
   return data;
 }
 
@@ -1498,10 +1509,11 @@ function renderPCDrawer(id){
   } else if (pc.status === 'available'){
     body += `<div class="dsub">Посадить гостя</div>
     <div class="uform" style="margin-top:0">
-      <input id="seatNick" class="input" placeholder="Ник гостя" autocomplete="off"
+      <input id="seatNick" class="input" placeholder="Ник, телефон или имя" autocomplete="off"
              onkeydown="if(event.key==='Enter')seatGuest('${pc.id}')">
       <button class="btn" style="width:100%; justify-content:center" onclick="seatGuest('${pc.id}')">
         <span data-ic="clock"></span>Начать сессию</button>
+      <div id="seatCands"></div>
       <div class="muted">Без пароля гостя; тариф и таланты — его собственные</div>
     </div>
     <button class="btn ghost" style="width:100%; justify-content:center; margin-top:12px"
@@ -1533,16 +1545,40 @@ async function pcPower(id, action){
 function armPower(btn, id, action, label){
   armButton(btn, 'Ещё раз — ' + label, () => pcPower(id, action));
 }
-async function seatGuest(pcId){
-  const inp = document.getElementById('seatNick');
-  const nickname = inp ? inp.value.trim() : '';
-  if (!nickname){ toast('⚠ Нужен ник гостя'); return; }
-  try{
-    const d = await api('/admin/computers/' + pcId + '/session', {method:'POST', body:JSON.stringify({nickname})});
-    toast('▶ ' + nickname + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
-    await refresh();
-  }catch(e){ toast('⚠ ' + e.message); }
+/* Е0-и5б: посадка по нику, телефону или имени. Когда под запрос подходят
+   несколько гостей, сервер отвечает 409 со списком — показываем выбор прямо
+   в шторке. Посадить не того значит списать деньги с чужого кошелька,
+   поэтому «первого попавшегося» не берём ни здесь, ни на сервере. */
+function candsHtml(list, onPick){
+  return `<div class="cands">${list.map(c => `<button onclick="${onPick}('${c.id}')">
+    <b>${esc(c.nickname)}</b>
+    <span>${[c.name, c.phone, c.matched_by ? 'нашёлся по: ' + c.matched_by : ''].filter(Boolean).map(esc).join(' · ')}</span>
+  </button>`).join('')}</div>`;
 }
+let seatPcId = null;
+async function seatGuest(pcId, forceId){
+  seatPcId = pcId;
+  const inp = document.getElementById('seatNick');
+  const guest = inp ? inp.value.trim() : '';
+  if (!guest && !forceId){ toast('⚠ Нужен ник, телефон или имя гостя'); return; }
+  const box = document.getElementById('seatCands');
+  const body = forceId ? {guest_id: forceId} : {guest};
+  try{
+    const d = await api('/admin/computers/' + pcId + '/session', {method:'POST', body:JSON.stringify(body)});
+    if (box) box.innerHTML = '';
+    toast('▶ ' + (d.nickname || guest) + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
+    await refresh();
+  }catch(e){
+    if (e.code === 'guest_ambiguous' && box){
+      box.innerHTML = `<div class="muted">Подходит несколько — выбери гостя:</div>`
+        + candsHtml(e.data.candidates || [], 'seatPick');
+      return;
+    }
+    if (box) box.innerHTML = '';
+    toast('⚠ ' + e.message);
+  }
+}
+function seatPick(id){ seatGuest(seatPcId, id); }
 
 /* ── Б11-и3: «на смене: …» в легенде Зала — по графику смен (виден всем) ── */
 let onShiftData = [];
@@ -2026,13 +2062,14 @@ async function unbanNow(id, nick){
 let userQuery = '';
 async function renderUsersTable(){
   const d = await api('/admin/users' + (userQuery ? '?q='+encodeURIComponent(userQuery) : ''));
+  const mt = d.matched || {}; // Е0-и5б: id → чем гость совпал с запросом
   setHTML('usersTable', d.users.length === 0
     ? (userQuery
-      ? '<div class="empty"><span data-ic="search"></span>По запросу «' + esc(userQuery) + '» никого — проверь ник</div>'
+      ? '<div class="empty"><span data-ic="search"></span>По запросу «' + esc(userQuery) + '» никого — ищем по нику, телефону и имени</div>'
       : '<div class="empty"><span data-ic="users"></span>Гостей ещё нет — первый появится после регистрации на гостевом экране</div>')
     : `<table><tr><th>Ник</th><th>LVL</th><th>XP</th><th>Монеты</th><th>Роль</th><th>Статус</th><th>Был активен</th><th></th></tr>
   ${d.users.map(u => `<tr onclick="openUserDrawer('${u.id}')" style="cursor:pointer">
-    <td><b>${esc(u.nickname)}</b></td>
+    <td><b>${esc(u.nickname)}</b>${mt[u.id] ? `<span class="mchip">${esc(mt[u.id])}</span>` : ''}</td>
     <td>${u.level}</td>
     <td>${(u.xp_total||0).toLocaleString('ru-RU')}</td>
     <td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td>
@@ -2373,7 +2410,8 @@ function newBookingDrawer(){
   bDur = 60;
   openDrawer('Новая бронь', `
   <div class="uform" style="margin-top:0">
-    <input id="b_nick" class="input" placeholder="Ник гостя">
+    <input id="b_nick" class="input" placeholder="Ник, телефон или имя">
+    <div id="bCands"></div>
     <select id="b_pc" class="input"><option value="">Первый свободный ПК</option></select>
     <input id="b_time" class="input" type="datetime-local">
     <div class="segs">
@@ -2404,12 +2442,16 @@ async function fillBookingPCs(){
     });
   }catch(e){}
 }
-async function submitBooking(){
+async function bookPick(id){ submitBooking(id); }
+async function submitBooking(forceId){
   const nick = document.getElementById('b_nick').value.trim();
   const tval = document.getElementById('b_time').value;
-  if (!nick){ toast('⚠ Нужен ник гостя'); return; }
+  const box = document.getElementById('bCands');
+  if (!nick && !forceId){ toast('⚠ Нужен ник, телефон или имя гостя'); return; }
   if (!tval){ toast('⚠ Нужно время начала'); return; }
-  const body = {nickname: nick, duration_min: bDur, start_time: new Date(tval).toISOString()};
+  const body = forceId ? {guest_id: forceId} : {guest: nick};
+  body.duration_min = bDur;
+  body.start_time = new Date(tval).toISOString();
   const pc = document.getElementById('b_pc').value;
   if (pc) body.computer_id = pc;
   try{
@@ -2417,7 +2459,15 @@ async function submitBooking(){
     toast('📅 Бронь: ' + d.nickname + ' · ' + (d.computer||'') + ' · ' + fmtTime(d.start_time));
     closeDrawer();
     renderBookings();
-  }catch(e){ toast('⚠ ' + e.message); }
+  }catch(e){
+    if (e.code === 'guest_ambiguous' && box){
+      box.innerHTML = `<div class="muted">Подходит несколько — выбери гостя:</div>`
+        + candsHtml(e.data.candidates || [], 'bookPick');
+      return;
+    }
+    if (box) box.innerHTML = '';
+    toast('⚠ ' + e.message);
+  }
 }
 
 /* ── Статистика владельца (А5): выручка, загрузка, топ гостей ── */
@@ -3884,9 +3934,11 @@ async function gqSearch(){
     const u = await api('/admin/users?q=' + encodeURIComponent(q));
     const lq = q.toLowerCase();
     const pcs = pcCache.filter(p => (p.name || '').toLowerCase().includes(lq)).slice(0, 4);
+    const mt = u.matched || {}; // Е0-и5б: та же подпись, что в таблице гостей
     gqItems = (u.users || []).slice(0, 6).map(x => ({
       t:'user', id:x.id, name:x.nickname,
-      sub:'LVL ' + x.level + (x.status === 'banned' ? ' · бан' : ''),
+      sub:'LVL ' + x.level + (x.status === 'banned' ? ' · бан' : '')
+          + (mt[x.id] && mt[x.id] !== 'ник' ? ' · нашёлся по: ' + mt[x.id] : ''),
     })).concat(pcs.map(x => ({
       t:'pc', id:x.id, name:x.name,
       sub:x.session ? ('занят: ' + x.session.nickname) : (x.status === 'maintenance' ? 'ремонт' : 'свободен'),

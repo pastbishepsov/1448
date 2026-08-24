@@ -557,13 +557,14 @@ func handleAdminSeatGuest(c *gin.Context) {
 	var req struct {
 		Nickname   string `json:"nickname"`    // строгий ник (как понимала админка до Е0)
 		Guest      string `json:"guest"`       // Е0-и4: ник, телефон ИЛИ имя
+		GuestID    string `json:"guest_id"`    // Е0-и5б: выбран из списка кандидатов
 		PlannedMin *int   `json:"planned_min"` // Г3: сколько гость планирует (для ПК с бронью)
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужен ник, телефон или имя гостя"})
 		return
 	}
-	user := lookupGuestForAction(c, req.Guest, req.Nickname) // 404 и 409 пишет сам
+	user := lookupGuestForAction(c, req.GuestID, req.Guest, req.Nickname) // 404 и 409 пишет сам
 	if user == nil {
 		return
 	}
@@ -625,8 +626,9 @@ func handleAdminCancelBooking(c *gin.Context) {
 // пересечения — bookingOverlaps (те же правила, что у брони игрока).
 func handleAdminCreateBooking(c *gin.Context) {
 	var req struct {
-		Nickname    string  `json:"nickname"` // строгий ник (как понимала админка до Е0)
-		Guest       string  `json:"guest"`    // Е0-и4: ник, телефон ИЛИ имя
+		Nickname    string  `json:"nickname"`  // строгий ник (как понимала админка до Е0)
+		Guest       string  `json:"guest"`     // Е0-и4: ник, телефон ИЛИ имя
+		GuestID     string  `json:"guest_id"`  // Е0-и5б: выбран из списка кандидатов
 		ComputerID  *string `json:"computer_id"`
 		StartTime   string  `json:"start_time" binding:"required"` // RFC3339
 		DurationMin int     `json:"duration_min"`
@@ -653,7 +655,7 @@ func handleAdminCreateBooking(c *gin.Context) {
 		return
 	}
 
-	user := lookupGuestForAction(c, req.Guest, req.Nickname) // 404 и 409 пишет сам
+	user := lookupGuestForAction(c, req.GuestID, req.Guest, req.Nickname) // 404 и 409 пишет сам
 	if user == nil {
 		return
 	}
