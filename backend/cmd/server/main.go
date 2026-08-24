@@ -117,6 +117,7 @@ func main() {
 		me.GET("/kitchen/orders", handleGetMyKitchenOrders)          // мои заказы (Г7)
 		me.POST("/kitchen/orders", handleMyKitchenOrderCreate)       // заказ: кошелёк или у стойки (Г7)
 		me.POST("/kitchen/orders/:id/cancel", handleMyKitchenOrderCancel) // передумал, пока не приняли (Г7)
+		me.POST("/streak/freeze", handleBuyStreakFreeze)             // заморозка стрика за монеты (Г6-и4)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)

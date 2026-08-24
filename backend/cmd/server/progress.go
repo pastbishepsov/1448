@@ -83,14 +83,18 @@ func gatherPeriodicStats(userID uuid.UUID, now time.Time) playerStats {
 			}
 		}
 	}
-	// стрик: дни с визитом подряд, начиная с сегодняшних суток назад
+	// Стрик: дни подряд, начиная с сегодняшних суток назад. Г6-и4: день,
+	// прикрытый заморозкой, цепочку НЕ рвёт, но и визитом не считается —
+	// «неделя без пропусков» по-прежнему требует семи реальных приходов.
 	day := achDayStart(now)
 	for {
 		p, ok := byDay[day.Format("2006-01-02")]
-		if !ok || p.Sessions == 0 {
+		if !ok || (p.Sessions == 0 && !p.Frozen) {
 			break
 		}
-		s.VisitStreak++
+		if p.Sessions > 0 {
+			s.VisitStreak++
+		}
 		day = day.AddDate(0, 0, -1)
 	}
 	return s

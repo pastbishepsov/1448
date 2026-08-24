@@ -63,6 +63,9 @@ var settingBounds = map[string][2]int64{
 	"booking_min_level":         {0, 100},  // Г4-и1: бронь с этого уровня, 0 = всем
 	"max_active_bookings":       {0, 20},   // Г4-и2: живых броней на гостя, 0 = без лимита
 	"no_show_min":               {0, 120},  // Г4-и3: минут от начала брони до сгорания, 0 = выкл
+	"streak_freeze_cost":        {0, 100000}, // Г6-и4: цена заморозки стрика в монетах, 0 = механика выкл
+	"streak_freeze_max":         {0, 10},     // сколько заморозок держать в запасе
+	"streak_freeze_max_row":     {1, 7},      // сколько дней подряд можно прикрыть
 	"birthday_case_tier":        {0, 5},    // Г8-и4: ДР-кейс (0=выкл, 1=light … 5=gods)
 }
 
@@ -90,6 +93,9 @@ func currentSettings() gin.H {
 		"booking_min_level":         settingInt64("booking_min_level", bookingMinLevelDef),
 		"max_active_bookings":       settingInt64("max_active_bookings", maxActiveBookingsDef),
 		"no_show_min":               settingInt64("no_show_min", noShowMinDef),
+		"streak_freeze_cost":        settingInt64("streak_freeze_cost", streakFreezeCostDef),
+		"streak_freeze_max":         settingInt64("streak_freeze_max", streakFreezeMaxDef),
+		"streak_freeze_max_row":     settingInt64("streak_freeze_max_row", streakFreezeMaxRowDef),
 		"birthday_case_tier":        settingInt64("birthday_case_tier", 1),
 	}
 }

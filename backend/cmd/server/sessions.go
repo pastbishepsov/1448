@@ -228,7 +228,8 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 	// Г3-и3: посадка хозяина гасит его ближайшую бронь на этом ПК (seated).
 	claimed := claimBookingOnSeat(computer.ID, userID, now)
 
-	checkBirthdayGift(userID) // Г8-и4: сел играть в день рождения — подарок
+	checkBirthdayGift(userID)     // Г8-и4: сел играть в день рождения — подарок
+	applyStreakFreezes(userID, now) // Г6-и4: вернулся — заморозки латают пропуск
 
 	return http.StatusCreated, gin.H{
 		"session_id":         session.ID,

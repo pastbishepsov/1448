@@ -464,6 +464,15 @@
   .favpick button{border:1px solid rgba(255,255,255,.14); background:transparent; color:var(--txt); border-radius:9px; padding:5px 10px; cursor:pointer; font-size:12px}
   .favpick button.on{border-color:var(--acc); color:var(--acc); font-weight:700}
 
+  /* — стрик и заморозки (Г6-и4) — */
+  .streakcard{background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:11px 13px; margin-bottom:12px}
+  .streakcard .sd{font-size:19px; font-weight:800; letter-spacing:-.3px}
+  .streakcard .sf{display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap}
+  .streakcard .sf button{border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.05); color:var(--txt);
+                         border-radius:9px; padding:6px 11px; cursor:pointer; font-size:12px; font-weight:700; white-space:nowrap}
+  .streakcard .sf button:hover:not(:disabled){border-color:var(--acc)}
+  .streakcard .sf button:disabled{opacity:.45; cursor:default}
+
   /* — переключатель языка (Г9-и2) — */
   .langsw{display:flex; gap:6px; justify-content:center; margin-top:14px}
   .langsw button{border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:var(--dim);
@@ -1220,6 +1229,16 @@ const SH_RU = {
   rk_5: "Элита",
   rk_6: "Легенда",
   rk_7: "Бессмертный",
+  streak_title: "Стрик визитов",
+  streak_days: "{n} дн подряд",
+  streak_none: "Приходи два дня подряд — начнётся стрик",
+  streak_freeze_have: "❄ Заморозки: {n} — прикроют пропущенный день",
+  streak_freeze_none: "❄ Заморозок нет",
+  streak_freeze_buy: "❄ Купить за {n} {ic}",
+  streak_freeze_full: "❄ Запас полон",
+  streak_freeze_hint: "Заморозка сама прикроет пропуск, но визитом не считается: «неделя без пропусков» — всё равно семь реальных приходов.",
+  toast_freeze_ok: "❄ Заморозка куплена — теперь в запасе {n}",
+  ntf_streak_frozen: "❄ Пропуск прикрыт заморозкой ({n} дн) — стрик цел. Осталось: {left}",
   calc_min_short: "{n}м",
   calc_h_short: "{n}ч",
 };
@@ -1568,6 +1587,16 @@ const SH_EN = {
   rk_5: "Elite",
   rk_6: "Legend",
   rk_7: "Immortal",
+  streak_title: "Visit streak",
+  streak_days: "{n} days in a row",
+  streak_none: "Come two days in a row — the streak starts",
+  streak_freeze_have: "❄ Freezes: {n} — they cover a missed day",
+  streak_freeze_none: "❄ No freezes",
+  streak_freeze_buy: "❄ Buy for {n} {ic}",
+  streak_freeze_full: "❄ Stock is full",
+  streak_freeze_hint: "A freeze covers a miss by itself, but it does not count as a visit: “a week without misses” still means seven real visits.",
+  toast_freeze_ok: "❄ Freeze bought — {n} in stock now",
+  ntf_streak_frozen: "❄ A miss was covered by a freeze ({n} d) — the streak is safe. Left: {left}",
   calc_min_short: "{n}m",
   calc_h_short: "{n}h",
 };
@@ -1916,6 +1945,16 @@ const SH_PL = {
   rk_5: "Elita",
   rk_6: "Legenda",
   rk_7: "Nieśmiertelny",
+  streak_title: "Seria wizyt",
+  streak_days: "{n} dni z rzędu",
+  streak_none: "Przyjdź dwa dni z rzędu — zacznie się seria",
+  streak_freeze_have: "❄ Zamrożenia: {n} — przykryją opuszczony dzień",
+  streak_freeze_none: "❄ Brak zamrożeń",
+  streak_freeze_buy: "❄ Kup za {n} {ic}",
+  streak_freeze_full: "❄ Zapas pełny",
+  streak_freeze_hint: "Zamrożenie samo przykryje przerwę, ale nie liczy się jako wizyta: „tydzień bez przerw” to nadal siedem prawdziwych wizyt.",
+  toast_freeze_ok: "❄ Zamrożenie kupione — w zapasie {n}",
+  ntf_streak_frozen: "❄ Przerwa przykryta zamrożeniem ({n} dni) — seria cała. Zostało: {left}",
   calc_min_short: "{n}m",
   calc_h_short: "{n}h",
 };
@@ -2660,10 +2699,42 @@ function notifText(n){
       return T('ntf_kt_other', {n: nm});
     }
     case 'kitchen_unpaid': return T('ntf_kt_unpaid', {z: p.total_pln||0});
+    case 'streak_frozen': return T('ntf_streak_frozen', {n: p.days||1, left: p.left||0});
     case 'birthday_gift': return T('ntf_birthday', {t: p.case_tier||''});
   }
   return STR.ntf_default;
 }
+/* ── Г6-и4: стрик и заморозки. Заморозка покупается заранее и сама прикрывает
+   пропуск; визитом не считается — «неделя без пропусков» это по-прежнему семь
+   реальных приходов (Р11). ── */
+function streakCard(){
+  const st = achievements && achievements.streak;
+  if (!st) return '';
+  const f = st.freeze || {};
+  const days = st.days | 0;
+  const line = days > 0 ? T('streak_days', {n: days}) : esc(STR.streak_none);
+  if (!f.enabled) return `<div class="streakcard"><div class="muted">${esc(STR.streak_title)}</div><div class="sd">${line}</div></div>`;
+  const full = f.max > 0 && f.freezes >= f.max;
+  const canBuy = !full && me && me.coins_balance >= f.cost;
+  return `<div class="streakcard">
+    <div class="muted">${esc(STR.streak_title)}</div>
+    <div class="sd">${line}</div>
+    <div class="muted" style="font-size:12.5px; margin-top:4px">${f.freezes > 0
+      ? T('streak_freeze_have', {n: f.freezes}) : esc(STR.streak_freeze_none)}</div>
+    <div class="sf">
+      <button onclick="buyFreeze()" ${canBuy ? '' : 'disabled'} title="${esc(STR.streak_freeze_hint)}">
+        ${full ? esc(STR.streak_freeze_full) : T('streak_freeze_buy', {n: f.cost, ic: UI.coins})}</button>
+    </div>
+  </div>`;
+}
+async function buyFreeze(){
+  try{
+    const d = await api('/me/streak/freeze', {method:'POST'});
+    toast(T('toast_freeze_ok', {n: d.streak.freezes}));
+    await loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 function pumpNotif(){
   if (!notifQ.length){ notifPumping = false; return; }
   notifPumping = true;
@@ -3027,7 +3098,7 @@ function renderSide(){
     const near = a => { const p = a.progress; return p && p.target ? -(p.value/p.target) : 0; };
     const CATS = [['daily', STR.ach_cat_daily], ['weekly', STR.ach_cat_weekly],
                   ['monthly', STR.ach_cat_monthly], ['lifetime', STR.ach_cat_lifetime]];
-    el.innerHTML = `<div class="muted" style="margin-bottom:10px">${T('ach_head', {a: '<b class="green-t">' + achievements.earned_count + '</b>', h: '<b>' + Math.floor(achievements.hours_played||0) + '</b>'})}${resetTxt}</div>`
+    el.innerHTML = streakCard() + `<div class="muted" style="margin-bottom:10px">${T('ach_head', {a: '<b class="green-t">' + achievements.earned_count + '</b>', h: '<b>' + Math.floor(achievements.hours_played||0) + '</b>'})}${resetTxt}</div>`
       + CATS.map(([cat, lbl]) => {
         const items = list.filter(a => a.category === cat);
         if (!items.length) return '';

@@ -251,6 +251,9 @@ func handleGetMyAchievements(c *gin.Context) {
 	stats.DepositCount = userDepositCount(userID)
 	stats.BookingsCount = userBookingsCount(userID)
 
+	var me models.User
+	db.First(&me, "id = ?", uid) // Г6-и4: запас заморозок стрика — рядом со стриком
+
 	var defs []models.Achievement
 	db.Where("is_active = ?", true).Order("category").Find(&defs)
 
@@ -309,6 +312,8 @@ func handleGetMyAchievements(c *gin.Context) {
 		// Г5: фирменный резет — все периоды перещёлкиваются в 14:48 клуба
 		"resets_at":   nextAchReset(now),
 		"day_key":     achDayKey(now),
+		// Г6-и4: стрик и заморозки — клиенты рисуют карточку рядом с ачивками
+		"streak":      gin.H{"days": stats.VisitStreak, "freeze": streakInfo(&me)},
 		"period_keys": gin.H{"daily": periodKeyFor("daily", now), "weekly": periodKeyFor("weekly", now), "monthly": periodKeyFor("monthly", now)},
 	})
 }

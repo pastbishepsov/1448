@@ -750,6 +750,12 @@
           <input id="set_bkmax" class="input" type="number" min="0" max="20">
           <label class="muted" for="set_noshow">No-show: минут от начала брони до сгорания (0 — выкл)</label>
           <input id="set_noshow" class="input" type="number" min="0" max="120">
+          <label class="muted" for="set_frzcost">Заморозка стрика: цена в монетах (0 — механика выкл)</label>
+          <input id="set_frzcost" class="input" type="number" min="0" max="100000">
+          <label class="muted" for="set_frzmax">Заморозок в запасе у гостя</label>
+          <input id="set_frzmax" class="input" type="number" min="0" max="10">
+          <label class="muted" for="set_frzrow">Сколько дней подряд прикрывает заморозка</label>
+          <input id="set_frzrow" class="input" type="number" min="1" max="7">
           <label class="muted" for="set_bday">ДР-подарок: кейс имениннику (0 — выкл, 1 — light … 5 — gods; раз в год)</label>
           <input id="set_bday" class="input" type="number" min="0" max="5">
           <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
@@ -3004,6 +3010,8 @@ function paintCoins(d){
      <div class="kpis">
        ${repKpi('Сгорело у неактивных', (t.burned||0).toLocaleString('ru-RU'), k.burned,
                 {title:'у ' + (t.burned_guests||0) + ' гостей, которые давно не приходили', was:(w.burned||0).toLocaleString('ru-RU')})}
+       ${repKpi('Потрачено на плюшки', (t.spent||0).toLocaleString('ru-RU'), undefined,
+                {title:'заморозки стрика и т.п. (Г6-и4): ' + (t.spent_count||0) + ' покупок — обязательство гасится без выдачи времени'})}
        <div class="kpi" id="burnPreview" title="посчитано по текущим правилам">Сгорит сейчас <b>—</b></div>
        <button class="btn ghost mini" onclick="burnRunNow(this)"><span data-ic="clock"></span>Прогнать таяние</button>
      </div>
@@ -3673,6 +3681,9 @@ async function renderSettings(){
     document.getElementById('set_bkminlvl').value = d.settings.booking_min_level;
     document.getElementById('set_bkmax').value = d.settings.max_active_bookings;
     document.getElementById('set_noshow').value = d.settings.no_show_min;
+    document.getElementById('set_frzcost').value = d.settings.streak_freeze_cost;
+    document.getElementById('set_frzmax').value = d.settings.streak_freeze_max;
+    document.getElementById('set_frzrow').value = d.settings.streak_freeze_max_row;
     document.getElementById('set_bday').value = d.settings.birthday_case_tier;
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -3700,6 +3711,9 @@ async function saveSettings(){
     booking_min_level: parseInt(document.getElementById('set_bkminlvl').value),
     max_active_bookings: parseInt(document.getElementById('set_bkmax').value),
     no_show_min: parseInt(document.getElementById('set_noshow').value),
+    streak_freeze_cost: parseInt(document.getElementById('set_frzcost').value),
+    streak_freeze_max: parseInt(document.getElementById('set_frzmax').value),
+    streak_freeze_max_row: parseInt(document.getElementById('set_frzrow').value),
     birthday_case_tier: parseInt(document.getElementById('set_bday').value),
   };
   for (const k in body){

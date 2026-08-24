@@ -251,6 +251,8 @@ type coinsAgg struct {
 	GivenPLN     float64 `json:"given_pln"` // во сколько это обошлось клубу
 	Burned       int64   `json:"burned"`    // сгорело у неактивных (В4-3)
 	BurnedGuests int64   `json:"burned_guests"`
+	Spent        int64   `json:"spent"`     // потрачено на плюшки клуба (Г6-и4)
+	SpentCount   int64   `json:"spent_count"`
 }
 
 func aggCoins(p period) coinsAgg {
@@ -284,6 +286,17 @@ func aggCoins(p period) coinsAgg {
 		Select("COALESCE(SUM(coins),0) AS coins, COUNT(DISTINCT user_id) AS guests").
 		Where("created_at >= ? AND created_at < ?", p.From, p.To).Scan(&burn)
 	a.Burned, a.BurnedGuests = burn.Coins, burn.Guests
+
+	// Г6-и4: траты на клубные плюшки (заморозка стрика) — третья причина,
+	// по которой обязательства уменьшаются. Без строки отчёт бы не сошёлся.
+	var spend struct {
+		Coins int64
+		Cnt   int64
+	}
+	db.Model(&models.CoinSpend{}).
+		Select("COALESCE(SUM(coins),0) AS coins, COUNT(*) AS cnt").
+		Where("created_at >= ? AND created_at < ?", p.From, p.To).Scan(&spend)
+	a.Spent, a.SpentCount = spend.Coins, spend.Cnt
 	return a
 }
 
