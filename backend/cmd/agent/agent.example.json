@@ -8,6 +8,16 @@
   "lock_action": "none",
   "kiosk_url": "",
 
+  "cleanup": {
+    "enabled": false,
+    "dry_run": true,
+    "kill": ["steam.exe", "Discord.exe", "RiotClientServices.exe", "EpicGamesLauncher.exe"],
+    "clear_dirs": ["C:\\Users\\guest\\Downloads", "C:\\Users\\guest\\Desktop\\_guest"],
+    "clear_temp": true,
+    "empty_recycle_bin": true,
+    "clear_clipboard": true
+  },
+
   "apps": {
     "valorant": {"name": "Valorant (локальный путь)", "target": "C:\\Riot Games\\Riot Client\\RiotClientServices.exe", "args": ["--launch-product=valorant", "--launch-patchline=live"]},
     "nvidia":   {"name": "NVIDIA (локальный путь)",   "target": "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\CEF\\NVIDIA app.exe"}

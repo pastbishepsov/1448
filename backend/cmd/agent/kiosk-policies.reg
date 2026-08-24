@@ -1,0 +1,39 @@
+Windows Registry Editor Version 5.00
+
+; 14:48 — комплект киоск-политик для гостевого ПК (трек Г, Г9-и5, фаза 1).
+;
+; Импортируется установщиком от администратора: reg import kiosk-policies.reg
+; Закрывает то, что закрывается БЕЗ Windows Enterprise. Полное отключение
+; Ctrl+Alt+Del и Диспетчера задач — только Shell Launcher (фаза 2, Enterprise);
+; см. таблицу «закрыто софтом / ждёт фазы 2» в shell/README.md.
+;
+; Применяется к машине целиком (HKLM). Откат — kiosk-policies-undo.reg.
+
+; ── Диспетчер задач: выключить (гость не снимет киоск) ──
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System]
+"DisableTaskMgr"=dword:00000001
+
+; ── Экран блокировки / смена пароля / выход — гостю не нужны ──
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System]
+"DisableLockWorkstation"=dword:00000001
+"DisableChangePassword"=dword:00000001
+
+; ── Explorer: убрать «Выполнить», контекст-меню на панели, автозапуск носителей ──
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer]
+"NoRun"=dword:00000001
+"NoAutorun"=dword:00000001
+"NoDriveTypeAutoRun"=dword:000000ff
+"NoWinKeys"=dword:00000001
+
+; ── Гашение хоткеев спец-возможностей на уровне машины (дублирует агента) ──
+; Залипание клавиш (5×Shift), фильтрация (Shift 8 сек), озвучивание (NumLock 5 сек)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Accessibility\StickyKeys]
+"Flags"="506"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Accessibility\Keyboard Response]
+"Flags"="122"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Accessibility\ToggleKeys]
+"Flags"="58"
+
+; ── Edge/IE «первый запуск» и лишние подсказки, чтобы не всплывали поверх игры ──
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
+"HideFirstRunExperience"=dword:00000001

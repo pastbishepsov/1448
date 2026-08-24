@@ -51,6 +51,7 @@ type Config struct {
 	LockAction string              `json:"lock_action"` // none | lock_windows | kiosk
 	KioskURL   string              `json:"kiosk_url"`   // для lock_action=kiosk
 	Apps       map[string]AppEntry `json:"apps"`        // локальный allowlist (главнее каталога)
+	Cleanup    CleanupConfig       `json:"cleanup"`     // Г9-и4: очистка между гостями (cleanup.go)
 }
 
 func defaultConfig() *Config {
@@ -355,9 +356,11 @@ func (a *agent) handleCommand(msg wsMessage) {
 	switch msg.Type {
 	case "session_start":
 		log.Printf("Команда: session_start %s", string(msg.Payload))
+		disableAccessibilityShortcuts() // Г9-и3: 5×Shift не роняет гостя в диалог Windows
 	case "session_end":
 		log.Printf("Команда: session_end %s", string(msg.Payload))
 		a.applyLockAction()
+		go runCleanup(a.cfg.Cleanup) // Г9-и4: очистка между гостями — фоном, экран уже заблокирован
 	case "xp_update":
 		// Пробрасывать некуда: браузерный шелл живёт поллингом и
 		// уведомлениями (Б4); XP-оверлей — задача C#-киоска (shell/).
@@ -414,6 +417,7 @@ func main() {
 		log.Printf("⚠ %v — использую дефолты (allowlist пуст!)", err)
 	}
 	a := &agent{cfg: cfg, remote: map[string]AppEntry{}}
+	disableAccessibilityShortcuts() // Г9-и3: и сразу на старте — ПК клубный, «как было» не нужно
 	go a.runWS()
 	go a.runCatalog()
 

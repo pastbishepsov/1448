@@ -1,0 +1,26 @@
+Windows Registry Editor Version 5.00
+
+; 14:48 — откат киоск-политик (Г9-и5). Возвращает дефолты Windows.
+; reg import kiosk-policies-undo.reg от администратора, затем перезагрузка.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System]
+"DisableTaskMgr"=-
+"DisableLockWorkstation"=-
+"DisableChangePassword"=-
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer]
+"NoRun"=-
+"NoAutorun"=-
+"NoDriveTypeAutoRun"=-
+"NoWinKeys"=-
+
+; Спец-возможности — вернуть заводские Flags (510/126/62 = хоткеи включены)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Accessibility\StickyKeys]
+"Flags"="510"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Accessibility\Keyboard Response]
+"Flags"="126"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Accessibility\ToggleKeys]
+"Flags"="62"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
+"HideFirstRunExperience"=-

@@ -119,6 +119,7 @@ type patchMeRequest struct {
 	Telegram      *string   `json:"telegram"`       // с @ или без; "" = стереть
 	Source        *string   `json:"source"`         // «откуда узнал»; "" = стереть
 	FavoriteGames *[]string `json:"favorite_games"` // до 3 id игр каталога; [] = стереть
+	Language      *string   `json:"language"`       // Г9: ru|en|pl — пресет, едет за гостем
 }
 
 // profileStats — бинарные факты анкеты для условий ачивок Г8 (сид 040).
@@ -151,7 +152,8 @@ func handlePatchMe(c *gin.Context) {
 	}
 
 	if req.Nickname == nil && req.AvatarID == nil && req.BirthDate == nil &&
-		req.Discord == nil && req.Telegram == nil && req.Source == nil && req.FavoriteGames == nil {
+		req.Discord == nil && req.Telegram == nil && req.Source == nil &&
+		req.FavoriteGames == nil && req.Language == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "empty", "message": "Нечего обновлять"})
 		return
 	}
@@ -171,6 +173,14 @@ func handlePatchMe(c *gin.Context) {
 	profileTouched := false
 	if req.Nickname != nil {
 		updates["nickname"] = strings.TrimSpace(*req.Nickname)
+	}
+	if req.Language != nil { // Г9: язык — пресет, не «данные» (без ачивок)
+		l := strings.ToLower(strings.TrimSpace(*req.Language))
+		if l != "ru" && l != "en" && l != "pl" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_language", "message": "Язык: ru, en или pl"})
+			return
+		}
+		updates["language"] = l
 	}
 	if req.AvatarID != nil {
 		updates["avatar_id"] = *req.AvatarID

@@ -53,6 +53,7 @@ type User struct {
 	Source           *string    `json:"source,omitempty"     gorm:"size:32"`
 	FavoriteGames    []string   `json:"favorite_games"       gorm:"serializer:json;type:jsonb;not null;default:'[]'"`
 	BirthdayGiftYear int        `json:"-"                    gorm:"default:0"` // год последней выдачи ДР-подарка
+	Language         string     `json:"language"             gorm:"size:2;not null;default:ru"` // Г9: ru|en|pl, едет за гостем
 
 	RegisteredAt time.Time `json:"registered_at"`
 	LastActiveAt time.Time `json:"last_active_at"`
