@@ -705,6 +705,28 @@
   </div>
 </div>
 
+<!-- Е0-и5в: обязательная смена временного пароля. Пока гость не задал
+     свой, он не начинает сессию (сервер отвечает 409) — экран закрывать
+     нечем, кроме собственно смены или выхода. -->
+<div id="pwdOverlay" class="hidden" style="position:fixed; inset:0; z-index:71; background:rgba(4,4,5,.9); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; text-align:center">
+  <div style="max-width:420px; width:92%">
+    <div style="font-size:46px">🔑</div>
+    <div style="font-size:26px; font-weight:800; margin-top:10px" data-str="pwd_title"></div>
+    <div class="muted" style="margin-top:8px" data-str="pwd_sub"></div>
+    <input id="pwdCur" class="input" type="password" autocomplete="current-password"
+           style="width:100%; margin-top:14px" data-str-ph="pwd_ph_cur">
+    <input id="pwdNew" class="input" type="password" autocomplete="new-password"
+           style="width:100%; margin-top:8px" data-str-ph="pwd_ph_new">
+    <input id="pwdNew2" class="input" type="password" autocomplete="new-password"
+           style="width:100%; margin-top:8px" data-str-ph="pwd_ph_new2">
+    <div id="pwdErr" class="muted" style="color:var(--acc); margin-top:8px; min-height:18px"></div>
+    <button id="pwdBtn" class="btn" style="width:100%; justify-content:center; margin-top:6px"
+            onclick="submitPwdChange()" data-str="pwd_btn"></button>
+    <button class="btn ghost" style="width:100%; justify-content:center; margin-top:8px"
+            onclick="logout()" data-str="pwd_logout"></button>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <!-- Б3 (ADMIN.md): панель связи с админом — вызов + переписка -->
@@ -1221,6 +1243,20 @@ const SH_RU = {
   ntf_kt_unpaid: "🧾 Не забудь рассчитаться за кухню у стойки: {z} zł",
   ntf_birthday: "🎂 С днём рождения! Клуб дарит кейс {t} — открой его во вкладке «Кейсы»",
   ntf_default: "🔔 Обновление аккаунта",
+  ntf_profile: "🔔 Админ обновил твои данные: {f}",
+  ntf_pwd_reset: "🔑 Пароль сброшен у стойки — задай свой при входе",
+  fld_nickname: "никнейм", fld_first_name: "имя", fld_last_name: "фамилия",
+  fld_phone: "телефон", fld_email: "e-mail",
+  pwd_title: "Задай свой пароль",
+  pwd_sub: "Временный пароль знает и админ, который его выдал. Пока не сменишь — сессию не начать.",
+  pwd_ph_cur: "Временный пароль",
+  pwd_ph_new: "Новый пароль (мин. 6)",
+  pwd_ph_new2: "Повтори новый пароль",
+  pwd_btn: "Сохранить пароль",
+  pwd_logout: "Выйти",
+  pwd_mismatch: "Пароли не совпадают",
+  pwd_short: "Пароль: минимум 6 символов",
+  pwd_done: "✓ Пароль сменён — можно играть",
   ach_reward_case: "+ кейс {t}",
   rk_1: "Новичок",
   rk_2: "Завсегдатай",
@@ -1579,6 +1615,20 @@ const SH_EN = {
   ntf_kt_unpaid: "🧾 Don’t forget to pay for the kitchen at the desk: {z} zł",
   ntf_birthday: "🎂 Happy birthday! The club gifts you a {t} case — open it in the “Cases” tab",
   ntf_default: "🔔 Account update",
+  ntf_profile: "🔔 An admin updated your details: {f}",
+  ntf_pwd_reset: "🔑 Your password was reset at the desk — set your own when you sign in",
+  fld_nickname: "nickname", fld_first_name: "first name", fld_last_name: "last name",
+  fld_phone: "phone", fld_email: "e-mail",
+  pwd_title: "Set your own password",
+  pwd_sub: "The temporary password is also known to the admin who issued it. You can’t start a session until you change it.",
+  pwd_ph_cur: "Temporary password",
+  pwd_ph_new: "New password (min. 6)",
+  pwd_ph_new2: "Repeat new password",
+  pwd_btn: "Save password",
+  pwd_logout: "Sign out",
+  pwd_mismatch: "Passwords don’t match",
+  pwd_short: "Password: at least 6 characters",
+  pwd_done: "✓ Password changed — you’re good to play",
   ach_reward_case: "+ {t} case",
   rk_1: "Rookie",
   rk_2: "Regular",
@@ -1937,6 +1987,20 @@ const SH_PL = {
   ntf_kt_unpaid: "🧾 Nie zapomnij zapłacić za kuchnię przy ladzie: {z} zł",
   ntf_birthday: "🎂 Wszystkiego najlepszego! Klub daje ci skrzynkę {t} — otwórz ją w zakładce „Skrzynki”",
   ntf_default: "🔔 Aktualizacja konta",
+  ntf_profile: "🔔 Administrator zaktualizował twoje dane: {f}",
+  ntf_pwd_reset: "🔑 Hasło zostało zresetowane przy ladzie — ustaw własne przy logowaniu",
+  fld_nickname: "nick", fld_first_name: "imię", fld_last_name: "nazwisko",
+  fld_phone: "telefon", fld_email: "e-mail",
+  pwd_title: "Ustaw własne hasło",
+  pwd_sub: "Hasło tymczasowe zna też administrator, który je wydał. Dopóki go nie zmienisz, nie zaczniesz sesji.",
+  pwd_ph_cur: "Hasło tymczasowe",
+  pwd_ph_new: "Nowe hasło (min. 6)",
+  pwd_ph_new2: "Powtórz nowe hasło",
+  pwd_btn: "Zapisz hasło",
+  pwd_logout: "Wyloguj się",
+  pwd_mismatch: "Hasła nie są takie same",
+  pwd_short: "Hasło: minimum 6 znaków",
+  pwd_done: "✓ Hasło zmienione — można grać",
   ach_reward_case: "+ skrzynka {t}",
   rk_1: "Nowicjusz",
   rk_2: "Bywalec",
@@ -2262,6 +2326,45 @@ async function submitAuth(){
   btn.disabled = false;
 }
 
+/* Е0-и5в: экран обязательной смены пароля. Показывается, когда админ выдал
+   временный (must_change_password): играть с ним нельзя, потому что его знает
+   и тот, кто выдавал. */
+function paintPwdGate(){
+  const ov = document.getElementById('pwdOverlay');
+  if (!ov) return;
+  const need = !!(me && me.must_change_password);
+  ov.classList.toggle('hidden', !need);
+  if (need){
+    const cur = document.getElementById('pwdCur');
+    if (cur && document.activeElement !== cur) cur.focus();
+  }
+}
+async function submitPwdChange(){
+  const cur = document.getElementById('pwdCur').value;
+  const n1 = document.getElementById('pwdNew').value;
+  const n2 = document.getElementById('pwdNew2').value;
+  const err = document.getElementById('pwdErr');
+  const btn = document.getElementById('pwdBtn');
+  err.textContent = '';
+  if (n1 !== n2){ err.textContent = STR.pwd_mismatch; return; }
+  if (n1.length < 6){ err.textContent = STR.pwd_short; return; }
+  btn.disabled = true;
+  try{
+    const d = await api('/me/password', {method:'POST',
+      body: JSON.stringify({current_password: cur, new_password: n1})});
+    // Сервер отозвал прежние токены своей же отсечкой — берём свежую пару.
+    setTokens(d.access_token, d.refresh_token);
+    me = d.user || me;
+    document.getElementById('pwdCur').value = '';
+    document.getElementById('pwdNew').value = '';
+    document.getElementById('pwdNew2').value = '';
+    paintPwdGate();
+    toast(STR.pwd_done);
+    loadAll();
+  }catch(e){ err.textContent = e.message || STR.err_generic; }
+  btn.disabled = false;
+}
+
 function logout(){
   const r = tokens().r; // отзываем refresh на сервере (fire-and-forget)
   if (r) fetch(API + '/auth/logout', {method:'POST', headers:{'Content-Type':'application/json'},
@@ -2273,12 +2376,15 @@ function logout(){
   document.getElementById('lockOverlay').classList.remove('show');
   document.getElementById('shellView').classList.add('hidden');
   document.getElementById('authView').classList.remove('hidden');
+  const pov = document.getElementById('pwdOverlay');
+  if (pov) pov.classList.add('hidden'); // Е0-и5в: вышли — экран смены не висит
 }
 
 /* ═══════════════ SHELL ═══════════════ */
 function enterShell(){
   document.getElementById('authView').classList.add('hidden');
   document.getElementById('shellView').classList.remove('hidden');
+  paintPwdGate(); // Е0-и5в: вошёл по временному паролю — сразу просим свой
   FX.watchFPS();
   loadCatalog();
   loadClubs();
@@ -2295,6 +2401,7 @@ async function loadAll(){
     ]);
     const prevLvl = me ? me.level : null;
     me = m.user || m;
+    paintPwdGate(); // Е0-и5в: флаг мог появиться, пока гость сидел за ПК
     if (applyProfileLang(me)) return; // Г9-и2: язык приехал из аккаунта
     cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
     sessions = ss.sessions || [];
@@ -2665,6 +2772,10 @@ async function foodCancel(id){
 }
 setInterval(() => { if (me && curTab === 'food') loadKitchen(); }, 15000);
 
+/* Е0-и5в: подпись поля профиля на языке гостя. Неизвестный ключ показываем
+   как есть — лучше сырое слово, чем пустое место. */
+function fieldLabel(k){ return STR['fld_' + k] || k; }
+
 function notifText(n){
   const p = n.payload || {};
   switch (n.type){
@@ -2701,6 +2812,11 @@ function notifText(n){
     case 'kitchen_unpaid': return T('ntf_kt_unpaid', {z: p.total_pln||0});
     case 'streak_frozen': return T('ntf_streak_frozen', {n: p.days||1, left: p.left||0});
     case 'birthday_gift': return T('ntf_birthday', {t: p.case_tier||''});
+    // Е0: свои данные менял не гость. Сервер шлёт СТАБИЛЬНЫЕ ключи полей,
+    // подпись выбирает клиент — иначе на английском экране всплыло бы
+    // русское «телефон».
+    case 'profile_updated': return T('ntf_profile', {f: (p.fields||[]).map(fieldLabel).join(', ')});
+    case 'password_reset': return STR.ntf_pwd_reset;
   }
   return STR.ntf_default;
 }

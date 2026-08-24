@@ -627,6 +627,26 @@
   </div>
 </div>
 
+<!-- Е0-и5в: обязательная смена временного пароля. Намеренно НЕ шторка:
+     шторку смахивают, а этот экран закрывается только сменой или выходом —
+     с временным паролем гость всё равно не начнёт сессию (сервер даёт 409). -->
+<div id="pwdGate" class="hidden" style="position:fixed; inset:0; z-index:80; background:rgba(4,4,5,.94); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; padding:22px; text-align:center">
+  <div style="width:100%; max-width:360px">
+    <div style="font-size:42px">🔑</div>
+    <div style="font-size:22px; font-weight:800; margin-top:8px" data-str="pwd_title"></div>
+    <div class="muted" style="margin-top:8px; line-height:1.5" data-str="pwd_sub"></div>
+    <input id="pwdCur" class="input" type="password" autocomplete="current-password"
+           style="width:100%; margin-top:14px" data-str-ph="pwd_ph_cur">
+    <input id="pwdNew" class="input" type="password" autocomplete="new-password"
+           style="width:100%; margin-top:8px" data-str-ph="pwd_ph_new">
+    <input id="pwdNew2" class="input" type="password" autocomplete="new-password"
+           style="width:100%; margin-top:8px" data-str-ph="pwd_ph_new2">
+    <div id="pwdErr" class="muted" style="color:var(--acc); margin-top:8px; min-height:18px"></div>
+    <button id="pwdBtn" class="btn" style="width:100%" onclick="submitPwdChange()" data-str="pwd_btn"></button>
+    <button class="btn ghost" style="width:100%; margin-top:8px" onclick="logout()" data-str="pwd_logout"></button>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script>
@@ -790,6 +810,20 @@ const STR_RU = {
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 Тебе выдан кейс {t}',
   ntf_default: '🔔 Обновление аккаунта',
+  ntf_profile: '🔔 Админ обновил твои данные: {f}',
+  ntf_pwd_reset: '🔑 Пароль сброшен у стойки — задай свой при входе',
+  fld_nickname: 'никнейм', fld_first_name: 'имя', fld_last_name: 'фамилия',
+  fld_phone: 'телефон', fld_email: 'e-mail',
+  pwd_title: 'Задай свой пароль',
+  pwd_sub: 'Временный пароль знает и админ, который его выдал. Пока не сменишь — сессию не начать.',
+  pwd_ph_cur: 'Временный пароль',
+  pwd_ph_new: 'Новый пароль (мин. 6)',
+  pwd_ph_new2: 'Повтори новый пароль',
+  pwd_btn: 'Сохранить пароль',
+  pwd_logout: 'Выйти',
+  pwd_mismatch: 'Пароли не совпадают',
+  pwd_short: 'Пароль: минимум 6 символов',
+  pwd_done: '✓ Пароль сменён — можно играть',
   ntf_bal_low: '⏳ Осталось ~{m} мин — пополни у стойки',
   ntf_bal_zero: '🛑 Деньги кончились — сессия завершится через {g} мин',
   wal_balance: 'zł в кошельке',
@@ -990,6 +1024,20 @@ const STR_EN = {
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 You got a {t} case',
   ntf_default: '🔔 Account update',
+  ntf_profile: '🔔 An admin updated your details: {f}',
+  ntf_pwd_reset: '🔑 Your password was reset at the desk — set your own when you sign in',
+  fld_nickname: 'nickname', fld_first_name: 'first name', fld_last_name: 'last name',
+  fld_phone: 'phone', fld_email: 'e-mail',
+  pwd_title: 'Set your own password',
+  pwd_sub: 'The temporary password is also known to the admin who issued it. You can’t start a session until you change it.',
+  pwd_ph_cur: 'Temporary password',
+  pwd_ph_new: 'New password (min. 6)',
+  pwd_ph_new2: 'Repeat new password',
+  pwd_btn: 'Save password',
+  pwd_logout: 'Sign out',
+  pwd_mismatch: 'Passwords don’t match',
+  pwd_short: 'Password: at least 6 characters',
+  pwd_done: '✓ Password changed — you’re good to play',
   ntf_bal_low: '⏳ ~{m} min left — top up at the desk',
   ntf_bal_zero: '🛑 Money ran out — the session ends in {g} min',
   wal_balance: 'zł in wallet',
@@ -1188,6 +1236,20 @@ const STR_PL = {
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 Dostałeś skrzynkę {t}',
   ntf_default: '🔔 Aktualizacja konta',
+  ntf_profile: '🔔 Administrator zaktualizował twoje dane: {f}',
+  ntf_pwd_reset: '🔑 Hasło zostało zresetowane przy ladzie — ustaw własne przy logowaniu',
+  fld_nickname: 'nick', fld_first_name: 'imię', fld_last_name: 'nazwisko',
+  fld_phone: 'telefon', fld_email: 'e-mail',
+  pwd_title: 'Ustaw własne hasło',
+  pwd_sub: 'Hasło tymczasowe zna też administrator, który je wydał. Dopóki go nie zmienisz, nie zaczniesz sesji.',
+  pwd_ph_cur: 'Hasło tymczasowe',
+  pwd_ph_new: 'Nowe hasło (min. 6)',
+  pwd_ph_new2: 'Powtórz nowe hasło',
+  pwd_btn: 'Zapisz hasło',
+  pwd_logout: 'Wyloguj się',
+  pwd_mismatch: 'Hasła nie są takie same',
+  pwd_short: 'Hasło: minimum 6 znaków',
+  pwd_done: '✓ Hasło zmienione — można grać',
   ntf_bal_low: '⏳ Zostało ~{m} min — doładuj przy ladzie',
   ntf_bal_zero: '🛑 Środki się skończyły — sesja zakończy się za {g} min',
   wal_balance: 'zł w portfelu',
@@ -1339,6 +1401,37 @@ async function submitAuth(){
   btn.disabled = false;
 }
 
+/* Е0-и5в: гейт обязательной смены пароля — админ выдал временный, и пока
+   гость не задал свой, играть нельзя: временный знает и тот, кто его выдал. */
+function paintPwdGate(){
+  const el = document.getElementById('pwdGate');
+  if (!el) return;
+  el.classList.toggle('hidden', !(me && me.must_change_password));
+}
+async function submitPwdChange(){
+  const cur = document.getElementById('pwdCur').value;
+  const n1 = document.getElementById('pwdNew').value;
+  const n2 = document.getElementById('pwdNew2').value;
+  const err = document.getElementById('pwdErr');
+  const btn = document.getElementById('pwdBtn');
+  err.textContent = '';
+  if (n1 !== n2){ err.textContent = STR.pwd_mismatch; return; }
+  if (n1.length < 6){ err.textContent = STR.pwd_short; return; }
+  btn.disabled = true;
+  try{
+    const d = await api('/me/password', {method:'POST',
+      body: JSON.stringify({current_password: cur, new_password: n1})});
+    // Сервер отозвал прежние токены своей отсечкой — берём свежую пару.
+    setTokens(d.access_token, d.refresh_token);
+    me = d.user || me;
+    ['pwdCur','pwdNew','pwdNew2'].forEach(id => { document.getElementById(id).value = ''; });
+    paintPwdGate();
+    toast(STR.pwd_done);
+    loadMe();
+  }catch(e){ err.textContent = e.message || T('toast_err', {m: ''}); }
+  btn.disabled = false;
+}
+
 function logout(){
   const r = tokens().r; // отзываем refresh на сервере (fire-and-forget)
   if (r) fetch(API + '/auth/logout', {method:'POST', headers:{'Content-Type':'application/json'},
@@ -1347,6 +1440,8 @@ function logout(){
   stopPolls(); stopLive(); stopComms(); closeSheet(); closeTopup(); closeInstall();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('authView').classList.remove('hidden');
+  const g = document.getElementById('pwdGate');
+  if (g) g.classList.add('hidden'); // Е0-и5в: вышли — гейт не висит поверх входа
 }
 
 /* ═══ ПРИЛОЖЕНИЕ ═══ */
@@ -1370,6 +1465,7 @@ async function loadMe(){
       location.reload(); // Г9: язык профиля едет за гостем — применяем целиком
       return;
     }
+    paintPwdGate(); // Е0-и5в: флаг мог появиться, пока приложение было открыто
     renderTop();
   }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
 }
@@ -2521,6 +2617,12 @@ function ntfText(n){
       return T('ntf_bk_remind', {t: p.start_time ? hm(p.start_time) : '—', m: p.minutes_left || 0});
     case 'booking_no_show':
       return T('ntf_bk_noshow', {t: p.start_time ? hm(p.start_time) : '—'});
+    // Е0: подпись поля выбирает клиент — сервер шлёт стабильные ключи,
+    // иначе на английском экране всплыло бы русское «телефон».
+    case 'profile_updated':
+      return T('ntf_profile', {f: (p.fields || []).map(k => STR['fld_' + k] || k).join(', ')});
+    case 'password_reset':
+      return STR.ntf_pwd_reset;
   }
   return STR.ntf_default;
 }
@@ -2548,7 +2650,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-24.8';
+const APP_VER = '2026-08-24.9';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

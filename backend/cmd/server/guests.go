@@ -67,6 +67,7 @@ func handleAdminGuestUpdate(c *gin.Context) {
 
 	updates := map[string]any{}
 	var fields []string // человеческие имена полей — для аудита, БЕЗ значений
+	var keys []string   // стабильные ключи — для клиента: он переводит их сам
 
 	if req.Nickname != nil {
 		if ok, code := validateProfilePatch(req.Nickname, nil); !ok {
@@ -79,7 +80,7 @@ func handleAdminGuestUpdate(c *gin.Context) {
 			return
 		}
 		updates["nickname"] = strings.TrimSpace(*req.Nickname)
-		fields = append(fields, "ник")
+		fields, keys = append(fields, "ник"), append(keys, "nickname")
 	}
 
 	for _, f := range []struct {
@@ -105,7 +106,7 @@ func handleAdminGuestUpdate(c *gin.Context) {
 			}
 			updates[f.col] = n
 		}
-		fields = append(fields, f.label)
+		fields, keys = append(fields, f.label), append(keys, f.col)
 	}
 
 	if req.Phone != nil {
@@ -120,7 +121,7 @@ func handleAdminGuestUpdate(c *gin.Context) {
 			}
 			updates["phone"] = p
 		}
-		fields = append(fields, "телефон")
+		fields, keys = append(fields, "телефон"), append(keys, "phone")
 	}
 
 	if req.Email != nil {
@@ -134,7 +135,7 @@ func handleAdminGuestUpdate(c *gin.Context) {
 			}
 			updates["email"] = e
 		}
-		fields = append(fields, "e-mail")
+		fields, keys = append(fields, "e-mail"), append(keys, "email")
 	}
 
 	if len(updates) == 0 {
@@ -154,9 +155,11 @@ func handleAdminGuestUpdate(c *gin.Context) {
 
 	target := user.ID
 	logAdminAction(c, "guest_update", &target, "поля: "+strings.Join(fields, ", "))
-	// Гостю — тост: свои данные менял не он (строки клиента — Е0-и5, до них
-	// шелл покажет общий текст ветки default в notifText).
-	notifyUser(user.ID, "profile_updated", map[string]any{"fields": fields})
+	// Гостю — тост: свои данные менял не он. В payload уходят СТАБИЛЬНЫЕ
+	// ключи, а не русские подписи из аудита: гость может сидеть на английском
+	// или польском, и подпись поля обязан выбрать его клиент, а не сервер
+	// (Е0-и5в).
+	notifyUser(user.ID, "profile_updated", map[string]any{"fields": keys})
 
 	var fresh models.User
 	if err := db.First(&fresh, "id = ?", user.ID).Error; err != nil {

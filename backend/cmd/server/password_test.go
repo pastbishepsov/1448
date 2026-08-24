@@ -65,56 +65,60 @@ func TestValidatePasswordLen(t *testing.T) {
 	}
 }
 
-// Отсечка округляется ВВЕРХ: секунда, в которую меняли пароль, умирает
-// целиком. Округление вниз оставляло дыру — refresh, выданный в ту же секунду,
-// что и сброс, переживал отсечку (поймано живым e2e).
+// Отсечка берётся БЕЗ округления: точность даёт claim iat_ms. Оба прошлых
+// захода (округление вниз, потом вверх) ломались о гранулярность секунды —
+// история в комментарии к passwordCutoff.
 func TestPasswordCutoff(t *testing.T) {
-	base := time.Date(2026, 8, 24, 14, 48, 7, 0, time.UTC)
+	base := time.Date(2026, 8, 24, 14, 48, 7, 400*int(time.Millisecond), time.UTC)
+	if got := passwordCutoff(base); !got.Equal(base) {
+		t.Errorf("passwordCutoff(%v) = %v, ждали тот же момент", base, got)
+	}
+}
+
+// Главные инварианты отсечки: выданное РАНЬШЕ мертво, выданное ПОЗЖЕ и в тот
+// же момент — живо, даже если всё уместилось в одну секунду.
+func TestTokenIssuedBeforeMillis(t *testing.T) {
+	cut := time.Date(2026, 8, 24, 14, 48, 7, 400*int(time.Millisecond), time.UTC)
+	sec := cut.Unix()
 	cases := []struct {
-		name string
-		now  time.Time
-		want time.Time
+		name  string
+		iatMs int64
+		want  bool
 	}{
-		{"ровно на секунде", base, base.Add(time.Second)},
-		{"середина секунды", base.Add(400 * time.Millisecond), base.Add(time.Second)},
-		{"почти следующая", base.Add(999 * time.Millisecond), base.Add(time.Second)},
-		{"следующая секунда", base.Add(time.Second), base.Add(2 * time.Second)},
+		{"выдан за 300 мс до отсечки — мёртв", cut.UnixMilli() - 300, true},
+		{"выдан на 1 мс раньше — мёртв", cut.UnixMilli() - 1, true},
+		{"подписан моментом отсечки — жив", cut.UnixMilli(), false},
+		{"выдан на 1 мс позже — жив", cut.UnixMilli() + 1, false},
+		// Ровно этот случай ломался: вход в ту же секунду, что и сброс.
+		{"вход через 200 мс после сброса — жив", cut.UnixMilli() + 200, false},
 	}
 	for _, tc := range cases {
-		got := passwordCutoff(tc.now)
-		if !got.Equal(tc.want) {
-			t.Errorf("%s: passwordCutoff(%v) = %v, ждали %v", tc.name, tc.now, got, tc.want)
-		}
-		// Главный инвариант: токен, выданный в секунду смены (и раньше),
-		// отсечку НЕ переживает; подписанный самой отсечкой — переживает.
-		if !tokenIssuedBefore(tc.now.Unix(), &got) {
-			t.Errorf("%s: токен из секунды смены пережил отсечку", tc.name)
-		}
-		if tokenIssuedBefore(got.Unix(), &got) {
-			t.Errorf("%s: пара, подписанная отсечкой, себя же и отвергла", tc.name)
+		if got := tokenIssuedBefore(sec, tc.iatMs, &cut); got != tc.want {
+			t.Errorf("%s: got %v, ждали %v", tc.name, got, tc.want)
 		}
 	}
 }
 
-// Отсечка токенов. Равенство секунд — «не раньше»: на нём держится пара,
-// выданная в момент отсечки.
-func TestTokenIssuedBefore(t *testing.T) {
-	base := time.Date(2026, 8, 24, 14, 48, 0, 0, time.UTC)
+// Легаси-токены (выданы до Е0-и5в, без iat_ms) судим по секундам и решаем в
+// пользу безопасности: такой токен старый по определению, и лишний перелогин
+// дешевле доступа, пережившего сброс пароля.
+func TestTokenIssuedBeforeLegacy(t *testing.T) {
+	cut := time.Date(2026, 8, 24, 14, 48, 7, 0, time.UTC)
 	cases := []struct {
 		name string
 		iat  int64
 		from *time.Time
 		want bool
 	}{
-		{"отсечки нет — пускаем всех", base.Unix() - 9999, nil, false},
-		{"выдан раньше отсечки", base.Unix() - 1, &base, true},
-		{"выдан в ту же секунду", base.Unix(), &base, false},
-		{"выдан позже отсечки", base.Unix() + 1, &base, false},
-		{"iat прочитать не вышло", 0, &base, false},
-		{"старый токен без iat и без отсечки", 0, nil, false},
+		{"отсечки нет — пускаем всех", cut.Unix() - 9999, nil, false},
+		{"выдан раньше отсечки — мёртв", cut.Unix() - 1, &cut, true},
+		{"та же секунда — считаем старым (без миллисекунд не отличить)", cut.Unix(), &cut, true},
+		{"выдан позже отсечки — жив", cut.Unix() + 1, &cut, false},
+		{"ни iat, ни iat_ms — судить не по чему", 0, &cut, false},
+		{"нет ни того, ни отсечки", 0, nil, false},
 	}
 	for _, tc := range cases {
-		if got := tokenIssuedBefore(tc.iat, tc.from); got != tc.want {
+		if got := tokenIssuedBefore(tc.iat, 0, tc.from); got != tc.want {
 			t.Errorf("%s: got %v, ждали %v", tc.name, got, tc.want)
 		}
 	}

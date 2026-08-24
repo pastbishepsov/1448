@@ -29,9 +29,8 @@ func signToken(userID, role, typ string, ttl time.Duration) (string, error) {
 }
 
 // signTokenAt — то же, но с явным моментом выдачи. Нужен смене пароля (Е0-и2):
-// отсечка tokens_valid_from округляется ВВЕРХ до секунды, и свежая пара
-// подписывается ровно этим моментом — она переживает отсечку по построению,
-// а не потому, что успела в ту же секунду.
+// свежая пара подписывается ровно моментом отсечки tokens_valid_from и потому
+// переживает её по построению, а не потому, что успела в ту же секунду.
 func signTokenAt(userID, role, typ string, ttl time.Duration, now time.Time) (string, error) {
 	claims := jwt.MapClaims{
 		"sub":  userID,
@@ -39,7 +38,13 @@ func signTokenAt(userID, role, typ string, ttl time.Duration, now time.Time) (st
 		"typ":  typ,
 		"jti":  uuid.NewString(), // для отзыва (logout / ротация refresh)
 		"iat":  now.Unix(),
-		"exp":  now.Add(ttl).Unix(),
+		// Е0-и5в: миллисекунды выдачи. Стандартный iat — секунды, и по ним
+		// нельзя отличить токен, выданный ДО сброса пароля, от выданного сразу
+		// ПОСЛЕ него в ту же секунду. Пока сравнивали по секундам, приходилось
+		// выбирать между дырой (переживает лишний токен) и ложным убийством
+		// (свежий вход сразу получает мёртвый refresh) — поймано живым e2e.
+		"iat_ms": now.UnixMilli(),
+		"exp":    now.Add(ttl).Unix(),
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
 }
@@ -71,10 +76,18 @@ func claimString(claims jwt.MapClaims, key string) string {
 	return v
 }
 
-// claimIssuedAt — момент выдачи из iat (0, если прочитать не вышло).
-// Нужен отсечке tokens_valid_from при сбросе пароля (Е0-и2).
+// claimIssuedAt — момент выдачи в СЕКУНДАХ из iat (0, если не прочитать).
 func claimIssuedAt(claims jwt.MapClaims) int64 {
 	if v, ok := claims["iat"].(float64); ok {
+		return int64(v)
+	}
+	return 0
+}
+
+// claimIssuedAtMs — момент выдачи в МИЛЛИСЕКУНДАХ (0 у токенов, выданных до
+// Е0-и5в: для них отсечка сравнивается по секундам, консервативно).
+func claimIssuedAtMs(claims jwt.MapClaims) int64 {
+	if v, ok := claims["iat_ms"].(float64); ok {
 		return int64(v)
 	}
 	return 0
@@ -160,7 +173,7 @@ func handleRefresh(c *gin.Context) {
 	// Проверка стоит здесь, потому что пользователь уже прочитан из базы;
 	// в authMiddleware её нет сознательно — он не ходит в БД, а access живёт
 	// ≤15 минут (принятый компромисс проекта, STATUS.md).
-	if tokenIssuedBefore(claimIssuedAt(claims), user.TokensValidFrom) {
+	if tokenIssuedBefore(claimIssuedAt(claims), claimIssuedAtMs(claims), user.TokensValidFrom) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "token_revoked",
 			"message": "Пароль менялся — войди заново"})
 		return
