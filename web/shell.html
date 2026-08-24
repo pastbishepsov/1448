@@ -1020,7 +1020,7 @@ let sensDPI = +(localStorage.getItem('1448_dpi') || 800);
 let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
 let sensProfile = null, sensProfileApplied = false;
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
-let menuData = null, myOrders = [], foodQty = {}, foodBusy = false; // Г7: кухня
+let menuData = null, myOrders = [], foodQty = {}, foodBusy = false, myUnpaidPln = 0; // Г7: кухня (Р10: постоплата)
 let authMode = 'login';
 
 /* ═══════════════ API + refresh-токены ═══════════════ */
@@ -1431,7 +1431,7 @@ let notifQ = [], notifPumping = false, notifReloadT = null;
 async function loadKitchen(){
   try{
     const [m, o] = await Promise.all([api('/me/menu'), api('/me/kitchen/orders')]);
-    menuData = m; myOrders = o.orders || [];
+    menuData = m; myOrders = o.orders || []; myUnpaidPln = o.unpaid_pln || 0;
     if (curTab === 'food') renderSide();
   }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
 }
@@ -1440,27 +1440,25 @@ function foodQ(id, d){
   foodQty[id] = Math.min(max, Math.max(1, (foodQty[id] || 1) + d));
   renderSide();
 }
-async function foodOrder(id, pay){
+async function foodOrder(id){
   if (foodBusy) return;
   foodBusy = true;
   try{
-    const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:foodQty[id]||1, pay})});
+    const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:foodQty[id]||1})});
     const o = d.order;
     toast('🍔 Заказ принят: ' + o.name + (o.qty>1?' ×'+o.qty:'')
-      + (o.computer ? ' — принесём к ' + o.computer : ' — забери у стойки')
-      + (pay==='counter' ? '. Оплата у стойки' : ''));
+      + (o.computer ? ' — принесём к ' + o.computer : '')
+      + '. Расчёт у стойки после игры');
     foodQty[id] = 1;
     await loadKitchen();
-    loadAll(); // кошелёк в шапке
   }catch(e){ toast('⚠ ' + e.message); }
   foodBusy = false;
 }
 async function foodCancel(id){
   try{
     await api('/me/kitchen/orders/' + id + '/cancel', {method:'POST'});
-    toast('↩ Заказ отменён — деньги вернулись в кошелёк');
+    toast('↩ Заказ отменён');
     await loadKitchen();
-    loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
 }
 setInterval(() => { if (me && curTab === 'food') loadKitchen(); }, 15000);
@@ -1488,12 +1486,14 @@ function notifText(n){
       switch (p.status){
         case 'accepted': return '🍔 ' + nm + ': приняли, скоро займёмся';
         case 'preparing': return '🍳 ' + nm + ': готовим';
-        case 'delivering': return '🚀 ' + nm + ': несём' + (p.computer ? ' к ' + p.computer : ' — забери у стойки');
-        case 'done': return '✅ ' + nm + ': выдан. Приятного аппетита!';
-        case 'cancelled': return '↩ ' + nm + ': отменён' + (p.refund_pln ? ', ' + p.refund_pln + ' zł вернулись в кошелёк' : '');
+        case 'delivering': return '🚀 ' + nm + ': несём' + (p.computer ? ' к ' + p.computer : '');
+        case 'done': return '✅ ' + nm + ': выдан. Приятного аппетита! Расчёт у стойки, когда доиграешь';
+        case 'paid': return '💚 ' + nm + ': оплачен — спасибо!';
+        case 'cancelled': return '↩ ' + nm + ': отменён';
       }
       return '🍔 ' + nm + ': обновление заказа';
     }
+    case 'kitchen_unpaid': return '🧾 Не забудь рассчитаться за кухню у стойки: ' + (p.total_pln||0) + ' zł';
   }
   return '🔔 Обновление аккаунта';
 }
@@ -1871,17 +1871,18 @@ function renderSide(){
   if (curTab === 'food'){
     if (!menuData){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">Загружаю меню…</div>'; return; }
     const stName = {new:'ждёт', accepted:'принят', preparing:'готовим', delivering:'несём', done:'выдан', cancelled:'отменён'};
-    const openO = myOrders.filter(o => !['done','cancelled'].includes(o.status));
-    const closedO = myOrders.filter(o => ['done','cancelled'].includes(o.status));
+    const openO = myOrders.filter(o => o.unpaid || !['done','cancelled'].includes(o.status));
+    const closedO = myOrders.filter(o => !o.unpaid && ['done','cancelled'].includes(o.status));
     const ordRow = o => `<div class="foodorder st-${o.status}">
-      <span class="fst">${stName[o.status]||o.status}</span>
-      <span style="flex:1; min-width:0"><b>${o.name}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.paid==='counter'?' · оплата у стойки':''}</span>
+      <span class="fst">${o.pay_method ? 'оплачен' : (stName[o.status]||o.status)}</span>
+      <span style="flex:1; min-width:0"><b>${o.name}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.unpaid?' · <b style="color:var(--acc)">оплати у стойки</b>':''}</span>
       ${o.can_cancel?`<button style="border:0; background:transparent; color:var(--dim); cursor:pointer; font-size:15px" title="отменить" onclick="foodCancel('${o.id}')">✕</button>`:''}
     </div>`;
     const cats = {};
     (menuData.menu||[]).forEach(m => { (cats[m.category||''] = cats[m.category||''] || []).push(m); });
     const ph = c => /напит|drink|кофе|чай/i.test(c) ? '🥤' : '🍔';
     el.innerHTML =
+      (myUnpaidPln > 0 ? `<div class="foodorder" style="border-color:var(--acc)"><span class="fst" style="background:rgba(255,59,92,.15); color:var(--acc)">🧾</span><span style="flex:1"><b>К оплате у стойки: <span class="cnum">${fmtZl(Math.round(myUnpaidPln*100))}</span></b> — рассчитаешься, когда доиграешь</span></div>` : '') +
       (openO.length ? `<div class="muted" style="margin:2px 2px 8px; font-weight:800; letter-spacing:.4px">Мои заказы</div>` + openO.map(ordRow).join('') : '') +
       ((menuData.menu||[]).length ? Object.entries(cats).map(([c, items]) => `
         <div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${c || 'Меню'}</div>` +
@@ -1897,8 +1898,7 @@ function renderSide(){
               <span class="muted cnum" style="font-size:12px">= ${fmtZl(Math.round(m.price_pln*q*100))}</span></div>`}
           </div>
           ${m.out ? '' : `<div class="fbtns">
-            <button onclick="foodOrder('${m.id}','wallet')">💳 С кошелька</button>
-            <button onclick="foodOrder('${m.id}','counter')">🧾 У стойки</button>
+            <button onclick="foodOrder('${m.id}')">🍽 Заказать</button>
           </div>`}
         </div>`;}).join('')).join('')
       : '<div class="muted" style="text-align:center; padding:40px 0">🍽<br>Меню пока пустое.<br>Кухня появится, когда владелец заполнит ценник.</div>') +

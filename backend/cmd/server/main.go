@@ -191,7 +191,8 @@ func main() {
 		adm.POST("/sales/:id/void", handleAdminSaleVoid)
 		adm.GET("/kitchen/orders", handleAdminKitchenOrders)              // очередь кухни (Г7)
 		adm.POST("/kitchen/orders/:id/status", handleAdminKitchenStatus)  // принял→готовит→несут→выдан (Г7)
-		adm.POST("/kitchen/orders/:id/cancel", handleAdminKitchenCancel)  // отмена с возвратами (Г7)
+		adm.POST("/kitchen/orders/:id/pay", handleAdminKitchenPay)        // расчёт у стойки после игры (Р10)
+		adm.POST("/kitchen/orders/:id/cancel", handleAdminKitchenCancel)  // отмена с возвратом склада (Г7)
 
 		// Owner-only: статистика и настройки экономики (спринт А5)
 		own := adm.Group("")

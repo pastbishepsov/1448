@@ -567,7 +567,7 @@
       <section id="s-kitchen" class="hidden">
         <div class="card" style="margin-bottom:14px">
           <h3 style="margin:0 0 4px">Кухня — очередь заказов</h3>
-          <div class="muted">Заказы гостей с шелла и мобилки. Поток: принял → готовим → несут → выдан. Wallet-заказ уже оплачен (это не выручка); «у стойки» — возьми деньги при выдаче и выбери способ.</div>
+          <div class="muted">Заказы гостей с шелла и мобилки. Поток: принял → готовим → несут → выдан → <b>оплата у стойки, когда гость доиграл</b> (Р10). Нал/карта/BLIK — выручка; кошельком — списание с предоплаты (не выручка).</div>
         </div>
         <div id="kitBoard"></div>
       </section>
@@ -1039,11 +1039,14 @@ function feedLine(m){
       ? 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł'
       : 'продано: ' + (d.name||'товар') + (d.qty > 1 ? ' ×' + d.qty : '')
         + ' · ' + (+d.total_pln||0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '');
-    case 'kitchen': return d.kind === 'cancel'
-      ? 'кухня: гость отменил заказ — ' + (d.name||'')
-      : 'кухня: новый заказ — ' + (d.name||'') + (d.qty > 1 ? ' ×' + d.qty : '')
+    case 'kitchen': {
+      if (d.kind === 'cancel') return 'кухня: гость отменил заказ — ' + (d.name||'');
+      if (d.kind === 'unpaid') return '🧾 ' + (d.nickname||'гость') + ' доиграл, кухня не оплачена: '
+        + (+d.total_pln||0) + ' zł — рассчитай у стойки';
+      return 'кухня: новый заказ — ' + (d.name||'') + (d.qty > 1 ? ' ×' + d.qty : '')
         + ' · ' + (+d.total_pln||0) + ' zł · ' + (d.nickname||'гость')
-        + (d.computer ? ' · ' + d.computer : '') + (d.paid === 'wallet' ? ' · оплачен' : ' · оплата у стойки');
+        + (d.computer ? ' · ' + d.computer : '') + ' · расчёт после игры';
+    }
     case 'coin_redeem': return (d.nickname||'гость') + ' взял ' + (d.minutes||0) + ' мин за '
       + (d.coins||0) + ' монет' + (d.zone ? ' · ' + d.zone : '');
     case 'ban': return (d.nickname||'гость') + ' забанен';
@@ -1654,6 +1657,7 @@ function renderUserDrawer(){
     <tr><td class="muted">Наиграно</td><td>${s.hours_played} ч · сессий ${s.sessions_count}</td></tr>
     <tr><td class="muted">Кошелёк</td><td><b>${((u.wallet_grosz||0)/100).toFixed(2).replace('.', ',')} zł</b>${u.coin_minutes ? ' · +' + u.coin_minutes + ' мин запаса' : ''}</td></tr>
     ${s.no_show_count ? `<tr><td class="muted">No-show</td><td>🕳 ${s.no_show_count} — брони сгорали без прихода</td></tr>` : ''}
+    ${s.kitchen_unpaid_count ? `<tr><td class="muted">Кухня</td><td>🧾 не оплачено: <b>${fmtPLN(s.kitchen_unpaid_pln)} zł</b> (${s.kitchen_unpaid_count}) — расчёт у стойки</td></tr>` : ''}
     ${s.deposited_pln !== undefined ? `<tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>` : ''}
     <tr><td class="muted">Был активен</td><td>${fmtTime(u.last_active_at)}</td></tr>
     <tr><td class="muted">Аккаунт с</td><td>${fmtDate(u.created_at)}</td></tr>
@@ -2380,7 +2384,8 @@ async function kitBadgeLoad(){
     const d = await api('/admin/kitchen/orders');
     kitData = d.orders || [];
     const b = document.getElementById('kitBadge');
-    if (b){ b.textContent = d.open || 0; b.classList.toggle('hidden', !(d.open > 0)); }
+    const n = (d.open || 0) + (d.unpaid || 0);
+    if (b){ b.textContent = n; b.classList.toggle('hidden', !n); b.title = 'в работе: ' + (d.open||0) + ' · ждут оплаты: ' + (d.unpaid||0); }
     if (curTab === 'kitchen') paintKitchen();
   }catch(e){}
 }
@@ -2394,38 +2399,51 @@ function kitNextBtns(o){
 }
 function paintKitchen(){
   const open = kitData.filter(o => !['done','cancelled'].includes(o.status));
-  const closed = kitData.filter(o => ['done','cancelled'].includes(o.status)).reverse();
+  const unpaid = kitData.filter(o => o.unpaid);
+  const closed = kitData.filter(o => !o.unpaid && ['done','cancelled'].includes(o.status)).reverse();
   const chip = s => `<span class="muted" style="font-weight:800; letter-spacing:.5px; text-transform:uppercase; font-size:11px; border:1px solid var(--hair, rgba(255,255,255,.12)); border-radius:99px; padding:2px 9px">${KIT_ST[s]||s}</span>`;
   const card = o => `
     <div class="card" style="margin-bottom:10px${['done','cancelled'].includes(o.status) ? '; opacity:.55' : ''}">
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
         ${chip(o.status)}
         <b>${esc(o.name)}${o.qty>1?' ×'+o.qty:''}</b>
-        <span class="muted">${fmtPLN(o.total_pln)} zł · ${o.paid === 'wallet' ? 'оплачен кошельком' : 'оплата у стойки при выдаче'}</span>
+        <span class="muted">${fmtPLN(o.total_pln)} zł · ${o.pay_method ? 'оплачен: ' + (PAY_RU[o.pay_method]||o.pay_method) : 'расчёт у стойки после игры'}</span>
         <span class="muted">${esc(o.nickname||'гость')}${o.computer ? ' · нести к ' + esc(o.computer) : ' · заберёт у стойки'}</span>
         <span class="muted" style="margin-left:auto">${hhmm(o.created_at)}</span>
       </div>
+      ${o.unpaid ? `
+      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center">
+        <span class="muted">Гость рассчитывается, когда доиграл:</span>
+        <button class="btn mini" onclick="kitPay('${o.id}','cash')">Оплатил · нал</button>
+        <button class="btn ghost mini" onclick="kitPay('${o.id}','card')">карта</button>
+        <button class="btn ghost mini" onclick="kitPay('${o.id}','blik')">BLIK</button>
+        <button class="btn ghost mini" onclick="kitPay('${o.id}','wallet')">кошельком</button>
+      </div>` : ''}
       ${['done','cancelled'].includes(o.status) ? '' : `
       <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap">
         ${kitNextBtns(o).map(([s,l,g]) => `<button class="btn ${g}mini" onclick="kitStatus('${o.id}','${s}')">${l}</button>`).join('')}
-        ${o.paid === 'wallet'
-          ? `<button class="btn mini" onclick="kitStatus('${o.id}','done')">✓ Выдан</button>`
-          : `<button class="btn mini" onclick="kitStatus('${o.id}','done','cash')">✓ Выдан · нал</button>
-             <button class="btn ghost mini" onclick="kitStatus('${o.id}','done','card')">карта</button>
-             <button class="btn ghost mini" onclick="kitStatus('${o.id}','done','blik')">BLIK</button>`}
+        <button class="btn mini" onclick="kitStatus('${o.id}','done')">✓ Выдан</button>
         <button class="btn ghost mini danger" onclick="armKitCancel(this,'${o.id}')">Отменить</button>
       </div>`}
     </div>`;
   setHTML('kitBoard',
     (open.length ? open.map(card).join('')
       : '<div class="empty">🍔 Очередь пуста — заказы гостей с шелла и мобилки появятся тут сами</div>')
+    + (unpaid.length ? '<div class="muted" style="margin:16px 2px 8px; font-weight:700">Ждут оплаты — ' + unpaid.length + ' на ' + fmtPLN(unpaid.reduce((a, o) => a + (+o.total_pln||0), 0)) + ' zł</div>' + unpaid.map(card).join('') : '')
     + (closed.length ? '<div class="muted" style="margin:16px 2px 8px; font-weight:700">За смену</div>' + closed.map(card).join('') : ''));
 }
-async function kitStatus(id, status, method){
+async function kitStatus(id, status){
   try{
-    await api('/admin/kitchen/orders/' + id + '/status', {method:'POST', body:JSON.stringify({status, method})});
+    await api('/admin/kitchen/orders/' + id + '/status', {method:'POST', body:JSON.stringify({status})});
     await kitBadgeLoad();
-    if (status === 'done') refresh(); // продажа появилась — выручка/лента
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function kitPay(id, method){
+  try{
+    await api('/admin/kitchen/orders/' + id + '/pay', {method:'POST', body:JSON.stringify({method})});
+    toast('✓ Оплачено — ' + (PAY_RU[method] || method));
+    await kitBadgeLoad();
+    refresh(); // выручка/лента продаж
   }catch(e){ toast('⚠ ' + e.message); }
 }
 function armKitCancel(btn, id){

@@ -701,23 +701,25 @@ const STR = {
   kt_open: 'Меню и заказ',
   kt_close: 'Свернуть меню',
   kt_empty: 'Меню пока пустое — появится, когда владелец заполнит ценник',
-  kt_wallet: '💳 С кошелька',
-  kt_counter: '🧾 У стойки',
+  kt_order: '🍽 Заказать',
+  kt_unpaid: 'оплати у стойки',
+  kt_unpaid_sum: '🧾 К оплате у стойки: {z} zł — рассчитаешься, когда доиграешь',
+  kt_paid: 'оплачен',
   kt_out: 'закончилось — загляни позже',
   kt_orders: 'Мои заказы',
   kt_ordered: '🍔 Заказ принят: {n}',
   kt_to_pc: ' — принесём к {c}',
-  kt_at_counter: ' — забери у стойки',
-  kt_pay_counter: '. Оплата у стойки',
-  kt_cancelled: '↩ Заказ отменён — деньги вернулись',
+  kt_pay_after: '. Расчёт у стойки после игры',
+  kt_cancelled: '↩ Заказ отменён',
   kt_st_new: 'ждёт', kt_st_accepted: 'принят', kt_st_preparing: 'готовим',
   kt_st_delivering: 'несём', kt_st_done: 'выдан', kt_st_cancelled: 'отменён',
   ntf_kt_accepted: '🍔 {n}: приняли, скоро займёмся',
   ntf_kt_preparing: '🍳 {n}: готовим',
   ntf_kt_delivering: '🚀 {n}: несём',
-  ntf_kt_done: '✅ {n}: выдан. Приятного аппетита!',
+  ntf_kt_done: '✅ {n}: выдан. Приятного аппетита! Расчёт у стойки, когда доиграешь',
+  ntf_kt_paid: '💚 {n}: оплачен — спасибо!',
   ntf_kt_cancelled: '↩ {n}: отменён',
-  ntf_kt_refund: ', {z} zł вернулись в кошелёк',
+  ntf_kt_unpaid: '🧾 Не забудь рассчитаться за кухню у стойки: {z} zł',
   ach_reward_case: '+ кейс {t}',
   lb_title: 'Топ клуба',
   lb_me: 'Твоё место: #{n}',
@@ -1834,12 +1836,12 @@ function setChatView(v){
 }
 
 /* ── Г7: кухня — карточка на «Клубе»: заказы, меню, заказ в два тапа ── */
-let ktMenu = null, ktOrders = [], ktQty = {}, ktShowMenu = false, ktBusy = false;
+let ktMenu = null, ktOrders = [], ktQty = {}, ktShowMenu = false, ktBusy = false, ktUnpaidPln = 0;
 function ktZl(v){ return (+v).toFixed(2).replace('.', ',') + ' zł'; }
 async function loadKitchen(){
   try{
     const [m, o] = await Promise.all([api('/me/menu'), api('/me/kitchen/orders')]);
-    ktMenu = m; ktOrders = o.orders || [];
+    ktMenu = m; ktOrders = o.orders || []; ktUnpaidPln = o.unpaid_pln || 0;
   }catch(e){ return; }
   renderKitchen();
 }
@@ -1847,13 +1849,13 @@ function renderKitchen(){
   const el = document.getElementById('kitchenCard');
   if (!el || !ktMenu) return;
   const menu = ktMenu.menu || [];
-  const openO = ktOrders.filter(o => !['done','cancelled'].includes(o.status));
+  const openO = ktOrders.filter(o => o.unpaid || !['done','cancelled'].includes(o.status));
   if (!menu.length && !openO.length){ el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
   const stKey = s => STR['kt_st_' + s] || s;
   const ordRow = o => `<div class="ktrow">
-    <span class="ktst">${esc(stKey(o.status))}</span>
-    <span style="flex:1; min-width:0"><b>${esc(o.name)}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${ktZl(o.total_pln)}</span></span>
+    <span class="ktst">${esc(o.pay_method ? STR.kt_paid : stKey(o.status))}</span>
+    <span style="flex:1; min-width:0"><b>${esc(o.name)}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${ktZl(o.total_pln)}</span>${o.unpaid?` · <b>${esc(STR.kt_unpaid)}</b>`:''}</span>
     ${o.can_cancel?`<button class="btn ghost slim" style="width:auto" onclick="ktCancel('${o.id}')">✕</button>`:''}
   </div>`;
   const ph = c => /напит|drink|кофе|чай/i.test(c) ? '🥤' : '🍔';
@@ -1869,12 +1871,12 @@ function renderKitchen(){
         <span class="muted cnum" style="font-size:12px">= ${ktZl(m.price_pln*q)}</span></div>`}
     </div>
     ${m.out ? '' : `<div class="ktbtns">
-      <button onclick="ktOrder('${m.id}','wallet')">${esc(STR.kt_wallet)}</button>
-      <button onclick="ktOrder('${m.id}','counter')">${esc(STR.kt_counter)}</button>
+      <button onclick="ktOrder('${m.id}')">${esc(STR.kt_order)}</button>
     </div>`}
   </div>`;
   };
   el.innerHTML = `<h3>${esc(STR.kt_title)}</h3>`
+    + (ktUnpaidPln > 0 ? `<div class="muted" style="margin:4px 0 2px; font-weight:700">${esc(T('kt_unpaid_sum', {z: ktZl(ktUnpaidPln).replace(' zł','')}))}</div>` : '')
     + (openO.length ? `<div class="muted" style="font-size:12.5px; margin:4px 0 2px; font-weight:700">${esc(STR.kt_orders)}</div>` + openO.map(ordRow).join('') : '')
     + (menu.length ? `<button class="btn ghost" style="margin-top:10px" onclick="ktToggle()">${esc(ktShowMenu ? STR.kt_close : STR.kt_open)}</button>` : `<div class="muted" style="padding:6px 0">${esc(STR.kt_empty)}</div>`)
     + (ktShowMenu ? menu.map(item).join('') : '');
@@ -1885,18 +1887,16 @@ function ktQ(id, d){
   ktQty[id] = Math.min(max, Math.max(1, (ktQty[id] || 1) + d));
   renderKitchen();
 }
-async function ktOrder(id, pay){
+async function ktOrder(id){
   if (ktBusy) return;
   ktBusy = true;
   try{
-    const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:ktQty[id]||1, pay})});
+    const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:ktQty[id]||1})});
     const o = d.order;
     toast(T('kt_ordered', {n: o.name + (o.qty>1?' ×'+o.qty:'')})
-      + (o.computer ? T('kt_to_pc', {c: o.computer}) : STR.kt_at_counter)
-      + (pay==='counter' ? STR.kt_pay_counter : ''));
+      + (o.computer ? T('kt_to_pc', {c: o.computer}) : '') + STR.kt_pay_after);
     ktQty[id] = 1;
     await loadKitchen();
-    loadMe(); // кошелёк
   }catch(e){ toast(T('toast_err', {m: e.message})); }
   ktBusy = false;
 }
@@ -1905,7 +1905,6 @@ async function ktCancel(id){
     await api('/me/kitchen/orders/' + id + '/cancel', {method:'POST'});
     toast(STR.kt_cancelled);
     await loadKitchen();
-    loadMe();
   }catch(e){ toast(T('toast_err', {m: e.message})); }
 }
 
@@ -1942,9 +1941,9 @@ function ntfText(n){
       const k = 'ntf_kt_' + p.status;
       let t = STR[k] ? T(k, {n: nm}) : '🍔 ' + nm;
       if (p.status === 'delivering' && p.computer) t += ' → ' + p.computer;
-      if (p.status === 'cancelled' && p.refund_pln) t += T('ntf_kt_refund', {z: p.refund_pln});
       return t;
     }
+    case 'kitchen_unpaid': return T('ntf_kt_unpaid', {z: p.total_pln || 0});
     case 'booking_cancel':
       return STR.ntf_bk_cancel + (p.start_time ? ' · ' + hm(p.start_time) : '') + (p.computer ? ' (' + p.computer + ')' : '');
     case 'booking_restore':
@@ -2002,7 +2001,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-24.4';
+const APP_VER = '2026-08-24.5';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

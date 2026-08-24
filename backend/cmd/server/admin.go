@@ -254,6 +254,11 @@ func handleAdminUserCard(c *gin.Context) {
 		"hours_played":   agg.Minutes / 60,
 		"no_show_count":  noShows,
 	}
+	// Г7/Р10: выданная и не рассчитанная кухня — видно прямо в карточке
+	if kCnt, kSum := unpaidKitchen(user.ID); kCnt > 0 {
+		stats["kitchen_unpaid_count"] = kCnt
+		stats["kitchen_unpaid_pln"] = kSum
+	}
 	if ownerView {
 		stats["deposited_pln"] = depSum
 	}

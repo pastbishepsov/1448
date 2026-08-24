@@ -460,6 +460,14 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 	stats.BookingsCount = userBookingsCount(userID)
 	checkAchievements(session.UserID, stats)
 
+	// Г7/Р10: доиграл с неоплаченной кухней → гостю напоминание «рассчитайся
+	// у стойки», админам сигнал в живую ленту
+	if kCnt, kSum := unpaidKitchen(session.UserID); kCnt > 0 {
+		notifyUser(session.UserID, "kitchen_unpaid", map[string]any{"count": kCnt, "total_pln": kSum})
+		hub.AdminBroadcast("kitchen", map[string]any{
+			"kind": "unpaid", "nickname": user.Nickname, "total_pln": kSum, "count": kCnt})
+	}
+
 	// Команда на ПК: завершить и заблокировать (если Shell подключён).
 	notifyShell(session.ComputerID.String(), websocket.MsgSessionEnd, gin.H{
 		"session_id":   session.ID,

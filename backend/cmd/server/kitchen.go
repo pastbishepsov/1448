@@ -1,18 +1,20 @@
 package main
 
-// Кухня для гостя (трек Г, спринт Г7; миграция 038).
+// Кухня для гостя (трек Г, спринт Г7; миграции 038/039).
 //
 // Конструктор ценника — В2 (goods.go): владелец ведёт позиции и остатки. Тут —
 // гостевая сторона: меню (только включённые позиции, фото, стоп-лист по
 // складу), заказ «одна позиция × количество» (как продажи В2 — без корзины),
-// очередь для админа (принял → готовит → несут → выдан) и отмены.
+// очередь для админа (принял → готовит → несут → выдан → оплачен) и отмены.
 //
-// Деньги (Р7): wallet-заказ списывается с кошелька СРАЗУ (kind=kitchen_spend,
-// это погашение обязательства, НЕ выручка); «оплачу у стойки» — выручка в
-// момент выдачи, обычная продажа cash/card/blik. Выдача любого заказа создаёт
-// строку sales (wallet-заказ — method='wallet', отчёты исключают его из
-// выручки). Склад резервируется при заказе (stock_move reason='order'),
-// отмена возвращает (reason='void') — владелец видит каждый шаг.
+// Р10 (решение основателя 24.08): один вариант заказа — ПОСТОПЛАТА. Гость
+// заказал из-за компа (нужна активная сессия), ему принесли, а рассчитывается
+// он у стойки, когда закончил играть. Продажа (и выручка) появляется в момент
+// РАСЧЁТА: нал/карта/BLIK — выручка как В2, кошелёк — method='wallet'
+// (погашение обязательства, НЕ выручка — Р7). Выданный неоплаченный заказ
+// висит в «ждут оплаты» и в карточке гостя; при завершении сессии — гостю
+// напоминание, админам сигнал. Склад резервируется при заказе (stock_move
+// reason='order'), отмена возвращает (reason='void').
 //
 // Ачивки (Р5): еда даёт XP, никогда не кейс. kitchen_orders в user_progress
 // растёт при ВЫДАЧЕ (done), не при заказе — отмена не фармит «Подкрепился».
@@ -91,15 +93,19 @@ func handleGetMyMenu(c *gin.Context) {
 type kitchenOrderRequest struct {
 	GoodID string `json:"good_id" binding:"required"`
 	Qty    int    `json:"qty"`
-	Pay    string `json:"pay"` // wallet | counter
 }
 
 func kitchenOrderOut(o *models.KitchenOrder, compName string) gin.H {
 	row := gin.H{
 		"id": o.ID, "name": o.Name, "qty": o.Qty, "price_pln": o.PricePLN,
-		"total_pln": o.TotalPLN, "paid": o.Paid, "status": o.Status,
+		"total_pln": o.TotalPLN, "status": o.Status,
 		"created_at": o.CreatedAt, "status_at": o.StatusAt,
 		"can_cancel": o.Status == models.KitchenNew,
+		// Р10: выдан, но ещё не рассчитан у стойки
+		"unpaid": o.Status == models.KitchenDone && o.PaidAt == nil,
+	}
+	if o.PayMethod != nil {
+		row["pay_method"] = *o.PayMethod
 	}
 	if compName != "" {
 		row["computer"] = compName
@@ -107,9 +113,24 @@ func kitchenOrderOut(o *models.KitchenOrder, compName string) gin.H {
 	return row
 }
 
-// POST /me/kitchen/orders — заказ гостя. Кошельком — списание сразу; склад
-// резервируется в той же транзакции (CAS по остатку — две кассы не уведут в
-// минус). Если у гостя идёт сессия, заказ несём к его ПК.
+// unpaidKitchen — выданные и не рассчитанные заказы гостя (Р10): их видно в
+// карточке гостя, в «ждут оплаты» и в напоминании при завершении сессии.
+func unpaidKitchen(userID uuid.UUID) (int64, float64) {
+	var agg struct {
+		Cnt int64
+		Sum float64
+	}
+	db.Model(&models.KitchenOrder{}).
+		Select("COUNT(*) AS cnt, COALESCE(SUM(total_pln),0) AS sum").
+		Where("user_id = ? AND status = ? AND paid_at IS NULL", userID, models.KitchenDone).
+		Scan(&agg)
+	return agg.Cnt, roundPLN(agg.Sum)
+}
+
+// POST /me/kitchen/orders — заказ гостя (Р10: постоплата). Нужна активная
+// сессия — заказ «принесём к ПК», расчёт у стойки после игры; без сессии еду
+// продают обычной продажей В2. Склад резервируется в транзакции (CAS по
+// остатку — две кассы не уведут в минус).
 func handleMyKitchenOrderCreate(c *gin.Context) {
 	userID, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
@@ -129,10 +150,16 @@ func handleMyKitchenOrderCreate(c *gin.Context) {
 			"message": fmt.Sprintf("За раз — до %d шт; больше закажи у стойки", maxOrderQty)})
 		return
 	}
-	if req.Pay != models.KitchenPaidWallet && req.Pay != models.KitchenPaidCounter {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_pay", "message": "Оплата: кошельком или у стойки"})
+
+	// Р10: только из-за компа — постоплата привязана к живой сессии
+	var sess models.Session
+	if err := db.First(&sess, "user_id = ? AND status = ?", userID, models.SessionStatusActive).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"code": "need_session",
+			"message": "Заказ из-за компа: начни сессию — принесём к твоему ПК. У стойки продадут и так"})
 		return
 	}
+	compID := sess.ComputerID
+	compName := computerNameByID(&compID)
 
 	var open int64
 	db.Model(&models.KitchenOrder{}).
@@ -158,26 +185,12 @@ func handleMyKitchenOrderCreate(c *gin.Context) {
 		return
 	}
 
-	// сессия идёт → несём к ПК гостя
-	var compID *uuid.UUID
-	var compName string
-	var sess models.Session
-	if err := db.First(&sess, "user_id = ? AND status = ?", userID, models.SessionStatusActive).Error; err == nil {
-		id := sess.ComputerID
-		compID = &id
-		var comp models.Computer
-		if db.First(&comp, "id = ?", id).Error == nil {
-			compName = comp.Name
-		}
-	}
-
 	goodID := g.ID
 	order := models.KitchenOrder{
 		ClubID: g.ClubID, UserID: userID, GoodID: &goodID, Name: g.Name,
 		Qty: req.Qty, PricePLN: g.PricePLN, TotalPLN: roundPLN(g.PricePLN * float64(req.Qty)),
-		Paid: req.Pay, Status: models.KitchenNew, ComputerID: compID, StatusAt: time.Now(),
+		Paid: models.KitchenPaidPostpay, Status: models.KitchenNew, ComputerID: &compID, StatusAt: time.Now(),
 	}
-	totalGrosz := models.GroszFromPLN(order.TotalPLN)
 	err = db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.Good{}).Where("id = ? AND stock >= ?", g.ID, req.Qty).
 			UpdateColumn("stock", gorm.Expr("stock - ?", req.Qty))
@@ -190,28 +203,11 @@ func handleMyKitchenOrderCreate(c *gin.Context) {
 		if err := tx.Create(&order).Error; err != nil {
 			return err
 		}
-		orderID := order.ID
-		if err := tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty,
-			Reason: "order", Note: "заказ кухни"}).Error; err != nil {
-			return err
-		}
-		if req.Pay == models.KitchenPaidWallet {
-			_, err := walletApply(tx, walletOp{
-				UserID: userID, Kind: models.WalletTxKitchenSpend, Amount: -totalGrosz,
-				RefType: kitchenRefType, RefID: &orderID,
-				Note: fmt.Sprintf("кухня: %s ×%d", order.Name, order.Qty),
-			})
-			return err
-		}
-		return nil
+		return tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty,
+			Reason: "order", Note: "заказ кухни"}).Error
 	})
 	if err == errOutOfStock {
 		goodFail(c, http.StatusConflict, "out_of_stock")
-		return
-	}
-	if err == errWalletInsufficient {
-		c.JSON(http.StatusConflict, gin.H{"code": "wallet_low",
-			"message": fmt.Sprintf("В кошельке не хватает: заказ на %.2f zł. Пополни у стойки или выбери «оплачу у стойки»", order.TotalPLN)})
 		return
 	}
 	if err != nil {
@@ -223,23 +219,27 @@ func handleMyKitchenOrderCreate(c *gin.Context) {
 	nick := nicknamesByID([]string{userID.String()})
 	hub.AdminBroadcast("kitchen", map[string]any{
 		"kind": "new", "name": order.Name, "qty": order.Qty, "total_pln": order.TotalPLN,
-		"paid": order.Paid, "nickname": nick[userID.String()], "computer": compName,
+		"nickname": nick[userID.String()], "computer": compName,
 	})
 	c.JSON(http.StatusCreated, gin.H{"order": kitchenOrderOut(&order, compName)})
 }
 
-// GET /me/kitchen/orders — мои заказы: открытые + закрытые за последние сутки.
+// GET /me/kitchen/orders — мои заказы: открытые, «ждут оплаты» (Р10 — висят,
+// пока не рассчитаешься) и закрытые за последние сутки.
 func handleGetMyKitchenOrders(c *gin.Context) {
 	userID := c.GetString("user_id")
+	uid, _ := uuid.Parse(userID)
 	var orders []models.KitchenOrder
-	db.Where("user_id = ? AND (status IN ? OR created_at > ?)",
-		userID, kitchenOpenStatuses, time.Now().Add(-24*time.Hour)).
+	db.Where("user_id = ? AND (status IN ? OR (status = ? AND paid_at IS NULL) OR created_at > ?)",
+		userID, kitchenOpenStatuses, models.KitchenDone, time.Now().Add(-24*time.Hour)).
 		Order("created_at DESC").Limit(20).Find(&orders)
 	out := make([]gin.H, 0, len(orders))
 	for i := range orders {
 		out = append(out, kitchenOrderOut(&orders[i], computerNameByID(orders[i].ComputerID)))
 	}
-	c.JSON(http.StatusOK, gin.H{"count": len(out), "orders": out})
+	cnt, sum := unpaidKitchen(uid)
+	c.JSON(http.StatusOK, gin.H{"count": len(out), "orders": out,
+		"unpaid_count": cnt, "unpaid_pln": sum})
 }
 
 func computerNameByID(id *uuid.UUID) string {
@@ -253,8 +253,9 @@ func computerNameByID(id *uuid.UUID) string {
 	return comp.Name
 }
 
-// cancelKitchenOrder — отменить заказ: статус (CAS), возврат склада, возврат
-// денег кошельку (если платили им). guestOnly — гостю можно только пока new.
+// cancelKitchenOrder — отменить заказ: статус (CAS) + возврат склада. Денег
+// не трогаем: при постоплате (Р10) их ещё не брали — расчёт только у стойки.
+// guestOnly — гостю можно только пока new.
 func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID) (string, bool) {
 	allowed := kitchenOpenStatuses
 	if byGuest {
@@ -279,15 +280,6 @@ func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID
 				Reason: "void", Note: "отмена заказа кухни", CreatedBy: adminID}).Error; err != nil {
 				return err
 			}
-		}
-		if o.Paid == models.KitchenPaidWallet {
-			orderID := o.ID
-			_, err := walletApply(tx, walletOp{
-				UserID: o.UserID, Kind: models.WalletTxRefund, Amount: models.GroszFromPLN(o.TotalPLN),
-				RefType: kitchenRefType, RefID: &orderID,
-				Note: fmt.Sprintf("возврат: %s ×%d", o.Name, o.Qty), CreatedBy: adminID,
-			})
-			return err
 		}
 		return nil
 	})
@@ -324,13 +316,15 @@ func handleMyKitchenOrderCancel(c *gin.Context) {
 
 // ── Админская сторона ─────────────────────────────────────────────────
 
-// GET /admin/kitchen/orders — очередь кухни: все открытые + закрытые за
-// текущие клубные сутки (окно report_hour, как продажи).
+// GET /admin/kitchen/orders — очередь кухни: все открытые, все «ждут оплаты»
+// (Р10 — не тонут в смене, пока гость не рассчитался) + закрытые за текущие
+// клубные сутки (окно report_hour, как продажи).
 func handleAdminKitchenOrders(c *gin.Context) {
 	reportHour := int(settingInt64("report_hour", 8))
 	from, to, _, _ := shiftWindow("", reportHour, time.Now())
 	var orders []models.KitchenOrder
-	db.Where("status IN ? OR (created_at >= ? AND created_at < ?)", kitchenOpenStatuses, from, to).
+	db.Where("status IN ? OR (status = ? AND paid_at IS NULL) OR (created_at >= ? AND created_at < ?)",
+		kitchenOpenStatuses, models.KitchenDone, from, to).
 		Order("created_at").Limit(200).Find(&orders)
 
 	ids := make([]string, 0, len(orders))
@@ -338,13 +332,18 @@ func handleAdminKitchenOrders(c *gin.Context) {
 		ids = append(ids, o.UserID.String())
 	}
 	nick := nicknamesByID(ids)
-	open := 0
+	open, unpaid := 0, 0
+	unpaidSum := 0.0
 	out := make([]gin.H, 0, len(orders))
 	for i := range orders {
 		o := &orders[i]
 		row := kitchenOrderOut(o, computerNameByID(o.ComputerID))
 		row["nickname"] = nick[o.UserID.String()]
 		out = append(out, row)
+		if o.Status == models.KitchenDone && o.PaidAt == nil {
+			unpaid++
+			unpaidSum += o.TotalPLN
+		}
 		for _, s := range kitchenOpenStatuses {
 			if o.Status == s {
 				open++
@@ -352,18 +351,18 @@ func handleAdminKitchenOrders(c *gin.Context) {
 			}
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"count": len(out), "open": open, "orders": out})
+	c.JSON(http.StatusOK, gin.H{"count": len(out), "open": open, "orders": out,
+		"unpaid": unpaid, "unpaid_pln": roundPLN(unpaidSum)})
 }
 
 type kitchenStatusRequest struct {
 	Status string `json:"status" binding:"required"`
-	Method string `json:"method"` // для выдачи counter-заказа: cash | card | blik
 }
 
 // POST /admin/kitchen/orders/:id/status — двинуть заказ по потоку (staff).
-// Выдача (done) создаёт продажу: wallet-заказ — method='wallet' (не выручка,
-// Р7), «у стойки» — cash/card/blik (выручка, как продажа В2). Склад не
-// трогаем — он списан при заказе.
+// Выдача (done) кормит ачивки и оставляет заказ «ждёт оплаты» (Р10): продажа
+// и деньги появятся при расчёте (ручка /pay). Склад не трогаем — списан при
+// заказе.
 func handleAdminKitchenStatus(c *gin.Context) {
 	var o models.KitchenOrder
 	if err := db.First(&o, "id = ?", c.Param("id")).Error; err != nil {
@@ -381,44 +380,81 @@ func handleAdminKitchenStatus(c *gin.Context) {
 		return
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
-
-	if req.Status != models.KitchenDone {
-		res := db.Model(&models.KitchenOrder{}).
-			Where("id = ? AND status = ?", o.ID, o.Status).
-			Updates(map[string]any{"status": req.Status, "status_at": time.Now(), "status_by": adminID})
-		if res.Error != nil || res.RowsAffected == 0 {
-			c.JSON(http.StatusConflict, gin.H{"code": "kitchen_state", "message": "Заказ уже двинули с другой кассы"})
-			return
-		}
-		notifyUser(o.UserID, "kitchen_status", map[string]any{
-			"order_id": o.ID, "name": o.Name, "qty": o.Qty, "status": req.Status, "computer": computerNameByID(o.ComputerID)})
-		c.JSON(http.StatusOK, gin.H{"status": req.Status})
+	res := db.Model(&models.KitchenOrder{}).
+		Where("id = ? AND status = ?", o.ID, o.Status).
+		Updates(map[string]any{"status": req.Status, "status_at": time.Now(), "status_by": adminID})
+	if res.Error != nil || res.RowsAffected == 0 {
+		c.JSON(http.StatusConflict, gin.H{"code": "kitchen_state", "message": "Заказ уже двинули с другой кассы"})
 		return
 	}
-
-	// Выдача: продажа + прогресс ачивок
-	method := "wallet"
-	if o.Paid == models.KitchenPaidCounter {
-		method = req.Method
-		if method != "cash" && method != "card" && method != "blik" {
-			goodFail(c, http.StatusBadRequest, "bad_method")
-			return
-		}
+	notifyUser(o.UserID, "kitchen_status", map[string]any{
+		"order_id": o.ID, "name": o.Name, "qty": o.Qty, "status": req.Status,
+		"computer": computerNameByID(o.ComputerID)})
+	if req.Status == models.KitchenDone {
+		kitchenProgress(o.UserID) // «Подкрепился»/«Первый заказ» — при выдаче (Р5, анти-фарм отменами)
+		logAdminAction(c, "kitchen_done", &o.UserID,
+			fmt.Sprintf("%s ×%d · %.2f zł · ждёт оплаты", o.Name, o.Qty, o.TotalPLN))
 	}
+	c.JSON(http.StatusOK, gin.H{"status": req.Status})
+}
+
+type kitchenPayRequest struct {
+	Method string `json:"method" binding:"required"` // cash | card | blik | wallet
+}
+
+// POST /admin/kitchen/orders/:id/pay — расчёт у стойки (Р10): гость доиграл
+// и платит. Продажа появляется здесь: нал/карта/BLIK — выручка (как В2),
+// кошелёк — списание kitchen_spend и method='wallet' (НЕ выручка, Р7).
+func handleAdminKitchenPay(c *gin.Context) {
+	var o models.KitchenOrder
+	if err := db.First(&o, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "order_not_found", "message": "Заказ не найден"})
+		return
+	}
+	if o.Status != models.KitchenDone {
+		c.JSON(http.StatusConflict, gin.H{"code": "kitchen_state", "message": "Сначала выдай заказ — расчёт после"})
+		return
+	}
+	if o.PaidAt != nil {
+		c.JSON(http.StatusConflict, gin.H{"code": "already_paid", "message": "Заказ уже оплачен"})
+		return
+	}
+	var req kitchenPayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		goodFail(c, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	if req.Method != "cash" && req.Method != "card" && req.Method != "blik" && req.Method != "wallet" {
+		goodFail(c, http.StatusBadRequest, "bad_method")
+		return
+	}
+	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	sale := models.Sale{
 		ClubID: o.ClubID, GoodID: o.GoodID, Name: o.Name, Qty: o.Qty,
-		PricePLN: o.PricePLN, TotalPLN: o.TotalPLN, Method: method,
+		PricePLN: o.PricePLN, TotalPLN: o.TotalPLN, Method: req.Method,
 		UserID: &o.UserID, CreatedBy: adminID,
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.KitchenOrder{}).
-			Where("id = ? AND status = ?", o.ID, o.Status).
-			Updates(map[string]any{"status": models.KitchenDone, "status_at": time.Now(), "status_by": adminID})
+			Where("id = ? AND status = ? AND paid_at IS NULL", o.ID, models.KitchenDone).
+			Updates(map[string]any{"pay_method": req.Method, "paid_at": time.Now(), "paid_by": adminID})
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
 			return errKitchenState
+		}
+		if req.Method == "wallet" {
+			orderID := o.ID
+			if _, err := walletApply(tx, walletOp{
+				UserID: o.UserID, Kind: models.WalletTxKitchenSpend,
+				Amount: -models.GroszFromPLN(o.TotalPLN),
+				RefType: kitchenRefType, RefID: &orderID,
+				Note:      fmt.Sprintf("кухня: %s ×%d", o.Name, o.Qty),
+				CreatedBy: &adminID,
+			}); err != nil {
+				return err
+			}
 		}
 		if err := tx.Create(&sale).Error; err != nil {
 			return err
@@ -427,7 +463,12 @@ func handleAdminKitchenStatus(c *gin.Context) {
 			UpdateColumn("sale_id", sale.ID).Error
 	})
 	if err == errKitchenState {
-		c.JSON(http.StatusConflict, gin.H{"code": "kitchen_state", "message": "Заказ уже двинули с другой кассы"})
+		c.JSON(http.StatusConflict, gin.H{"code": "kitchen_state", "message": "Заказ уже оплатили с другой кассы"})
+		return
+	}
+	if err == errWalletInsufficient {
+		c.JSON(http.StatusConflict, gin.H{"code": "wallet_low",
+			"message": fmt.Sprintf("В кошельке не хватает на %.2f zł — возьми налом/картой/BLIK", o.TotalPLN)})
 		return
 	}
 	if err != nil {
@@ -435,21 +476,19 @@ func handleAdminKitchenStatus(c *gin.Context) {
 		return
 	}
 
-	kitchenProgress(o.UserID) // «Подкрепился»/«Первый заказ» — при выдаче (Р5, анти-фарм отменами)
 	notifyUser(o.UserID, "kitchen_status", map[string]any{
-		"order_id": o.ID, "name": o.Name, "qty": o.Qty, "status": models.KitchenDone,
-		"computer": computerNameByID(o.ComputerID)})
-	if method != "wallet" {
+		"order_id": o.ID, "name": o.Name, "qty": o.Qty, "status": "paid", "method": req.Method})
+	if req.Method != "wallet" {
 		hub.AdminBroadcast("sale", map[string]any{"name": sale.Name, "qty": sale.Qty,
-			"total_pln": sale.TotalPLN, "method": method})
+			"total_pln": sale.TotalPLN, "method": req.Method})
 	}
-	logAdminAction(c, "kitchen_done", &o.UserID, fmt.Sprintf("%s ×%d · %.2f zł · %s", o.Name, o.Qty, o.TotalPLN,
-		map[string]string{"wallet": "кошельком", "cash": "нал", "card": "карта", "blik": "BLIK"}[method]))
-	c.JSON(http.StatusOK, gin.H{"status": models.KitchenDone, "sale_id": sale.ID})
+	logAdminAction(c, "kitchen_pay", &o.UserID, fmt.Sprintf("%s ×%d · %.2f zł · %s", o.Name, o.Qty, o.TotalPLN,
+		map[string]string{"wallet": "кошельком", "cash": "нал", "card": "карта", "blik": "BLIK"}[req.Method]))
+	c.JSON(http.StatusOK, gin.H{"paid": true, "sale_id": sale.ID})
 }
 
-// POST /admin/kitchen/orders/:id/cancel — отмена админом: деньги в кошелёк
-// (если платили им), товар на склад, гостю уведомление.
+// POST /admin/kitchen/orders/:id/cancel — отмена админом: товар на склад,
+// гостю уведомление. Денег не трогаем — при постоплате их ещё не брали (Р10).
 func handleAdminKitchenCancel(c *gin.Context) {
 	var o models.KitchenOrder
 	if err := db.First(&o, "id = ?", c.Param("id")).Error; err != nil {
@@ -465,14 +504,9 @@ func handleAdminKitchenCancel(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"code": code, "message": msg})
 		return
 	}
-	refund := ""
-	if o.Paid == models.KitchenPaidWallet {
-		refund = fmt.Sprintf(" · %.2f zł вернулись в кошелёк", o.TotalPLN)
-	}
 	notifyUser(o.UserID, "kitchen_status", map[string]any{
-		"order_id": o.ID, "name": o.Name, "qty": o.Qty, "status": models.KitchenCancelled,
-		"refund_pln": map[bool]float64{true: o.TotalPLN, false: 0}[o.Paid == models.KitchenPaidWallet]})
-	logAdminAction(c, "kitchen_cancel", &o.UserID, fmt.Sprintf("%s ×%d%s", o.Name, o.Qty, refund))
+		"order_id": o.ID, "name": o.Name, "qty": o.Qty, "status": models.KitchenCancelled})
+	logAdminAction(c, "kitchen_cancel", &o.UserID, fmt.Sprintf("%s ×%d", o.Name, o.Qty))
 	c.JSON(http.StatusOK, gin.H{"cancelled": o.ID})
 }
 
