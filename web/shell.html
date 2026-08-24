@@ -650,6 +650,17 @@
 </div>
 
 <!-- ═══════════ OVERLAYS ═══════════ -->
+<!-- Г1-и6: полноэкранный оверлей нуля кошелька — сессия доживает грейс -->
+<div id="zeroOverlay" class="hidden" style="position:fixed; inset:0; z-index:70; background:rgba(4,4,5,.86); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; text-align:center">
+  <div>
+    <div style="font-size:46px">🛑</div>
+    <div style="font-size:26px; font-weight:800; margin-top:10px">Деньги кончились</div>
+    <div class="muted" style="margin-top:8px">Пополни у стойки — иначе сессия завершится через</div>
+    <div id="zeroCount" style="font-size:44px; font-weight:800; color:var(--acc); margin-top:6px">—</div>
+    <div class="muted" style="margin-top:10px">Баланс и XP за отыгранное время никуда не денутся</div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <!-- Б3 (ADMIN.md): панель связи с админом — вызов + переписка -->
@@ -1085,6 +1096,7 @@ async function loadAll(){
     const prevLvl = me ? me.level : null;
     me = m.user || m; cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
     sessions = ss.sessions || [];
+    bookingDeadline = ss.booking_deadline || null; // Г3: ПК уйдёт под бронь
     bookings = bk.bookings || [];
     economy = ec;
     sensProfile = sp;
@@ -1139,8 +1151,11 @@ function renderWallet(){
       const left = (me.coin_minutes || 0) + Math.floor((me.wallet_grosz || 0) * 60 / rateGr);
       low = left <= 15;
       if (left > 0){
-        const till = new Date(Date.now() + left * 60000);
-        txt = '· до ' + String(till.getHours()).padStart(2, '0') + ':' + String(till.getMinutes()).padStart(2, '0');
+        let till = new Date(Date.now() + left * 60000), byBooking = false;
+        if (bookingDeadline && new Date(bookingDeadline) < till){ till = new Date(bookingDeadline); byBooking = true; } // Г3
+        txt = '· до ' + String(till.getHours()).padStart(2, '0') + ':' + String(till.getMinutes()).padStart(2, '0')
+            + (byBooking ? ' ⏰ бронь' : '');
+        if (byBooking) low = low || (till - Date.now() <= 15 * 60000);
       } else txt = '· пополни у стойки';
     }
   }
@@ -1400,11 +1415,13 @@ function notifText(n){
     case 'grant_xp': return '⚡ Тебе начислено +' + (p.amount||0) + ' XP' + (p.levels_gained > 0 ? ' → LVL ' + p.level + ' 🎉' : '');
     case 'grant_case': return '🎁 Тебе выдан кейс ' + (p.tier||'');
     case 'balance_low': return '⏳ Баланс кончается: осталось ~' + (p.minutes_left||0) + ' мин. Пополни у стойки';
-    case 'balance_zero': return '🛑 Деньги кончились — сессия завершится через ' + (p.grace_min||0) + ' мин. Пополни у стойки, чтобы продолжить';
+    case 'balance_zero': zeroGraceMin = p.grace_min || 2; return '🛑 Деньги кончились — сессия завершится через ' + (p.grace_min||0) + ' мин. Пополни у стойки, чтобы продолжить';
     case 'pause_over': return '⏱ Лимит паузы исчерпан (' + (p.limit_min||0) + ' мин) — время снова идёт';
     case 'afk_warn': return '💤 Ты давно не за компом — сессия скоро встанет на паузу или завершится';
     case 'afk_pause': return '💤 AFK: сессия на паузе. Вернись и шевельни мышью — продолжим';
     case 'session_moved': return '🖥 Тебя пересадили за ' + (p.computer||'другой ПК') + ' — сессия продолжается';
+    case 'booking_soon': return '⏰ Этот ПК забронирован' + (p.start_time ? ' к ' + chHM(p.start_time) : '') + ' — осталось ~' + (p.minutes_left||0) + ' мин';
+    case 'booking_deadline': return '⏰ ПК уходит под бронь' + (p.start_time ? ' (' + chHM(p.start_time) + ')' : '') + ' — сессия завершена, баланс и XP сохранены';
   }
   return '🔔 Обновление аккаунта';
 }
@@ -1518,6 +1535,23 @@ function renderSession(){
   }
 }
 
+/* Г1-и6: оверлей нуля. Грейс приходит в balance_zero (шина Б4); если тост
+   не поймали (перезагрузка страницы) — работаем от zero_since сессии с
+   дефолтом 2 мин. Сервер всё равно главный: завершит сам. */
+let zeroGraceMin = 2;
+let bookingDeadline = null; // Г3: ISO-время, когда ПК придержат под чужую бронь
+function renderZeroTick(){
+  const ov = document.getElementById('zeroOverlay');
+  if (!ov) return;
+  const zs = activeSession && !activeSession.ended_at && activeSession.zero_since;
+  if (!zs){ ov.classList.add('hidden'); return; }
+  ov.classList.remove('hidden');
+  const left = Math.max(0, Math.floor((new Date(zs).getTime() + zeroGraceMin*60000 - Date.now())/1000));
+  document.getElementById('zeroCount').textContent =
+    Math.floor(left/60) + ':' + String(left%60).padStart(2,'0');
+}
+setInterval(renderZeroTick, 1000);
+
 /* Г2: секунды сессии БЕЗ пауз — как их считает сервер (billing/pause). */
 function effectiveSec(){
   if (!activeSession) return 0;
@@ -1597,13 +1631,15 @@ setInterval(async () => {
   if (!me || document.getElementById('shellView').classList.contains('hidden')) return;
   try{
     const ss = await api('/me/sessions');
+    bookingDeadline = ss.booking_deadline || null; // Г3
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
       if (!still){ toast('⏹ Сессия завершена'); await loadAll(); }
       else if (!!still.paused_at !== !!activeSession.paused_at ||
-               (still.paused_total_sec || 0) !== (activeSession.paused_total_sec || 0)){
-        activeSession = still; renderSession(); // Г2: автопауза/автовозврат
+               (still.paused_total_sec || 0) !== (activeSession.paused_total_sec || 0) ||
+               (still.zero_since || '') !== (activeSession.zero_since || '')){
+        activeSession = still; renderSession(); renderZeroTick(); // Г2/Г1-и6
       }
     } else {
       const started = rows.find(s => s.status === 'active');

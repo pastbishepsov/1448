@@ -26,6 +26,7 @@ const (
 
 type startSessionRequest struct {
 	ComputerID *string `json:"computer_id"` // необязательно: иначе берём первый свободный
+	PlannedMin *int    `json:"planned_min"` // Г3: сколько планирует сидеть (для ПК с бронью); пусто = 30
 }
 
 type endSessionRequest struct {
@@ -67,14 +68,14 @@ func handleStartSession(c *gin.Context) {
 	}
 	var req startSessionRequest
 	_ = c.ShouldBindJSON(&req) // тело необязательно
-	code, resp := startSessionFor(userID, req.ComputerID)
+	code, resp := startSessionFor(userID, req.ComputerID, req.PlannedMin)
 	c.JSON(code, resp)
 }
 
 // startSessionFor — общий старт сессии (Б8): гость сам (/me/sessions/start)
 // или админ сажает его у стойки (/admin/computers/:id/session). Скидки и
 // таланты всегда гостя. Возвращает HTTP-код и готовое тело ответа.
-func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
+func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int, gin.H) {
 	// Уже есть активная сессия?
 	var activeCount int64
 	db.Model(&models.Session{}).
@@ -84,17 +85,69 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 		return http.StatusConflict, gin.H{"code": "session_active", "message": "У гостя уже есть активная сессия"}
 	}
 
-	// Выбрать компьютер: по id или первый свободный.
+	// Выбрать компьютер: по id или первый свободный. Г3 (Р3 GUEST.md):
+	// «свободный» — значит ещё и без конфликтной брони. Планируемое время
+	// (planned_min, без него — минимальный сеанс 30 мин) должно влезать в
+	// окно до чужой брони МИНУС буфер; за booking_lock_min до брони ПК
+	// придержан под её хозяина. Хозяин садится всегда — его бронь гасится
+	// клеймом (seated) после старта.
+	now := time.Now()
+	bkBuffer := settingInt64("booking_buffer_min", bookingBufferMinDef)
+	bkLock := settingInt64("booking_lock_min", bookingLockMinDef)
+	planned := defaultPlannedMin
+	if plannedMin != nil && *plannedMin > 0 {
+		planned = *plannedMin
+	}
+
+	explicit := computerID != nil && *computerID != ""
+	var candidates []models.Computer
+	if explicit {
+		var one models.Computer
+		if err := db.First(&one, "id = ?", *computerID).Error; err != nil {
+			return http.StatusNotFound, gin.H{"code": "no_computer", "message": "Нет доступного компьютера"}
+		}
+		candidates = []models.Computer{one}
+	} else {
+		if err := db.Where("status = ?", models.ComputerStatusAvailable).
+			Order("name").Find(&candidates).Error; err != nil || len(candidates) == 0 {
+			return http.StatusNotFound, gin.H{"code": "no_computer", "message": "Нет доступного компьютера"}
+		}
+	}
+
 	var computer models.Computer
-	query := db.Where("status = ?", models.ComputerStatusAvailable)
-	if computerID != nil && *computerID != "" {
-		query = db.Where("id = ?", *computerID)
+	picked := false
+	for i := range candidates {
+		pc := &candidates[i]
+		if pc.Status != models.ComputerStatusAvailable {
+			if explicit {
+				return http.StatusConflict, gin.H{"code": "computer_busy", "message": "Компьютер занят"}
+			}
+			continue
+		}
+		if nb := nextRelevantBooking(pc.ID, now); nb != nil && nb.UserID != userID {
+			if isBookingLocked(nb.StartTime, now, bkLock) {
+				if explicit {
+					return http.StatusConflict, gin.H{"code": "computer_reserved",
+						"message": "ПК придержан под бронь к " + nb.StartTime.Local().Format("15:04")}
+				}
+				continue
+			}
+			if w := seatWindowMin(nb.StartTime, now, bkBuffer); planned > w {
+				if explicit {
+					return http.StatusConflict, gin.H{"code": "booking_soon", "message": fmt.Sprintf(
+						"До брони (%s) свободно %d мин с учётом буфера — планируй меньше или выбери другой ПК",
+						nb.StartTime.Local().Format("15:04"), w)}
+				}
+				continue
+			}
+		}
+		computer = *pc
+		picked = true
+		break
 	}
-	if err := query.First(&computer).Error; err != nil {
-		return http.StatusNotFound, gin.H{"code": "no_computer", "message": "Нет доступного компьютера"}
-	}
-	if computer.Status != models.ComputerStatusAvailable {
-		return http.StatusConflict, gin.H{"code": "computer_busy", "message": "Компьютер занят"}
+	if !picked {
+		return http.StatusConflict, gin.H{"code": "no_computer_window", "message": fmt.Sprintf(
+			"Свободного ПК под %d минут нет — всё занято или скоро забронировано", planned)}
 	}
 
 	var club models.Club
@@ -138,7 +191,7 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 		ComputerID:       computer.ID,
 		ClubID:           club.ID,
 		Status:           models.SessionStatusActive,
-		StartedAt:        time.Now(),
+		StartedAt:        now,
 		BaseRatePLN:      baseRate,
 		EffectiveRatePLN: rate,
 	}
@@ -172,6 +225,9 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 	// каким бы путём ни началась сессия (сам с киоска, посадка у стойки).
 	fromWaitlist := resolveWaitlistOnSeat(userID, user.Nickname)
 
+	// Г3-и3: посадка хозяина гасит его ближайшую бронь на этом ПК (seated).
+	claimed := claimBookingOnSeat(computer.ID, userID, now)
+
 	return http.StatusCreated, gin.H{
 		"session_id":         session.ID,
 		"started_at":         session.StartedAt,
@@ -181,6 +237,7 @@ func startSessionFor(userID uuid.UUID, computerID *string) (int, gin.H) {
 		"effective_rate_pln": rate,
 		"discount_pct":       discountPct,
 		"from_waitlist":      fromWaitlist,
+		"booking_claimed":    claimed != nil,
 	}
 }
 
@@ -439,5 +496,19 @@ func handleGetMySessions(c *gin.Context) {
 		Limit(50).
 		Find(&sessions)
 
-	c.JSON(http.StatusOK, gin.H{"count": len(sessions), "sessions": sessions})
+	// Г3: активной сессии отдаём дедлайн чужой брони — шелл режет прогноз
+	// «хватит до» и честно показывает, что ПК уйдёт под бронь.
+	var bookingDeadline *time.Time
+	for i := range sessions {
+		if sessions[i].Status != models.SessionStatusActive {
+			continue
+		}
+		if nb := nextForeignBooking(sessions[i].ComputerID, sessions[i].UserID, time.Now()); nb != nil {
+			d := nb.StartTime.Add(-time.Duration(settingInt64("booking_lock_min", bookingLockMinDef)) * time.Minute)
+			bookingDeadline = &d
+		}
+		break
+	}
+
+	c.JSON(http.StatusOK, gin.H{"count": len(sessions), "sessions": sessions, "booking_deadline": bookingDeadline})
 }

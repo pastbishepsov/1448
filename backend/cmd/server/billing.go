@@ -182,6 +182,32 @@ func billSession(s *models.Session, now time.Time) bool {
 	afkStop := settingInt64("afk_stop_min", afkStopMinDef)
 	idle, idleKnown := shellIdleSec(s.ComputerID.String())
 
+	// — Г3-и2: чужая бронь впереди — жёсткий дедлайн (start − lock). Работает
+	// поверх паузы и нуля: ПК обещан другому гостю, сессия его освобождает. —
+	if nb := nextForeignBooking(s.ComputerID, s.UserID, now); nb != nil {
+		deadline := nb.StartTime.Add(-time.Duration(settingInt64("booking_lock_min", bookingLockMinDef)) * time.Minute)
+		if !now.Before(deadline) {
+			notifyUser(s.UserID, "booking_deadline", map[string]any{"start_time": nb.StartTime})
+			if _, err := finishSession(s, nil, "booking"); err == nil {
+				log.Printf("биллинг: сессия %s завершена — ПК уходит под бронь", s.ID)
+			}
+			return true
+		}
+		leftMin := int(deadline.Sub(now).Minutes())
+		if leftMin <= 5 && s.BkWarn5At == nil {
+			notifyUser(s.UserID, "booking_soon", map[string]any{"minutes_left": leftMin, "start_time": nb.StartTime})
+			db.Model(&models.Session{}).Where("id = ?", s.ID).
+				Updates(map[string]any{"bkwarn5_at": now, "bkwarn15_at": now})
+			t := now
+			s.BkWarn5At, s.BkWarn15At = &t, &t
+		} else if leftMin <= 15 && s.BkWarn15At == nil {
+			notifyUser(s.UserID, "booking_soon", map[string]any{"minutes_left": leftMin, "start_time": nb.StartTime})
+			db.Model(&models.Session{}).Where("id = ?", s.ID).Update("bkwarn15_at", now)
+			t := now
+			s.BkWarn15At = &t
+		}
+	}
+
 	// — Пауза (Г2-и1): время и деньги стоят — до бюджета или возвращения —
 	if s.PausedAt != nil {
 		guestBack := idleKnown && idle <= afkBackIdleSec

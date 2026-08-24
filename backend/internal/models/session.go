@@ -51,6 +51,11 @@ type Session struct {
 	ActiveMinutes  int        `json:"active_minutes" gorm:"default:0"`      // минуты без простоя (анти-фарм Г5)
 	AfkWarnedAt    *time.Time `json:"afk_warned_at,omitempty"`              // afk_warn отправлен
 
+	// Дедлайн чужой брони (Г3, миграция 034): предупреждения за ~15/~5 минут
+	// до принудительного освобождения ПК (билл-тик, ended_reason=booking).
+	BkWarn15At *time.Time `json:"bkwarn15_at,omitempty" gorm:"column:bkwarn15_at"`
+	BkWarn5At  *time.Time `json:"bkwarn5_at,omitempty"  gorm:"column:bkwarn5_at"`
+
 	CreatedAt time.Time `json:"created_at"`
 
 	// Связи

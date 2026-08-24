@@ -734,6 +734,17 @@ const STR = {
   ntf_afk_warn: '💤 Ты давно не за компом — сессия скоро встанет на паузу',
   ntf_afk_pause: '💤 AFK: сессия на паузе — вернись за ПК',
   ntf_moved: '🖥 Тебя пересадили за {c} — сессия продолжается',
+  wal_ops: 'Операции кошелька',
+  wtx_deposit: 'Пополнение',
+  wtx_session_spend: 'Время за ПК',
+  wtx_kitchen_spend: 'Кухня',
+  wtx_refund: 'Возврат',
+  wtx_adjust: 'Корректировка',
+  live_paused: 'Пауза — время и деньги стоят',
+  ntf_bk_soon: '⏰ Твой ПК забронирован к {t} — осталось ~{m} мин',
+  ntf_bk_deadline: '⏰ ПК ушёл под бронь ({t}) — сессия завершена, баланс цел',
+  btn_pause: '⏸ Пауза',
+  btn_resume: '▶ Продолжить',
   rate_line: '1 zł → {c} койнов · игра: +{m} койнов/мин',
   btn_topup: 'Пополнить',
   topup_title: 'Пополнение баланса',
@@ -1080,15 +1091,31 @@ async function leaveWaitlist(){
 }
 
 /* ── live-карточка сессии (М1-и4): таймер + ≈XP, зелёный tint как сайдбар shell ── */
+/* Г2: пауза из мобилки — тот же API, что у шелла */
+async function appPause(){
+  try{ await api('/me/sessions/pause', {method:'POST', body:'{}'}); await loadSessions(); renderLive(); }
+  catch(e){ toast(T('toast_err', {m: e.message})); }
+}
+async function appResume(){
+  try{ await api('/me/sessions/resume', {method:'POST', body:'{}'}); await loadSessions(); renderLive(); }
+  catch(e){ toast(T('toast_err', {m: e.message})); }
+}
+
 function renderLive(){
   const el = document.getElementById('liveCard');
   if (!el) return;
   if (!activeSession){ el.classList.add('hidden'); el.dataset.ready = ''; stopLive(); renderWaitlist(); updateCallBtn(); return; }
-  if (!el.dataset.ready){
-    el.dataset.ready = '1';
-    el.innerHTML = `<div class="muted" style="display:flex; align-items:center; gap:8px"><span class="livedot"></span>${esc(STR.live_now)}</div>
+  const pkey = activeSession.paused_at ? 'p' : 'a'; // Г2: перестроить при смене
+  if (el.dataset.ready !== pkey){
+    el.dataset.ready = pkey;
+    el.innerHTML = pkey === 'p' ? `
+      <div class="muted" style="display:flex; align-items:center; gap:8px">⏸ ${esc(STR.live_paused)}</div>
       <div class="live-time cnum" id="liveTime">00:00</div>
-      <div class="muted">≈ +<b class="cnum" id="liveXP" data-v="0" style="color:var(--txt)">0</b> ${esc(STR.live_xp_lbl)}</div>`;
+      <button class="btn slim" style="margin-top:8px" onclick="appResume()">${esc(STR.btn_resume)}</button>` : `
+      <div class="muted" style="display:flex; align-items:center; gap:8px"><span class="livedot"></span>${esc(STR.live_now)}</div>
+      <div class="live-time cnum" id="liveTime">00:00</div>
+      <div class="muted">≈ +<b class="cnum" id="liveXP" data-v="0" style="color:var(--txt)">0</b> ${esc(STR.live_xp_lbl)}</div>
+      <button class="btn ghost slim" style="margin-top:8px" onclick="appPause()">${esc(STR.btn_pause)}</button>`;
   }
   el.classList.remove('hidden');
   tickLive();
@@ -1098,7 +1125,10 @@ function renderLive(){
 }
 function tickLive(){
   if (!activeSession) return;
-  const sec = Math.max(0, Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000));
+  let sec = Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000)
+          - (activeSession.paused_total_sec || 0);
+  if (activeSession.paused_at) sec -= Math.floor((Date.now() - new Date(activeSession.paused_at).getTime()) / 1000);
+  sec = Math.max(0, sec);
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
   const elT = document.getElementById('liveTime');
   if (elT) elT.textContent = (h ? h + ':' + pad2(m) : pad2(m)) + ':' + pad2(sec % 60);
@@ -1234,16 +1264,18 @@ async function submitBooking(){
    Ранг с лаврами и шкалой часов → таланты (3 ветки, arm-confirm) →
    ачивки → топ клуба → история сессий и пополнений. Без поллинга:
    свежие данные на входе во вкладку и по возврату в приложение. */
-let talents = null, achievements = null, leaderboard = null, deposits = null;
+let talents = null, achievements = null, leaderboard = null, deposits = null, walletTx = [];
 let armTalent = null, armTimer = null;
 
 async function loadProgress(){
   loadMe(); // топбар и economy (ранг/часы) заодно
   try{
-    const [tl, ac, lb, dp] = await Promise.all([
+    const [tl, ac, lb, dp, wl] = await Promise.all([
       api('/me/talents'), api('/me/achievements'), api('/leaderboard'), api('/me/deposits'),
+      api('/me/wallet'),
     ]);
     talents = tl; achievements = ac; leaderboard = lb; deposits = dp.deposits || [];
+    walletTx = wl.transactions || [];
   }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
   await loadSessions(); // журнал для истории (заодно live-карточка честная)
   renderProgress();
@@ -1391,7 +1423,13 @@ function renderHist(){
       <span class="muted">${esc(STR.hist_balance)}</span>
     </div>
     ${economy && economy.rates ? `<div class="muted cnum" style="margin:0 0 10px">${T('rate_line', {c: economy.rates.deposit_coins_per_pln, m: economy.rates.coins_per_min})}</div>` : ''}
-    <button class="btn ghost slim" style="margin:0 0 12px" onclick="openTopup()">${esc(STR.btn_topup)}</button>` +
+    <button class="btn ghost slim" style="margin:0 0 12px" onclick="openTopup()">${esc(STR.btn_topup)}</button>
+    ${walletTx.length ? `<div class="sect" style="margin-top:2px">${esc(STR.wal_ops)}</div>` +
+      walletTx.slice(0, 8).map(w => `<div class="hrow">
+        <span class="h-when">${esc(fmtWhen(w.created_at))}</span>
+        <span class="h-l">${esc(STR['wtx_' + w.kind] || w.kind)}</span>
+        <span class="h-v" style="color:${w.amount_grosz >= 0 ? 'var(--green)' : 'var(--txt)'}">${w.amount_grosz >= 0 ? '+' : '−'}${zl2(Math.abs(w.amount_grosz))} zł</span>
+      </div>`).join('') : ''}` +
     (items.slice(0, 20).map(i => `<div class="hrow">
       <span class="h-when">${esc(fmtWhen(i.at))}</span>
       <span class="h-l">${esc(i.l)}${i.sub ? ' · ' + i.sub : ''}</span>
@@ -1767,6 +1805,10 @@ function ntfText(n){
       return STR.ntf_afk_pause;
     case 'session_moved':
       return T('ntf_moved', {c: p.computer || 'ПК'});
+    case 'booking_soon':
+      return T('ntf_bk_soon', {t: p.start_time ? hm(p.start_time) : '—', m: p.minutes_left || 0});
+    case 'booking_deadline':
+      return T('ntf_bk_deadline', {t: p.start_time ? hm(p.start_time) : '—'});
   }
   return STR.ntf_default;
 }
@@ -1794,7 +1836,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-23.2';
+const APP_VER = '2026-08-24.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

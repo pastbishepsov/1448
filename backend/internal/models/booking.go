@@ -15,6 +15,7 @@ const (
 	BookingStatusCancelled BookingStatus = "cancelled"
 	BookingStatusCompleted BookingStatus = "completed"
 	BookingStatusNoShow    BookingStatus = "no_show"
+	BookingStatusSeated    BookingStatus = "seated" // Г3: хозяин сел — бронь погашена посадкой (миграция 034)
 )
 
 // Booking — бронь ПК (миграция 007).

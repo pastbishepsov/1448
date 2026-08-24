@@ -58,6 +58,8 @@ var settingBounds = map[string][2]int64{
 	"zero_grace_min":            {0, 60},   // Г1-и2: грейс на нуле кошелька до автозавершения
 	"pause_limit_min":           {0, 240},  // Г2-и1: лимит паузы на сессию, 0 = пауза выключена
 	"afk_stop_min":              {0, 240},  // Г2-и2: порог простоя до AFK-реакции, 0 = выкл
+	"booking_buffer_min":        {0, 240},  // Г3 (Р3): буфер до чужой брони при посадке
+	"booking_lock_min":          {0, 120},  // Г3 (Р3): за столько минут ПК придержан под бронь
 }
 
 func currentSettings() gin.H {
@@ -79,6 +81,8 @@ func currentSettings() gin.H {
 		"zero_grace_min":            settingInt64("zero_grace_min", zeroGraceMinDef),
 		"pause_limit_min":           settingInt64("pause_limit_min", pauseLimitMinDef),
 		"afk_stop_min":              settingInt64("afk_stop_min", afkStopMinDef),
+		"booking_buffer_min":        settingInt64("booking_buffer_min", bookingBufferMinDef),
+		"booking_lock_min":          settingInt64("booking_lock_min", bookingLockMinDef),
 	}
 }
 

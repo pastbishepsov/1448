@@ -702,7 +702,7 @@
           <input id="set_xp" class="input" type="number" min="1" max="1000">
           <label class="muted" for="set_coins">Монет за минуту игры</label>
           <input id="set_coins" class="input" type="number" min="0" max="1000">
-          <label class="muted" for="set_rate">Монет за 1 zł депозита</label>
+          <label class="muted" for="set_rate">Кэшбек-монеты за 1 zł пополнения (деньги идут в кошелёк отдельно)</label>
           <input id="set_rate" class="input" type="number" min="1" max="100">
           <label class="muted" for="set_spend">Монет за 1 zł при списании — курс погашения</label>
           <input id="set_spend" class="input" type="number" min="1" max="1000">
@@ -724,6 +724,18 @@
           <input id="set_segnew" class="input" type="number" min="1" max="365">
           <label class="muted" for="set_seglost">Сегмент «пропавшие»: дней без визита</label>
           <input id="set_seglost" class="input" type="number" min="2" max="730">
+          <label class="muted" for="set_minstart">Порог старта: кошелёк должен покрывать минут (0 — пускать всех)</label>
+          <input id="set_minstart" class="input" type="number" min="0" max="1440">
+          <label class="muted" for="set_grace">Ноль кошелька: грейс до автозавершения, мин</label>
+          <input id="set_grace" class="input" type="number" min="0" max="60">
+          <label class="muted" for="set_pause">Лимит паузы на сессию, мин (0 — пауза выключена)</label>
+          <input id="set_pause" class="input" type="number" min="0" max="240">
+          <label class="muted" for="set_afk">AFK: минут простоя до автопаузы/завершения (0 — выкл)</label>
+          <input id="set_afk" class="input" type="number" min="0" max="240">
+          <label class="muted" for="set_bkbuf">Бронь: буфер посадки до чужой брони, мин</label>
+          <input id="set_bkbuf" class="input" type="number" min="0" max="240">
+          <label class="muted" for="set_bklock">Бронь: за сколько минут ПК придержан под гостя</label>
+          <input id="set_bklock" class="input" type="number" min="0" max="120">
           <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
           <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал. Лимиты не касаются владельца</div>
         </div>
@@ -1214,7 +1226,7 @@ function hallGridHTML(positioned, edit){
 function hallPCCell(pc, edit){
   const off = !pc.shell_online;
   let cls = '', inf = 'своб.';
-  if (pc.session){ cls = ' busy'; inf = esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at); }
+  if (pc.session){ cls = ' busy'; inf = (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at); }
   else if (pc.status === 'maintenance'){ cls = ' maint'; inf = 'ремонт'; }
   else if (!edit && hallSoon[pc.id]){ inf = 'бронь ' + hhmm(hallSoon[pc.id]); }
   else if (off){ inf = 'offline'; }
@@ -1374,7 +1386,7 @@ async function submitNewPC(){
 function pcTile(pc, soonAt){
   const off = !pc.shell_online;
   let cls = 'free', info = '<span class="pcdot" style="background:var(--green)"></span>своб.';
-  if (pc.session){ cls = 'busy'; info = esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at); }
+  if (pc.session){ cls = 'busy'; info = (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at); }
   else if (pc.status === 'maintenance'){ cls = 'maint'; info = '<span data-ic="wrench"></span>ремонт'; }
   else if (pc.status === 'reserved'){ info = '<span class="pcdot" style="background:var(--neu)"></span>резерв'; }
   else if (off){ info = '<span class="muted">offline</span>'; }
@@ -1386,6 +1398,19 @@ function pcTile(pc, soonAt){
     <div class="info">${info}</div>${soonHtml}</div>`;
 }
 function hhmm(iso){ const d = new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+
+/* Г2-и3: пересадка живой сессии на свободный ПК (шторка ПК) */
+async function movePCSession(sessionId){
+  const sel = document.getElementById('movePCSel');
+  if (!sel || !sel.value) return;
+  try{
+    const d = await api('/admin/sessions/' + sessionId + '/move',
+      {method:'POST', body:JSON.stringify({computer_id: sel.value})});
+    toast('✓ Пересажен за ' + d.computer);
+    closeDrawer();
+    await renderHall();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
 
 /* drawer ПК: инфо + завершение сессии (arm-confirm) + ремонт */
 function openPCDrawer(id){
@@ -1411,11 +1436,22 @@ function renderPCDrawer(id){
       <tr><td class="muted">Гость</td><td><b>${esc(pc.session.nickname)}</b></td></tr>
       <tr><td class="muted">Начало</td><td>${fmtTime(pc.session.started_at)}</td></tr>
       <tr><td class="muted">Идёт</td><td id="dElapsed">${elapsed(pc.session.started_at)}</td></tr>
+      ${pc.session.paused_at ? `<tr><td class="muted">Пауза</td><td>⏸ с ${fmtTime(pc.session.paused_at)}${pc.session.paused_by === 'afk' ? ' · AFK' : ''} — время и деньги стоят</td></tr>` : ''}
     </table>
     <button class="btn danger" style="width:100%; justify-content:center; margin-top:14px"
       onclick="armEndSession(this,'${pc.session.id}','${esc(pc.session.nickname)}','${pc.session.started_at}')">
       <span data-ic="power"></span>Завершить сессию</button>
     <div class="muted" style="margin-top:8px; text-align:center">XP и монеты начислятся за фактическое время</div>`;
+    const movePCs = hallData.filter(p => p.id !== pc.id && !p.session && p.status === 'available');
+    if (movePCs.length){
+      body += `<div class="dsub">Пересадить за другой ПК</div>
+      <div class="actrow" style="gap:8px">
+        <select id="movePCSel" class="input" style="flex:1; min-width:0">${movePCs.map(p =>
+          `<option value="${p.id}">${esc(p.name)}${p.zone ? ' · ' + esc(p.zone) : ''}</option>`).join('')}</select>
+        <button class="btn ghost" onclick="movePCSession('${pc.session.id}')"><span data-ic="monitor"></span>Пересадить</button>
+      </div>
+      <div class="muted" style="margin-top:6px">Сессия и биллинг не рвутся, тариф сохраняется</div>`;
+    }
   } else if (pc.status === 'maintenance'){
     body += `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:16px"
       onclick="setPCStatus('${pc.id}','available')"><span data-ic="check"></span>Из ремонта — в строй</button>`;
@@ -2651,6 +2687,7 @@ async function renderReports(){
 function paintMoney(d){
   const t = d.totals, k = d.delta, w = d.prev || {}, days = d.days || [];
   const loss = d.losses || {units:0, pln:0, moves:0};
+  const wal = d.wallet || {liability_pln:0, guests_with_balance:0, period_spent_pln:0, period_spends:0};
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln,
@@ -2671,6 +2708,12 @@ function paintMoney(d){
        <div class="kpi">Наличные <b>${fmtPLN(t.cash_pln)} zł</b></div>
        <div class="kpi">Карта <b>${fmtPLN(t.card_pln)} zł</b></div>
        <div class="kpi">BLIK <b>${fmtPLN(t.blik_pln)} zł</b></div>
+     </div>
+     <div class="kpis">
+       ${repKpi('Кошельки гостей', fmtPLN(wal.liability_pln) + ' zł', undefined,
+                {title:'обязательство клуба: предоплата, ещё не отсиженная временем · гостей с балансом: ' + wal.guests_with_balance})}
+       ${repKpi('Списано с кошельков', fmtPLN(wal.period_spent_pln) + ' zł', undefined,
+                {title:'за период, ' + wal.period_spends + ' операций — НЕ выручка: она признана в момент пополнения'})}
      </div>
      <div class="sect">Выручка по дням</div>
      ${repChart(days, x => x.value,
@@ -3463,6 +3506,12 @@ async function renderSettings(){
     document.getElementById('set_rhour').value = d.settings.report_hour;
     document.getElementById('set_segnew').value = d.settings.seg_new_days;
     document.getElementById('set_seglost').value = d.settings.seg_lost_days;
+    document.getElementById('set_minstart').value = d.settings.min_start_minutes;
+    document.getElementById('set_grace').value = d.settings.zero_grace_min;
+    document.getElementById('set_pause').value = d.settings.pause_limit_min;
+    document.getElementById('set_afk').value = d.settings.afk_stop_min;
+    document.getElementById('set_bkbuf').value = d.settings.booking_buffer_min;
+    document.getElementById('set_bklock').value = d.settings.booking_lock_min;
   }catch(e){ toast('⚠ ' + e.message); }
 }
 async function saveSettings(){
@@ -3480,6 +3529,12 @@ async function saveSettings(){
     report_hour: parseInt(document.getElementById('set_rhour').value),
     seg_new_days: parseInt(document.getElementById('set_segnew').value),
     seg_lost_days: parseInt(document.getElementById('set_seglost').value),
+    min_start_minutes: parseInt(document.getElementById('set_minstart').value),
+    zero_grace_min: parseInt(document.getElementById('set_grace').value),
+    pause_limit_min: parseInt(document.getElementById('set_pause').value),
+    afk_stop_min: parseInt(document.getElementById('set_afk').value),
+    booking_buffer_min: parseInt(document.getElementById('set_bkbuf').value),
+    booking_lock_min: parseInt(document.getElementById('set_bklock').value),
   };
   for (const k in body){
     if (!Number.isInteger(body[k]) || body[k] < 0){ toast('⚠ Нужны целые неотрицательные числа'); return; }

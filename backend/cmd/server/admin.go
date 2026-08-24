@@ -288,6 +288,8 @@ func handleAdminComputers(c *gin.Context) {
 			row["session"] = gin.H{
 				"id": s.ID, "started_at": s.StartedAt,
 				"nickname": nicknameOf(s.User),
+				// Г2-и4: пауза видна в зале и в шторке ПК
+				"paused_at": s.PausedAt, "paused_by": s.PausedBy,
 			}
 		}
 		out = append(out, row)
@@ -513,7 +515,8 @@ func handleAdminSeatGuest(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Nickname string `json:"nickname" binding:"required"`
+		Nickname   string `json:"nickname" binding:"required"`
+		PlannedMin *int   `json:"planned_min"` // Г3: сколько гость планирует (для ПК с бронью)
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужен ник гостя"})
@@ -537,7 +540,7 @@ func handleAdminSeatGuest(c *gin.Context) {
 		return
 	}
 	cid := pc.ID.String()
-	code, resp := startSessionFor(user.ID, &cid)
+	code, resp := startSessionFor(user.ID, &cid, req.PlannedMin)
 	if code < 300 {
 		target := user.ID
 		logAdminAction(c, "session_start", &target, user.Nickname+" за "+pc.Name)
