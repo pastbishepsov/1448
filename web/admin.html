@@ -1277,7 +1277,12 @@ function hallGridHTML(positioned, edit){
 function hallPCCell(pc, edit){
   const off = !pc.shell_online;
   let cls = '', inf = 'своб.';
-  if (pc.session){ cls = ' busy'; inf = (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at); }
+  if (pc.session){
+    cls = ' busy';
+    inf = seatWaiting(pc)
+      ? '⏳ ' + esc(pc.session.nickname) + ' · ' + waitLeft(pc)
+      : (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at);
+  }
   else if (pc.status === 'maintenance'){ cls = ' maint'; inf = 'ремонт'; }
   else if (!edit && hallSoon[pc.id]){ inf = 'бронь ' + hhmm(hallSoon[pc.id]); }
   else if (off){ inf = 'offline'; }
@@ -1437,7 +1442,12 @@ async function submitNewPC(){
 function pcTile(pc, soonAt){
   const off = !pc.shell_online;
   let cls = 'free', info = '<span class="pcdot" style="background:var(--green)"></span>своб.';
-  if (pc.session){ cls = 'busy'; info = (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at); }
+  if (pc.session){
+    cls = 'busy';
+    info = seatWaiting(pc)
+      ? '⏳ ' + esc(pc.session.nickname) + ' · ' + waitLeft(pc)
+      : (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at);
+  }
   else if (pc.status === 'maintenance'){ cls = 'maint'; info = '<span data-ic="wrench"></span>ремонт'; }
   else if (pc.status === 'reserved'){ info = '<span class="pcdot" style="background:var(--neu)"></span>резерв'; }
   else if (off){ info = '<span class="muted">offline</span>'; }
@@ -1485,14 +1495,20 @@ function renderPCDrawer(id){
     body += `<div class="dsub">Сессия</div>
     <table class="kv">
       <tr><td class="muted">Гость</td><td><b>${esc(pc.session.nickname)}</b></td></tr>
-      <tr><td class="muted">Начало</td><td>${fmtTime(pc.session.started_at)}</td></tr>
-      <tr><td class="muted">Идёт</td><td id="dElapsed">${elapsed(pc.session.started_at)}</td></tr>
+      ${seatWaiting(pc)
+        ? `<tr><td class="muted">Статус</td><td>⏳ ждёт [Готов!] — ${waitLeft(pc)} · деньги не идут</td></tr>`
+        : `<tr><td class="muted">Начало</td><td>${fmtTime(pc.session.started_at)}</td></tr>
+      <tr><td class="muted">Идёт</td><td id="dElapsed">${elapsed(pc.session.started_at)}</td></tr>`}
       ${pc.session.paused_at ? `<tr><td class="muted">Пауза</td><td>⏸ с ${fmtTime(pc.session.paused_at)}${pc.session.paused_by === 'afk' ? ' · AFK' : ''} — время и деньги стоят</td></tr>` : ''}
     </table>
-    <button class="btn danger" style="width:100%; justify-content:center; margin-top:14px"
+    ${seatWaiting(pc) ? `<button class="btn danger" style="width:100%; justify-content:center; margin-top:14px"
+      onclick="armSeatCancel(this,'${pc.session.id}','${esc(pc.session.nickname)}')">
+      <span data-ic="cross"></span>Отменить посадку</button>
+    <div class="muted" style="margin-top:8px; text-align:center">Гость не дошёл — ПК освободится, ничего не спишется</div>`
+    : `<button class="btn danger" style="width:100%; justify-content:center; margin-top:14px"
       onclick="armEndSession(this,'${pc.session.id}','${esc(pc.session.nickname)}','${pc.session.started_at}')">
       <span data-ic="power"></span>Завершить сессию</button>
-    <div class="muted" style="margin-top:8px; text-align:center">XP и монеты начислятся за фактическое время</div>`;
+    <div class="muted" style="margin-top:8px; text-align:center">XP и монеты начислятся за фактическое время</div>`}`;
     const movePCs = hallData.filter(p => p.id !== pc.id && !p.session && p.status === 'available');
     if (movePCs.length){
       body += `<div class="dsub">Пересадить за другой ПК</div>
@@ -1640,6 +1656,18 @@ function wlRemove(btn, id, nickname){
   });
 }
 
+/* Е1-и4: ПК посажен, но время ещё не пошло. У стойки это надо видеть
+   отдельно от «занят»: гость может не дойти, и тогда посадку снимают без
+   списания — деньги за эти минуты никто не платил. */
+function seatWaiting(pc){
+  return !!(pc && pc.session && pc.session.ready_deadline && !pc.session.ready_at);
+}
+function waitLeft(pc){
+  const left = Math.round((new Date(pc.session.ready_deadline) - Date.now()) / 1000);
+  if (left <= 0) return '0:00';
+  return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+}
+
 /* arm-confirm: первый клик взводит кнопку, второй (в течение 4с) — выполняет */
 function armButton(btn, armedHTML, fn){
   if (btn.dataset.armed !== '1'){
@@ -1657,6 +1685,21 @@ function armButton(btn, armedHTML, fn){
 function armEndSession(btn, id, nick, startedAt){
   const min = Math.max(1, Math.round((Date.now() - new Date(startedAt))/60000));
   armButton(btn, '<span data-ic="power"></span>Ещё раз — завершить (' + min + ' мин)', () => endSessionNow(id, nick));
+}
+
+/* Е1-и4: снять посадку, пока гость не подтвердил. Не «завершить»: денег не
+   брали, минут не было — сессия уходит в cancelled, ПК освобождается, и в
+   статистику клуба это не попадает сыгранной сессией. */
+function armSeatCancel(btn, id, nick){
+  armButton(btn, '<span data-ic="cross"></span>Ещё раз — снять посадку', () => seatCancelNow(id, nick));
+}
+async function seatCancelNow(id, nick){
+  try{
+    await api('/admin/sessions/' + id + '/seat-cancel', {method:'POST'});
+    toast('✓ Посадка снята: ' + nick + ' — ничего не списано');
+    closeDrawer();
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 async function endSessionNow(id, nick){

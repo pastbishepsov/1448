@@ -330,6 +330,9 @@ func handleAdminComputers(c *gin.Context) {
 				"nickname": nicknameOf(s.User),
 				// Г2-и4: пауза видна в зале и в шторке ПК
 				"paused_at": s.PausedAt, "paused_by": s.PausedBy,
+				// Е1-и4: ждёт нажатия [Готов!] — в зале это «⏳ ждёт 6:12»,
+				// и по этому же признаку в шторке появляется отмена посадки.
+				"ready_at": s.ReadyAt, "ready_deadline": s.ReadyDeadline,
 			}
 		}
 		out = append(out, row)
