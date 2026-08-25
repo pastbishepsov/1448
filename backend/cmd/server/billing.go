@@ -176,6 +176,29 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 // прошедшие БЕЗ пауз целые минуты, разослать прогноз/предупреждения,
 // обработать ноль и грейс.
 func billSession(s *models.Session, now time.Time) bool {
+	// — Е1: окно [Готов!]. Пока гость не подтвердил, сессия не тарифицируется
+	// вообще: ни денег, ни минутного запаса, ни предупреждений. По истечении
+	// дедлайна подтверждаем САМИ (решение Р1) и уходим — списывать начнёт
+	// следующий тик, ровно с момента дедлайна.
+	//
+	// Проверка стоит ПЕРВОЙ, до дедлайна чужой брони: во время ожидания
+	// завершать сессию нечем — денег не брали, и finishSession записал бы
+	// «сыгранную» сессию на пустом месте. Столкнуться они не могут: правило
+	// посадки Г3 требует, чтобы в окно до чужой брони влез минимальный сеанс
+	// (30 мин), а ожидание ограничено семью минутами.
+	if sessionWaitingReady(s) {
+		if now.Before(*s.ReadyDeadline) {
+			return false
+		}
+		if err := confirmReady(s, *s.ReadyDeadline); err != nil {
+			log.Printf("биллинг: авто-старт сессии %s не прошёл: %v", s.ID, err)
+			return false
+		}
+		notifyUser(s.UserID, "ready_auto", map[string]any{"started_at": s.StartedAt})
+		hub.AdminBroadcast("session", map[string]any{"kind": "ready_auto", "session_id": s.ID})
+		return true
+	}
+
 	rateGrosz := models.GroszFromPLN(s.EffectiveRatePLN)
 	grace := settingInt64("zero_grace_min", zeroGraceMinDef)
 	pauseLimit := settingInt64("pause_limit_min", pauseLimitMinDef)

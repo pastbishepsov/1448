@@ -67,6 +67,7 @@ var settingBounds = map[string][2]int64{
 	"streak_freeze_max":         {0, 10},     // сколько заморозок держать в запасе
 	"streak_freeze_max_row":     {1, 7},      // сколько дней подряд можно прикрыть
 	"birthday_case_tier":        {0, 5},    // Г8-и4: ДР-кейс (0=выкл, 1=light … 5=gods)
+	"ready_wait_min":            {0, 30},   // Е1: сколько ждём [Готов!], мин; 0 = окно выключено
 }
 
 func currentSettings() gin.H {
@@ -97,6 +98,7 @@ func currentSettings() gin.H {
 		"streak_freeze_max":         settingInt64("streak_freeze_max", streakFreezeMaxDef),
 		"streak_freeze_max_row":     settingInt64("streak_freeze_max_row", streakFreezeMaxRowDef),
 		"birthday_case_tier":        settingInt64("birthday_case_tier", 1),
+		"ready_wait_min":            settingInt64("ready_wait_min", readyWaitMinDef),
 	}
 }
 

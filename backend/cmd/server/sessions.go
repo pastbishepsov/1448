@@ -196,12 +196,18 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 		}
 	}
 
+	// Е1: окно [Готов!]. До нажатия деньги не текут — гость ещё идёт к машине.
+	// started_at ставим сейчас и СДВИНЕМ при подтверждении (confirmReady):
+	// так все потребители времени сессии продолжают читать одно поле.
+	readyDeadline := readyDeadlineFor(now, settingInt64("ready_wait_min", readyWaitMinDef))
+
 	session := models.Session{
 		UserID:           userID,
 		ComputerID:       computer.ID,
 		ClubID:           club.ID,
 		Status:           models.SessionStatusActive,
 		StartedAt:        now,
+		ReadyDeadline:    readyDeadline,
 		BaseRatePLN:      baseRate,
 		EffectiveRatePLN: rate,
 	}
@@ -251,6 +257,7 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 		"discount_pct":       discountPct,
 		"from_waitlist":      fromWaitlist,
 		"booking_claimed":    claimed != nil,
+		"ready_deadline":     session.ReadyDeadline, // Е1: nil — окно выключено
 	}
 }
 

@@ -98,6 +98,7 @@ func main() {
 		me.GET("/sessions", handleGetMySessions)           // ← настоящий
 		me.POST("/sessions/start", handleStartSession)     // ← настоящий
 		me.POST("/sessions/end", handleEndSession)         // ← настоящий
+		me.POST("/sessions/ready", handleSessionReady)     // [Готов!] — точка отсчёта денег (Е1)
 		me.POST("/sessions/pause", handlePauseSession)     // пауза: время и деньги стоят (Г2)
 		me.POST("/sessions/resume", handleResumeSession)   // снять паузу (Г2)
 		me.GET("/bookings", handleGetMyBookings)           // ← настоящий
@@ -167,6 +168,7 @@ func main() {
 		adm.GET("/sessions/active", handleAdminActiveSessions)
 		adm.POST("/sessions/:id/end", handleAdminEndSession)
 		adm.POST("/sessions/:id/move", handleAdminMoveSession) // пересадка на другой ПК (Г2-и3)
+		adm.POST("/sessions/:id/seat-cancel", handleAdminSeatCancel) // отмена посадки до [Готов!] (Е1)
 		adm.GET("/bookings", handleAdminBookings)
 		adm.POST("/bookings", handleAdminCreateBooking) // walk-in (спринт А3)
 		adm.POST("/bookings/:id/cancel", handleAdminCancelBooking)

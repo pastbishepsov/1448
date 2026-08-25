@@ -56,6 +56,11 @@ type Session struct {
 	BkWarn15At *time.Time `json:"bkwarn15_at,omitempty" gorm:"column:bkwarn15_at"`
 	BkWarn5At  *time.Time `json:"bkwarn5_at,omitempty"  gorm:"column:bkwarn5_at"`
 
+	// Окно [Готов!] (Е1, миграция 045): гость идёт от стойки к машине, и это
+	// время не оплачивается. Ожидание = ReadyDeadline задан, ReadyAt пуст.
+	ReadyAt       *time.Time `json:"ready_at,omitempty"`       // нажал [Готов!] (или авто-старт по дедлайну)
+	ReadyDeadline *time.Time `json:"ready_deadline,omitempty"` // до какого момента ждём нажатия
+
 	CreatedAt time.Time `json:"created_at"`
 
 	// Связи
