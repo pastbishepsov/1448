@@ -727,6 +727,21 @@
   </div>
 </div>
 
+<!-- Е1-и3: экран «Готов?». Появляется, когда гостя посадили, но время ещё
+     не пошло. Лаунчер под ним заперт физически — оверлей закрывает всё. -->
+<div id="readyOverlay" class="hidden" style="position:fixed; inset:0; z-index:90; background:rgba(4,4,5,.94); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; text-align:center; padding:24px">
+  <div style="max-width:520px; width:100%">
+    <div style="font-size:54px">🎮</div>
+    <div style="font-size:30px; font-weight:800; margin-top:10px" data-str="ready_title"></div>
+    <div id="readyWho" class="muted" style="font-size:16px; margin-top:8px"></div>
+    <div id="readyLeft" style="font-size:52px; font-weight:800; color:var(--acc); margin:16px 0 6px; font-variant-numeric:tabular-nums">—</div>
+    <div class="muted" data-str="ready_hint"></div>
+    <button id="readyBtn" class="btn" style="width:100%; justify-content:center; font-size:19px; padding:18px; margin-top:18px"
+            onclick="pressReady()" data-str="ready_btn"></button>
+    <div class="muted" style="margin-top:12px" data-str="ready_auto"></div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <!-- Б3 (ADMIN.md): панель связи с админом — вызов + переписка -->
@@ -1245,6 +1260,15 @@ const SH_RU = {
   ntf_default: "🔔 Обновление аккаунта",
   ntf_profile: "🔔 Админ обновил твои данные: {f}",
   ntf_pwd_reset: "🔑 Пароль сброшен у стойки — задай свой при входе",
+  ready_title: "Готов играть?",
+  ready_who: "{n} · {c}",
+  ready_hint: "Деньги начнут списываться только после нажатия — за дорогу к компьютеру не платишь",
+  ready_btn: "Готов!",
+  ready_starting: "Запускаем…",
+  ready_auto: "Если не нажмёшь, сессия начнётся сама",
+  toast_ready_go: "▶ Поехали — время пошло",
+  ntf_ready_auto: "▶ Время пошло: окно ожидания истекло",
+  ntf_seat_cancel: "Посадку отменили у стойки",
   fld_nickname: "никнейм", fld_first_name: "имя", fld_last_name: "фамилия",
   fld_phone: "телефон", fld_email: "e-mail",
   pwd_title: "Задай свой пароль",
@@ -1617,6 +1641,15 @@ const SH_EN = {
   ntf_default: "🔔 Account update",
   ntf_profile: "🔔 An admin updated your details: {f}",
   ntf_pwd_reset: "🔑 Your password was reset at the desk — set your own when you sign in",
+  ready_title: "Ready to play?",
+  ready_who: "{n} · {c}",
+  ready_hint: "The clock starts only when you tap — you don’t pay for walking to the PC",
+  ready_btn: "I’m ready!",
+  ready_starting: "Starting…",
+  ready_auto: "If you don’t tap, the session starts on its own",
+  toast_ready_go: "▶ Off we go — the clock is running",
+  ntf_ready_auto: "▶ The clock started: the waiting window ran out",
+  ntf_seat_cancel: "Your seat was cancelled at the desk",
   fld_nickname: "nickname", fld_first_name: "first name", fld_last_name: "last name",
   fld_phone: "phone", fld_email: "e-mail",
   pwd_title: "Set your own password",
@@ -1989,6 +2022,15 @@ const SH_PL = {
   ntf_default: "🔔 Aktualizacja konta",
   ntf_profile: "🔔 Administrator zaktualizował twoje dane: {f}",
   ntf_pwd_reset: "🔑 Hasło zostało zresetowane przy ladzie — ustaw własne przy logowaniu",
+  ready_title: "Gotowy do gry?",
+  ready_who: "{n} · {c}",
+  ready_hint: "Czas rusza dopiero po kliknięciu — za drogę do komputera nie płacisz",
+  ready_btn: "Gotowy!",
+  ready_starting: "Uruchamiamy…",
+  ready_auto: "Jeśli nie klikniesz, sesja zacznie się sama",
+  toast_ready_go: "▶ Jedziemy — czas leci",
+  ntf_ready_auto: "▶ Czas ruszył: okno oczekiwania minęło",
+  ntf_seat_cancel: "Posadzenie anulowano przy ladzie",
   fld_nickname: "nick", fld_first_name: "imię", fld_last_name: "nazwisko",
   fld_phone: "telefon", fld_email: "e-mail",
   pwd_title: "Ustaw własne hasło",
@@ -2262,6 +2304,7 @@ let sensDPI = +(localStorage.getItem('1448_dpi') || 800);
 let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
 let sensProfile = null, sensProfileApplied = false;
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
+let sessComputer = ''; // Е1: имя машины активной сессии — для экрана «Готов?»
 let menuData = null, myOrders = [], foodQty = {}, foodBusy = false, myUnpaidPln = 0; // Г7: кухня (Р10: постоплата)
 let lastFavsKey = ''; // Г8: витрина пересобирается при смене любимых игр
 let authMode = 'login';
@@ -2417,8 +2460,10 @@ async function loadAll(){
       sensProfileApplied = true;
     }
     activeSession = sessions.find(s => !s.ended_at) || null;
+    sessComputer = ss.computer || sessComputer; // Е1: имя машины для «Готов?»
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
     renderTop(); renderWallet(); renderSession(); renderSide(); renderLock();
+    paintReadyGate(); // Е1: посадили, но время ещё не пошло — просим подтвердить
     // Г8-и5: любимые игры изменились → пересобрать витрину (звёзды и порядок)
     const favsKey = (me.favorite_games || []).join();
     if (favsKey !== lastFavsKey){ lastFavsKey = favsKey; if (CATALOG.games) renderCatalog(); }
@@ -2817,6 +2862,8 @@ function notifText(n){
     // русское «телефон».
     case 'profile_updated': return T('ntf_profile', {f: (p.fields||[]).map(fieldLabel).join(', ')});
     case 'password_reset': return STR.ntf_pwd_reset;
+    case 'ready_auto': return STR.ntf_ready_auto;   // Е1: окно истекло, время пошло
+    case 'seat_cancelled': return STR.ntf_seat_cancel; // Е1: посадку сняли у стойки
   }
   return STR.ntf_default;
 }
@@ -3043,6 +3090,59 @@ function showLevelUp(level){
   FX.confetti(70);
 }
 
+/* ═══ Е1-и3: экран «Готов?» ═══
+   Пока гость не нажал, деньги не идут (сервер не тарифицирует ожидание).
+   Экран сам гаснет, когда сервер подтвердил сессию — неважно, нажатием
+   отсюда, с телефона или по истечении дедлайна. */
+let readyIv = null;
+function waitingReady(){
+  return !!(activeSession && activeSession.ready_deadline && !activeSession.ready_at);
+}
+function paintReadyGate(){
+  const ov = document.getElementById('readyOverlay');
+  if (!ov) return;
+  const need = waitingReady();
+  ov.classList.toggle('hidden', !need);
+  if (!need){
+    clearInterval(readyIv); readyIv = null;
+    return;
+  }
+  document.getElementById('readyWho').textContent =
+    T('ready_who', {n: me ? me.nickname : '', c: sessComputer || '—'});
+  readyTick();
+  if (!readyIv) readyIv = setInterval(readyTick, 1000);
+}
+function readyTick(){
+  const box = document.getElementById('readyLeft');
+  if (!box || !waitingReady()) return;
+  const left = Math.round((new Date(activeSession.ready_deadline) - Date.now()) / 1000);
+  if (left <= 0){
+    // Дедлайн прошёл: сервер стартует сессию сам (Р1), тик у него раз в 30 с.
+    // Своё «Готов!» отсюда НЕ шлём — оно поставило бы точку отсчёта на
+    // сейчас, а не на дедлайн, и гость с админом видели бы разное время.
+    box.textContent = '—';
+    document.getElementById('readyBtn').textContent = STR.ready_starting;
+    return;
+  }
+  box.textContent = fmtHMS(left);
+}
+async function pressReady(){
+  const btn = document.getElementById('readyBtn');
+  btn.disabled = true;
+  try{
+    const d = await api('/me/sessions/ready', {method:'POST'});
+    if (activeSession){
+      activeSession.ready_at = d.ready_at || new Date().toISOString();
+      activeSession.started_at = d.started_at || activeSession.started_at;
+    }
+    paintReadyGate();
+    if (!d.already) toast(STR.toast_ready_go);
+    renderSession();
+    loadAll();
+  }catch(e){ toast('⚠ ' + e.message); }
+  btn.disabled = false;
+}
+
 /* ═══════════════ LOCK-ЭКРАН ═══════════════ */
 function renderLock(){
   const inShell = !document.getElementById('shellView').classList.contains('hidden');
@@ -3059,10 +3159,16 @@ setInterval(async () => {
   try{
     const ss = await api('/me/sessions');
     bookingDeadline = ss.booking_deadline || null; // Г3
+    sessComputer = ss.computer || sessComputer;    // Е1
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
       if (!still){ toast(STR.toast_sess_ended); await loadAll(); }
+      // Е1: сервер подтвердил сессию сам (дедлайн истёк) или гость нажал
+      // [Готов!] с телефона — экран обязан погаснуть здесь же.
+      else if (!!still.ready_at !== !!activeSession.ready_at){
+        activeSession = still; paintReadyGate(); renderSession();
+      }
       else if (!!still.paused_at !== !!activeSession.paused_at ||
                (still.paused_total_sec || 0) !== (activeSession.paused_total_sec || 0) ||
                (still.zero_since || '') !== (activeSession.zero_since || '')){

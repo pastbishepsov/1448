@@ -532,6 +532,7 @@ func handleGetMySessions(c *gin.Context) {
 	// Г3: активной сессии отдаём дедлайн чужой брони — шелл режет прогноз
 	// «хватит до» и честно показывает, что ПК уйдёт под бронь.
 	var bookingDeadline *time.Time
+	var activeComputer string // Е1: экран [Готов!] называет машину — «ПК-07»
 	for i := range sessions {
 		if sessions[i].Status != models.SessionStatusActive {
 			continue
@@ -540,8 +541,13 @@ func handleGetMySessions(c *gin.Context) {
 			d := nb.StartTime.Add(-time.Duration(settingInt64("booking_lock_min", bookingLockMinDef)) * time.Minute)
 			bookingDeadline = &d
 		}
+		var pc models.Computer
+		if db.Select("name").First(&pc, "id = ?", sessions[i].ComputerID).Error == nil {
+			activeComputer = pc.Name
+		}
 		break
 	}
 
-	c.JSON(http.StatusOK, gin.H{"count": len(sessions), "sessions": sessions, "booking_deadline": bookingDeadline})
+	c.JSON(http.StatusOK, gin.H{"count": len(sessions), "sessions": sessions,
+		"booking_deadline": bookingDeadline, "computer": activeComputer})
 }
