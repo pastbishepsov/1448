@@ -79,9 +79,12 @@ func minutesAffordable(wallet, rateGrosz int64, already int) int {
 	return m
 }
 
-// minutesLeft — прогноз: минутный запас монет + деньги кошелька.
-func minutesLeft(coinMinutes, wallet, rateGrosz int64, alreadyMoney int) int {
-	return int(coinMinutes) + minutesAffordable(wallet, rateGrosz, alreadyMoney)
+// minutesLeft — прогноз: минутный запас монет + минуты пакета + деньги
+// кошелька (Е2-и3). Пакет входит сюда обязательно: гость с пятичасовым
+// пакетом и пустым кошельком должен видеть пять часов, а не ноль, — и по
+// этому же прогнозу его пускает порог старта.
+func minutesLeft(coinMinutes, packMinutes, wallet, rateGrosz int64, alreadyMoney int) int {
+	return int(coinMinutes) + int(packMinutes) + minutesAffordable(wallet, rateGrosz, alreadyMoney)
 }
 
 // walletTickPayload — единое тело wallet_update для шелла.
@@ -90,6 +93,7 @@ func walletTickPayload(u *models.User, s *models.Session, left int) map[string]a
 		"wallet_grosz":   u.WalletGrosz,
 		"wallet_pln":     models.PLNFromGrosz(u.WalletGrosz),
 		"coin_minutes":   u.CoinMinutes,
+		"pack_minutes":   s.PackMinutesUsed, // Е2-и3: сколько этой сессии закрыл пакет
 		"minutes_left":   left,
 		"charged_grosz":  s.ChargedGrosz,
 		"billed_minutes": s.BilledMinutes,
@@ -101,7 +105,7 @@ func walletTickPayload(u *models.User, s *models.Session, left int) map[string]a
 // сколько покрывается и сообщает, что упёрлись в ноль. Вся правка — одной
 // транзакцией, сессия под условием status=active (гонка с завершением).
 // bestEffort=true (финальный расчёт при завершении) не считает ноль ошибкой.
-func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes int) (hitZero bool, err error) {
+func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes int, now time.Time) (hitZero bool, err error) {
 	delta := targetMinutes - s.BilledMinutes
 	if delta <= 0 {
 		if user.ID == s.UserID { // уже загружен
@@ -110,6 +114,10 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 		return false, db.First(user, "id = ?", s.UserID).Error
 	}
 	rateGrosz := models.GroszFromPLN(s.EffectiveRatePLN)
+	// Е2-и3: зона машины — по ней выбираются пакеты. Читаем до транзакции:
+	// внутри она уже не изменится, а держать лишний запрос под блокировкой
+	// пользователя незачем.
+	zoneID := zoneOfComputer(s.ComputerID)
 
 	err = db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -120,7 +128,17 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 		if useCoin > user.CoinMinutes {
 			useCoin = user.CoinMinutes
 		}
-		payMin := delta - int(useCoin)
+		// Е2-и3: после монет — минуты пакета этой зоны, ближайший к сгоранию
+		// первым. Деньги трогаем только тем, что пакеты не закрыли.
+		usePack := 0
+		if rest := delta - int(useCoin); rest > 0 {
+			var perr error
+			usePack, perr = takePackageMinutes(tx, livePackagesFor(tx, s.UserID, zoneID, now), rest)
+			if perr != nil {
+				return perr
+			}
+		}
+		payMin := delta - int(useCoin) - usePack
 		charge := chargeDelta(rateGrosz, s.MoneyMinutes, payMin)
 		if charge > user.WalletGrosz {
 			payMin = minutesAffordable(user.WalletGrosz, rateGrosz, s.MoneyMinutes)
@@ -131,8 +149,9 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 		// Сессию правим первой и только пока она active: если её параллельно
 		// завершили — не списываем ничего.
 		upd := map[string]any{
-			"billed_minutes":    s.BilledMinutes + int(useCoin) + payMin,
+			"billed_minutes":    s.BilledMinutes + int(useCoin) + usePack + payMin,
 			"coin_minutes_used": s.CoinMinutesUsed + int(useCoin),
+			"pack_minutes_used": s.PackMinutesUsed + usePack,
 			"money_minutes":     s.MoneyMinutes + payMin,
 			"charged_grosz":     s.ChargedGrosz + charge,
 		}
@@ -161,8 +180,9 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 			}
 		}
 		// локальное состояние — для прогноза и уведомлений после транзакции
-		s.BilledMinutes += int(useCoin) + payMin
+		s.BilledMinutes += int(useCoin) + usePack + payMin
 		s.CoinMinutesUsed += int(useCoin)
+		s.PackMinutesUsed += usePack
 		s.MoneyMinutes += payMin
 		s.ChargedGrosz += charge
 		user.CoinMinutes -= useCoin
@@ -295,7 +315,7 @@ func billSession(s *models.Session, now time.Time) bool {
 	prevBilled := s.BilledMinutes
 
 	var user models.User
-	hitZero, err := settleSessionMinutes(s, &user, elapsed)
+	hitZero, err := settleSessionMinutes(s, &user, elapsed, now)
 	if err != nil {
 		return false
 	}
@@ -308,7 +328,8 @@ func billSession(s *models.Session, now time.Time) bool {
 		s.ActiveMinutes += billedDelta
 	}
 
-	left := minutesLeft(user.CoinMinutes, user.WalletGrosz, rateGrosz, s.MoneyMinutes)
+	packLeft := livePackMinutes(s.UserID, zoneOfComputer(s.ComputerID), now) // Е2-и3
+	left := minutesLeft(user.CoinMinutes, packLeft, user.WalletGrosz, rateGrosz, s.MoneyMinutes)
 	notifyShell(s.ComputerID.String(), websocket.MsgWalletUpdate, walletTickPayload(&user, s, left))
 
 	if hitZero {

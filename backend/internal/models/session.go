@@ -37,6 +37,10 @@ type Session struct {
 	BilledMinutes   int        `json:"billed_minutes" gorm:"default:0"`    // минут учтено всего
 	CoinMinutesUsed int        `json:"coin_minutes_used" gorm:"default:0"` // покрыто минутным запасом монет
 	MoneyMinutes    int        `json:"money_minutes" gorm:"default:0"`     // оплачено кошельком
+	// Е2-и3: покрыто минутами купленного пакета. Отдельно от монет и кошелька:
+	// иначе чек «3 часа из пакета, 40 минут с кошелька» не сойдётся, а
+	// обязательство клуба по непроигранным пакетам нечем будет проверить.
+	PackMinutesUsed int        `json:"pack_minutes_used" gorm:"default:0"`
 	ChargedGrosz    int64      `json:"charged_grosz" gorm:"default:0"`     // списано денег за сессию
 	Warn15At        *time.Time `json:"warn15_at,omitempty"`                // «осталось ~15 мин» отправлено
 	Warn5At         *time.Time `json:"warn5_at,omitempty"`                 // «осталось ~5 мин» отправлено

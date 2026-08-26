@@ -687,6 +687,7 @@
         <button id="st-food" onclick="sideTab('food')" data-str-title="tab_food_title">🍔</button>
         <button id="st-book" onclick="sideTab('book')"><span data-ic="cal"></span></button>
         <button id="st-coins" onclick="sideTab('coins')"><span data-ic="coins"></span></button>
+        <button id="st-pack" onclick="sideTab('pack')" data-str-title="tab_pack_title"><span data-ic="timer"></span></button>
       </div>
       <div class="sidebody" id="sideBody"><!-- JS --></div>
     </div>
@@ -817,10 +818,23 @@
   <div class="lock-sub" data-str="lock_sub"></div>
   <div class="lock-card">
     <button class="btn" onclick="startSession()" data-str="btn_start"></button>
+    <button class="btn ghost" onclick="openPackShop()" data-str="pack_shop"></button>
     <div class="lock-user" id="lockUser"></div>
     <button class="btn ghost" onclick="logout()" data-str="btn_switch_acc"></button>
     <div class="lock-info"><a href="#" onclick="openInfo();return false" data-str="lock_rules"></a></div>
     <div id="lockLang"></div>
+  </div>
+</div>
+
+<!-- Е2-и5б: витрина пакетов поверх лок-экрана. z-index выше лока: до старта
+     сессии всё остальное закрыто, а купить время нужно именно сейчас. -->
+<div id="packOverlay" class="hidden" style="position:fixed; inset:0; z-index:95; background:rgba(4,4,5,.94); backdrop-filter:blur(10px); overflow:auto; padding:28px 20px">
+  <div style="max-width:560px; margin:0 auto">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px">
+      <div style="font-size:22px; font-weight:800; flex:1" data-str="pack_head"></div>
+      <button class="btn ghost slim" onclick="closePackShop()" aria-label="✕">✕</button>
+    </div>
+    <div id="packOverlayBody"></div>
   </div>
 </div>
 
@@ -1088,6 +1102,28 @@ const SH_RU = {
   tab_top: "Топ",
   tab_ach: "Ачивки",
   tab_hist: "История",
+  tab_pack_title: "Пакеты времени",
+  pack_head: "Купленное время",
+  pack_none: "Пакетов нет. Пакет — это часы вперёд по цене ниже обычной",
+  pack_live: "{n} мин · {z}",
+  pack_row: "{n} из {t} мин",
+  pack_expires: "сгорит через {d} дн",
+  pack_expired: "сгорел",
+  pack_voided: "отменён",
+  pack_used: "отыгран",
+  pack_shop: "Купить пакет",
+  pack_hour: "час выходит {h} zł",
+  pack_save: "выгода {s} zł",
+  pack_forever: "бессрочно",
+  pack_days: "сгорит через {d} дн",
+  pack_buy: "Купить за {p} zł",
+  pack_from_wallet: "Спишется с кошелька — там сейчас {w}",
+  pack_bought: "▶ {n} — время на счету",
+  pack_poor: "На кошельке не хватает. Пополни у стойки",
+  pack_zone_note: "Минуты пакета тратятся только в своей зоне и раньше кошелька",
+  ntf_pack_added: "▶ Пакет «{n}»: +{m} мин ({z})",
+  ntf_pack_void: "↩ Выдача пакета «{n}» отменена",
+  ntf_pack_soon: "⏳ Пакет «{n}» сгорит через {d} дн — осталось {m} мин",
   tab_food_title: "Кухня",
   cases_empty: "Кейсов пока нет.<br>Играй, поднимай уровень, выполняй ачивки.",
   cases_odds_link: "шансы дропа",
@@ -1261,6 +1297,8 @@ const SH_RU = {
   ntf_profile: "🔔 Админ обновил твои данные: {f}",
   ntf_pwd_reset: "🔑 Пароль сброшен у стойки — задай свой при входе",
   ready_title: "Готов играть?",
+  reg_seat_fail: "Аккаунт создан. Подойди к стойке — там пополнят баланс и запустят сессию",
+  reg_seat_ok: "Аккаунт создан — можно начинать",
   ready_who: "{n} · {c}",
   ready_hint: "Деньги начнут списываться только после нажатия — за дорогу к компьютеру не платишь",
   ready_btn: "Готов!",
@@ -1469,6 +1507,28 @@ const SH_EN = {
   tab_top: "Top",
   tab_ach: "Achievements",
   tab_hist: "History",
+  tab_pack_title: "Time packages",
+  pack_head: "Time you bought",
+  pack_none: "No packages yet. A package is hours up front at a lower rate",
+  pack_live: "{n} min · {z}",
+  pack_row: "{n} of {t} min",
+  pack_expires: "expires in {d} d",
+  pack_expired: "expired",
+  pack_voided: "cancelled",
+  pack_used: "used up",
+  pack_shop: "Buy a package",
+  pack_hour: "{h} zł per hour",
+  pack_save: "you save {s} zł",
+  pack_forever: "no expiry",
+  pack_days: "expires in {d} d",
+  pack_buy: "Buy for {p} zł",
+  pack_from_wallet: "Taken from your wallet — {w} there now",
+  pack_bought: "▶ {n} — the time is yours",
+  pack_poor: "Not enough in the wallet. Top up at the desk",
+  pack_zone_note: "Package minutes work only in their zone and go before the wallet",
+  ntf_pack_added: "▶ Package “{n}”: +{m} min ({z})",
+  ntf_pack_void: "↩ Package “{n}” was cancelled",
+  ntf_pack_soon: "⏳ Package “{n}” expires in {d} d — {m} min left",
   tab_food_title: "Kitchen",
   cases_empty: "No cases yet.<br>Play, level up, earn achievements.",
   cases_odds_link: "drop odds",
@@ -1642,6 +1702,8 @@ const SH_EN = {
   ntf_profile: "🔔 An admin updated your details: {f}",
   ntf_pwd_reset: "🔑 Your password was reset at the desk — set your own when you sign in",
   ready_title: "Ready to play?",
+  reg_seat_fail: "Account created. Come to the desk — they’ll top up your balance and start the session",
+  reg_seat_ok: "Account created — you’re good to go",
   ready_who: "{n} · {c}",
   ready_hint: "The clock starts only when you tap — you don’t pay for walking to the PC",
   ready_btn: "I’m ready!",
@@ -1850,6 +1912,28 @@ const SH_PL = {
   tab_top: "Top",
   tab_ach: "Osiągnięcia",
   tab_hist: "Historia",
+  tab_pack_title: "Pakiety czasu",
+  pack_head: "Kupiony czas",
+  pack_none: "Nie masz pakietów. Pakiet to godziny z góry, taniej niż zwykle",
+  pack_live: "{n} min · {z}",
+  pack_row: "{n} z {t} min",
+  pack_expires: "wygasa za {d} dn",
+  pack_expired: "wygasł",
+  pack_voided: "anulowany",
+  pack_used: "wykorzystany",
+  pack_shop: "Kup pakiet",
+  pack_hour: "{h} zł za godzinę",
+  pack_save: "oszczędzasz {s} zł",
+  pack_forever: "bezterminowo",
+  pack_days: "wygasa za {d} dn",
+  pack_buy: "Kup za {p} zł",
+  pack_from_wallet: "Pobierzemy z portfela — jest tam {w}",
+  pack_bought: "▶ {n} — czas na koncie",
+  pack_poor: "W portfelu za mało. Doładuj przy ladzie",
+  pack_zone_note: "Minuty pakietu działają tylko w swojej strefie i idą przed portfelem",
+  ntf_pack_added: "▶ Pakiet „{n}”: +{m} min ({z})",
+  ntf_pack_void: "↩ Wydanie pakietu „{n}” anulowano",
+  ntf_pack_soon: "⏳ Pakiet „{n}” wygasa za {d} dn — zostało {m} min",
   tab_food_title: "Kuchnia",
   cases_empty: "Nie masz jeszcze skrzynek.<br>Graj, zdobywaj poziomy i osiągnięcia.",
   cases_odds_link: "szanse dropu",
@@ -2023,6 +2107,8 @@ const SH_PL = {
   ntf_profile: "🔔 Administrator zaktualizował twoje dane: {f}",
   ntf_pwd_reset: "🔑 Hasło zostało zresetowane przy ladzie — ustaw własne przy logowaniu",
   ready_title: "Gotowy do gry?",
+  reg_seat_fail: "Konto utworzone. Podejdź do lady — doładują saldo i uruchomią sesję",
+  reg_seat_ok: "Konto utworzone — można zaczynać",
   ready_who: "{n} · {c}",
   ready_hint: "Czas rusza dopiero po kliknięciu — za drogę do komputera nie płacisz",
   ready_btn: "Gotowy!",
@@ -2364,6 +2450,20 @@ async function submitAuth(){
     const d = await api(path, {method:'POST', body:JSON.stringify(body)}, false);
     setTokens(d.access_token, d.refresh_token);
     me = d.user;
+    // Е1-и5: гость только что завёл аккаунт ЗА ЭТОЙ машиной — админ придержал
+    // её именно под это. Пробуем сесть сразу: получится — попадёт в окно
+    // «Готов?», не получится (обычно пустой кошелёк) — честно отправляем к
+    // стойке, а не оставляем гадать, что делать дальше.
+    if (authMode === 'register'){
+      if (!myComputerId) await pingAgent(); // не гадаем — спросим агента сейчас
+      if (myComputerId){
+        try{
+          await api('/me/sessions/start', {method:'POST',
+            body: JSON.stringify({computer_id: myComputerId})});
+          toast(STR.reg_seat_ok);
+        }catch(e){ toast(STR.reg_seat_fail); }
+      }
+    }
     enterShell();
   }catch(e){ err.textContent = e.message || STR.err_generic; }
   btn.disabled = false;
@@ -2449,6 +2549,7 @@ async function loadAll(){
     cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
     sessions = ss.sessions || [];
     bookingDeadline = ss.booking_deadline || null; // Г3: ПК уйдёт под бронь
+    packMinutesHere = ss.pack_minutes || 0;        // Е2-и5: минуты пакета ЭТОЙ зоны
     bookings = bk.bookings || [];
     economy = ec;
     sensProfile = sp;
@@ -2491,6 +2592,8 @@ function renderTop(){
 }
 const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
 
+let packMinutesHere = 0; // Е2-и5: минуты пакета, годные на ЭТОЙ машине (сервер, /me/sessions)
+
 /* ── Кошелёк (Г1): баланс в шапке + прогноз «хватит до HH:MM».
    Клиент только показывает: баланс и ставка приходят с сервера (Р2),
    списание и решения — целиком серверные (billing.go). ── */
@@ -2505,7 +2608,10 @@ function renderWallet(){
   } else if (activeSession){
     const rateGr = Math.round((activeSession.effective_rate_pln || 0) * 100);
     if (rateGr > 0){
-      const left = (me.coin_minutes || 0) + Math.floor((me.wallet_grosz || 0) * 60 / rateGr);
+      // Е2-и5: минуты пакета — такое же оплаченное время, как монеты. Без них
+      // «хватит до 19:40» врёт в меньшую сторону, и гость идёт доплачивать зря.
+      const left = (me.coin_minutes || 0) + (packMinutesHere || 0)
+                 + Math.floor((me.wallet_grosz || 0) * 60 / rateGr);
       low = left <= 15;
       if (left > 0){
         let till = new Date(Date.now() + left * 60000), byBooking = false;
@@ -2518,6 +2624,117 @@ function renderWallet(){
   }
   eta.textContent = txt;
   document.getElementById('walletChip').classList.toggle('low', low);
+}
+
+/* ── Е2-и5: пакеты времени. Гость видит купленное время рядом с деньгами и
+   покупает сам с кошелька (Р12): ночью админа за стойкой нет, а час по
+   пакету дешевле — ждать утра ради этого незачем. ── */
+let myPacks = [], packShop = [], packBusy = false;
+async function loadPacks(){
+  try{
+    const [mine, shop] = await Promise.all([api('/me/packages'), api('/me/packages/catalog')]);
+    myPacks = mine.packages || [];
+    packShop = shop.packages || [];
+  }catch(e){ /* тихо: панель покажет, что есть */ }
+  if (curTab === 'pack') renderSide();
+  if (packShopOpen()) paintPackShop();
+}
+
+function packLiveLine(){
+  const live = myPacks.filter(p => p.live);
+  if (!live.length) return '';
+  const byZone = {};
+  live.forEach(p => { byZone[p.zone || '—'] = (byZone[p.zone || '—'] || 0) + p.minutes_left; });
+  return Object.keys(byZone).map(z => T('pack_live', {n: byZone[z], z: esc(z)})).join(' · ');
+}
+
+/* Состояние пакета словом: «0 из 180» без объяснения выглядит как ошибка. */
+function packState(p){
+  if (p.voided_at) return STR.pack_voided;
+  if (p.minutes_left <= 0) return STR.pack_used;
+  if (p.days_left === 0) return STR.pack_expired;
+  if (p.days_left > 0) return T('pack_expires', {d: p.days_left});
+  return STR.pack_forever;
+}
+
+function renderPacks(){
+  const mine = myPacks.length ? myPacks.map(p => `
+    <div class="sess-item"${p.live ? '' : ' style="opacity:.55"'}>
+      <span><b>${esc(p.name)}</b> · <span class="muted">${esc(p.zone || '—')}</span></span>
+      <span>${T('pack_row', {n: p.minutes_left, t: p.minutes_total})}</span>
+      <span class="muted">${esc(packState(p))}</span>
+    </div>`).join('')
+    : `<div class="muted" style="padding:6px 0">${esc(STR.pack_none)}</div>`;
+
+  const wallet = fmtZl(me ? me.wallet_grosz : 0);
+  const shop = packShop.map(p => {
+    const afford = me && (me.wallet_grosz || 0) >= Math.round(p.price_pln * 100);
+    return `<div class="card" style="margin-top:10px">
+      <div style="display:flex; justify-content:space-between; gap:10px; align-items:baseline">
+        <b>${esc(p.name)}</b><span class="muted">${esc(p.zone || '—')}</span>
+      </div>
+      <div class="muted" style="margin:4px 0 8px">
+        ${T('pack_hour', {h: fmtNum(p.hour_pln)})}${p.save_pln > 0 ? ' · ' + T('pack_save', {s: fmtNum(p.save_pln)}) : ''}
+        · ${p.days_valid ? T('pack_days', {d: p.days_valid}) : esc(STR.pack_forever)}
+      </div>
+      <button class="btn${afford ? '' : ' ghost'}" style="width:100%; justify-content:center"
+              onclick="buyPack('${p.id}')"${packBusy ? ' disabled' : ''}>${esc(T('pack_buy', {p: fmtNum(p.price_pln)}))}</button>
+    </div>`;
+  }).join('');
+
+  return `<div class="card">
+      <h3 style="margin-bottom:10px">${esc(STR.pack_head)}</h3>
+      <div class="muted" style="margin-bottom:8px">${packLiveLine()}</div>
+      ${mine}
+      <div class="muted" style="margin-top:10px">${esc(STR.pack_zone_note)}</div>
+    </div>
+    ${packShop.length ? `<h3 style="margin:16px 0 0">${esc(STR.pack_shop)}</h3>
+    <div class="muted">${esc(T('pack_from_wallet', {w: wallet}))}</div>${shop}` : ''}`;
+}
+
+/* Число цены — как везде в проекте: запятая, два знака только если нужны. */
+function fmtNum(v){
+  const n = Math.round((+v || 0) * 100) / 100;
+  return (Number.isInteger(n) ? String(n) : n.toFixed(2)).replace('.', ',');
+}
+
+/* Витрина поверх лок-экрана: до старта сессии панель недоступна, а именно
+   там гость и решает, брать пакет или платить по часам. */
+function openPackShop(){
+  const ov = document.getElementById('packOverlay');
+  if (!ov) return;
+  ov.classList.remove('hidden');
+  paintPackShop();
+  loadPacks();
+}
+function closePackShop(){
+  const ov = document.getElementById('packOverlay');
+  if (ov) ov.classList.add('hidden');
+}
+function packShopOpen(){
+  const ov = document.getElementById('packOverlay');
+  return !!ov && !ov.classList.contains('hidden');
+}
+function paintPackShop(){
+  const box = document.getElementById('packOverlayBody');
+  if (box) box.innerHTML = renderPacks();
+}
+
+async function buyPack(id){
+  if (packBusy) return;
+  packBusy = true;
+  try{
+    const d = await api('/me/packages', {method:'POST', body: JSON.stringify({package_id: id})});
+    toast(T('pack_bought', {n: d.package.name}));
+    if (me) me.wallet_grosz = Math.round((d.wallet_pln || 0) * 100);
+    renderWallet();
+    await loadPacks();
+  }catch(e){
+    toast(/not_enough|не хватает/i.test(e.message) ? STR.pack_poor : '⚠ ' + e.message);
+  }
+  packBusy = false;
+  if (curTab === 'pack') renderSide();
+  if (packShopOpen()) paintPackShop();
 }
 
 /* ═══════════════ КАТАЛОГ ═══════════════ */
@@ -2862,6 +3079,10 @@ function notifText(n){
     // русское «телефон».
     case 'profile_updated': return T('ntf_profile', {f: (p.fields||[]).map(fieldLabel).join(', ')});
     case 'password_reset': return STR.ntf_pwd_reset;
+    // Е2: пакеты времени
+    case 'package_added': return T('ntf_pack_added', {n: p.name || '', m: p.minutes || 0, z: p.zone || ''});
+    case 'package_void': return T('ntf_pack_void', {n: p.name || ''});
+    case 'package_expiring': return T('ntf_pack_soon', {n: p.name || '', d: p.days_left || 0, m: p.minutes || 0});
     case 'ready_auto': return STR.ntf_ready_auto;   // Е1: окно истекло, время пошло
     case 'seat_cancelled': return STR.ntf_seat_cancel; // Е1: посадку сняли у стойки
   }
@@ -2953,13 +3174,19 @@ function renderAgentDot(){
   el.title = agentOnline ? STR.tb_pc_title_on : STR.tb_pc_title_off;
 }
 
+let myComputerId = null; // Е1-и5: своя машина — агент знает её с рождения
 async function pingAgent(){
   try{
     const r = await fetch(AGENT + '/ping', {signal: AbortSignal.timeout(1500)});
     agentOnline = r.ok;
+    if (r.ok){
+      const d = await r.json().catch(() => ({}));
+      if (d.computer_id) myComputerId = d.computer_id;
+    }
   }catch(e){ agentOnline = false; }
   renderAgentDot();
 }
+pingAgent(); // Е1-и5: свой номер нужен ещё на экране регистрации
 setInterval(pingAgent, 30000);
 
 /* ═══════════════ СЕССИЯ ═══════════════ */
@@ -3160,6 +3387,7 @@ setInterval(async () => {
     const ss = await api('/me/sessions');
     bookingDeadline = ss.booking_deadline || null; // Г3
     sessComputer = ss.computer || sessComputer;    // Е1
+    packMinutesHere = ss.pack_minutes || 0;        // Е2-и5: пакет тает — прогноз едет за ним
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
@@ -3226,12 +3454,13 @@ attractPoke();
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
-  ['cases','talents','top','ach','hist','book','coins','food'].forEach(x =>
+  ['cases','talents','top','ach','hist','book','coins','food','pack'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
   // студия сенсы живёт в топбаре — подсвечиваем её кнопку
   const tbSens = document.getElementById('tbSens');
   if (tbSens) tbSens.classList.toggle('active', t==='sens');
   if (t === 'food') loadKitchen(); // Г7: меню и заказы — при открытии
+  if (t === 'pack') loadPacks();   // Е2-и5: свои пакеты и витрина — при открытии
   renderSide();
   FX.swap(document.getElementById('sideBody'));
 }
@@ -3370,6 +3599,10 @@ function renderSide(){
   if (curTab === 'coins'){
     if (!economy){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+esc(STR.eco_loading)+'</div>'; return; }
     el.innerHTML = renderCalc();
+    return;
+  }
+  if (curTab === 'pack'){
+    el.innerHTML = renderPacks();
     return;
   }
   if (curTab === 'sens'){

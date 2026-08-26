@@ -134,6 +134,12 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 			}
 			continue
 		}
+		// Е1-и5: ПК придержан под регистрацию — из АВТОМАТИЧЕСКОГО выбора он
+		// уходит, но явный старт именно на нём проходит: держим-то мы его как
+		// раз для того, кто сейчас за ним заводит аккаунт.
+		if !explicit && computerHeld(pc, now) {
+			continue
+		}
 		if nb := nextRelevantBooking(pc.ID, now); nb != nil && nb.UserID != userID {
 			if isBookingLocked(nb.StartTime, now, bkLock) {
 				if explicit {
@@ -187,12 +193,16 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 	// сначала проводит депозит, потом сажает).
 	if minStart := settingInt64("min_start_minutes", minStartMinutesDef); minStart > 0 {
 		rateGrosz := models.GroszFromPLN(rate)
-		covered := int64(minutesLeft(user.CoinMinutes, user.WalletGrosz, rateGrosz, 0))
+		// Е2-и3: минуты пакета этой зоны — такой же запас, как монеты. Без них
+		// гость с пятичасовым пакетом и пустым кошельком не смог бы сесть за
+		// машину, время на которой он уже оплатил.
+		packMin := livePackMinutes(user.ID, computer.ZoneID, now)
+		covered := int64(minutesLeft(user.CoinMinutes, packMin, user.WalletGrosz, rateGrosz, 0))
 		if covered < minStart {
 			needPLN := models.PLNFromGrosz(costForMinutes(rateGrosz, int(minStart)))
 			return http.StatusConflict, gin.H{"code": "wallet_low",
-				"message": fmt.Sprintf("Не хватает на старт: нужен запас на %d мин (~%.2f zł), у гостя %.2f zł и %d мин запаса. Пополни баланс у стойки",
-					minStart, needPLN, models.PLNFromGrosz(user.WalletGrosz), user.CoinMinutes)}
+				"message": fmt.Sprintf("Не хватает на старт: нужен запас на %d мин (~%.2f zł), у гостя %.2f zł, %d мин монетами и %d мин пакетом. Пополни баланс у стойки",
+					minStart, needPLN, models.PLNFromGrosz(user.WalletGrosz), user.CoinMinutes, packMin)}
 		}
 	}
 
@@ -210,6 +220,11 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 		ReadyDeadline:    readyDeadline,
 		BaseRatePLN:      baseRate,
 		EffectiveRatePLN: rate,
+	}
+
+	// Сессия началась — придержание своё дело сделало (Е1-и5).
+	if computerHeld(&computer, now) {
+		releaseHold(computer.ID)
 	}
 
 	err := db.Transaction(func(tx *gorm.DB) error {
@@ -344,7 +359,7 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 	// Сессия уже закрыта параллельно (errSessionGone) — наружу без наград,
 	// второй раз ничего не начисляем.
 	var payer models.User
-	if _, serr := settleSessionMinutes(session, &payer, minutes); serr != nil {
+	if _, serr := settleSessionMinutes(session, &payer, minutes, now); serr != nil {
 		if errors.Is(serr, errSessionGone) {
 			return nil, serr
 		}
@@ -533,6 +548,7 @@ func handleGetMySessions(c *gin.Context) {
 	// «хватит до» и честно показывает, что ПК уйдёт под бронь.
 	var bookingDeadline *time.Time
 	var activeComputer string // Е1: экран [Готов!] называет машину — «ПК-07»
+	var packMinutes int64     // Е2-и5: минуты пакета, годные ЗДЕСЬ — прогноз без них врёт
 	for i := range sessions {
 		if sessions[i].Status != models.SessionStatusActive {
 			continue
@@ -542,12 +558,17 @@ func handleGetMySessions(c *gin.Context) {
 			bookingDeadline = &d
 		}
 		var pc models.Computer
-		if db.Select("name").First(&pc, "id = ?", sessions[i].ComputerID).Error == nil {
+		if db.Select("name, zone_id").First(&pc, "id = ?", sessions[i].ComputerID).Error == nil {
 			activeComputer = pc.Name
+			// Пакет привязан к зоне (Р10): считать «сколько осталось» по всем
+			// пакетам сразу значило бы обещать гостю время, которое на ЭТОЙ
+			// машине не потратить.
+			packMinutes = livePackMinutes(sessions[i].UserID, pc.ZoneID, time.Now())
 		}
 		break
 	}
 
 	c.JSON(http.StatusOK, gin.H{"count": len(sessions), "sessions": sessions,
-		"booking_deadline": bookingDeadline, "computer": activeComputer})
+		"booking_deadline": bookingDeadline, "computer": activeComputer,
+		"pack_minutes": packMinutes})
 }

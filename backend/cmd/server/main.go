@@ -86,40 +86,43 @@ func main() {
 		auth.POST("/logout", handleLogout)   // ← настоящий
 
 		me := v1.Group("/me")
-		me.Use(authMiddleware())                           // всё под /me требует JWT
-		me.GET("", handleGetMe)                            // ← настоящий
-		me.PATCH("", handlePatchMe)                        // ← настоящий
-		me.POST("/password", handleChangeMyPassword)       // смена своего пароля (Е0-и2)
-		me.GET("/cases", handleGetMyCases)                 // ← настоящий
-		me.POST("/cases/:id/open", handleOpenCase)         // ← настоящий
-		me.GET("/talents", handleGetMyTalents)             // ← настоящий
-		me.POST("/talents/invest", handleInvestTalent)     // ← настоящий
-		me.GET("/achievements", handleGetMyAchievements)   // ← настоящий
-		me.GET("/sessions", handleGetMySessions)           // ← настоящий
-		me.POST("/sessions/start", handleStartSession)     // ← настоящий
-		me.POST("/sessions/end", handleEndSession)         // ← настоящий
-		me.POST("/sessions/ready", handleSessionReady)     // [Готов!] — точка отсчёта денег (Е1)
-		me.POST("/sessions/pause", handlePauseSession)     // пауза: время и деньги стоят (Г2)
-		me.POST("/sessions/resume", handleResumeSession)   // снять паузу (Г2)
-		me.GET("/bookings", handleGetMyBookings)           // ← настоящий
-		me.DELETE("/bookings/:id", handleCancelBooking)    // ← настоящий
-		me.GET("/deposits", handleGetMyDeposits)           // ← настоящий
-		me.GET("/wallet", handleGetMyWallet)               // кошелёк: баланс + журнал (трек Г, Г0)
-		me.GET("/economy", handleGetEconomy)               // ← настоящий (калькулятор + ранг)
-		me.GET("/sensitivity", handleGetSensitivity)       // ← настоящий (профиль сенсы)
-		me.PUT("/sensitivity", handlePutSensitivity)       // ← настоящий
-		me.POST("/chat", handleGuestChatPost)              // чат/вызов админа (Б2)
-		me.GET("/chat", handleGuestChatList)               // переписка, поллинг (Б3)
-		me.GET("/chat/unread", handleGuestChatUnread)      // бэйдж непрочитанного (Б3)
-		me.GET("/notifications", handleGetMyNotifications) // тосты о действиях админа (Б4)
-		me.GET("/waitlist", handleGetMyWaitlist)           // своя позиция в очереди (Б9, задел PWA)
-		me.POST("/waitlist", handleJoinWaitlist)           // встать в очередь самому (Б9)
-		me.DELETE("/waitlist", handleLeaveWaitlist)        // выйти из очереди (Б9)
-		me.GET("/menu", handleGetMyMenu)                             // меню кухни (Г7)
-		me.GET("/kitchen/orders", handleGetMyKitchenOrders)          // мои заказы (Г7)
-		me.POST("/kitchen/orders", handleMyKitchenOrderCreate)       // заказ: кошелёк или у стойки (Г7)
+		me.Use(authMiddleware())                                          // всё под /me требует JWT
+		me.GET("", handleGetMe)                                           // ← настоящий
+		me.PATCH("", handlePatchMe)                                       // ← настоящий
+		me.POST("/password", handleChangeMyPassword)                      // смена своего пароля (Е0-и2)
+		me.GET("/cases", handleGetMyCases)                                // ← настоящий
+		me.POST("/cases/:id/open", handleOpenCase)                        // ← настоящий
+		me.GET("/talents", handleGetMyTalents)                            // ← настоящий
+		me.POST("/talents/invest", handleInvestTalent)                    // ← настоящий
+		me.GET("/achievements", handleGetMyAchievements)                  // ← настоящий
+		me.GET("/packages/catalog", handleMyPackageCatalog)               // пакеты глазами гостя (Е2-и1, Р12)
+		me.GET("/packages", handleMyPackages)                             // свои пакеты и живые минуты (Е2-и2)
+		me.POST("/packages", handleMyPackageBuy)                          // купить пакет с кошелька (Е2-и2, Р12)
+		me.GET("/sessions", handleGetMySessions)                          // ← настоящий
+		me.POST("/sessions/start", handleStartSession)                    // ← настоящий
+		me.POST("/sessions/end", handleEndSession)                        // ← настоящий
+		me.POST("/sessions/ready", handleSessionReady)                    // [Готов!] — точка отсчёта денег (Е1)
+		me.POST("/sessions/pause", handlePauseSession)                    // пауза: время и деньги стоят (Г2)
+		me.POST("/sessions/resume", handleResumeSession)                  // снять паузу (Г2)
+		me.GET("/bookings", handleGetMyBookings)                          // ← настоящий
+		me.DELETE("/bookings/:id", handleCancelBooking)                   // ← настоящий
+		me.GET("/deposits", handleGetMyDeposits)                          // ← настоящий
+		me.GET("/wallet", handleGetMyWallet)                              // кошелёк: баланс + журнал (трек Г, Г0)
+		me.GET("/economy", handleGetEconomy)                              // ← настоящий (калькулятор + ранг)
+		me.GET("/sensitivity", handleGetSensitivity)                      // ← настоящий (профиль сенсы)
+		me.PUT("/sensitivity", handlePutSensitivity)                      // ← настоящий
+		me.POST("/chat", handleGuestChatPost)                             // чат/вызов админа (Б2)
+		me.GET("/chat", handleGuestChatList)                              // переписка, поллинг (Б3)
+		me.GET("/chat/unread", handleGuestChatUnread)                     // бэйдж непрочитанного (Б3)
+		me.GET("/notifications", handleGetMyNotifications)                // тосты о действиях админа (Б4)
+		me.GET("/waitlist", handleGetMyWaitlist)                          // своя позиция в очереди (Б9, задел PWA)
+		me.POST("/waitlist", handleJoinWaitlist)                          // встать в очередь самому (Б9)
+		me.DELETE("/waitlist", handleLeaveWaitlist)                       // выйти из очереди (Б9)
+		me.GET("/menu", handleGetMyMenu)                                  // меню кухни (Г7)
+		me.GET("/kitchen/orders", handleGetMyKitchenOrders)               // мои заказы (Г7)
+		me.POST("/kitchen/orders", handleMyKitchenOrderCreate)            // заказ: кошелёк или у стойки (Г7)
 		me.POST("/kitchen/orders/:id/cancel", handleMyKitchenOrderCancel) // передумал, пока не приняли (Г7)
-		me.POST("/streak/freeze", handleBuyStreakFreeze)             // заморозка стрика за монеты (Г6-и4)
+		me.POST("/streak/freeze", handleBuyStreakFreeze)                  // заморозка стрика за монеты (Г6-и4)
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
@@ -130,10 +133,10 @@ func main() {
 		clubs.GET("/:id/computers", handleGetClubComputers)                // ← настоящий
 		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
-		v1.GET("/ws/shell", handleShellWS)       // ← настоящий
-		v1.GET("/ws/admin", handleAdminWS)       // live-канал админки (спринт А6)
-		v1.GET("/catalog", handleGetCatalog)     // ← настоящий (гостевой экран + агент)
-		v1.GET("/cases/odds", handleGetCaseOdds) // таблица шансов кейсов (прозрачность, RESEARCH §4)
+		v1.GET("/ws/shell", handleShellWS)          // ← настоящий
+		v1.GET("/ws/admin", handleAdminWS)          // live-канал админки (спринт А6)
+		v1.GET("/catalog", handleGetCatalog)        // ← настоящий (гостевой экран + агент)
+		v1.GET("/cases/odds", handleGetCaseOdds)    // таблица шансов кейсов (прозрачность, RESEARCH §4)
 		v1.GET("/goods/:id/photo", handleGoodPhoto) // фото позиции кухни — как статика обложек (Г7)
 
 		// Админка (role=admin/owner из users.role, миграция 008)
@@ -141,8 +144,8 @@ func main() {
 		adm.Use(authMiddleware(), adminMiddleware())
 		adm.GET("/overview", handleAdminOverview)
 		adm.GET("/users", handleAdminUsers)
-		adm.GET("/users/:id", handleAdminUserCard) // карточка гостя (спринт А2)
-		adm.PATCH("/users/:id", handleAdminGuestUpdate) // правка данных гостя (Е0-и1)
+		adm.GET("/users/:id", handleAdminUserCard)                      // карточка гостя (спринт А2)
+		adm.PATCH("/users/:id", handleAdminGuestUpdate)                 // правка данных гостя (Е0-и1)
 		adm.POST("/users/:id/password/reset", handleAdminPasswordReset) // временный пароль (Е0-и2)
 		adm.POST("/users/:id/ban", handleAdminBan)
 		adm.POST("/users/:id/unban", handleAdminUnban)
@@ -159,6 +162,8 @@ func main() {
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
 		adm.POST("/computers/:id/power", handleAdminPCPower)             // вкл/перезагрузка/выкл (Б8)
 		adm.POST("/computers/:id/session", handleAdminSeatGuest)         // посадить гостя (Б8)
+		adm.POST("/computers/:id/hold", handleAdminComputerHold)         // придержать под регистрацию (Е1-и5)
+		adm.DELETE("/computers/:id/hold", handleAdminComputerUnhold)     // снять придержание (Е1-и5)
 		adm.GET("/shifts", handleAdminShifts)                            // шаблоны смен — сетка графика (Б11)
 		adm.GET("/shifts/schedule", handleAdminShiftSchedule)            // график персонала (Б11)
 		adm.GET("/shifts/now", handleAdminShiftsNow)                     // кто сейчас на смене (Б11)
@@ -167,7 +172,7 @@ func main() {
 		adm.DELETE("/waitlist/:id", handleAdminWaitlistRemove)           // снять из очереди (Б9)
 		adm.GET("/sessions/active", handleAdminActiveSessions)
 		adm.POST("/sessions/:id/end", handleAdminEndSession)
-		adm.POST("/sessions/:id/move", handleAdminMoveSession) // пересадка на другой ПК (Г2-и3)
+		adm.POST("/sessions/:id/move", handleAdminMoveSession)       // пересадка на другой ПК (Г2-и3)
 		adm.POST("/sessions/:id/seat-cancel", handleAdminSeatCancel) // отмена посадки до [Готов!] (Е1)
 		adm.GET("/bookings", handleAdminBookings)
 		adm.POST("/bookings", handleAdminCreateBooking) // walk-in (спринт А3)
@@ -184,21 +189,31 @@ func main() {
 		adm.POST("/work/start", handleWorkStart)
 		adm.POST("/work/stop", handleWorkStop)
 		adm.GET("/work/me", handleWorkMe)
+		adm.GET("/staff-chat", handleStaffChatList) // Е6: канал админ ↔ владелец (Р7)
+		adm.POST("/staff-chat", handleStaffChatPost)
+		adm.POST("/staff-chat/read", handleStaffChatRead)
+		adm.GET("/onboarding", handleOnboardingState)    // Е5: нужен ли тур (Р9)
+		adm.POST("/onboarding", handleOnboardingDone)    // тур показан
+		adm.DELETE("/onboarding", handleOnboardingReset) // пройти заново
 
 		adm.GET("/zones", handleAdminZones) // В4-1: цену часа видно и у стойки
 		// В4-2: обмен монет на время — операция смены, делает админ у стойки
 		adm.POST("/users/:id/redeem", handleAdminRedeemCoins)
 		adm.POST("/coin-redemptions/:id/void", handleCoinRedeemVoid) // В4-4: откат ошибочной выдачи
 
+		adm.GET("/packages", handleAdminPackages)                   // каталог пакетов времени (Е2-и1)
+		adm.POST("/users/:id/packages", handleAdminPackageIssue)    // выдать пакет гостю (Е2-и2)
+		adm.GET("/users/:id/packages", handleAdminUserPackages)     // пакеты гостя (Е2-и2)
+		adm.POST("/user-packages/:id/void", handleAdminPackageVoid) // отмена ошибочной выдачи (Е2-и2)
 		adm.GET("/goods", handleAdminGoods)
 		adm.POST("/goods/:id/stock", handleAdminGoodStock)
 		adm.GET("/sales", handleAdminSales)
 		adm.POST("/sales", handleAdminSaleCreate)
 		adm.POST("/sales/:id/void", handleAdminSaleVoid)
-		adm.GET("/kitchen/orders", handleAdminKitchenOrders)              // очередь кухни (Г7)
-		adm.POST("/kitchen/orders/:id/status", handleAdminKitchenStatus)  // принял→готовит→несут→выдан (Г7)
-		adm.POST("/kitchen/orders/:id/pay", handleAdminKitchenPay)        // расчёт у стойки после игры (Р10)
-		adm.POST("/kitchen/orders/:id/cancel", handleAdminKitchenCancel)  // отмена с возвратом склада (Г7)
+		adm.GET("/kitchen/orders", handleAdminKitchenOrders)             // очередь кухни (Г7)
+		adm.POST("/kitchen/orders/:id/status", handleAdminKitchenStatus) // принял→готовит→несут→выдан (Г7)
+		adm.POST("/kitchen/orders/:id/pay", handleAdminKitchenPay)       // расчёт у стойки после игры (Р10)
+		adm.POST("/kitchen/orders/:id/cancel", handleAdminKitchenCancel) // отмена с возвратом склада (Г7)
 
 		// Owner-only: статистика и настройки экономики (спринт А5)
 		own := adm.Group("")
@@ -208,11 +223,16 @@ func main() {
 		own.DELETE("/catalog/:id", handleAdminCatalogDelete)
 		// Отчёты за произвольный период (спринт В1): пресеты + «с…по…»,
 		// сравнение с предыдущим периодом, четыре разреза.
+		own.POST("/packages", handleAdminPackageCreate) // конструктор пакетов (Е2-и1)
+		own.PATCH("/packages/:id", handleAdminPackageUpdate)
+		own.DELETE("/packages/:id", handleAdminPackageDelete)
+		own.GET("/packages/expiring", handleAdminPackagesExpiring) // кого предупредим (Е2-и5)
+		own.POST("/packages/warn", handleAdminPackagesWarnRun)     // предупредить сейчас
 		own.POST("/goods", handleAdminGoodCreate)
 		own.PATCH("/goods/:id", handleAdminGoodUpdate)
 		own.DELETE("/goods/:id", handleAdminGoodDelete)
 		own.GET("/goods/:id/moves", handleAdminGoodMoves)
-		own.PUT("/goods/:id/photo", handleAdminGoodPhotoPut)      // фото позиции (Г7)
+		own.PUT("/goods/:id/photo", handleAdminGoodPhotoPut) // фото позиции (Г7)
 		own.DELETE("/goods/:id/photo", handleAdminGoodPhotoDelete)
 		own.GET("/reports/coins", handleReportCoins)  // В4-2: эмиссия и обязательства
 		own.GET("/coins/burn", handleCoinBurnPreview) // В4-3: кто потеряет монеты сейчас
@@ -279,6 +299,7 @@ func main() {
 	// В4-3: таяние монет у неактивных гостей. Фоновый прогон безопасен при
 	// перезапусках — жечь чаще раза в неделю на гостя правило не даёт.
 	startCoinBurnJob()
+	startPackageWarnJob() // Е2-и5: сказать, что пакет вот-вот сгорит
 
 	// Г1: поминутный биллинг кошелька активных сессий. Вся память — в БД,
 	// перезапуск догоняет прошедшие минуты одним доначислением.
@@ -384,7 +405,8 @@ func handleLogin(c *gin.Context) {
 	}
 
 	db.Model(&user).Update("last_active_at", time.Now())
-	checkBirthdayGift(user.ID) // Г8-и4: вдруг сегодня день рождения — подарок при входе
+	checkBirthdayGift(user.ID)         // Г8-и4: вдруг сегодня день рождения — подарок при входе
+	openWorkOnLogin(&user, time.Now()) // Е3-и1 (Р8): смена админа начинается входом
 	writeAuth(c, http.StatusOK, &user)
 }
 

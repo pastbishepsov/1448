@@ -38,6 +38,9 @@ var zoneErrors = map[string]string{
 	"bad_rate":       fmt.Sprintf("Цена часа — от 0.01 до %.0f zł", maxZoneRate),
 	"already_exists": "Зона с таким названием уже есть",
 	"has_computers":  "В зоне есть компьютеры — сначала перенеси их в другую",
+	// Е2-и1: пакеты привязаны к зоне (Р10), и у гостей на руках купленные
+	// минуты именно этой зоны. Молча снести её нельзя.
+	"has_packages": "На эту зону есть пакеты времени — сначала выключи или удали их",
 }
 
 func zoneFail(c *gin.Context, status int, code string) {
@@ -208,6 +211,17 @@ func handleAdminZoneDelete(c *gin.Context) {
 	db.Model(&models.Computer{}).Where("zone_id = ?", z.ID).Count(&n)
 	if n > 0 {
 		zoneFail(c, http.StatusConflict, "has_computers")
+		return
+	}
+	// Е2-и1: у зоны есть пакеты — база их и так защищает (FK RESTRICT), но
+	// владелец увидел бы голое «db_error» и решил, что система сломалась.
+	// Проверяем сами и говорим, что именно держит зону.
+	db.Model(&models.TimePackage{}).Where("zone_id = ?", z.ID).Count(&n)
+	if n == 0 {
+		db.Model(&models.UserPackage{}).Where("zone_id = ?", z.ID).Count(&n)
+	}
+	if n > 0 {
+		zoneFail(c, http.StatusConflict, "has_packages")
 		return
 	}
 	if err := db.Delete(&z).Error; err != nil {

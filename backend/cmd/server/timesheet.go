@@ -10,6 +10,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -439,4 +440,63 @@ func handleWorkDelete(c *gin.Context) {
 	logAdminAction(c, "work_edit", &target, fmt.Sprintf("табель: удалена запись %s (%s)",
 		w.Date.Format("02.01"), hoursRU(int64(w.Minutes))))
 	c.JSON(http.StatusOK, gin.H{"deleted": w.ID})
+}
+
+// ── Е3-и1: смена открывается ВХОДОМ в систему (решение Р8) ────────────
+//
+// «Начало работы только тогда, когда он зашёл под своим логином» — прямая
+// формулировка основателя. До этого табель был ручной кнопкой: можно было
+// залогиниться и не отметиться (и работать «бесплатно» для отчёта), можно
+// было отметиться и уйти пить кофе. Вход — единственное событие, которое
+// админ физически не может пропустить: без него он ничего не сделает.
+//
+// Кнопка «пришёл» остаётся (IV.2): вход бывает и до фактического начала
+// работы, и человек может открыть смену руками, если система его не узнала.
+
+// openWorkOnLogin — открыть запись табеля при входе, если её ещё нет.
+// Молча ничего не делает, когда открывать нечего: вход — не то место, где
+// уместно ругаться на состояние табеля.
+//
+// Владельца НЕ трогаем сознательно: он заходит смотреть отчёты из дома, и
+// каждый такой вход создавал бы в табеле час работы, которого не было.
+// Владелец, вставший на смену, отмечается кнопкой — как и раньше.
+func openWorkOnLogin(user *models.User, now time.Time) (opened bool, autoClosedPrev bool) {
+	if user == nil || user.Role != models.UserRoleAdmin {
+		return false, false
+	}
+	club, ok := defaultClub()
+	if !ok {
+		return false, false
+	}
+	reportHour := int(settingInt64("report_hour", 8))
+	sh, day := shiftNow(now)
+	if sh == nil {
+		day = clubDayOf(now, reportHour)
+	}
+	if open := openEntryFor(user.ID); open != nil {
+		// Смена этих же клубных суток уже открыта — повторный вход (второй
+		// браузер, перезагрузка шелла) не должен плодить записи.
+		if open.Date.Format("2006-01-02") == day.Format("2006-01-02") {
+			return false, false
+		}
+		closeForgotten(open)
+		autoClosedPrev = true
+	}
+	entry := models.WorkEntry{
+		ClubID: club.ID, UserID: user.ID, Date: day, StartedAt: now,
+		CreatedBy: &user.ID, Note: "открыта входом в систему",
+	}
+	if sh != nil {
+		entry.ShiftID = &sh.ID
+	}
+	if err := db.Create(&entry).Error; err != nil {
+		log.Printf("табель: смена по входу для %s не открылась: %v", user.Nickname, err)
+		return false, autoClosedPrev
+	}
+	name := ""
+	if sh != nil {
+		name = sh.Name
+	}
+	logAdminActionAs(user.ID, "work_start", nil, "вход в систему"+shiftSuffix(name))
+	return true, autoClosedPrev
 }

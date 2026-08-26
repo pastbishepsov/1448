@@ -238,6 +238,53 @@
      поэтому крупно, моноширинно и с разрядкой, чтобы не переспрашивали. */
   /* Е0-и5б: чем гость совпал с запросом. Три Ковальских в списке бесполезны,
      а «нашёлся по телефону» — уже ответ. */
+  /* Е1-и5: придержан под регистрацию. Не «занят» и не «ремонт» — машина
+     исправна и свободна, просто занята человеком, который заводит аккаунт. */
+  .pc.hold, .cell.hold{border-color:rgba(255,255,255,.22)}
+  .pc.hold .pcinf, .cell.hold .cinf{color:var(--txt)}
+  /* Е3-и2: чип смены. Зелёный — смена идёт, красный — не открыта; вид тот
+     же, что у live-индикатора, чтобы топбар не превращался в ёлку. */
+  .shiftchip{cursor:pointer; font:inherit; color:inherit}
+  .shiftchip .dot{background:var(--dim)}
+  .shiftchip.on .dot{background:var(--green)}
+  .shiftchip.off .dot{background:var(--acc)}
+  .shiftchip.off{color:var(--acc)}
+  /* Е3-и3: строки расхождения в сводке смены. Красная — человека не было,
+     жёлтая — работал без графика; обе читаются глазами, не в таблице. */
+  .mmrow{display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border-radius:10px;
+         margin-bottom:6px; line-height:1.45; font-size:13px}
+  .mmrow.bad{background:rgba(255,39,64,.10); border:1px solid rgba(255,39,64,.30)}
+  .mmrow.warn{background:rgba(255,176,32,.10); border:1px solid rgba(255,176,32,.30)}
+  /* Е5-и1: тур. Затемняем всё, кроме подсвеченного элемента: внимание
+     должно быть в одном месте, иначе это не обучение, а ещё один экран. */
+  #tour{position:fixed; inset:0; z-index:120; pointer-events:none}
+  #tour.hidden{display:none}
+  .tour-veil{position:absolute; inset:0; background:rgba(4,4,5,.72); pointer-events:auto}
+  .tour-ring{position:absolute; border:2px solid var(--acc); border-radius:12px;
+             box-shadow:0 0 0 9999px rgba(4,4,5,.72), 0 0 22px rgba(255,39,64,.55);
+             transition:all .22s ease; pointer-events:none}
+  .tour-card{position:absolute; max-width:340px; background:var(--card); border:1px solid var(--line);
+             border-radius:14px; padding:14px 16px; pointer-events:auto; box-shadow:0 18px 50px rgba(0,0,0,.6)}
+  .tour-step{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim)}
+  .tour-title{font-size:17px; font-weight:800; margin:4px 0 6px}
+  .tour-body{font-size:13.5px; line-height:1.5; color:var(--dim)}
+  .tour-btns{display:flex; gap:8px; justify-content:flex-end; margin-top:12px}
+  /* Е5-и2: «?» рядом с колоколом — тот же размер, чтобы шапка не рябила. */
+  #helpBtn{font-size:17px; font-weight:800; line-height:1}
+  /* Е6-и2: лента канала. Свои сообщения справа, чужие слева — как в любом
+     мессенджере: спорить с привычкой ради оригинальности незачем. */
+  .scmsg{max-width:82%; padding:8px 11px; border-radius:12px; margin-bottom:8px;
+         font-size:13.5px; line-height:1.45; background:var(--card2); border:1px solid var(--line)}
+  .scmsg.mine{margin-left:auto; background:rgba(255,39,64,.10); border-color:rgba(255,39,64,.28)}
+  .scmsg .who{font-size:11px; color:var(--dim); margin-bottom:3px}
+  .scmsg .who b{color:var(--txt)}
+  .scwrap{display:flex; flex-direction:column; max-height:52vh; overflow:auto; padding-right:2px}
+  .faqq{width:100%; text-align:left; background:var(--card2); border:1px solid var(--line);
+        border-radius:11px; padding:10px 12px; margin-bottom:6px; color:var(--txt);
+        font:inherit; font-weight:700; cursor:pointer}
+  .faqq:hover{border-color:rgba(255,255,255,.22)}
+  .faqa{padding:2px 12px 12px; font-size:13.5px; line-height:1.55; color:var(--dim)}
+  .faqa b{color:var(--txt)}
   .mchip{font-size:10.5px; font-weight:700; color:var(--dim); border:1px solid var(--hair);
          border-radius:5px; padding:1px 6px; margin-left:7px; white-space:nowrap}
   .cands{display:flex; flex-direction:column; gap:7px; margin-top:9px}
@@ -490,10 +537,21 @@
       <kbd onclick="palOpen()" title="Палитра команд (Ctrl+K)" style="cursor:pointer">Ctrl K</kbd>
       <div id="gqDrop" class="gqdrop hidden"></div>
     </div>
+    <!-- Е5-и2: F.A.Q. стойки. Рядом с колоколом: и то, и другое — «мне нужна
+         помощь прямо сейчас», только одно зовёт человека, а другое отвечает. -->
+    <!-- Е6-и2: канал персонала. Рядом с колоколом, но отдельно: колокол —
+         «зовёт гость», эта кнопка — «пишет свой». Срочность и ответы разные. -->
+    <button class="bellbtn" id="staffBtn" onclick="openStaffChat()" aria-label="Чат с владельцем" title="Спросить владельца">
+      <span data-ic="bell"></span><span class="bellbadge hidden" id="staffBadge"></span></button>
+    <button class="bellbtn" id="helpBtn" onclick="openFaq()" aria-label="Что делать, если…" title="Что делать, если…">?</button>
     <button class="bellbtn" id="bellBtn" onclick="toggleBell()" aria-label="Вызовы и сообщения">
       <span data-ic="bell"></span><span class="bellbadge hidden" id="bellBadge"></span>
     </button>
     <div id="bellDrop" class="belldrop hidden"></div>
+    <!-- Е3-и2: смена — состояние дня, а не строчка в разделе «Персонал».
+         Открывается по входу (Р8), но если её нет — узнать надо сразу. -->
+    <button class="live shiftchip" id="shiftChip" onclick="openMyShift()" title="Моя смена">
+      <span class="dot"></span><span id="shiftTxt">—</span></button>
     <div class="live" id="live"><span class="dot"></span><span id="liveTxt">подключение…</span></div>
     <div class="who" id="who"></div>
   </div>
@@ -681,6 +739,10 @@
         </div>
         <div class="kpis" id="shiftKpis"><div class="skel"></div></div>
         <div class="muted hidden" id="shStaff" style="margin:-6px 0 14px"></div>
+        <!-- Е3-и3: факт против графика. Табель — не «кто числился», а кто
+             реально был; расхождение важнее обеих цифр по отдельности. -->
+        <div class="tablewrap hidden" id="shWorked"></div>
+        <div class="hidden" id="shMismatch" style="margin:10px 0 14px"></div>
       </section>
 
       <section id="s-staff" class="hidden">
@@ -787,6 +849,15 @@
           <span class="muted" id="zonesHint"></span>
         </div>
         <div class="tablewrap" id="zonesTable"><div class="skel"></div><div class="skel"></div></div>
+
+        <!-- Е2-и1: пакеты времени. Цена зоны — за час, пакет — за оптом;
+             держать их в разных разделах значило бы прятать половину прайса. -->
+        <div class="sect">Пакеты времени</div>
+        <div class="toolrow">
+          <button class="btn mini" onclick="packEdit('')"><span data-ic="plus"></span>Пакет</button>
+          <span class="muted" id="packsHint"></span>
+        </div>
+        <div class="tablewrap" id="packsTable"><div class="skel"></div><div class="skel"></div></div>
       </section>
     </main>
   </div>
@@ -806,6 +877,22 @@
       <input id="palInp" placeholder="Раздел, действие или недавнее…" autocomplete="off">
       <kbd>Esc</kbd></div>
     <div id="palList" class="pallist"></div>
+  </div>
+</div>
+
+<!-- Е5-и1: тур по интерфейсу. Затемнение с «дыркой» вокруг живой кнопки —
+     обучение на том, что человек увидит завтра, а не на скриншоте. -->
+<div id="tour" class="hidden">
+  <div class="tour-veil" id="tourVeil"></div>
+  <div class="tour-ring" id="tourRing"></div>
+  <div class="tour-card" id="tourCard">
+    <div class="tour-step" id="tourStep"></div>
+    <div class="tour-title" id="tourTitle"></div>
+    <div class="tour-body" id="tourBody"></div>
+    <div class="tour-btns">
+      <button class="btn ghost mini" onclick="tourSkip()">Пропустить</button>
+      <button class="btn mini" id="tourNext" onclick="tourNext()">Дальше</button>
+    </div>
   </div>
 </div>
 
@@ -941,6 +1028,156 @@ function enter(){
   if (curTab === 'catalog' || OWNER_SECTIONS.includes(curTab)) refresh(); // KPI в шапке
   setPolling(7000);
   connectWS();
+  loadMyShift(); // Е3-и2: состояние смены — с первого экрана, а не по заходу в «Персонал»
+  loadStaffChat(false); // Е6-и2: непрочитанное в канале персонала — сразу
+  setTimeout(tourMaybeStart, 900); // Е5-и1: даём интерфейсу отрисоваться, потом учим
+}
+
+/* ── Е5-и1: тур по интерфейсу (Р9) ──────────────────────────────────
+   Шаги указывают на НАСТОЯЩИЕ элементы: подсветка берёт их геометрию на
+   лету, поэтому тур не устаревает от перестановки кнопок — устареет только
+   если кнопку убрать совсем, и тогда шаг просто пропускается.
+   Флаг прохождения — на сервере (в клубе много машин, localStorage показывал
+   бы тур на каждой новой). */
+const TOUR = [
+  {sel:'#r-hall', tab:'hall', t:'Зал — твой главный экран',
+   b:'Каждая плитка — компьютер. Свободный, занятый, в ремонте и «ждёт [Готов!]» видно с одного взгляда. Клик по плитке открывает всё, что можно сделать с этой машиной.'},
+  {sel:'#gq', t:'Поиск — по нику, телефону или имени',
+   b:'Гость звонит и называет номер, приходит и говорит «я Ковальский», а ник забыл. Ищи как удобно — найдётся по любому из трёх.'},
+  {sel:'#r-users', tab:'users', t:'Гости — карточка и деньги',
+   b:'Открой гостя: депозит, пакет времени, правка данных, сброс пароля и бан — всё в одной шторке. Каждое действие уходит в журнал.'},
+  {sel:'#bellBtn', t:'Колокол — гость зовёт',
+   b:'Сюда падают вызовы с машин и сообщения. Красная точка значит, что кто-то ждёт ответа прямо сейчас.'},
+  {sel:'#shiftChip', t:'Смена — открывается сама',
+   b:'Как только ты вошёл в систему, смена началась: отдельно отмечаться не нужно. Клик покажет, сколько уже отработано, и закроет смену, когда уходишь.'},
+  {sel:'#r-grants', tab:'grants', t:'Журнал — что делали у стойки',
+   b:'Все действия персонала за день: депозиты, посадки, отмены, пакеты. Если спорят, что было, — ответ здесь, а не в памяти.'},
+];
+
+let tourIx = -1, tourWatch = null;
+async function tourMaybeStart(){
+  try{
+    const d = await api('/admin/onboarding');
+    if (d.needs_tour) tourStart();
+  }catch(e){ /* тур не критичен: не показался — работаем дальше */ }
+}
+function tourStart(){
+  tourIx = -1;
+  document.getElementById('tour').classList.remove('hidden');
+  tourNext();
+}
+function tourStep(){ return TOUR[tourIx]; }
+
+function tourNext(){
+  // Шаг, элемента которого нет (роль без раздела, кнопка убрана), пропускаем:
+  // подсвечивать пустое место — хуже, чем промолчать.
+  do { tourIx++; } while (tourIx < TOUR.length && !document.querySelector(TOUR[tourIx].sel));
+  if (tourIx >= TOUR.length){ tourFinish(false); return; }
+  const s = tourStep();
+  if (s.tab && curTab !== s.tab) nav(s.tab);
+  setTimeout(tourPaint, 60);
+}
+
+function tourPaint(){
+  const s = tourStep();
+  if (!s) return;
+  const el = document.querySelector(s.sel);
+  if (!el){ tourNext(); return; }
+  const r = el.getBoundingClientRect();
+  const pad = 6;
+  const ring = document.getElementById('tourRing');
+  ring.style.left = (r.left - pad) + 'px';
+  ring.style.top = (r.top - pad) + 'px';
+  ring.style.width = (r.width + pad*2) + 'px';
+  ring.style.height = (r.height + pad*2) + 'px';
+
+  document.getElementById('tourStep').textContent = 'Шаг ' + (tourIx+1) + ' из ' + TOUR.length;
+  document.getElementById('tourTitle').textContent = s.t;
+  document.getElementById('tourBody').textContent = s.b;
+  document.getElementById('tourNext').textContent = tourIx === TOUR.length - 1 ? 'Всё понятно' : 'Дальше';
+
+  // Карточку ставим рядом с элементом, но НЕ поверх него: закрыть собой то,
+  // что объясняешь, — верный способ ничему не научить.
+  const card = document.getElementById('tourCard');
+  const cw = 340, ch = card.offsetHeight || 150;
+  let left = r.right + 18, top = r.top;
+  if (left + cw > window.innerWidth - 12) left = Math.max(12, r.left - cw - 18);
+  if (top + ch > window.innerHeight - 12) top = Math.max(12, window.innerHeight - ch - 12);
+  card.style.left = left + 'px';
+  card.style.top = top + 'px';
+
+  if (!tourWatch) tourWatch = setInterval(tourPaint, 400); // размер окна и раскладка меняются
+}
+
+function tourSkip(){ tourFinish(true); }
+
+// Esc закрывает тур. Экскурсия перекрывает интерфейс — а у стойки может
+// стоять гость, и «дослушай сначала» тут неуместно.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('tour').classList.contains('hidden')){
+    e.stopPropagation();
+    tourSkip();
+  }
+}, true);
+async function tourFinish(skipped){
+  document.getElementById('tour').classList.add('hidden');
+  clearInterval(tourWatch); tourWatch = null;
+  tourIx = -1;
+  try{ await api('/admin/onboarding', {method:'POST', body: JSON.stringify({skipped: !!skipped})}); }
+  catch(e){ /* не записалось — покажем в следующий раз, это не потеря */ }
+  if (!skipped) toast('✓ Готово. Кнопка «?» в шапке — что делать в частых ситуациях и повтор тура');
+}
+
+/* ── Е5-и2: F.A.Q. по сценариям стойки (Р9) ─────────────────────────
+   Собран по СИТУАЦИЯМ, а не по разделам интерфейса: у стойки вопрос всегда
+   звучит «передо мной человек, что делать», а не «где находится вкладка».
+   Каждый ответ ведёт к конкретной кнопке — и объясняет, почему так, а не
+   иначе: админ, который понимает правило, не спросит второй раз. */
+const FAQ = [
+  {q:'Пришёл новый гость — аккаунта ещё нет',
+   a:'Открой свободный ПК в Зале и нажми <b>«Занять под регистрацию»</b>. Машина исчезнет из автоматического выбора на несколько минут, и её не заберут, пока человек заводит аккаунт. Посадить его сразу нельзя: сажают по нику, а ника ещё нет.'},
+  {q:'Гость сел, а время не идёт',
+   a:'Так и задумано. После посадки у него на экране окно <b>[Готов!]</b>: деньги не списываются, пока он не нажал — за дорогу от стойки до кресла гость не платит. Если не нажмёт, сессия начнётся сама через несколько минут. В Зале такая машина помечена часами и отсчётом.'},
+  {q:'Гость не дошёл до машины',
+   a:'В шторке ПК — <b>«Отменить посадку»</b> (она стоит вместо «Завершить сессию», пока гость не подтвердил). Это не завершение: минут ноль, денег ноль, XP и монет нет. Завершение записало бы сыгранную сессию на пустом месте.'},
+  {q:'Гость забыл пароль',
+   a:'Карточка гостя → <b>«Пароль»</b> → «Сбросить». Появится временный пароль, который читается вслух: в нём нет похожих знаков вроде нуля и буквы «о». Гость обязан сменить его при входе, а все его старые входы на других устройствах слетят.'},
+  {q:'Гость называет телефон или имя, а ник не помнит',
+   a:'Ищи как есть — поиск понимает <b>ник, телефон и имя</b>. Телефон сравнивается цифра к цифре, так что «+48 123-456-789» и «456789» найдут одного и того же. Если совпало несколько человек, система покажет список и спросит, кого именно, — сажать наугад нельзя, это чужие деньги.'},
+  {q:'Гость хочет играть подольше и подешевле',
+   a:'Карточка гостя → <b>«Пакет»</b>. Пакет — это купленное время в конкретной зоне: «3 часа STANDARD за 45 zł». Час внутри пакета дешевле обычного, и минуты пакета тратятся раньше кошелька. Оплата наличными, картой или BLIK идёт в выручку смены; оплата кошельком — нет, эти деньги клуб получил ещё при пополнении.'},
+  {q:'Ошибся при выдаче пакета',
+   a:'В карточке гостя вкладка <b>«Пакеты»</b> → «Отменить». Заберётся только неотыгранный остаток — сыгранное время не отнимают. Деньги вернутся тем же путём, каким пришли: с кошелька на кошелёк; наличные из ящика возвращаешь ты. Свою и сегодняшнюю выдачу отменяет админ, чужую или вчерашнюю — владелец.'},
+  {q:'В топбаре красным «смена не открыта»',
+   a:'Смена открывается сама, когда ты входишь в систему, — отдельно отмечаться не нужно. Красная надпись значит, что записи нет: нажми на чип и <b>«Я пришёл»</b>. По этим записям считается зарплата, поэтому смену стоит и закрывать, когда уходишь.'},
+  {q:'Гость зовёт с машины',
+   a:'Колокол в шапке. Там же переписка: гость пишет с экрана, ты отвечаешь из карточки. Красная точка — кто-то ждёт ответа прямо сейчас.'},
+  {q:'Спорим, что было в смену',
+   a:'<b>Журнал</b> — все действия персонала за день: депозиты, посадки, отмены, пакеты, баны. Владелец видит и прошлые дни. Память подводит, журнал — нет.'},
+];
+
+function openFaq(){
+  drawerUserId = null; drawerPCId = null;
+  const items = FAQ.map((f, i) => `
+    <button class="faqq" onclick="faqToggle(${i})">${esc(f.q)}</button>
+    <div class="faqa hidden" id="faqa${i}">${f.a}</div>`).join('');
+  openDrawer('Что делать, если…', `${items}
+    <div class="muted" style="margin:14px 0 8px">Не помнишь, где какая кнопка? Покажу ещё раз — это займёт минуту.</div>
+    <button class="btn ghost" style="width:100%; justify-content:center" onclick="faqReplayTour()">
+      <span data-ic="check"></span>Пройти тур по интерфейсу</button>`);
+}
+
+function faqToggle(i){
+  const el = document.getElementById('faqa' + i);
+  if (el) el.classList.toggle('hidden');
+}
+
+/* Повтор тура — своё дело человека, без владельца: спрашивать разрешения на
+   то, чтобы ещё раз посмотреть, где кнопка, абсурдно. */
+async function faqReplayTour(){
+  closeDrawer();
+  try{ await api('/admin/onboarding', {method:'DELETE'}); }catch(e){ /* покажем и без записи */ }
+  tourStart();
 }
 
 /* ── навигация ── */
@@ -1008,6 +1245,11 @@ setInterval(() => {
   live.classList.toggle('bad', bad);
   live.classList.toggle('ok', !bad);
   txt.textContent = wsOpen ? 'live' : ('обновлено ' + s + ' с назад');
+  // Е3-и2: чип показывает ВРЕМЯ НАЧАЛА, а не счётчик, — раз в минуту хватает,
+  // чтобы поймать чужое действие (владелец закрыл смену из табеля). Считаем
+  // своим счётчиком: «секунды с последнего синка» сбрасываются каждый обмен,
+  // и по ним вышло бы обращение к серверу почти каждую секунду.
+  if (++shiftTick >= 60){ shiftTick = 0; loadMyShift(); loadStaffChat(false); }
   // живой таймер сессии в открытом drawer ПК
   const el = document.getElementById('dElapsed');
   if (el && drawerPCId){
@@ -1118,6 +1360,13 @@ function handleLiveEvent(m){
   lastSync = Date.now();
   if (m.type === 'deposit' && drawerUserId) loadUserDrawer(); // открытая карточка гостя
   if (m.type === 'kitchen') kitBadgeLoad(); // Г7: очередь и бейдж
+  if (m.type === 'staff_chat'){ // Е6: свой написал — счётчик и открытая лента
+    const d = m.data || {};
+    loadStaffChat(true);
+    if (!drawerIsStaffChat && me && d.author_id !== me.id){
+      toast((d.role === 'owner' ? '👑 Владелец' : '💬 Свой') + ' написал в канал персонала');
+    }
+  }
   if (m.type === 'chat'){ // Б2/Б3: вызов/сообщение — колокол, тост, плитка, открытый тред
     const d = m.data || {};
     const inOpenChat = d.user_id && drawerUserId === d.user_id && uTab === 'chat';
@@ -1134,6 +1383,72 @@ function handleLiveEvent(m){
     if (inOpenChat) loadUserChat();
   }
   liveRefresh(); // точечно: refresh обновит KPI + текущий раздел (каталог не трогается)
+}
+
+/* ── Е6-и2: рабочий канал персонала (Р7) ─────────────────────────────
+   Один канал на клуб: вопрос у стойки почти всегда операционный, и ответ
+   владельца полезен всей смене. Счётчик непрочитанных считает СЕРВЕР — он же
+   помнит, докуда человек дочитал, и на другой машине клуба цифра будет та
+   же. ── */
+let staffMsgs = [], staffUnread = 0;
+
+async function loadStaffChat(paint){
+  try{
+    const d = await api('/admin/staff-chat');
+    staffMsgs = d.messages || [];
+    staffUnread = d.unread || 0;
+    paintStaffBadge();
+    if (paint && drawerIsStaffChat) paintStaffChat();
+  }catch(e){ /* канал не критичен для смены — молча */ }
+}
+
+function paintStaffBadge(){
+  const b = document.getElementById('staffBadge');
+  if (!b) return;
+  b.textContent = staffUnread > 99 ? '99+' : staffUnread;
+  b.classList.toggle('hidden', !staffUnread);
+}
+
+let drawerIsStaffChat = false;
+async function openStaffChat(){
+  drawerUserId = null; drawerPCId = null; drawerIsStaffChat = true;
+  await loadStaffChat(false);
+  paintStaffChat();
+  // Открыл — значит прочитал: держать счётчик после того, как человек
+  // смотрит на текст, — обман.
+  try{ await api('/admin/staff-chat/read', {method:'POST'}); staffUnread = 0; paintStaffBadge(); }
+  catch(e){}
+}
+
+function paintStaffChat(){
+  const rows = staffMsgs.length
+    ? staffMsgs.map(m => `<div class="scmsg${m.author_id === (me && me.id) ? ' mine' : ''}">
+        <div class="who"><b>${esc(m.nickname || '—')}</b> · ${esc(m.role === 'owner' ? 'владелец' : 'админ')} · ${fmtTime(m.created_at)}</div>
+        ${esc(m.text)}</div>`).join('')
+    : `<div class="muted" style="padding:8px 0">Пусто. Здесь спрашивают у владельца то, что не решается по инструкции — ответ увидит вся смена.</div>`;
+  const body = `<div class="scwrap" id="scWrap">${rows}</div>
+    <div class="chrow" style="margin-top:10px">
+      <textarea id="scText" class="input" rows="2" maxlength="1000"
+        placeholder="Вопрос владельцу — например, что делать со спорным возвратом"
+        onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))sendStaffMsg()"></textarea>
+      <button class="btn mini" onclick="sendStaffMsg()"><span data-ic="check"></span>Отправить</button>
+    </div>
+    <div class="muted" style="margin-top:6px">Ctrl+Enter — отправить. Канал общий: сообщение видят все, кто работает у стойки.</div>`;
+  openDrawer('Спросить владельца', body);
+  const w = document.getElementById('scWrap');
+  if (w) w.scrollTop = w.scrollHeight; // свежее — внизу, как в любом чате
+}
+
+async function sendStaffMsg(){
+  const el = document.getElementById('scText');
+  const text = el ? el.value.trim() : '';
+  if (!text) return;
+  try{
+    await api('/admin/staff-chat', {method:'POST', body: JSON.stringify({text})});
+    if (el) el.value = '';
+    await loadStaffChat(false);
+    paintStaffChat();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* ── Б2: колокол — очередь вызовов и сообщений (GET /admin/chat/pending) ── */
@@ -1284,6 +1599,7 @@ function hallPCCell(pc, edit){
       : (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at);
   }
   else if (pc.status === 'maintenance'){ cls = ' maint'; inf = 'ремонт'; }
+  else if (pcHeld(pc)){ cls = ' hold'; inf = '📝 регистрация · ' + holdLeft(pc); }
   else if (!edit && hallSoon[pc.id]){ inf = 'бронь ' + hhmm(hallSoon[pc.id]); }
   else if (off){ inf = 'offline'; }
   if (!edit && callPCs.has(pc.id)){ cls += ' call'; inf = '<span data-ic="bell"></span> зовёт'; } // Б2
@@ -1449,6 +1765,7 @@ function pcTile(pc, soonAt){
       : (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at);
   }
   else if (pc.status === 'maintenance'){ cls = 'maint'; info = '<span data-ic="wrench"></span>ремонт'; }
+  else if (pcHeld(pc)){ cls = 'hold'; info = '📝 регистрация · ' + holdLeft(pc); }
   else if (pc.status === 'reserved'){ info = '<span class="pcdot" style="background:var(--neu)"></span>резерв'; }
   else if (off){ info = '<span class="muted">offline</span>'; }
   if (callPCs.has(pc.id)){ cls += ' call'; info = '<span data-ic="bell"></span> зовёт'; } // Б2
@@ -1532,6 +1849,13 @@ function renderPCDrawer(id){
       <div id="seatCands"></div>
       <div class="muted">Без пароля гостя; тариф и таланты — его собственные</div>
     </div>
+    ${pcHeld(pc)
+      ? `<div class="muted" style="margin-top:12px">📝 Придержан под регистрацию — ещё ${holdLeft(pc)}</div>
+    <button class="btn ghost" style="width:100%; justify-content:center; margin-top:8px"
+      onclick="pcUnhold('${pc.id}')"><span data-ic="cross"></span>Снять придержание</button>`
+      : `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:12px"
+      onclick="pcHold('${pc.id}')"><span data-ic="user"></span>Занять под регистрацию</button>
+    <div class="muted" style="margin-top:6px">Новому гостю негде завести аккаунт: посадить его нельзя — ника ещё нет. Машина не уйдёт другому, пока он регистрируется.</div>`}
     <button class="btn ghost" style="width:100%; justify-content:center; margin-top:12px"
       onclick="setPCStatus('${pc.id}','maintenance')"><span data-ic="wrench"></span>В ремонт</button>`;
   }
@@ -1547,6 +1871,24 @@ function renderPCDrawer(id){
     body += `</div>`;
   }
   openDrawer(pc.name, body);
+}
+
+/* Е1-и5: придержать / отпустить ПК под регистрацию нового гостя. */
+async function pcHold(id){
+  try{
+    const d = await api('/admin/computers/' + id + '/hold', {method:'POST'});
+    toast('📝 ' + (d.name || 'ПК') + ' придержан — веди гостя регистрироваться');
+    closeDrawer();
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function pcUnhold(id){
+  try{
+    const d = await api('/admin/computers/' + id + '/hold', {method:'DELETE'});
+    toast('✓ ' + (d.name || 'ПК') + ' снова в общем доступе');
+    closeDrawer();
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* Б8: питание ПК и посадка гостя */
@@ -1662,6 +2004,16 @@ function wlRemove(btn, id, nickname){
 function seatWaiting(pc){
   return !!(pc && pc.session && pc.session.ready_deadline && !pc.session.ready_at);
 }
+/* Е1-и5: ПК придержан под регистрацию — свободен, но автоматика его не
+   предлагает, пока человек заводит аккаунт. Метка со сроком, не статус. */
+function pcHeld(pc){
+  return !!(pc && !pc.session && pc.hold_until && new Date(pc.hold_until) > Date.now());
+}
+function holdLeft(pc){
+  const left = Math.round((new Date(pc.hold_until) - Date.now()) / 1000);
+  if (left <= 0) return '0:00';
+  return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+}
 function waitLeft(pc){
   const left = Math.round((new Date(pc.session.ready_deadline) - Date.now()) / 1000);
   if (left <= 0) return '0:00';
@@ -1731,11 +2083,23 @@ async function openUserDrawer(id, form){
   drawerUserId = id;
   uForm = form || null;
   await loadUserDrawer();
+  loadUserExtras(); // Е2-и4: пакеты гостя и каталог — вдогонку, не задерживая карточку
   if (uData && uData.user) palPush({t:'user', id:id, name:uData.user.nickname}); // Б9-и3: недавнее
 }
 async function loadUserDrawer(){
   try{ uData = await api('/admin/users/' + drawerUserId); }
   catch(e){ toast('⚠ ' + e.message); return; }
+  renderUserDrawer();
+}
+
+/* Е2-и4: карточка гостя открывается — сразу знаем и про пакеты. Ждать
+   переключения вкладки нельзя: «сколько у него времени» админ спрашивает
+   первым делом, ещё до того, как гость договорил. */
+async function loadUserExtras(){
+  await loadUserPacks();
+  if (!packsCache.length){
+    try{ packsCache = (await api('/admin/packages')).packages || []; }catch(e){}
+  }
   renderUserDrawer();
 }
 
@@ -1753,6 +2117,7 @@ function renderUserDrawer(){
     <tr><td class="muted">Роль · статус</td><td>${u.role} · <span class="st ${u.status}">${u.status}</span></td></tr>
     <tr><td class="muted">Наиграно</td><td>${s.hours_played} ч · сессий ${s.sessions_count}</td></tr>
     <tr><td class="muted">Кошелёк</td><td><b>${((u.wallet_grosz||0)/100).toFixed(2).replace('.', ',')} zł</b>${u.coin_minutes ? ' · +' + u.coin_minutes + ' мин запаса' : ''}</td></tr>
+    ${uPackMin > 0 ? `<tr><td class="muted">Пакеты</td><td><b>${uPackMin} мин</b> ${uPackZones()}</td></tr>` : ''}
     ${s.no_show_count ? `<tr><td class="muted">No-show</td><td>🕳 ${s.no_show_count} — брони сгорали без прихода</td></tr>` : ''}
     ${s.kitchen_unpaid_count ? `<tr><td class="muted">Кухня</td><td>🧾 не оплачено: <b>${fmtPLN(s.kitchen_unpaid_pln)} zł</b> (${s.kitchen_unpaid_count}) — расчёт у стойки</td></tr>` : ''}
     ${s.deposited_pln !== undefined ? `<tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>` : ''}
@@ -1769,6 +2134,7 @@ function renderUserDrawer(){
       <button class="btn mini ${uForm==='xp'?'':'ghost'}" onclick="uFormToggle('xp')"><span data-ic="xp"></span>XP</button>
       <button class="btn mini ${uForm==='case'?'':'ghost'}" onclick="uFormToggle('case')"><span data-ic="chest"></span>Кейс</button>
       <button class="btn mini ${uForm==='redeem'?'':'ghost'}" onclick="uFormToggle('redeem')"><span data-ic="clock"></span>Время за монеты</button>
+      <button class="btn mini ${uForm==='pack'?'':'ghost'}" onclick="uFormToggle('pack')"><span data-ic="clock"></span>Пакет</button>
       <button class="btn mini ${uForm==='edit'?'':'ghost'}" onclick="uFormToggle('edit')"><span data-ic="user"></span>Данные</button>
       <button class="btn mini ${uForm==='pwd'?'':'ghost'}" onclick="uFormToggle('pwd')"><span data-ic="lock"></span>Пароль</button>
       ${u.status === 'banned'
@@ -1782,6 +2148,7 @@ function renderUserDrawer(){
     <button class="${uTab==='sessions'?'on':''}" onclick="uTabSet('sessions')">Сессии</button>
     <button class="${uTab==='deposits'?'on':''}" onclick="uTabSet('deposits')">${uData.money_scope==='today'?'Депозиты (сегодня)':'Депозиты'}</button>
     <button class="${uTab==='grants'?'on':''}" onclick="uTabSet('grants')">Начисления</button>
+    ${u.role==='player' ? `<button class="${uTab==='pack'?'on':''}" onclick="uTabSet('pack')">Пакеты</button>` : ''}
     ${u.role==='player' ? `<button class="${uTab==='chat'?'on':''}" onclick="uTabSet('chat')">Чат</button>` : ''}
   </div>
   <div id="uHist">${uHistHtml()}</div>`;
@@ -1796,6 +2163,58 @@ async function uFormToggle(f){
   }
   if (uForm === 'redeem' && !redeemZone && zonesCache.length) redeemZone = zonesCache[0].id;
   renderUserDrawer();
+}
+
+/* Е2-и4: выдача пакета гостю у стойки. */
+let issuePack = null, issueMethod = 'cash', uPacks = [], uPackMin = 0;
+async function submitPack(){
+  if (!issuePack){ toast('⚠ Выбери пакет'); return; }
+  try{
+    const d = await api('/admin/users/' + drawerUserId + '/packages',
+      {method:'POST', body: JSON.stringify({package_id: issuePack, method: issueMethod})});
+    toast('✓ ' + d.package.name + ' — ' + d.package.minutes_total + ' мин на счету');
+    uForm = null;
+    await loadUserPacks();
+    await loadUserDrawer();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* Отмена ошибочной выдачи (В4-4): забирается НЕотыгранный остаток, строка
+   остаётся с пометкой. Своя и сегодняшняя — админу, чужая и вчерашняя —
+   владельцу; сервер решит и объяснит. */
+function armPackVoid(btn, id){
+  if (btn.dataset.armed){ voidPack(id); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = 'Точно?';
+  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; } }, 4000);
+}
+async function voidPack(id){
+  try{
+    const d = await api('/admin/user-packages/' + id + '/void', {method:'POST'});
+    toast('✓ Выдача отменена — забрано ' + d.minutes_taken + ' мин'
+      + (d.refund_pln > 0 ? ', возврат ' + fmtPLN(d.refund_pln) + ' zł' : ''));
+    await loadUserPacks();
+    await loadUserDrawer();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+async function loadUserPacks(){
+  try{
+    const d = await api('/admin/users/' + drawerUserId + '/packages');
+    uPacks = d.packages || [];
+    uPackMin = d.minutes_live || 0;
+  }catch(e){ uPacks = []; uPackMin = 0; }
+}
+
+/* Зоны живых пакетов: «180 мин STANDARD» полезнее, чем просто «180 мин» —
+   в чужой зоне эти минуты не потратить. */
+function uPackZones(){
+  const z = {};
+  (uPacks || []).filter(p => p.live).forEach(p => { z[p.zone || '—'] = (z[p.zone || '—'] || 0) + p.minutes_left; });
+  const keys = Object.keys(z);
+  if (!keys.length) return '';
+  if (keys.length === 1) return '<span class="muted">' + esc(keys[0]) + '</span>';
+  return '<span class="muted">' + keys.map(k => esc(k) + ' ' + z[k]).join(' · ') + '</span>';
 }
 
 /* Откат ошибочной выдачи: монеты возвращаются на баланс, строка остаётся в
@@ -1959,6 +2378,34 @@ function uFormHtml(){
       Все его входы на других устройствах слетят.</div>
     <button class="btn danger" style="width:100%; justify-content:center" onclick="armPwdReset(this)"><span data-ic="lock"></span>Сбросить пароль</button>`}
   </div>`;
+  // Е2-и4: выдача пакета. Гость платит наличными/картой/BLIK — это выручка,
+  // или кошельком — тогда это не выручка, а перевод обязательства клуба из
+  // денег во время (Г-Р7). Оба случая — одна кнопка, разница только в способе.
+  if (uForm === 'pack'){
+    const live = (packsCache || []).filter(p => p.active);
+    if (!live.length) return `<div class="uform"><div class="muted">
+      Пакетов в продаже нет. Владелец заводит их в «Настройки → Пакеты времени».</div></div>`;
+    const sel = live.find(p => p.id === issuePack) || live[0];
+    issuePack = sel.id;
+    return `<div class="uform">
+      <div class="segs" style="flex-wrap:wrap">${live.map(p =>
+        `<button class="${issuePack===p.id?'on':''}" onclick="issuePack='${p.id}'; renderUserDrawer()">${esc(p.name)}</button>`).join('')}</div>
+      <div class="muted">${esc(sel.zone || '—')} · ${packDur(sel.minutes)} · <b>${fmtPLN(sel.price_pln)} zł</b>
+        · час выходит ${fmtPLN(sel.hour_pln)} zł${sel.save_pln > 0 ? ' (выгода ' + fmtPLN(sel.save_pln) + ' zł)' : ''}
+        · ${sel.days_valid ? 'сгорит через ' + sel.days_valid + ' дн' : 'бессрочно'}</div>
+      <div class="segs">
+        <button class="${issueMethod==='cash'?'on':''}" onclick="issueMethod='cash'; renderUserDrawer()">Нал</button>
+        <button class="${issueMethod==='card'?'on':''}" onclick="issueMethod='card'; renderUserDrawer()">Карта</button>
+        <button class="${issueMethod==='blik'?'on':''}" onclick="issueMethod='blik'; renderUserDrawer()">BLIK</button>
+        <button class="${issueMethod==='wallet'?'on':''}" onclick="issueMethod='wallet'; renderUserDrawer()">Кошелёк</button>
+      </div>
+      <button class="btn" style="width:100%; justify-content:center" onclick="submitPack()"><span data-ic="clock"></span>Выдать пакет</button>
+      <div class="muted">${issueMethod === 'wallet'
+        ? 'Спишем ' + fmtPLN(sel.price_pln) + ' zł с кошелька гостя. В выручку это не пойдёт — деньги клуб получил при пополнении.'
+        : 'Гость платит у стойки — сумма попадёт в выручку смены.'}</div>
+      <div class="muted">Минуты пакета тратятся раньше кошелька и только в своей зоне.</div>
+    </div>`;
+  }
   if (uForm === 'case') return `<div class="uform">
     <div class="segs">${['light','medium','heavy','titan','gods'].map(t =>
       `<button class="${caseTier===t?'on':''}" onclick="caseTier='${t}'; renderUserDrawer()">${t}</button>`).join('')}</div>
@@ -2020,6 +2467,19 @@ function uHistHtml(){
       <td>${esc(x.computer||'—')}</td>
       <td>${x.status === 'active' ? '<span class="st active">идёт</span>' : x.minutes + ' мин'}</td>
       <td>+${x.xp_earned} XP · +${x.coins_earned}</td>
+    </tr>`).join('')}</table>`;
+  }
+  if (uTab === 'pack'){
+    const rows = uPacks || [];
+    if (!rows.length) return '<div class="empty">Пакетов не покупал</div>';
+    return `<table class="hist">${rows.map(x => `<tr${x.live ? '' : ' style="opacity:.55"'}>
+      <td class="muted">${fmtTime(x.created_at)}</td>
+      <td><b>${esc(x.name)}</b><div class="muted">${esc(x.zone||'—')} · ${esc(x.method)}</div></td>
+      <td>${x.minutes_left}/${x.minutes_total} мин${
+        x.voided_at ? '<div class="muted">отменён</div>'
+        : (x.days_left !== undefined ? '<div class="muted">' + (x.days_left > 0 ? 'сгорит через ' + x.days_left + ' дн' : 'сгорел') + '</div>' : '')}</td>
+      <td>${x.voided_at || x.minutes_left === 0 ? ''
+        : `<button class="btn ghost mini danger" onclick="armPackVoid(this,'${x.id}')">Отменить</button>`}</td>
     </tr>`).join('')}</table>`;
   }
   if (uTab === 'deposits'){
@@ -2337,7 +2797,8 @@ async function toggleApp(id){
 /* ── Журнал-аудит (А4): единая лента — начисления, депозиты, действия ── */
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
-  money: ['deposit','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn'],
+  money: ['deposit','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn',
+          'package_issue','package_void'], // Е2: пакеты — те же деньги стойки
   grant: ['grant'],
   users: ['ban','unban'],
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat'],
@@ -2355,6 +2816,8 @@ const AUD_LABEL = {
   booking_create:'бронь', booking_cancel:'отмена брони', booking_restore:'возврат брони',
   catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
   catalog_sort:'каталог: порядок', settings_update:'настройки',
+  package_create:'пакет заведён', package_update:'пакет: правка', package_delete:'пакет удалён',
+  package_issue:'выдан пакет', package_void:'отмена выдачи пакета',
   pc_create:'ПК добавлен', pc_update:'ПК изменён', pc_delete:'ПК удалён', layout_update:'схема зала',
   staff_promote:'персонал: назначен', staff_demote:'персонал: снят',
   shift_tpl_create:'смена: создана', shift_tpl_update:'смена: правка',
@@ -2546,8 +3009,48 @@ async function renderShift(){
       st.textContent = w.length
         ? 'работали: ' + w.map(x => x.nickname + (x.shift ? ' (' + x.shift + ')' : '')).join(', ') : '';
     }
+    paintShiftFact(d);
   }catch(e){ toast('⚠ ' + e.message); }
 }
+
+/* Е3-и3: кто реально работал в эту смену и чем это расходится с графиком.
+   Расхождение показываем ПЕРВЫМ и словами: цифры владелец и так увидит, а
+   вопрос у него один — «всё ли в порядке со сменой». */
+function paintShiftFact(d){
+  const box = document.getElementById('shWorked');
+  const mm = document.getElementById('shMismatch');
+  const rows = d.worked || [];
+  const off = (d.mismatch && d.mismatch.off_schedule) || [];
+  const nos = (d.mismatch && d.mismatch.no_show) || [];
+
+  if (mm){
+    const parts = [];
+    if (nos.length) parts.push(`<div class="mmrow bad"><span data-ic="ban"></span>
+      <span>В графике стоял, а табеля нет: <b>${nos.map(esc).join(', ')}</b>.
+      Смена открывается входом в систему — значит, человек не заходил.</span></div>`);
+    if (off.length) parts.push(`<div class="mmrow warn"><span data-ic="clock"></span>
+      <span>Работал вне графика: <b>${off.map(esc).join(', ')}</b>.
+      Часы в табеле есть, смены в расписании нет — либо подмена, либо график не заполнен.</span></div>`);
+    mm.innerHTML = parts.join('');
+    mm.classList.toggle('hidden', !parts.length);
+    mountIcons(mm);
+  }
+
+  if (!box) return;
+  box.classList.toggle('hidden', !rows.length);
+  if (!rows.length) return;
+  box.innerHTML = `<table><tr><th>Кто</th><th>Пришёл</th><th>Ушёл</th><th>Часы</th><th>График</th></tr>
+    ${rows.map(r => `<tr>
+      <td><b>${esc(r.nickname)}</b></td>
+      <td>${hhmm(r.started_at)}</td>
+      <td>${r.open ? '<span class="st active">на смене</span>'
+                   : hhmm(r.ended_at) + (r.auto_closed ? ' <span class="muted" title="не отметил уход — закрыто по расписанию">·авто</span>' : '')}</td>
+      <td>${hm(r.minutes)}</td>
+      <td>${r.in_schedule ? '<span class="muted">по графику</span>'
+                          : '<span style="color:var(--orange)">вне графика</span>'}</td>
+    </tr>`).join('')}</table>`;
+}
+
 function shiftDay(delta){
   if (delta === 0){ shiftDate = null; renderShift(); return; }
   if (!shiftDate) return; // ещё не загрузилась — некуда листать
@@ -2994,6 +3497,15 @@ function repChart(items, valueOf, titleOf, fromLbl, toLbl){
     <div class="barlabels">${(fromLbl || []).concat(toLbl || []).map(l => '<span>' + l + '</span>').join('')}</div>`;
 }
 function repEmpty(text){ return `<div class="empty"><span data-ic="chart"></span>${text}</div>`; }
+/* Е2-и6: минуты словами. «10 800 мин» владелец в уме в часы не переводит,
+   а именно часами он и думает о зале. */
+function packHM(min){
+  const m = Math.max(0, Math.round(min || 0));
+  const h = Math.floor(m / 60), r = m % 60;
+  if (!m) return '0 ч';
+  return (h ? h + ' ч' : '') + (r ? (h ? ' ' : '') + r + ' мин' : '');
+}
+
 function repTable(head, rows, empty){
   return `<div class="tablewrap">${rows.length === 0 ? repEmpty(empty)
     : `<table><tr>${head.map(h => '<th>' + h + '</th>').join('')}</tr>${rows.join('')}</table>`}</div>`;
@@ -3024,12 +3536,17 @@ function paintMoney(d){
   const t = d.totals, k = d.delta, w = d.prev || {}, days = d.days || [];
   const loss = d.losses || {units:0, pln:0, moves:0};
   const wal = d.wallet || {liability_pln:0, guests_with_balance:0, period_spent_pln:0, period_spends:0};
+  const pk = d.packages || {liability_pln:0, minutes_left:0, guests:0, period_pln:0, period_count:0, period_minutes:0}; // Е2-и6
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln,
-                {title:'пополнения + продажи товаров', was:fmtPLN(w.revenue_pln) + ' zł'})}
+                {title:'пополнения + товары + пакеты времени', was:fmtPLN(w.revenue_pln) + ' zł'})}
        ${repKpi('Пополнения', fmtPLN(t.deposits_pln) + ' zł', k.deposits_pln, {was:fmtPLN(w.deposits_pln) + ' zł'})}
        ${repKpi('Товары', fmtPLN(t.goods_pln) + ' zł', k.goods_pln, {was:fmtPLN(w.goods_pln) + ' zł'})}
+       ${repKpi('Пакеты времени', fmtPLN(t.packs_pln || 0) + ' zł', k.packs_pln,
+                {title:'продано за живые деньги: ' + (t.packs || 0) + ' шт, ' + packHM(t.pack_minutes || 0)
+                       + '. Оплаченные кошельком сюда НЕ идут — те деньги уже в выручке пополнений',
+                 was:fmtPLN(w.packs_pln || 0) + ' zł'})}
        ${repKpi('Средний чек', fmtPLN(t.avg_check_pln) + ' zł', k.avg_check_pln,
                 {title:'по пополнениям', was:fmtPLN(w.avg_check_pln) + ' zł'})}
      </div>
@@ -3054,6 +3571,16 @@ function paintMoney(d){
                 {title:'поминутное списание за сессии (Г1)'})}
        ${repKpi('— кухня', fmtPLN(wal.spent_kitchen_pln || 0) + ' zł', undefined,
                 {title:'заказы кухни кошельком (Г7) — тоже не выручка'})}
+     </div>
+     <div class="kpis">
+       ${repKpi('Долг временем', fmtPLN(pk.liability_pln || 0) + ' zł', undefined,
+                {title:'обязательство клуба по НЕотыгранным минутам пакетов, по цене продажи · '
+                       + packHM(pk.minutes_left || 0) + ' у ' + (pk.guests || 0) + ' гостей. '
+                       + 'Просроченные не считаются — их клуб уже не должен'})}
+       ${repKpi('Не отыграно', packHM(pk.minutes_left || 0), undefined,
+                {title:'сколько времени гости купили и ещё не забрали'})}
+       ${repKpi('Продано времени', packHM(pk.period_minutes || 0), undefined,
+                {title:'за период, ' + (pk.period_count || 0) + ' пакетов за живые деньги'})}
      </div>
      <div class="sect">Выручка по дням</div>
      ${repChart(days, x => x.value,
@@ -3463,6 +3990,81 @@ async function promoteStaff(){
    часы нельзя, пометка поднимет запись владельцу на исправление. ── */
 function hm(min){ min = Math.max(0, +min || 0); return Math.floor(min/60) + ' ч ' + String(min%60).padStart(2,'0') + ' м'; }
 
+/* Е3-и2: состояние смены в топбаре. Тот же источник, что у блока в
+   «Персонале» (/admin/work/me) — две правды о смене развели бы людей. */
+let myShift = null, shiftTick = 0;
+async function loadMyShift(){
+  try{ myShift = await api('/admin/work/me'); }
+  catch(e){ myShift = null; }
+  paintShiftChip();
+}
+function paintShiftChip(){
+  const chip = document.getElementById('shiftChip'), txt = document.getElementById('shiftTxt');
+  if (!chip || !txt) return;
+  if (!myShift){ chip.classList.remove('on','off'); txt.textContent = '—'; return; }
+  const on = !!myShift.on_shift;
+  chip.classList.toggle('on', on);
+  chip.classList.toggle('off', !on);
+  txt.textContent = on
+    ? 'на смене с ' + hhmm(myShift.entry.started_at)
+    : 'смена не открыта';
+  chip.title = on
+    ? 'Смена идёт · ' + hm(myShift.minutes_so_far) + (myShift.entry.shift ? ' · ' + myShift.entry.shift : '')
+    : 'Смена не открыта. Обычно она открывается сама при входе — нажми, если работаешь';
+}
+
+/* Шторка «Моя смена»: показать факт и дать закрыть её одной кнопкой.
+   Уход — arm-паттерн: закрытая по ошибке смена стоит человеку часов. */
+function openMyShift(){
+  drawerUserId = null; drawerPCId = null;
+  const on = !!(myShift && myShift.on_shift);
+  const body = !myShift
+    ? '<div class="muted">Табель не отвечает — попробуй обновить страницу</div>'
+    : `<table class="kv">
+        <tr><td class="muted">Состояние</td><td>${on ? '<b>на смене</b>' : 'смена не открыта'}</td></tr>
+        ${on ? `<tr><td class="muted">С какого времени</td><td>${hhmm(myShift.entry.started_at)}</td></tr>
+        <tr><td class="muted">Уже отработано</td><td><b>${hm(myShift.minutes_so_far)}</b></td></tr>
+        ${myShift.entry.shift ? `<tr><td class="muted">По графику</td><td>${esc(myShift.entry.shift)}</td></tr>`
+          : '<tr><td class="muted">По графику</td><td class="muted">смены в графике нет — работа вне расписания</td></tr>'}`
+        : `<tr><td class="muted">Сегодня отработано</td><td><b>${hm(myShift.minutes_today)}</b></td></tr>`}
+      </table>
+      ${on
+        ? `<div class="muted" style="margin-top:12px">Уход закрывает запись табеля — по ней считается зарплата.</div>
+           <button class="btn danger" style="width:100%; justify-content:center; margin-top:8px"
+                   onclick="armShiftStop(this)"><span data-ic="out"></span>Отметить уход</button>`
+        : `<div class="muted" style="margin-top:12px">Смена открывается сама, когда ты входишь в систему. Если её нет, а ты работаешь — открой руками.</div>
+           <button class="btn" style="width:100%; justify-content:center; margin-top:8px"
+                   onclick="shiftStart()"><span data-ic="check"></span>Я пришёл</button>`}`;
+  openDrawer('Моя смена', body);
+}
+
+function armShiftStop(btn){
+  if (btn.dataset.armed){ shiftStop(); return; }
+  btn.dataset.armed = '1';
+  btn.innerHTML = 'Точно ухожу?';
+  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.innerHTML = '<span data-ic="out"></span>Отметить уход'; mountIcons(btn); } }, 4000);
+}
+async function shiftStop(){
+  try{
+    const d = await api('/admin/work/stop', {method:'POST'});
+    toast('✓ Смена закрыта · ' + hm(d.entry.minutes));
+    closeDrawer();
+    await loadMyShift();
+    renderMyShift();
+    if (isOwner()) renderTimesheet();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function shiftStart(){
+  try{
+    const d = await api('/admin/work/start', {method:'POST'});
+    if (d.auto_closed_previous) toast('⚠ Прошлая смена осталась незакрытой — закрыл по расписанию, проверь табель');
+    else toast('✓ Приход отмечен');
+    closeDrawer();
+    await loadMyShift();
+    renderMyShift();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 async function renderMyShift(){
   const box = document.getElementById('myShiftBox');
   if (!box) return;
@@ -3486,6 +4088,7 @@ async function workToggle(on){
     else if (d.auto_closed_previous) toast('⚠ Прошлая смена осталась незакрытой — закрыл по расписанию, проверь табель');
     else toast('✓ Приход отмечен');
     renderMyShift();
+    loadMyShift(); // Е3-и2: топбар не должен отставать от раздела
     if (isOwner()) renderTimesheet();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -3788,6 +4391,152 @@ async function renderZones(){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* Е2-и4: каталог пакетов времени. Выгода считается сервером (hour_pln,
+   save_pln) — здесь только показываем: расходиться в цене клиенту с сервером
+   нельзя, а «45 zł за 3 часа» само по себе ни о чём не говорит. */
+let packsCache = [];
+async function renderPackages(){
+  try{
+    const d = await api('/admin/packages');
+    packsCache = d.packages || [];
+    setText('packsHint', d.zones_count === 0
+      ? 'Сначала заведи зону — пакет продаётся в конкретную зону, час VIP и час STANDARD стоят по-разному'
+      : (packsCache.length ? 'Гость видит только включённые' : 'Пакет — купленный запас минут: «3 часа за 45 zł»'));
+    setHTML('packsTable', packsCache.length === 0
+      ? '<div class="empty"><span data-ic="clock"></span>Пакетов нет — гости платят по часам</div>'
+      : `<table><tr><th>Пакет</th><th>Зона</th><th>Время</th><th>Цена</th><th>Час выходит</th><th>Срок</th><th></th></tr>
+      ${packsCache.map(p => `<tr${p.active ? '' : ' style="opacity:.5"'}>
+        <td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="muted">— выключен</span>'}</td>
+        <td class="muted">${esc(p.zone || '—')}</td>
+        <td>${packDur(p.minutes)}</td>
+        <td>${fmtPLN(p.price_pln)} zł</td>
+        <td${p.save_pln > 0 ? '' : ' style="color:var(--orange)"'}>${fmtPLN(p.hour_pln)} zł${
+          p.save_pln > 0 ? ' <span class="muted">· выгода ' + fmtPLN(p.save_pln) + ' zł</span>'
+                         : (p.save_pln === undefined ? '' : ' <span class="muted">· дешевле по часам!</span>')}</td>
+        <td class="muted">${p.days_valid ? p.days_valid + ' дн' : 'бессрочно'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost mini" onclick="packEdit('${p.id}')"><span data-ic="edit"></span>Правка</button>
+        </td></tr>`).join('')}</table>`);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function packDur(m){
+  const h = Math.floor(m / 60), r = m % 60;
+  return (h ? h + ' ч' : '') + (r ? (h ? ' ' : '') + r + ' мин' : '');
+}
+
+function packEdit(id){
+  if (!isOwner()){ toast('Пакеты заводит владелец'); return; }
+  if (!zonesCache.length){ toast('⚠ Сначала заведи зону — у пакета она обязательна'); return; }
+  const p = packsCache.find(x => x.id === id) || {minutes:180, days_valid:0, sort:100, active:true};
+  const isNew = !p.id;
+  if (isNew && !packZone) packZone = zonesCache[0].id;
+  if (!isNew) packZone = p.zone_id;
+  openDrawer(isNew ? 'Новый пакет' : 'Пакет · ' + p.name, packFormHtml(p, isNew));
+}
+
+function packFormHtml(p, isNew){
+  return `<div class="uform">
+    <label class="muted" style="margin-bottom:-6px">Название — его увидит гость</label>
+    <input id="pk_name" class="input" placeholder="3 часа STANDARD" value="${esc(p.name||'')}" maxlength="64">
+    <label class="muted" style="margin-bottom:-6px">Зона: пакет отыгрывается только в ней</label>
+    <div class="segs">${zonesCache.map(z =>
+      `<button class="${packZone===z.id?'on':''}" onclick="packZone='${z.id}'; packRepaint()">${esc(z.name)} · ${fmtPLN(z.rate_pln)} zł/ч</button>`).join('')}</div>
+    <label class="muted" style="margin-bottom:-6px">Сколько минут</label>
+    <input id="pk_min" class="input" type="number" min="1" step="30" value="${p.minutes ?? 180}" oninput="packHint()">
+    <label class="muted" style="margin-bottom:-6px">Цена пакета, zł</label>
+    <input id="pk_price" class="input" type="number" step="0.01" min="0.01" value="${p.price_pln ?? ''}" oninput="packHint()">
+    <div class="muted" id="pk_hint">${packHintText(p.minutes ?? 180, p.price_pln || 0)}</div>
+    <label class="muted" style="margin-bottom:-6px">Сгорает через, дней (0 — бессрочно)</label>
+    <input id="pk_days" class="input" type="number" min="0" max="3650" value="${p.days_valid ?? 0}">
+    <label class="muted" style="margin-bottom:-6px">Порядок в списке</label>
+    <input id="pk_sort" class="input" type="number" value="${p.sort ?? 100}">
+    <label class="muted" style="display:flex; gap:8px; align-items:center">
+      <input id="pk_active" type="checkbox" ${p.active === false ? '' : 'checked'}> пакет в продаже
+    </label>
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+      <button class="btn mini" onclick="savePack('${p.id||''}')"><span data-ic="save"></span>Сохранить</button>
+      ${isNew ? '' : `<button class="btn ghost mini danger" onclick="armPackDelete(this,'${p.id}')">Удалить</button>`}
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+    ${isNew ? '' : '<div class="muted">Правка каталога не трогает уже выданное: у купленного пакета своя цена и свой срок — тот, с которым его продали.</div>'}
+  </div>`;
+}
+
+let packZone = null;
+function packRepaint(){
+  const p = packsCache.find(x => x.id === drawerPackId) || {};
+  const cur = {
+    name: (document.getElementById('pk_name')||{}).value || p.name,
+    minutes: +(document.getElementById('pk_min')||{}).value || p.minutes,
+    price_pln: +(document.getElementById('pk_price')||{}).value || p.price_pln,
+    days_valid: +(document.getElementById('pk_days')||{}).value || 0,
+    sort: +(document.getElementById('pk_sort')||{}).value || 100,
+    active: (document.getElementById('pk_active')||{}).checked,
+    id: p.id, zone_id: packZone,
+  };
+  setHTML('drawerBody', packFormHtml(cur, !p.id));
+  mountIcons(document.getElementById('drawerBody'));
+}
+function packHint(){
+  const box = document.getElementById('pk_hint');
+  if (!box) return;
+  box.textContent = packHintText(+document.getElementById('pk_min').value,
+                                 +document.getElementById('pk_price').value);
+}
+/* Тот же расчёт, что на сервере: цена за час внутри пакета против цены зоны.
+   Владелец должен видеть, что он продаёт, ДО того как нажмёт «Сохранить». */
+function packHintText(minutes, price){
+  if (!(minutes > 0) || !(price > 0)) return 'Час внутри пакета посчитаем, как только будут минуты и цена';
+  const hour = price / minutes * 60;
+  const z = zonesCache.find(x => x.id === packZone);
+  const txt = 'Час внутри пакета: ' + fmtPLN(Math.round(hour * 100) / 100) + ' zł';
+  if (!z) return txt;
+  const full = z.rate_pln * minutes / 60;
+  const save = Math.round((full - price) * 100) / 100;
+  return txt + (save > 0
+    ? ' · по часам вышло бы ' + fmtPLN(Math.round(full * 100) / 100) + ' zł, гость экономит ' + fmtPLN(save) + ' zł'
+    : ' · это ДОРОЖЕ обычного часа зоны — гостю выгоднее платить по часам');
+}
+
+let drawerPackId = null;
+async function savePack(id){
+  const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
+  const body = {
+    name: v('pk_name'), zone_id: packZone,
+    minutes: parseInt(v('pk_min') || '0', 10),
+    price_pln: parseFloat(v('pk_price')),
+    days_valid: parseInt(v('pk_days') || '0', 10),
+    sort: parseInt(v('pk_sort') || '100', 10),
+    active: document.getElementById('pk_active').checked,
+  };
+  if (!body.name){ toast('⚠ Нужно название'); return; }
+  if (!(body.minutes > 0)){ toast('⚠ Нужны минуты'); return; }
+  if (!(body.price_pln > 0)){ toast('⚠ Нужна цена больше нуля'); return; }
+  try{
+    await api(id ? '/admin/packages/' + id : '/admin/packages',
+              {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
+    toast('✓ ' + body.name + ' сохранён');
+    closeDrawer();
+    renderPackages();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+function armPackDelete(btn, id){
+  if (btn.dataset.armed){ deletePack(id); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = 'Точно удалить?';
+  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Удалить'; } }, 4000);
+}
+async function deletePack(id){
+  try{
+    await api('/admin/packages/' + id, {method:'DELETE'});
+    toast('✓ Пакет удалён');
+    closeDrawer();
+    renderPackages();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 function zoneEdit(id){
   const z = zonesCache.find(x => x.id === id) || {sort:0};
   const isNew = !z.id;
@@ -3832,7 +4581,8 @@ function armZoneDelete(btn, id){
 
 /* ── Настройки экономики (А5, только owner) ── */
 async function renderSettings(){
-  renderZones(); // В4-5: цены зон живут здесь же, в «Экономике»
+  renderZones();    // В4-5: цены зон живут здесь же, в «Экономике»
+  renderPackages(); // Е2-и4: и пакеты времени — там же, это тот же прайс
   try{
     const d = await api('/admin/settings');
     document.getElementById('set_xp').value = d.settings.xp_per_min;
@@ -3911,6 +4661,7 @@ function openDrawer(title, html){
   mountIcons(d);
 }
 function closeDrawer(){
+  drawerIsStaffChat = false; // Е6-и2: шторка закрылась — перерисовывать нечего
   drawerPCId = null;
   drawerUserId = null; uData = null; uForm = null; uChat = null;
   const d = document.getElementById('drawer');

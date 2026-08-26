@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -130,9 +131,51 @@ func handleAdminStatsShift(c *gin.Context) {
 		staffOut = append(staffOut, gin.H{"nickname": nicknameOf(a.User), "shift": sn})
 	}
 
+	// Е3-и3: ФАКТ против графика. График — план, табель — что было на самом
+	// деле; сводка смены обязана показывать оба и называть расхождение. Пока
+	// смену открывала кнопка, «нет записи» означало «забыл нажать»; с Р8 вход
+	// открывает её сам, и пустая строка стала настоящим сигналом: человека на
+	// смене не было, а зал работал.
+	var entries []models.WorkEntry
+	db.Where("date = ?", key).Order("started_at").Find(&entries)
+	byUser := map[uuid.UUID]bool{}
+	workedOut := make([]gin.H, 0, len(entries))
+	offSchedule := make([]string, 0)
+	for i := range entries {
+		e := entries[i]
+		byUser[e.UserID] = true
+		var u models.User
+		db.Select("nickname").First(&u, "id = ?", e.UserID)
+		row := gin.H{
+			"nickname": u.Nickname, "started_at": e.StartedAt, "ended_at": e.EndedAt,
+			"minutes": e.Minutes, "open": e.EndedAt == nil,
+			"in_schedule": e.ShiftID != nil, "auto_closed": e.AutoClosed,
+		}
+		if e.EndedAt == nil {
+			row["minutes"] = workMinutes(e.StartedAt, time.Now())
+		}
+		workedOut = append(workedOut, row)
+		if e.ShiftID == nil {
+			offSchedule = append(offSchedule, u.Nickname)
+		}
+	}
+	// Обратное расхождение: в графике стоял, а табеля нет. Это не «забыл
+	// нажать» — это «не пришёл», и владелец должен увидеть именно так.
+	noShow := make([]string, 0)
+	for _, a := range worked {
+		if a.User != nil && !byUser[a.User.ID] {
+			noShow = append(noShow, nicknameOf(a.User))
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"date": key, "from": from, "to": to, "report_hour": reportHour,
-		"staff": staffOut,
+		"staff":  staffOut,
+		"worked": workedOut,
+		"mismatch": gin.H{
+			"off_schedule": offSchedule, // работал, а смены в графике нет
+			"no_show":      noShow,      // стоял в графике, а табеля нет
+		},
 		"revenue": gin.H{"total_pln": totalPLN, "by_method": byMethod, "deposits": depCount,
 			"deposits_pln": depPLN, "goods_pln": goodsPLN, "sales": saleCount},
 		"sessions":   gin.H{"started": sessStarted, "minutes": minutes},

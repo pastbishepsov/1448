@@ -32,6 +32,15 @@ func logAdminAction(c *gin.Context, action string, targetUserID *uuid.UUID, deta
 	}
 }
 
+// logAdminActionAs — то же, но без HTTP-контекста: действие совершил сервер
+// от имени человека (Е3-и1: смену открыл вход в систему, а не нажатие).
+func logAdminActionAs(adminID uuid.UUID, action string, targetUserID *uuid.UUID, details string) {
+	entry := models.AdminAction{AdminID: adminID, Action: action, TargetUserID: targetUserID, Details: details}
+	if err := db.Create(&entry).Error; err != nil {
+		log.Printf("audit: действие %s не записалось: %v", action, err)
+	}
+}
+
 // GET /admin/audit — лента событий: три источника сливаются по времени,
 // в ответ уходит максимум 100 свежих. Ники резолвятся одним запросом.
 // Роли (Б1-и4, решение №3): owner видит всё; admin — операции текущего дня

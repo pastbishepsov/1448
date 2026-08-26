@@ -17,6 +17,7 @@ const (
 	WalletTxKitchenSpend WalletTxKind = "kitchen_spend" // заказ кухни с кошелька (Г7)
 	WalletTxRefund       WalletTxKind = "refund"        // возврат (отмена заказа и т.п.)
 	WalletTxAdjust       WalletTxKind = "adjust"        // ручная корректировка владельцем
+	WalletTxPackageSpend WalletTxKind = "package_spend" // покупка пакета времени с кошелька (Е2)
 )
 
 // WalletTransaction — строка журнала денежного кошелька (трек Г, Г0-и1).

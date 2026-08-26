@@ -324,6 +324,11 @@ func handleAdminComputers(c *gin.Context) {
 			"mac":  pc.MAC,                     // WoL (Б8, редактор зала)
 			"shell_online": hub.IsConnected(pc.ID.String()),
 		}
+		// Е1-и5: придержан под регистрацию — в зале это отдельная пометка,
+		// а не «занят»: машина свободна, просто её не надо перехватывать.
+		if computerHeld(&pc, time.Now()) {
+			row["hold_until"] = pc.HoldUntil
+		}
 		if s, ok := byComputer[pc.ID.String()]; ok {
 			row["session"] = gin.H{
 				"id": s.ID, "started_at": s.StartedAt,

@@ -615,6 +615,19 @@
   </div>
 </div>
 
+<!-- ═══ Е2-и5в: шторка «Купить пакет». Покупка идёт с кошелька (Р12) —
+     живых денег в приложении нет, и способ оплаты спрашивать не о чем. ═══ -->
+<div id="packWrap" class="sheetwrap">
+  <div class="sheetback" onclick="closePackShop()"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <h3 data-str="pack_buy_btn"></h3>
+    <div class="muted" id="packWalletLine" style="margin:6px 0 12px"></div>
+    <div id="packShopList"></div>
+    <button class="btn ghost" style="margin-top:12px" onclick="closePackShop()" data-str="topup_ok"></button>
+  </div>
+</div>
+
 <!-- ═══ Шторка установки (М5-и1, RESEARCH §1: iOS 26 — «Поделиться → На экран Домой») ═══ -->
 <div id="installWrap" class="sheetwrap">
   <div class="sheetback" onclick="closeInstall()"></div>
@@ -690,6 +703,15 @@ const STR_RU = {
   booking_restored: '📅 Бронь возвращена',
   restore_failed: 'Не вышло вернуть: {m}',
   live_now: 'Сессия идёт',
+  ready_title: 'Готов играть?',
+  ready_who: '{n} · {c}',
+  ready_hint: 'Деньги пойдут только после нажатия — за дорогу к компьютеру не платишь',
+  ready_btn: 'Готов!',
+  ready_starting: 'Запускаем…',
+  ready_auto: 'Не нажмёшь — начнём сами',
+  toast_ready_go: '▶ Поехали — время пошло',
+  toast_ready_wait: '🎮 Тебя посадили за {c} — подтверди, и время пойдёт',
+  ntf_ready_auto: '▶ Время пошло: окно ожидания истекло',
   live_xp_lbl: 'XP за сессию',
   today_at: 'сегодня {t}', tomorrow_at: 'завтра {t}',
   club_err: 'Клуб не загрузился',
@@ -847,6 +869,28 @@ const STR_RU = {
   btn_resume: '▶ Продолжить',
   rate_line: '1 zł → {c} койнов · игра: +{m} койнов/мин',
   btn_topup: 'Пополнить',
+  pack_title: 'Пакеты времени',
+  pack_live: '{n} мин · {z}',
+  pack_none: 'Пакетов нет — это часы вперёд по цене ниже обычной',
+  pack_row: '{n} из {t} мин',
+  pack_expires: 'сгорит через {d} дн',
+  pack_expired: 'сгорел',
+  pack_voided: 'отменён',
+  pack_used: 'отыгран',
+  pack_forever: 'бессрочно',
+  pack_buy_btn: 'Купить пакет',
+  pack_hour: 'час выходит {h} zł',
+  pack_save: 'выгода {s} zł',
+  pack_buy: 'Купить за {p} zł',
+  pack_wallet: 'Спишется с кошелька — там сейчас {w}',
+  pack_bought: '▶ {n} — время на счету',
+  pack_poor: 'На кошельке не хватает — пополни у стойки',
+  pack_zone_note: 'Минуты пакета тратятся только в своей зоне и раньше кошелька',
+  pack_shop_empty: 'Клуб пока не продаёт пакеты',
+  live_pack: 'из них {n} мин пакетом',
+  ntf_pack_added: '▶ Пакет «{n}»: +{m} мин ({z})',
+  ntf_pack_void: '↩ Выдача пакета «{n}» отменена',
+  ntf_pack_soon: '⏳ Пакет «{n}» сгорит через {d} дн — осталось {m} мин',
   topup_title: 'Пополнение баланса',
   topup_body: 'Пока пополнить можно у стойки клуба — админ зачислит койны сразу. Онлайн-оплата (BLIK/карта) приедет вместе со Stripe в спринте 6.',
   topup_ok: 'Понял',
@@ -907,6 +951,15 @@ const STR_EN = {
   booking_restored: '📅 Booking restored',
   restore_failed: 'Could not restore: {m}',
   live_now: 'Session running',
+  ready_title: 'Ready to play?',
+  ready_who: '{n} · {c}',
+  ready_hint: 'The clock starts only when you tap — you don’t pay for walking to the PC',
+  ready_btn: 'I’m ready!',
+  ready_starting: 'Starting…',
+  ready_auto: 'Don’t tap and we’ll start it for you',
+  toast_ready_go: '▶ Off we go — the clock is running',
+  toast_ready_wait: '🎮 You’re seated at {c} — tap to start the clock',
+  ntf_ready_auto: '▶ The clock started: the waiting window ran out',
   live_xp_lbl: 'Session XP',
   today_at: 'today {t}', tomorrow_at: 'tomorrow {t}',
   club_err: 'Failed to load the club',
@@ -1061,6 +1114,28 @@ const STR_EN = {
   btn_resume: '▶ Resume',
   rate_line: '1 zł → {c} coins · play: +{m} coins/min',
   btn_topup: 'Top up',
+  pack_title: 'Time packages',
+  pack_live: '{n} min · {z}',
+  pack_none: 'No packages yet — hours up front at a lower rate',
+  pack_row: '{n} of {t} min',
+  pack_expires: 'expires in {d} d',
+  pack_expired: 'expired',
+  pack_voided: 'cancelled',
+  pack_used: 'used up',
+  pack_forever: 'no expiry',
+  pack_buy_btn: 'Buy a package',
+  pack_hour: '{h} zł per hour',
+  pack_save: 'you save {s} zł',
+  pack_buy: 'Buy for {p} zł',
+  pack_wallet: 'Taken from your wallet — {w} there now',
+  pack_bought: '▶ {n} — the time is yours',
+  pack_poor: 'Not enough in the wallet — top up at the desk',
+  pack_zone_note: 'Package minutes work only in their zone and go before the wallet',
+  pack_shop_empty: 'The club does not sell packages yet',
+  live_pack: '{n} min of it from a package',
+  ntf_pack_added: '▶ Package “{n}”: +{m} min ({z})',
+  ntf_pack_void: '↩ Package “{n}” was cancelled',
+  ntf_pack_soon: '⏳ Package “{n}” expires in {d} d — {m} min left',
   topup_title: 'Balance top-up',
   topup_body: 'For now top up at the club desk — the admin credits coins instantly. Online payment (BLIK/card) arrives with Stripe.',
   topup_ok: 'Got it',
@@ -1119,6 +1194,15 @@ const STR_PL = {
   booking_restored: '📅 Rezerwacja przywrócona',
   restore_failed: 'Nie udało się przywrócić: {m}',
   live_now: 'Sesja trwa',
+  ready_title: 'Gotowy do gry?',
+  ready_who: '{n} · {c}',
+  ready_hint: 'Czas rusza dopiero po kliknięciu — za drogę do komputera nie płacisz',
+  ready_btn: 'Gotowy!',
+  ready_starting: 'Uruchamiamy…',
+  ready_auto: 'Nie klikniesz — uruchomimy sami',
+  toast_ready_go: '▶ Jedziemy — czas leci',
+  toast_ready_wait: '🎮 Masz miejsce przy {c} — kliknij, a czas ruszy',
+  ntf_ready_auto: '▶ Czas ruszył: okno oczekiwania minęło',
   live_xp_lbl: 'XP za sesję',
   today_at: 'dziś {t}', tomorrow_at: 'jutro {t}',
   club_err: 'Nie udało się wczytać klubu',
@@ -1273,6 +1357,28 @@ const STR_PL = {
   btn_resume: '▶ Wznów',
   rate_line: '1 zł → {c} monet · gra: +{m} monet/min',
   btn_topup: 'Doładuj',
+  pack_title: 'Pakiety czasu',
+  pack_live: '{n} min · {z}',
+  pack_none: 'Nie masz pakietów — to godziny z góry, taniej niż zwykle',
+  pack_row: '{n} z {t} min',
+  pack_expires: 'wygasa za {d} dn',
+  pack_expired: 'wygasł',
+  pack_voided: 'anulowany',
+  pack_used: 'wykorzystany',
+  pack_forever: 'bezterminowo',
+  pack_buy_btn: 'Kup pakiet',
+  pack_hour: '{h} zł za godzinę',
+  pack_save: 'oszczędzasz {s} zł',
+  pack_buy: 'Kup za {p} zł',
+  pack_wallet: 'Pobierzemy z portfela — jest tam {w}',
+  pack_bought: '▶ {n} — czas na koncie',
+  pack_poor: 'W portfelu za mało — doładuj przy ladzie',
+  pack_zone_note: 'Minuty pakietu działają tylko w swojej strefie i idą przed portfelem',
+  pack_shop_empty: 'Klub nie sprzedaje jeszcze pakietów',
+  live_pack: 'w tym {n} min z pakietu',
+  ntf_pack_added: '▶ Pakiet „{n}”: +{m} min ({z})',
+  ntf_pack_void: '↩ Wydanie pakietu „{n}” anulowano',
+  ntf_pack_soon: '⏳ Pakiet „{n}” wygasa za {d} dn — zostało {m} min',
   topup_title: 'Doładowanie konta',
   topup_body: 'Na razie doładujesz przy ladzie klubu — admin doda monety od ręki. Płatność online (BLIK/karta) przyjedzie ze Stripe.',
   topup_ok: 'Jasne',
@@ -1553,6 +1659,7 @@ function toast(msg, action){
    сессии → мои брони с undo-тостом. Поллинг — решение №4. */
 let clubsArr = [], club = null, clubErr = false;
 let bookings = [], activeSession = null, sessionsArr = [];
+let sessComputer = ''; // Е1-и6: имя машины активной сессии (/me/sessions)
 let pollClubs = null, pollSess = null, liveTick = null;
 let lastCancelled = null;
 let bkDay = 'today', bkSlot = null, bkDur = 120, bkBusy = false;
@@ -1598,11 +1705,44 @@ async function loadBookings(){
 async function loadSessions(){
   try{
     const was = !!activeSession;
-    sessionsArr = (await api('/me/sessions')).sessions || [];
+    const wasWaiting = waitingReady(); // Е1-и6: чтобы поймать МОМЕНТ посадки
+    const d = await api('/me/sessions');
+    sessionsArr = d.sessions || [];
+    sessComputer = d.computer || '';   // Е1-и6: «ПК-07» на экране подтверждения
     activeSession = sessionsArr.find(s => s.status === 'active') || null;
     renderLive();
+    // Гостя посадили, пока он смотрел другую вкладку: карточка подтверждения
+    // живёт на главной, поэтому о посадке говорим вслух — Р1 включит счётчик
+    // и без нажатия, молчать тут нельзя.
+    if (!wasWaiting && waitingReady() && curTab !== 'club'){
+      toast(T('toast_ready_wait', {c: sessComputer || '—'}));
+    }
     if (was && !activeSession) loadMe();  // сессия завершилась — свежие XP/монеты в топбар
   }catch(e){ /* тихо: поллинг повторит */ }
+}
+
+/* ── Е1-и6: окно [Готов!] в телефоне ──────────────────────────────────
+   Ожидание = дедлайн есть, нажатия нет. Пока оно идёт, live-карточка
+   показывает не время игры (его ещё нет), а подтверждение. */
+function waitingReady(){
+  return !!(activeSession && activeSession.ready_deadline && !activeSession.ready_at);
+}
+async function pressReady(){
+  const btn = document.getElementById('readyBtn');
+  if (btn) btn.disabled = true;
+  try{
+    const d = await api('/me/sessions/ready', {method:'POST'});
+    if (activeSession){
+      activeSession.ready_at = d.ready_at || new Date().toISOString();
+      activeSession.started_at = d.started_at || activeSession.started_at;
+    }
+    if (!d.already) toast(STR.toast_ready_go);
+    renderLive();
+    loadSessions();
+  }catch(e){
+    toast(T('toast_err', {m: e.message}));
+    if (btn) btn.disabled = false;
+  }
 }
 
 /* ── карточка клуба (М1-и1) ── */
@@ -1688,16 +1828,26 @@ function renderLive(){
   const el = document.getElementById('liveCard');
   if (!el) return;
   if (!activeSession){ el.classList.add('hidden'); el.dataset.ready = ''; stopLive(); renderWaitlist(); updateCallBtn(); return; }
-  const pkey = activeSession.paused_at ? 'p' : 'a'; // Г2: перестроить при смене
+  // Е1-и6: 'w' — посадили, но время ещё не пошло. Ставим первым: пауза у
+  // неподтверждённой сессии невозможна, а «идёт» было бы прямой неправдой.
+  const pkey = waitingReady() ? 'w' : (activeSession.paused_at ? 'p' : 'a'); // Г2: перестроить при смене
   if (el.dataset.ready !== pkey){
     el.dataset.ready = pkey;
-    el.innerHTML = pkey === 'p' ? `
+    el.innerHTML = pkey === 'w' ? `
+      <div class="muted" style="display:flex; align-items:center; gap:8px">🎮 ${esc(STR.ready_title)}</div>
+      <div class="live-time cnum" id="liveTime" style="color:var(--acc)">—</div>
+      <div class="muted">${esc(T('ready_who', {n: me ? me.nickname : '', c: sessComputer || '—'}))}</div>
+      <button class="btn" id="readyBtn" style="margin-top:10px" onclick="pressReady()">${esc(STR.ready_btn)}</button>
+      <div class="muted" style="margin-top:8px">${esc(STR.ready_hint)}</div>
+      <div class="muted" style="margin-top:4px">${esc(STR.ready_auto)}</div>` : pkey === 'p' ? `
       <div class="muted" style="display:flex; align-items:center; gap:8px">⏸ ${esc(STR.live_paused)}</div>
       <div class="live-time cnum" id="liveTime">00:00</div>
       <button class="btn slim" style="margin-top:8px" onclick="appResume()">${esc(STR.btn_resume)}</button>` : `
       <div class="muted" style="display:flex; align-items:center; gap:8px"><span class="livedot"></span>${esc(STR.live_now)}</div>
       <div class="live-time cnum" id="liveTime">00:00</div>
       <div class="muted">≈ +<b class="cnum" id="liveXP" data-v="0" style="color:var(--txt)">0</b> ${esc(STR.live_xp_lbl)}</div>
+      ${activeSession.pack_minutes_used > 0
+        ? `<div class="muted">${esc(T('live_pack', {n: activeSession.pack_minutes_used}))}</div>` : ''}
       <button class="btn ghost slim" style="margin-top:8px" onclick="appPause()">${esc(STR.btn_pause)}</button>`;
   }
   el.classList.remove('hidden');
@@ -1708,6 +1858,25 @@ function renderLive(){
 }
 function tickLive(){
   if (!activeSession) return;
+  // Е1-и6: пока ждём подтверждения, started_at смысла не имеет — он сдвинется
+  // в момент нажатия. Считать от него значило бы показывать гостю время,
+  // которого он не играл и за которое не заплатит.
+  if (waitingReady()){
+    const box = document.getElementById('liveTime');
+    if (!box) return;
+    const left = Math.round((new Date(activeSession.ready_deadline) - Date.now()) / 1000);
+    if (left <= 0){
+      // Дедлайн прошёл — сервер стартует сам (Р1), тик у него раз в 30 с.
+      // Своё «Готов!» отсюда НЕ шлём: оно поставило бы точку отсчёта на
+      // сейчас, а не на дедлайн, и гость с админом видели бы разное время.
+      box.textContent = '—';
+      const b = document.getElementById('readyBtn');
+      if (b){ b.textContent = STR.ready_starting; b.disabled = true; }
+      return;
+    }
+    box.textContent = Math.floor(left / 60) + ':' + pad2(left % 60);
+    return;
+  }
   let sec = Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000)
           - (activeSession.paused_total_sec || 0);
   if (activeSession.paused_at) sec -= Math.floor((Date.now() - new Date(activeSession.paused_at).getTime()) / 1000);
@@ -1869,6 +2038,7 @@ async function loadProgress(){
     ]);
     talents = tl; achievements = ac; leaderboard = lb; deposits = dp.deposits || [];
     walletTx = wl.transactions || [];
+    await loadPacks(); // Е2-и5в: пакеты — часть денег, грузим вместе с ними
   }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
   await loadSessions(); // журнал для истории (заодно live-карточка честная)
   renderProgress();
@@ -2069,6 +2239,7 @@ function renderHist(){
     </div>
     ${economy && economy.rates ? `<div class="muted cnum" style="margin:0 0 10px">${T('rate_line', {c: economy.rates.deposit_coins_per_pln, m: economy.rates.coins_per_min})}</div>` : ''}
     <button class="btn ghost slim" style="margin:0 0 12px" onclick="openTopup()">${esc(STR.btn_topup)}</button>
+    ${packBlockHtml()}
     ${walletTx.length ? `<div class="sect" style="margin-top:2px">${esc(STR.wal_ops)}</div>` +
       walletTx.slice(0, 8).map(w => `<div class="hrow">
         <span class="h-when">${esc(fmtWhen(w.created_at))}</span>
@@ -2081,6 +2252,100 @@ function renderHist(){
       <span class="h-v">${i.v}</span>
     </div>`).join('') || `<div class="muted">${esc(STR.hist_empty)}</div>`);
   FX.countUp(document.getElementById('histBal'), me ? me.coins_balance : 0);
+}
+
+/* ── Е2-и5в: пакеты времени. Купленное время лежит рядом с деньгами —
+   это и есть деньги, просто уже превращённые в часы. ── */
+let myPacks = [], packShop = [], packBusy = false;
+
+async function loadPacks(){
+  try{
+    const [mine, shop] = await Promise.all([api('/me/packages'), api('/me/packages/catalog')]);
+    myPacks = mine.packages || [];
+    packShop = shop.packages || [];
+  }catch(e){ /* тихо: экран покажет то, что есть */ }
+}
+
+/* Состояние словом: «0 из 180» без объяснения читается как поломка. */
+function packState(p){
+  if (p.voided_at) return STR.pack_voided;
+  if (p.minutes_left <= 0) return STR.pack_used;
+  if (p.days_left === 0) return STR.pack_expired;
+  if (p.days_left > 0) return T('pack_expires', {d: p.days_left});
+  return STR.pack_forever;
+}
+
+function packLiveLine(){
+  const live = myPacks.filter(p => p.live);
+  if (!live.length) return '';
+  const byZone = {};
+  live.forEach(p => { byZone[p.zone || '—'] = (byZone[p.zone || '—'] || 0) + p.minutes_left; });
+  return Object.keys(byZone).map(z => T('pack_live', {n: byZone[z], z: z})).join(' · ');
+}
+
+function packBlockHtml(){
+  const rows = myPacks.length
+    ? myPacks.slice(0, 6).map(p => `<div class="hrow"${p.live ? '' : ' style="opacity:.55"'}>
+        <span class="h-when">${esc(p.zone || '—')}</span>
+        <span class="h-l">${esc(p.name)} · <span class="muted">${esc(packState(p))}</span></span>
+        <span class="h-v">${esc(T('pack_row', {n: p.minutes_left, t: p.minutes_total}))}</span>
+      </div>`).join('')
+    : `<div class="muted">${esc(STR.pack_none)}</div>`;
+  const live = packLiveLine();
+  return `<div class="sect" style="margin-top:2px">${esc(STR.pack_title)}</div>
+    ${live ? `<div class="cnum" style="margin:0 0 6px"><b>${esc(live)}</b></div>` : ''}
+    ${rows}
+    <div class="muted" style="margin:6px 0 10px">${esc(STR.pack_zone_note)}</div>
+    <button class="btn ghost slim" style="margin:0 0 12px" onclick="openPackShop()">${esc(STR.pack_buy_btn)}</button>`;
+}
+
+function openPackShop(){
+  document.getElementById('packWrap').classList.add('open');
+  paintPackShop();
+  loadPacks().then(paintPackShop);
+}
+function closePackShop(){ document.getElementById('packWrap').classList.remove('open'); }
+function packShopOpen(){ return document.getElementById('packWrap').classList.contains('open'); }
+
+function paintPackShop(){
+  const line = document.getElementById('packWalletLine');
+  if (line) line.textContent = T('pack_wallet', {w: zl2(me ? me.wallet_grosz : 0) + ' zł'});
+  const box = document.getElementById('packShopList');
+  if (!box) return;
+  box.innerHTML = packShop.length ? packShop.map(p => `
+    <div style="padding:10px 0; border-top:1px solid var(--line)">
+      <div style="display:flex; justify-content:space-between; gap:10px; align-items:baseline">
+        <b>${esc(p.name)}</b><span class="muted">${esc(p.zone || '—')}</span>
+      </div>
+      <div class="muted" style="margin:2px 0 8px">
+        ${esc(T('pack_hour', {h: fmtPln(p.hour_pln)}))}${p.save_pln > 0 ? ' · ' + esc(T('pack_save', {s: fmtPln(p.save_pln)})) : ''}
+        · ${p.days_valid ? esc(T('pack_expires', {d: p.days_valid})) : esc(STR.pack_forever)}
+      </div>
+      <button class="btn slim" style="width:100%" onclick="buyPack('${p.id}')">${esc(T('pack_buy', {p: fmtPln(p.price_pln)}))}</button>
+    </div>`).join('')
+    : `<div class="muted">${esc(STR.pack_shop_empty)}</div>`;
+}
+
+/* Цена как везде в проекте: запятая, два знака только если нужны. */
+function fmtPln(v){
+  const n = Math.round((+v || 0) * 100) / 100;
+  return (Number.isInteger(n) ? String(n) : n.toFixed(2)).replace('.', ',');
+}
+
+async function buyPack(id){
+  if (packBusy) return;
+  packBusy = true;
+  try{
+    const d = await api('/me/packages', {method: 'POST', body: JSON.stringify({package_id: id})});
+    toast(T('pack_bought', {n: d.package.name}));
+    if (me) me.wallet_grosz = Math.round((d.wallet_pln || 0) * 100);
+    await loadPacks();
+    paintPackShop();
+    if (curTab === 'progress') renderProgress();
+  }catch(e){
+    toast(/not_enough|не хватает/i.test(e.message) ? STR.pack_poor : T('toast_err', {m: e.message}));
+  }
+  packBusy = false;
 }
 
 /* ═══════════════ М3: КЕЙСЫ ═══════════════
@@ -2623,6 +2888,16 @@ function ntfText(n){
       return T('ntf_profile', {f: (p.fields || []).map(k => STR['fld_' + k] || k).join(', ')});
     case 'password_reset':
       return STR.ntf_pwd_reset;
+    // Е2: пакеты времени
+    case 'package_added':
+      return T('ntf_pack_added', {n: p.name || '', m: p.minutes || 0, z: p.zone || ''});
+    case 'package_void':
+      return T('ntf_pack_void', {n: p.name || ''});
+    case 'package_expiring':
+      return T('ntf_pack_soon', {n: p.name || '', d: p.days_left || 0, m: p.minutes || 0});
+    // Е1: сервер сам подтвердил сессию по истечении окна (Р1).
+    case 'ready_auto':
+      return STR.ntf_ready_auto;
   }
   return STR.ntf_default;
 }
@@ -2650,7 +2925,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-24.9';
+const APP_VER = '2026-08-26.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

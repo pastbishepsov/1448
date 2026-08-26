@@ -175,3 +175,67 @@ func handleAdminSeatCancel(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"session_id": s.ID, "status": models.SessionStatusCancelled})
 }
+
+// ── Е1-и5: придержать ПК под регистрацию нового гостя ─────────────────────
+//
+// Новичка нельзя «посадить»: аккаунта ещё нет, а сажают по нику. Админ
+// показывает на машину и говорит «заводи там», но для системы она всё это
+// время свободна — и её законно занимает следующий гость или второй админ.
+// Метка hold_until решает ровно это: ПК исчезает из АВТОМАТИЧЕСКОГО выбора,
+// но явный старт именно на нём проходит и метку снимает. Иначе вышло бы, что
+// держим машину для гостя и ему же не даём сесть.
+
+// computerHeld — действует ли придержание (чистая, тест). Истёкшая метка
+// ничего не значит: срок сам отпускает ПК, фоновый джоб не нужен.
+func computerHeld(pc *models.Computer, now time.Time) bool {
+	return pc.HoldUntil != nil && now.Before(*pc.HoldUntil)
+}
+
+// releaseHold — снять метку (после старта сессии или вручную).
+func releaseHold(pcID uuid.UUID) {
+	db.Model(&models.Computer{}).Where("id = ?", pcID).
+		Updates(map[string]any{"hold_until": nil, "hold_by": nil})
+}
+
+// POST /admin/computers/:id/hold — придержать под регистрацию (Е1-и5).
+// Держим на те же ready_wait_min: это тот же по смыслу бюджет «человек
+// сейчас этим занят», и второй настройки для него заводить незачем.
+func handleAdminComputerHold(c *gin.Context) {
+	var pc models.Computer
+	if err := db.First(&pc, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "computer_not_found", "message": "ПК не найден"})
+		return
+	}
+	if pc.Status != models.ComputerStatusAvailable {
+		c.JSON(http.StatusConflict, gin.H{"code": "computer_busy",
+			"message": "Придержать можно только свободный ПК"})
+		return
+	}
+	wait := settingInt64("ready_wait_min", readyWaitMinDef)
+	if wait <= 0 {
+		wait = readyWaitMinDef // окно [Готов!] выключено, но держать всё равно надо
+	}
+	until := time.Now().Add(time.Duration(wait) * time.Minute)
+	adminID, _ := uuid.Parse(c.GetString("user_id"))
+	if err := db.Model(&models.Computer{}).Where("id = ?", pc.ID).
+		Updates(map[string]any{"hold_until": until, "hold_by": adminID}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	logAdminAction(c, "pc_hold", nil, pc.Name+": придержан под регистрацию")
+	hub.AdminBroadcast("computer", map[string]any{"kind": "hold", "computer_id": pc.ID.String()})
+	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "name": pc.Name, "hold_until": until})
+}
+
+// DELETE /admin/computers/:id/hold — снять придержание вручную (Е1-и5).
+func handleAdminComputerUnhold(c *gin.Context) {
+	var pc models.Computer
+	if err := db.First(&pc, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "computer_not_found", "message": "ПК не найден"})
+		return
+	}
+	releaseHold(pc.ID)
+	logAdminAction(c, "pc_unhold", nil, pc.Name+": придержание снято")
+	hub.AdminBroadcast("computer", map[string]any{"kind": "unhold", "computer_id": pc.ID.String()})
+	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "name": pc.Name})
+}

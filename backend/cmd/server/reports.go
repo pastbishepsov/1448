@@ -217,11 +217,16 @@ type moneyAgg struct {
 	GoodsPLN    float64 `json:"goods_pln"`
 	GoodsSales  int64   `json:"goods_sales"`
 	GoodsItems  int64   `json:"goods_items"`
-	Guests      int64   `json:"guests"`
-	AvgCheck    float64 `json:"avg_check_pln"` // средний чек пополнения
-	Cash        float64 `json:"cash_pln"`
-	Card        float64 `json:"card_pln"`
-	Blik        float64 `json:"blik_pln"`
+	// Е2-и6: пакеты времени. Отдельной строкой, а не внутри «товаров»: это
+	// проданное ВРЕМЯ, и владелец должен видеть, сколько его ушло вперёд.
+	PacksPLN float64 `json:"packs_pln"`
+	Packs    int64   `json:"packs"`
+	PackMin  int64   `json:"pack_minutes"`
+	Guests   int64   `json:"guests"`
+	AvgCheck float64 `json:"avg_check_pln"` // средний чек пополнения
+	Cash     float64 `json:"cash_pln"`
+	Card     float64 `json:"card_pln"`
+	Blik     float64 `json:"blik_pln"`
 }
 
 // aggMoney — деньги за период. Выручка клуба = пополнения + продажи товаров
@@ -251,7 +256,21 @@ func aggMoney(p period) moneyAgg {
 		Select("COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt, COALESCE(SUM(qty),0) AS items").
 		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Scan(&goods)
 	a.GoodsPLN, a.GoodsSales, a.GoodsItems = goods.Pln, goods.Cnt, goods.Items
-	a.Revenue = math.Round((a.DepositsPLN+a.GoodsPLN)*100) / 100
+
+	// Е2-и6: пакеты времени. Кошельком оплаченные в выручку НЕ идут (Г-Р7) —
+	// эти деньги клуб уже записал при пополнении; отменённые тоже.
+	var packs struct {
+		Pln float64
+		Cnt int64
+		Min int64
+	}
+	db.Model(&models.UserPackage{}).
+		Select("COALESCE(SUM(price_pln),0) AS pln, COUNT(*) AS cnt, COALESCE(SUM(minutes_total),0) AS min").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
+		Scan(&packs)
+	a.PacksPLN, a.Packs, a.PackMin = packs.Pln, packs.Cnt, packs.Min
+
+	a.Revenue = math.Round((a.DepositsPLN+a.GoodsPLN+a.PacksPLN)*100) / 100
 
 	// разбивка по способам оплаты — по обоим каналам сразу
 	add := func(method string, pln float64) {
@@ -275,6 +294,13 @@ func aggMoney(p period) moneyAgg {
 	}
 	rows = nil
 	db.Model(&models.Sale{}).Select("method, COALESCE(SUM(total_pln),0) AS pln").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
+		Group("method").Scan(&rows)
+	for _, r := range rows {
+		add(r.Method, r.Pln)
+	}
+	rows = nil // Е2-и6: пакеты — третий канал живых денег у стойки
+	db.Model(&models.UserPackage{}).Select("method, COALESCE(SUM(price_pln),0) AS pln").
 		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
 		Group("method").Scan(&rows)
 	for _, r := range rows {
@@ -455,6 +481,23 @@ func handleReportMoney(c *gin.Context) {
 		}
 	}
 
+	// Е2-и6: обязательство клуба по НЕОТЫГРАННЫМ минутам пакетов. Считаем по
+	// цене, за которую пакет продали (доля за остаток), а не по нынешней цене
+	// зоны: клуб должен ровно то время, которое гость купил, и переоценка
+	// задним числом превратила бы долг в фантазию. Просроченные не считаются —
+	// клуб их уже не должен.
+	var packLia struct {
+		Grosz  int64
+		Guests int64
+		Min    int64
+	}
+	db.Model(&models.UserPackage{}).
+		Select(`COALESCE(SUM(ROUND(price_pln * 100 * minutes_left / minutes_total)),0) AS grosz,
+		        COUNT(DISTINCT user_id) AS guests, COALESCE(SUM(minutes_left),0) AS min`).
+		Where(`voided_at IS NULL AND minutes_left > 0
+		       AND (expires_at IS NULL OR expires_at > now())`).
+		Scan(&packLia)
+
 	c.JSON(http.StatusOK, gin.H{
 		"wallet": gin.H{
 			"liability_pln":       models.PLNFromGrosz(wal.Total),
@@ -464,12 +507,21 @@ func handleReportMoney(c *gin.Context) {
 			"spent_session_pln":   models.PLNFromGrosz(spentSession), // время (Г1)
 			"spent_kitchen_pln":   models.PLNFromGrosz(spentKitchen), // кухня (Г7)
 		},
+		"packages": gin.H{
+			"liability_pln":  models.PLNFromGrosz(packLia.Grosz),
+			"minutes_left":   packLia.Min,
+			"guests":         packLia.Guests,
+			"period_pln":     cur.PacksPLN, // продано за период живыми деньгами
+			"period_count":   cur.Packs,
+			"period_minutes": cur.PackMin,
+		},
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
 		"delta": gin.H{
 			"revenue_pln":   pctDelta(cur.Revenue, old.Revenue),
 			"deposits_pln":  pctDelta(cur.DepositsPLN, old.DepositsPLN),
 			"goods_pln":     pctDelta(cur.GoodsPLN, old.GoodsPLN),
+			"packs_pln":     pctDelta(cur.PacksPLN, old.PacksPLN), // Е2-и6
 			"deposits":      pctDelta(float64(cur.Deposits), float64(old.Deposits)),
 			"guests":        pctDelta(float64(cur.Guests), float64(old.Guests)),
 			"avg_check_pln": pctDelta(cur.AvgCheck, old.AvgCheck),

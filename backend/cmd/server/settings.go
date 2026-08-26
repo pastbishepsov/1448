@@ -68,6 +68,7 @@ var settingBounds = map[string][2]int64{
 	"streak_freeze_max_row":     {1, 7},      // сколько дней подряд можно прикрыть
 	"birthday_case_tier":        {0, 5},    // Г8-и4: ДР-кейс (0=выкл, 1=light … 5=gods)
 	"ready_wait_min":            {0, 30},   // Е1: сколько ждём [Готов!], мин; 0 = окно выключено
+	"pack_warn_days":            {0, 30},   // Е2-и5: за сколько дней сказать, что пакет сгорает; 0 = молчать
 }
 
 func currentSettings() gin.H {
@@ -86,6 +87,7 @@ func currentSettings() gin.H {
 		"coin_burn_pct_week":        settingInt64("coin_burn_pct_week", coinBurnPctWeek),
 		"coin_burn_warn_days":       settingInt64("coin_burn_warn_days", coinBurnWarnDays),
 		"min_start_minutes":         settingInt64("min_start_minutes", minStartMinutesDef),
+		"pack_warn_days":            settingInt64("pack_warn_days", packWarnDaysDef), // Е2-и5
 		"zero_grace_min":            settingInt64("zero_grace_min", zeroGraceMinDef),
 		"pause_limit_min":           settingInt64("pause_limit_min", pauseLimitMinDef),
 		"afk_stop_min":              settingInt64("afk_stop_min", afkStopMinDef),

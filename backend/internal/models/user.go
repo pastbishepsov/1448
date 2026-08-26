@@ -65,6 +65,15 @@ type User struct {
 	MustChangePassword bool       `json:"must_change_password" gorm:"not null;default:false"`
 	TokensValidFrom    *time.Time `json:"-"`
 
+	// Онбординг персонала (Е5, миграция 051). Флаг на сервере, а не в
+	// localStorage: админка открывается с разных машин клуба, и локальный флаг
+	// означал бы тур на каждой новой.
+	OnboardedAt      *time.Time `json:"onboarded_at,omitempty"`
+	OnboardedVersion int        `json:"onboarded_version" gorm:"not null;default:0"`
+	// Е6: докуда человек дочитал служебный канал. Отметка «до», а не флаги на
+	// каждом сообщении: участников много, таблица флагов росла бы произведением.
+	StaffChatReadAt *time.Time `json:"staff_chat_read_at,omitempty"`
+
 	RegisteredAt time.Time `json:"registered_at"`
 	LastActiveAt time.Time `json:"last_active_at"`
 	CreatedAt    time.Time `json:"created_at"`

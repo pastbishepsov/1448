@@ -34,6 +34,12 @@ type Computer struct {
 	// MAC для Wake-on-LAN (миграция 021, спринт Б8). NULL — WoL недоступен.
 	MAC *string `json:"mac,omitempty" gorm:"column:mac;size:17"`
 
+	// Придержание под регистрацию нового гостя (Е1-и5, миграция 046): машина
+	// физически свободна, но автоматика её не предлагает, пока человек заводит
+	// аккаунт. Истёкшая метка не действует — отпускает сравнением, без джоба.
+	HoldUntil *time.Time `json:"hold_until,omitempty"`
+	HoldBy    *uuid.UUID `json:"hold_by,omitempty" gorm:"type:uuid"`
+
 	Club Club `json:"club,omitempty" gorm:"foreignKey:ClubID"`
 }
 
