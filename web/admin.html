@@ -1339,6 +1339,26 @@ function feedLine(m){
       if (d.kind === 'unassign') return 'график: ' + (d.nickname||'') + ' снят';
       return 'шаблоны смен обновлены';
     }
+    // Эти типы сервер шлёт давно, а лента печатала сырой идентификатор (ревью 26.08).
+    case 'session_pause': return pcName(d.computer_id) + ' — пауза'
+      + (d.by === 'afk' ? ' (простой)' : '');
+    case 'session_resume': return pcName(d.computer_id) + ' — игра продолжена';
+    case 'session_move': return (d.nickname||'гость') + ': пересадка '
+      + (d.from||'?') + ' → ' + (d.to||'?');
+    case 'computer': {
+      if (d.kind === 'hold') return pcName(d.computer_id) + ' придержан под регистрацию';
+      if (d.kind === 'unhold') return pcName(d.computer_id) + ' — придержание снято';
+      return pcName(d.computer_id) + ' обновлён';
+    }
+    case 'session': {
+      if (d.kind === 'ready') return 'гость подтвердил посадку — сессия пошла';
+      if (d.kind === 'ready_auto') return 'посадка подтверждена сама — время пошло';
+      return 'сессия обновлена';
+    }
+    case 'package': {
+      if (d.kind === 'issue') return 'выдан пакет минут';
+      return 'пакеты обновлены';
+    }
   }
   return m.type;
 }
@@ -1359,7 +1379,8 @@ function handleLiveEvent(m){
   if (feed.length > 30) feed.pop();
   paintFeed();
   lastSync = Date.now();
-  if (m.type === 'deposit' && drawerUserId) loadUserDrawer(); // открытая карточка гостя
+  // открытая карточка гостя; занятую шторку не трогаем (ревью 26.08)
+  if (m.type === 'deposit' && drawerUserId && !drawerBusy()) loadUserDrawer();
   if (m.type === 'kitchen') kitBadgeLoad(); // Г7: очередь и бейдж
   if (m.type === 'staff_chat'){ // Е6: свой написал — счётчик и открытая лента
     const d = m.data || {};
@@ -1516,7 +1537,33 @@ function elapsed(iso){
   const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60);
   return (h?h+'ч ':'')+m+'м';
 }
-function esc(s){ const d = document.createElement('div'); d.textContent = s??''; return d.innerHTML; }
+// textContent экранирует только & < >, а esc() стоит внутри value="..." и в
+// JS-строках on*-обработчиков — кавычки в имени рвали разметку (ревью 26.08).
+function esc(s){ const d = document.createElement('div'); d.textContent = s??''; return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+/* Один клик — один запрос: сенсорный дабл-тап у стойки отправлял две
+   продажи/два депозита — минус две единицы склада и двойная выручка
+   (ревью 26.08). */
+const _busy = new Set();
+async function once(key, fn, btn){
+  if (_busy.has(key)) return;
+  _busy.add(key);
+  if (btn) btn.disabled = true;
+  try { return await fn(); }
+  finally { _busy.delete(key); if (btn) btn.disabled = false; }
+}
+
+/* Шторка занята: человек печатает в ней или взвёл кнопку подтверждения.
+   Рефреш раз в 7с и каждое live-событие пересобирали drawerBody — набранный
+   ник в посадке пропадал вместе с фокусом, а взведённая кнопка сбрасывалась,
+   и в час пик сессию было не завершить (ревью 26.08). */
+function drawerBusy(){
+  const b = document.getElementById('drawerBody');
+  if (!b) return false;
+  const a = document.activeElement;
+  if (a && b.contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return true;
+  return !!b.querySelector('[data-armed="1"]');
+}
 
 /* ── Зал (А1 + А8): позиционная схема клуба, редактор для owner,
    fallback — группировка по зонам, пока никто не расставлен ── */
@@ -1547,7 +1594,9 @@ async function renderHall(){
   paintHall();
   paintWaitlist();
   paintOnShift();
-  if (drawerPCId) renderPCDrawer(drawerPCId); // обновить открытый drawer свежими данными
+  // обновить открытый drawer свежими данными — но не под руками у оператора:
+  // перерисовка стирает набранный ник и сбрасывает взвод (ревью 26.08)
+  if (drawerPCId && !drawerBusy()) renderPCDrawer(drawerPCId);
 }
 
 function paintHall(){
@@ -1728,15 +1777,24 @@ function armDeletePC(btn, id){
     }catch(e){ toast('⚠ ' + e.message); }
   });
 }
-function openNewPCDrawer(x, y){
+async function openNewPCDrawer(x, y){
   drawerPCId = null; drawerUserId = null;
   newPCPos = (x != null) ? {x: x, y: y} : null;
+  // Зона — та же сущность, что в шторке правки: сервер ждёт zone_id, а
+  // текстовая подпись молча терялась и ПК всегда заводился без зоны — то есть
+  // по клубному тарифу и без списания минут пакетов (ревью 26.08).
+  if (!zonesCache.length){
+    try{ zonesCache = (await api('/admin/zones')).zones || []; }catch(e){}
+  }
   openDrawer('Новый ПК', `
   <div class="uform" style="margin-top:0">
     <label class="muted" for="hpc_name">Имя ПК</label>
     <input id="hpc_name" class="input" placeholder="PC-07" maxlength="32">
-    <label class="muted" for="hpc_zone">Зона (подпись, необязательно)</label>
-    <input id="hpc_zone" class="input" placeholder="standard / bootcamp / vip" maxlength="32">
+    <label class="muted" for="hpc_zone">Зона — от неё зависит цена часа</label>
+    <select id="hpc_zone" class="input">
+      <option value="">— без зоны —</option>
+      ${zonesCache.map(z => `<option value="${z.id}">${esc(z.name)} · ${fmtPLN(z.rate_pln)} zł/ч</option>`).join('')}
+    </select>
     <div class="muted">${newPCPos ? 'Клетка ' + (x+1) + '×' + (y+1) : 'Вне схемы — расставишь потом'}</div>
     <button class="btn" style="width:100%; justify-content:center" onclick="submitNewPC()"><span data-ic="plus"></span>Добавить ПК</button>
   </div>`);
@@ -1744,9 +1802,10 @@ function openNewPCDrawer(x, y){
 }
 async function submitNewPC(){
   const name = document.getElementById('hpc_name').value.trim();
-  const zone = document.getElementById('hpc_zone').value.trim();
+  const zone_id = document.getElementById('hpc_zone').value;
   if (!name){ toast('⚠ Нужно имя ПК'); return; }
-  const body = {name: name, zone: zone};
+  const body = {name: name};
+  if (zone_id) body.zone_id = zone_id; // пусто — ПК без зоны (ревью 26.08)
   if (newPCPos){ body.pos_x = newPCPos.x; body.pos_y = newPCPos.y; }
   try{
     await api('/admin/computers', {method:'POST', body:JSON.stringify(body)});
@@ -1917,26 +1976,28 @@ function candsHtml(list, onPick){
 }
 let seatPcId = null;
 async function seatGuest(pcId, forceId){
-  seatPcId = pcId;
-  const inp = document.getElementById('seatNick');
-  const guest = inp ? inp.value.trim() : '';
-  if (!guest && !forceId){ toast('⚠ Нужен ник, телефон или имя гостя'); return; }
-  const box = document.getElementById('seatCands');
-  const body = forceId ? {guest_id: forceId} : {guest};
-  try{
-    const d = await api('/admin/computers/' + pcId + '/session', {method:'POST', body:JSON.stringify(body)});
-    if (box) box.innerHTML = '';
-    toast('▶ ' + (d.nickname || guest) + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
-    await refresh();
-  }catch(e){
-    if (e.code === 'guest_ambiguous' && box){
-      box.innerHTML = `<div class="muted">Подходит несколько — выбери гостя:</div>`
-        + candsHtml(e.data.candidates || [], 'seatPick');
-      return;
+  return once('seat:' + pcId, async () => { // дабл-тап сажал гостя дважды (ревью 26.08)
+    seatPcId = pcId;
+    const inp = document.getElementById('seatNick');
+    const guest = inp ? inp.value.trim() : '';
+    if (!guest && !forceId){ toast('⚠ Нужен ник, телефон или имя гостя'); return; }
+    const box = document.getElementById('seatCands');
+    const body = forceId ? {guest_id: forceId} : {guest};
+    try{
+      const d = await api('/admin/computers/' + pcId + '/session', {method:'POST', body:JSON.stringify(body)});
+      if (box) box.innerHTML = '';
+      toast('▶ ' + (d.nickname || guest) + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
+      await refresh();
+    }catch(e){
+      if (e.code === 'guest_ambiguous' && box){
+        box.innerHTML = `<div class="muted">Подходит несколько — выбери гостя:</div>`
+          + candsHtml(e.data.candidates || [], 'seatPick');
+        return;
+      }
+      if (box) box.innerHTML = '';
+      toast('⚠ ' + e.message);
     }
-    if (box) box.innerHTML = '';
-    toast('⚠ ' + e.message);
-  }
+  });
 }
 function seatPick(id){ seatGuest(seatPcId, id); }
 
@@ -2203,15 +2264,17 @@ async function uFormToggle(f){
 /* Е2-и4: выдача пакета гостю у стойки. */
 let issuePack = null, issueMethod = 'cash', uPacks = [], uPackMin = 0;
 async function submitPack(){
-  if (!issuePack){ toast('⚠ Выбери пакет'); return; }
-  try{
-    const d = await api('/admin/users/' + drawerUserId + '/packages',
-      {method:'POST', body: JSON.stringify({package_id: issuePack, method: issueMethod})});
-    toast('✓ ' + d.package.name + ' — ' + d.package.minutes_total + ' мин на счету');
-    uForm = null;
-    await loadUserPacks();
-    await loadUserDrawer();
-  }catch(e){ toast('⚠ ' + e.message); }
+  return once('pack:' + drawerUserId, async () => { // один пакет на клик (ревью 26.08)
+    if (!issuePack){ toast('⚠ Выбери пакет'); return; }
+    try{
+      const d = await api('/admin/users/' + drawerUserId + '/packages',
+        {method:'POST', body: JSON.stringify({package_id: issuePack, method: issueMethod})});
+      toast('✓ ' + d.package.name + ' — ' + d.package.minutes_total + ' мин на счету');
+      uForm = null;
+      await loadUserPacks();
+      await loadUserDrawer();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 
 /* Отмена ошибочной выдачи (В4-4): забирается НЕотыгранный остаток, строка
@@ -2306,16 +2369,18 @@ async function copyTempPass(){
 }
 
 async function submitRedeem(){
-  const body = {zone_id: redeemZone || '', minutes: redeemMin};
-  try{
-    const d = await api('/admin/users/' + drawerUserId + '/redeem', {method:'POST', body:JSON.stringify(body)});
-    const uid = drawerUserId;
-    toast('⏱ ' + d.minutes + ' мин' + (d.zone ? ' · ' + d.zone : '') + ' за ' + d.coins + ' монет',
-          () => voidRedeem(d.id, uid));
-    uForm = null;
-    await openUserDrawer(drawerUserId);
-    refresh();
-  }catch(e){ toast('⚠ ' + e.message); }
+  return once('redeem:' + drawerUserId, async () => { // одна выдача на клик (ревью 26.08)
+    const body = {zone_id: redeemZone || '', minutes: redeemMin};
+    try{
+      const d = await api('/admin/users/' + drawerUserId + '/redeem', {method:'POST', body:JSON.stringify(body)});
+      const uid = drawerUserId;
+      toast('⏱ ' + d.minutes + ' мин' + (d.zone ? ' · ' + d.zone : '') + ' за ' + d.coins + ' монет',
+            () => voidRedeem(d.id, uid));
+      uForm = null;
+      await openUserDrawer(drawerUserId);
+      refresh();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 function uTabSet(t){
   uTab = t;
@@ -2458,7 +2523,7 @@ function uFormHtml(){
       `<button class="${redeemMin===m?'on':''}" onclick="redeemMin=${m}; renderUserDrawer()">${m} мин</button>`).join('')}</div>
     <input id="redeemMinInput" class="input" type="number" min="1" step="5" value="${redeemMin}"
            placeholder="или сколько угодно минут" oninput="redeemMinSet(this.value)">
-    <div class="muted" id="redeemHint">${redeemHintText()}</div>
+    <div class="muted" id="redeemHint">${esc(redeemHintText())}</div>
     <button class="btn" style="width:100%; justify-content:center" onclick="submitRedeem()"><span data-ic="clock"></span>Выдать время</button>
     <div class="muted">Монеты спишутся с баланса гостя, время выдаёшь ты — в отчёте это ляжет в «отдано временем»</div>
   </div>`;
@@ -2539,42 +2604,48 @@ function uHistHtml(){
 
 /* действия карточки */
 async function submitDeposit(){
-  const amount = parseFloat(String(document.getElementById('d_sum').value).replace(',', '.'));
-  if (!amount || amount <= 0){ toast('⚠ Нужна сумма больше нуля'); return; }
-  try{
-    const d = await api('/admin/users/'+drawerUserId+'/deposit', {method:'POST',
-      body:JSON.stringify({amount_pln: amount, method: depMethod})});
-    toast('💰 +' + d.coins_granted + ' монет'
-      + (d.bonus_coins > 0 ? ' (+' + d.bonus_coins + ' бонус таланта)' : ''));
-    uForm = null;
-    await loadUserDrawer();
-    renderUsersTable();
-  }catch(e){ toast('⚠ ' + e.message); }
+  return once('deposit:' + drawerUserId, async () => { // два тапа = два депозита (ревью 26.08)
+    const amount = parseFloat(String(document.getElementById('d_sum').value).replace(',', '.'));
+    if (!amount || amount <= 0){ toast('⚠ Нужна сумма больше нуля'); return; }
+    try{
+      const d = await api('/admin/users/'+drawerUserId+'/deposit', {method:'POST',
+        body:JSON.stringify({amount_pln: amount, method: depMethod})});
+      toast('💰 +' + d.coins_granted + ' монет'
+        + (d.bonus_coins > 0 ? ' (+' + d.bonus_coins + ' бонус таланта)' : ''));
+      uForm = null;
+      await loadUserDrawer();
+      renderUsersTable();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 async function submitXP(){
-  const amount = parseInt(document.getElementById('g_xp').value);
-  const reason = document.getElementById('g_xp_r').value.trim();
-  if (!amount || amount < 1){ toast('⚠ Нужно целое число больше нуля'); return; }
-  if (!reason){ toast('⚠ Причина обязательна'); return; }
-  try{
-    const d = await api('/admin/users/'+drawerUserId+'/grant', {method:'POST',
-      body:JSON.stringify({type:'xp', amount, reason})});
-    toast('⚡ +' + amount + ' XP' + (d.levels_gained > 0 ? ' → LVL ' + d.level + ' 🎉' : ''));
-    uForm = null;
-    await loadUserDrawer();
-    renderUsersTable();
-  }catch(e){ toast('⚠ ' + e.message); }
+  return once('xp:' + drawerUserId, async () => { // одно начисление на клик (ревью 26.08)
+    const amount = parseInt(document.getElementById('g_xp').value);
+    const reason = document.getElementById('g_xp_r').value.trim();
+    if (!amount || amount < 1){ toast('⚠ Нужно целое число больше нуля'); return; }
+    if (!reason){ toast('⚠ Причина обязательна'); return; }
+    try{
+      const d = await api('/admin/users/'+drawerUserId+'/grant', {method:'POST',
+        body:JSON.stringify({type:'xp', amount, reason})});
+      toast('⚡ +' + amount + ' XP' + (d.levels_gained > 0 ? ' → LVL ' + d.level + ' 🎉' : ''));
+      uForm = null;
+      await loadUserDrawer();
+      renderUsersTable();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 async function submitCase(){
-  const reason = document.getElementById('g_case_r').value.trim();
-  if (!reason){ toast('⚠ Причина обязательна'); return; }
-  try{
-    await api('/admin/users/'+drawerUserId+'/grant', {method:'POST',
-      body:JSON.stringify({type:'case', case_tier: caseTier, reason})});
-    toast('🎁 Кейс ' + caseTier + ' выдан');
-    uForm = null;
-    await loadUserDrawer();
-  }catch(e){ toast('⚠ ' + e.message); }
+  return once('case:' + drawerUserId, async () => { // один кейс на клик (ревью 26.08)
+    const reason = document.getElementById('g_case_r').value.trim();
+    if (!reason){ toast('⚠ Причина обязательна'); return; }
+    try{
+      await api('/admin/users/'+drawerUserId+'/grant', {method:'POST',
+        body:JSON.stringify({type:'case', case_tier: caseTier, reason})});
+      toast('🎁 Кейс ' + caseTier + ' выдан');
+      uForm = null;
+      await loadUserDrawer();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 function armBan(btn, id, nick){
   armButton(btn, '<span data-ic="ban"></span>Точно забанить?', () => banNow(id, nick));
@@ -2833,15 +2904,17 @@ async function toggleApp(id){
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
   money: ['deposit','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn',
-          'package_issue','package_void'], // Е2: пакеты — те же деньги стойки
+          'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
+          'kitchen_done','kitchen_pay','kitchen_cancel'], // кухню считают у той же стойки (ревью 26.08)
   grant: ['grant'],
-  users: ['ban','unban'],
-  sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat'],
+  users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
+  sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
+             'seat_cancel','session_move'], // ревью 26.08
   bookings: ['booking_create','booking_cancel','booking_restore'],
-  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete'],
+  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold'],
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
   goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
-  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign'],
+  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding'], // ревью 26.08
 };
 const AUD_LABEL = {
   deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
@@ -2868,6 +2941,15 @@ const AUD_LABEL = {
   coin_redeem_void:'монеты: отмена выдачи',
   good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
+  // Эти виды сервер писал давно, а журнал печатал их сырым английским
+  // идентификатором (ревью 26.08).
+  guest_update:'гость: правка данных', password_reset:'сброс пароля',
+  pc_hold:'ПК придержан', pc_unhold:'придержание снято',
+  seat_cancel:'посадка снята', session_move:'пересадка',
+  kitchen_done:'кухня: заказ выдан', kitchen_pay:'кухня: расчёт',
+  kitchen_cancel:'кухня: заказ отменён',
+  package_warn:'пакеты: предупреждение о сгорании',
+  onboarding:'обучение пройдено',
 };
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
@@ -2891,6 +2973,11 @@ const AUD_ICON = {
   coin_redeem_void:'cross',
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
+  guest_update:'edit', password_reset:'users', // ревью 26.08
+  pc_hold:'clock', pc_unhold:'check',
+  seat_cancel:'cross', session_move:'monitor',
+  kitchen_done:'check', kitchen_pay:'coins', kitchen_cancel:'cross',
+  package_warn:'bell', onboarding:'scroll',
 };
 function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
 function relTime(iso){
@@ -3012,7 +3099,8 @@ async function submitBooking(forceId){
 }
 
 /* ── Статистика владельца (А5): выручка, загрузка, топ гостей ── */
-function fmtPLN(v){ return (+v || 0).toLocaleString('ru-RU'); }
+// Деньги всегда с двумя знаками: по умолчанию 50 печаталось как «50» (ревью 26.08).
+function fmtPLN(v){ return (+v || 0).toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
 function lblDate(d){ return d ? d.date.slice(8,10)+'.'+d.date.slice(5,7) : ''; }
 
 /* ── Б10-и1: сводка смены — «как прошёл день» одним экраном (внизу «Отчётов»).
@@ -3161,12 +3249,14 @@ async function kitStatus(id, status){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 async function kitPay(id, method){
-  try{
-    await api('/admin/kitchen/orders/' + id + '/pay', {method:'POST', body:JSON.stringify({method})});
-    toast('✓ Оплачено — ' + (PAY_RU[method] || method));
-    await kitBadgeLoad();
-    refresh(); // выручка/лента продаж
-  }catch(e){ toast('⚠ ' + e.message); }
+  return once('kitpay:' + id, async () => { // расчёт кухни — один раз (ревью 26.08)
+    try{
+      await api('/admin/kitchen/orders/' + id + '/pay', {method:'POST', body:JSON.stringify({method})});
+      toast('✓ Оплачено — ' + (PAY_RU[method] || method));
+      await kitBadgeLoad();
+      refresh(); // выручка/лента продаж
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 function armKitCancel(btn, id){
   if (btn.dataset.armed){ kitCancel(id); return; }
@@ -3245,6 +3335,9 @@ function goodsBadgeSet(n){
 
 function paintGoodsCats(cats){
   const box = document.getElementById('goodsCats');
+  // Сервер отдаёт категории из Go-map — порядок случайный, и чипы прыгали
+  // после каждой продажи. Сортируем на фронте (ревью 26.08).
+  cats = (cats || []).slice().sort();
   if (cats.length < 2){ box.innerHTML = ''; return; }
   box.innerHTML = `<button class="${goodsCat ? '' : 'on'}" onclick="goodsCatSet(null,this)">Все</button>` +
     cats.map(c => `<button class="${goodsCat === c ? 'on' : ''}" onclick="goodsCatSet('${esc(c)}',this)">${esc(c)}</button>`).join('');
@@ -3269,18 +3362,20 @@ function paintGoodsTiles(){
 }
 
 async function sellGood(id){
-  const g = goodsData.find(x => x.id === id);
-  if (!g || g.stock <= 0) return;
-  const nick = document.getElementById('saleNick').value.trim();
-  try{
-    const d = await api('/admin/sales', {method:'POST', body:JSON.stringify(
-      {good_id:id, qty:1, method:saleM, nickname:nick || undefined})});
-    const sale = d.sale;
-    toast('✓ ' + sale.name + ' — ' + fmtPLN(sale.total_pln) + ' zł' + (nick ? ' · ' + nick : ''),
-          () => voidSale(sale.id, true));
-    renderGoods();
-    refresh(); // выручка в шапке
-  }catch(e){ toast('⚠ ' + e.message); }
+  return once('sell:' + id, async () => { // дабл-тап по плитке = две продажи (ревью 26.08)
+    const g = goodsData.find(x => x.id === id);
+    if (!g || g.stock <= 0) return;
+    const nick = document.getElementById('saleNick').value.trim();
+    try{
+      const d = await api('/admin/sales', {method:'POST', body:JSON.stringify(
+        {good_id:id, qty:1, method:saleM, nickname:nick || undefined})});
+      const sale = d.sale;
+      toast('✓ ' + sale.name + ' — ' + fmtPLN(sale.total_pln) + ' zł' + (nick ? ' · ' + nick : ''),
+            () => voidSale(sale.id, true));
+      renderGoods();
+      refresh(); // выручка в шапке
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 
 async function voidSale(id, quiet){
@@ -4164,7 +4259,9 @@ let tsCache = [];
 function tsEdit(id){
   const e = tsCache.find(x => x.id === id);
   const isNew = !e;
-  const today = new Date().toISOString().slice(0, 10);
+  // Клуб работает ночью: toISOString() до 02:00 по Варшаве отдавал вчерашнюю
+  // дату, и часы уезжали в чужие сутки (ревью 26.08).
+  const today = isoDate(new Date());
   openDrawer(isNew ? 'Запись табеля' : 'Правка · ' + (e.nickname || ''), `
   <div class="uform">
     ${isNew ? `<label class="muted" style="margin-bottom:-6px">Сотрудник</label>
@@ -4235,7 +4332,7 @@ async function renderStaffArchive(){
 }
 
 function hireDrawer(){
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoDate(new Date()); // локальные сутки, не UTC (ревью 26.08)
   openDrawer('Новый сотрудник', `
   <div class="uform">
     <label class="muted" style="margin-bottom:-6px">Ник для входа в админку</label>
@@ -4290,7 +4387,7 @@ async function doHire(){
 }
 
 function dismissDrawer(id, nick){
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoDate(new Date()); // локальные сутки, не UTC (ревью 26.08)
   openDrawer('Увольнение · ' + nick, `
   <div class="uform">
     <label class="muted" style="margin-bottom:-6px">Последний рабочий день</label>
@@ -4464,6 +4561,9 @@ function packEdit(id){
   if (!isOwner()){ toast('Пакеты заводит владелец'); return; }
   if (!zonesCache.length){ toast('⚠ Сначала заведи зону — у пакета она обязательна'); return; }
   const p = packsCache.find(x => x.id === id) || {minutes:180, days_valid:0, sort:100, active:true};
+  // Без этого packRepaint() терял id, пересобирал форму как новую и правка
+  // пакета уходила в POST — в прайсе появлялся дубль (ревью 26.08).
+  drawerPackId = p.id || null;
   const isNew = !p.id;
   if (isNew && !packZone) packZone = zonesCache[0].id;
   if (!isNew) packZone = p.zone_id;

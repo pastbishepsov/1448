@@ -158,10 +158,21 @@ func bookingSweep(now time.Time) {
 
 // claimBookingOnSeat — посадка хозяина гасит его ближайшую бронь на этом ПК
 // (в т.ч. досрочно: сессия сама держит ПК, а бронь считается использованной).
+//
+// Ревью 26.08: «досрочно» ограничено окном. Раньше гасилась ЛЮБАЯ будущая
+// бронь гостя на этой машине — забронировал субботу, зашёл во вторник и сел за
+// тот же ПК, и субботняя бронь молча становилась seated. Вернуть её нельзя:
+// отмена принимает только pending|confirmed, восстановление — только
+// cancelled. Клеймим только бронь, которая уже началась или начнётся в
+// пределах окна придержания.
 func claimBookingOnSeat(computerID, userID uuid.UUID, now time.Time) *models.Booking {
 	nb := nextRelevantBooking(computerID, now)
 	if nb == nil || nb.UserID != userID {
 		return nil
+	}
+	claimAhead := time.Duration(settingInt64("booking_lock_min", bookingLockMinDef)) * time.Minute
+	if nb.StartTime.After(now.Add(claimAhead)) {
+		return nil // бронь ещё далеко — гость просто сел раньше, она остаётся
 	}
 	res := db.Model(&models.Booking{}).
 		Where("id = ? AND status IN ?", nb.ID, liveBookingStatuses).

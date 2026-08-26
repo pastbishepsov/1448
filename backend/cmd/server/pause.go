@@ -103,6 +103,12 @@ func startPause(s *models.Session, now time.Time, by string) error {
 	t := now
 	s.PausedAt, s.PausedBy = &t, &by
 	hub.AdminBroadcast("session_pause", map[string]any{"computer_id": s.ComputerID, "by": by})
+	// Блокируем экран: на паузе биллинг не тикает, и без этой команды гость
+	// ставил паузу с телефона и продолжал играть бесплатно ровно
+	// pause_limit_min минут каждую сессию (ревью 26.08).
+	notifyShell(s.ComputerID.String(), websocket.MsgSessionEnd, gin.H{
+		"session_id": s.ID, "reason": "paused",
+	})
 	return nil
 }
 
@@ -120,6 +126,10 @@ func resumePause(s *models.Session, now time.Time) error {
 	s.PausedAt, s.PausedBy = nil, nil
 	s.PausedTotalSec = total
 	hub.AdminBroadcast("session_resume", map[string]any{"computer_id": s.ComputerID})
+	// Снимаем блокировку экрана, поставленную startPause.
+	notifyShell(s.ComputerID.String(), websocket.MsgSessionStart, gin.H{
+		"session_id": s.ID, "resumed": true,
+	})
 	return nil
 }
 
@@ -138,6 +148,13 @@ func handlePauseSession(c *gin.Context) {
 	}
 	if s.PausedAt != nil {
 		c.JSON(http.StatusConflict, gin.H{"code": "already_paused", "message": "Сессия уже на паузе"})
+		return
+	}
+	// Пока гость не нажал [Готов!], время и так не тарифицируется — пауза тут
+	// не нужна и только путала расчёты (ревью 26.08).
+	if sessionWaitingReady(&s) {
+		c.JSON(http.StatusConflict, gin.H{"code": "not_started",
+			"message": "Сессия ещё не началась — нажми «Готов!»"})
 		return
 	}
 	now := time.Now()

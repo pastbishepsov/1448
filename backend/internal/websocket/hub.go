@@ -32,6 +32,13 @@ type Message struct {
 	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
+// Дедлайны записи в сокет (ревью 26.08): без них «уснувший» клиент вешает
+// пишущую горутину навсегда — у админки это останавливает весь хаб.
+const (
+	adminWriteTimeout = 5 * time.Second
+	shellWriteTimeout = 10 * time.Second
+)
+
 // upgrader — HTTP→WebSocket. В dev разрешаем любые источники.
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -47,15 +54,29 @@ type Client struct {
 	send       chan []byte
 	hub        *Hub
 
+	// closed — канал send уже закрыт (ревью 26.08). Закрытие и отправка обязаны
+	// идти под hub.mu, иначе фоновый биллинг ловит панику «send on closed
+	// channel» и роняет процесс целиком.
+	closed bool
+
 	// Последний простой ввода с этого ПК (Г2, AFK): агент кладёт idle_sec в
 	// session_tick; -1/отсутствие поля = датчика нет. Защищено hub.mu.
 	idleSec int
 	idleAt  time.Time
 }
 
+// closeSend закрывает канал ровно один раз. Вызывать только под hub.mu.
+func (c *Client) closeSend() {
+	if !c.closed {
+		c.closed = true
+		close(c.send)
+	}
+}
+
 func (c *Client) writePump() {
 	defer c.conn.Close()
 	for msg := range c.send {
+		_ = c.conn.SetWriteDeadline(time.Now().Add(shellWriteTimeout))
 		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			log.Printf("WS write error (computer=%s): %v", c.ComputerID, err)
 			return
@@ -112,6 +133,14 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
+			// Агент переподключился под тем же computer_id: старое соединение
+			// вытесняем ЯВНО, иначе его writePump висит вечно (ревью 26.08).
+			if old, ok := h.clients[client.ComputerID]; ok && old != client {
+				old.closeSend()
+				if old.conn != nil {
+					old.conn.Close()
+				}
+			}
 			h.clients[client.ComputerID] = client
 			h.mu.Unlock()
 			log.Printf("WS: PC Shell подключён (computer=%s, club=%s)", client.ComputerID, client.ClubID)
@@ -119,13 +148,20 @@ func (h *Hub) Run() {
 
 		case client := <-h.unregister:
 			h.mu.Lock()
-			if _, ok := h.clients[client.ComputerID]; ok {
+			// Сверяем ИДЕНТИЧНОСТЬ, а не только id: отвалившееся старое
+			// соединение не должно выбрасывать из хаба живого преемника —
+			// иначе ПК навсегда «офлайн» и команды до него не доходят.
+			live := false
+			if cur, ok := h.clients[client.ComputerID]; ok && cur == client {
 				delete(h.clients, client.ComputerID)
-				close(client.send)
+				live = true
 			}
+			client.closeSend()
 			h.mu.Unlock()
 			log.Printf("WS: PC Shell отключён (computer=%s)", client.ComputerID)
-			h.AdminBroadcast("shell_offline", map[string]any{"computer_id": client.ComputerID})
+			if live {
+				h.AdminBroadcast("shell_offline", map[string]any{"computer_id": client.ComputerID})
+			}
 		}
 	}
 }
@@ -178,6 +214,10 @@ func (h *Hub) AdminBroadcast(evType string, data map[string]any) {
 	h.adminsMu.Lock()
 	defer h.adminsMu.Unlock()
 	for conn := range h.admins {
+		// Дедлайн обязателен: AdminBroadcast зовётся из Run(), и запись в
+		// «уснувшую» админку (закрыли крышку ноутбука) без него блокируется
+		// навсегда, останавливая весь хаб и все хендлеры (ревью 26.08).
+		_ = conn.SetWriteDeadline(time.Now().Add(adminWriteTimeout))
 		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			delete(h.admins, conn)
 			conn.Close()
@@ -228,19 +268,25 @@ func (h *Hub) AnyClientInClub(clubID string) (string, bool) {
 // Send — отправить сообщение конкретному компьютеру.
 // Возвращает ошибку, если ПК не подключён (для server→shell это «best-effort»).
 func (h *Hub) Send(computerID string, msgType MessageType, payload any) error {
-	h.mu.RLock()
-	client, ok := h.clients[computerID]
-	h.mu.RUnlock()
-
-	if !ok {
-		return fmt.Errorf("компьютер %s не подключён", computerID)
-	}
-
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 	msg, _ := json.Marshal(Message{Type: msgType, Payload: payloadBytes})
+
+	// Отправка идёт ПОД локом и с проверкой closed: закрытие канала живёт в
+	// Run() под тем же h.mu, поэтому «send on closed channel» тут невозможен
+	// (ревью 26.08 — в фоновой горутине биллинга эта паника роняла сервер).
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	client, ok := h.clients[computerID]
+	if !ok {
+		return fmt.Errorf("компьютер %s не подключён", computerID)
+	}
+	if client.closed {
+		return fmt.Errorf("соединение с %s закрывается", computerID)
+	}
 
 	select {
 	case client.send <- msg:

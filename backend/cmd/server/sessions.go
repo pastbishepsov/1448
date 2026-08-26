@@ -176,7 +176,7 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 	var user models.User
 	_ = db.First(&user, "id = ?", userID).Error
 	discountPct := user.PaymentIncreasePct + talentEffect(userID.String(), "cashback_master")*100
-	if isNightHour(time.Now().Hour()) {
+	if isNightHour(time.Now().In(clubLocation).Hour()) {
 		discountPct += talentEffect(userID.String(), "night_mode") * 100
 	}
 	if discountPct > maxDiscountPct {
@@ -228,13 +228,24 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 	}
 
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Omit("User", "Computer").Create(&session).Error; err != nil {
-			return err
+		// Статус ПК занимаем ПЕРВЫМ и с условием: проверка выше делалась вне
+		// транзакции, и два одновременных запроса (гость с киоска + посадка
+		// админом) успевали создать две активные сессии на одной машине
+		// (ревью 26.08). Проигравший получает 409 computer_busy.
+		res := tx.Model(&models.Computer{}).
+			Where("id = ? AND status = ?", computer.ID, models.ComputerStatusAvailable).
+			Update("status", models.ComputerStatusInSession)
+		if res.Error != nil {
+			return res.Error
 		}
-		return tx.Model(&models.Computer{}).
-			Where("id = ?", computer.ID).
-			Update("status", models.ComputerStatusInSession).Error
+		if res.RowsAffected == 0 {
+			return errComputerBusy
+		}
+		return tx.Omit("User", "Computer").Create(&session).Error
 	})
+	if errors.Is(err, errComputerBusy) {
+		return http.StatusConflict, gin.H{"code": "computer_busy", "message": "Компьютер уже занят"}
+	}
 	if err != nil {
 		return http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()}
 	}
@@ -433,21 +444,27 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 		session.XPEarned = xpGained
 		session.CoinsEarned = coinsGained
 		session.EndedReason = &reason
+		// Освобождаем ПК по АКТУАЛЬНОМУ computer_id из строки сессии: гостя
+		// могли пересадить между чтением сессии и этой транзакцией, и тогда
+		// освобождался не тот ПК, а машина-приёмник залипала в in_session
+		// без выхода (ревью 26.08).
 		if err := tx.Model(&models.Computer{}).
-			Where("id = ?", session.ComputerID).
+			Where("id = (SELECT computer_id FROM sessions WHERE id = ?)", session.ID).
 			Update("status", models.ComputerStatusAvailable).Error; err != nil {
 			return err
 		}
 		// Обновляем только поля наград (Г1): полный Save затирал бы
 		// wallet_grosz/coin_minutes, если биллинг успел списать между чтением
-		// гостя и этой транзакцией.
+		// гостя и этой транзакцией. Монеты и очки — ИНКРЕМЕНТОМ: абсолютное
+		// значение затирало бы депозит, проведённый у стойки в эти же
+		// миллисекунды (ревью 26.08).
 		return tx.Model(&models.User{}).Where("id = ?", user.ID).
 			Updates(map[string]any{
 				"level":                 user.Level,
 				"xp_current":            user.XPCurrent,
 				"xp_total":              user.XPTotal,
-				"coins_balance":         user.CoinsBalance,
-				"skillpoints_available": user.SkillpointsAvailable,
+				"coins_balance":         gorm.Expr("coins_balance + ?", coinsGained),
+				"skillpoints_available": gorm.Expr("skillpoints_available + ?", levelsGained),
 				"last_active_at":        user.LastActiveAt,
 			}).Error
 	})

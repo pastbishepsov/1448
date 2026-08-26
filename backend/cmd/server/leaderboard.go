@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -37,8 +38,13 @@ type leaderRow struct {
 func handleLeaderboard(c *gin.Context) {
 	userID := c.GetString("user_id")
 
+	// Только активные гости: аккаунты персонала копят XP с тестовых сессий и
+	// висели в публичном рейтинге вместе с забаненными (ревью 26.08).
+	leaders := db.Where("role = ? AND status = ?", models.UserRolePlayer, models.UserStatusActive)
+
 	var top []models.User
-	db.Order("xp_total DESC, level DESC").Limit(leaderboardTopN).Find(&top)
+	leaders.Session(&gorm.Session{}).
+		Order("xp_total DESC, level DESC").Limit(leaderboardTopN).Find(&top)
 
 	rows := make([]leaderRow, 0, len(top))
 	for i, u := range top {
@@ -58,7 +64,8 @@ func handleLeaderboard(c *gin.Context) {
 	var user models.User
 	if err := db.First(&user, "id = ?", userID).Error; err == nil {
 		var higher int64
-		db.Model(&models.User{}).Where("xp_total > ?", user.XPTotal).Count(&higher)
+		leaders.Session(&gorm.Session{}).Model(&models.User{}).
+			Where("xp_total > ?", user.XPTotal).Count(&higher)
 		me = gin.H{"rank": int(higher) + 1, "level": user.Level, "xp_total": user.XPTotal}
 	}
 

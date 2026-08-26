@@ -55,10 +55,17 @@ func sessionWaitingReady(s *models.Session) bool {
 // времени самой брони, поэтому ожидание не съедает чужое время. Это
 // закреплено юнитом: ошибка здесь означала бы, что гость, пришедший позже,
 // отъедает у следующего.
+// Ревью 26.08: вместе со сдвигом started_at обнуляем паузный счётчик. Пауза,
+// начатая во время ОЖИДАНИЯ (до нажатия [Готов!]), лежит вне оплачиваемого
+// интервала, и её секунды вычитались из каждого последующего расчёта —
+// гость получал столько же бесплатных минут в каждой сессии.
 func confirmReady(s *models.Session, at time.Time) error {
 	err := db.Model(&models.Session{}).Where("id = ?", s.ID).Updates(map[string]any{
-		"ready_at":   at,
-		"started_at": at,
+		"ready_at":         at,
+		"started_at":       at,
+		"paused_at":        nil,
+		"paused_by":        nil,
+		"paused_total_sec": 0,
 	}).Error
 	if err != nil {
 		return err
@@ -66,6 +73,8 @@ func confirmReady(s *models.Session, at time.Time) error {
 	t := at
 	s.ReadyAt = &t
 	s.StartedAt = at
+	s.PausedAt, s.PausedBy = nil, nil
+	s.PausedTotalSec = 0
 	return nil
 }
 

@@ -227,12 +227,14 @@ func startCoinBurnJob() {
 	go func() {
 		time.Sleep(time.Minute)
 		for {
-			if n, coins := runCoinBurn(time.Now(), false); n > 0 {
-				log.Printf("монеты: сгорело %d у %d гостей", coins, n)
-			}
-			if w := warnBeforeBurn(time.Now()); w > 0 {
-				log.Printf("монеты: предупреждено о таянии — %d гостей", w)
-			}
+			safely("coinBurn", func() {
+				if n, coins := runCoinBurn(time.Now(), false); n > 0 {
+					log.Printf("монеты: сгорело %d у %d гостей", coins, n)
+				}
+				if w := warnBeforeBurn(time.Now()); w > 0 {
+					log.Printf("монеты: предупреждено о таянии — %d гостей", w)
+				}
+			})
 			time.Sleep(6 * time.Hour)
 		}
 	}()

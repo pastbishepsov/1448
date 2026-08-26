@@ -433,9 +433,15 @@
 
 <script>
 'use strict';
+/* localStorage в обёртке (как в app.html): на телефоне с запретом хранилища
+   голый вызов бросает SecurityError и убивает ВЕСЬ скрипт — форма реги
+   оставалась мёртвой (ревью 26.08). */
+function lsGet(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch (e) {} }
+
 /* Раздаётся бэкендом на /register — API same-origin (решение №10);
    ключ 1448_api — тот же оверрайд, что в shell/app; file:// — dev-фоллбэк. */
-const API = localStorage.getItem('1448_api') ||
+const API = lsGet('1448_api') ||
   (location.protocol.startsWith('http') ? location.origin + '/api/v1' : 'http://localhost:8080/api/v1');
 const APP_URL = API.replace(/\/api\/v1$/, '') + '/app';
 const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁','🐨','🐵','🐙']; // avatar_id 1..12 (= app.html)
@@ -606,12 +612,14 @@ const RG_PL = {
 const DICTS = {ru: RG_RU, en: RG_EN, pl: RG_PL};
 
 let LANG = 'ru';
-try{
-  LANG = localStorage.getItem('1448_lang') ||
-    (navigator.language && navigator.language.toLowerCase().startsWith('pl') ? 'pl' :
-     navigator.language && navigator.language.toLowerCase().startsWith('en') ? 'en' : 'ru');
-}catch(e){}
+const LANG_SAVED = lsGet('1448_lang');
+LANG = LANG_SAVED ||
+  (navigator.language && navigator.language.toLowerCase().startsWith('pl') ? 'pl' :
+   navigator.language && navigator.language.toLowerCase().startsWith('en') ? 'en' : 'ru');
 if(!DICTS[LANG]) LANG = 'ru';
+// Автоопределённый язык раньше никуда не писался, и /app потом определял его
+// заново — с лишним location.reload() прямо на глазах у гостя (ревью 26.08).
+if(LANG !== LANG_SAVED) lsSet('1448_lang', LANG);
 let STR = DICTS[LANG];
 function T(k){ return STR[k] !== undefined ? STR[k] : (RG_RU[k] !== undefined ? RG_RU[k] : k); }
 
@@ -626,7 +634,7 @@ function applyStrings(){
 function setLang(l){
   if(!DICTS[l]) return;
   LANG = l; STR = DICTS[l];
-  try{ localStorage.setItem('1448_lang', l); }catch(e){}
+  lsSet('1448_lang', l);
   applyStrings(); renderSrcChips(); wheels.month.render(); paintBirth();
 }
 
@@ -895,7 +903,13 @@ function togglePass(){
   document.getElementById('eyeBtn').textContent = show ? '🙈' : '👁';
 }
 
+/* Enter в поле почты зовёт submitReg() напрямую, мимо btn.disabled — двойное
+   нажатие уходило двумя POST /auth/register (ревью 26.08). */
+let regBusy = false;
+
 async function submitReg(){
+  if(regBusy) return;
+  regBusy = true;
   const login = document.getElementById('fLogin').value.trim();
   const pass = document.getElementById('fPass').value;
   const pass2 = document.getElementById('fPass2').value;
@@ -911,17 +925,16 @@ async function submitReg(){
   else if(pass !== pass2){ setErr('ePass2', 'err_pass2'); bad = true; }
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ setErr('eEmail', 'err_email'); bad = true; }
   if(!document.getElementById('fAgree').checked){ setErr('eAgree', 'err_agree'); bad = true; }
-  if(bad) return;
+  if(bad){ regBusy = false; return; } // форма не ушла — даём исправить и нажать снова
   const btn = document.getElementById('regBtn');
   btn.disabled = true;
   try{
     const d = await api('/auth/register', {method: 'POST',
       body: JSON.stringify({nickname: login, password: pass, email: email})}, false);
     TOKEN = d.access_token; ME = d.user;
-    try{ // те же ключи, что у PWA/шелла: /app после реги уже «вошло»
-      localStorage.setItem('1448_access', d.access_token);
-      localStorage.setItem('1448_refresh', d.refresh_token);
-    }catch(e){}
+    // те же ключи, что у PWA/шелла: /app после реги уже «вошло»
+    lsSet('1448_access', d.access_token);
+    lsSet('1448_refresh', d.refresh_token);
     document.getElementById('step1').classList.add('hidden');
     document.getElementById('step2').classList.remove('hidden');
     window.scrollTo({top: 0, behavior: 'smooth'});
@@ -930,8 +943,10 @@ async function submitReg(){
     if(e.status === 409){ document.getElementById('regErr').textContent = T('err_taken'); }
     else if(e.code === 'nickname_charset'){ setErr('eLogin', 'err_login_charset'); }
     else{ document.getElementById('regErr').textContent = e.message || T('err_generic'); }
+  }finally{
+    regBusy = false;
+    btn.disabled = false;
   }
-  btn.disabled = false;
 }
 
 /* поле → куда класть серверную ошибку PATCH /me */
@@ -961,8 +976,11 @@ async function saveProfile(){
   }
   const rawPhone = document.getElementById('fPhone').value.replace(/[^\d]/g, '').replace(/^0+/, '');
   if(document.getElementById('fPhone').value.trim()){
-    if(rawPhone.length < 4 || rawPhone.length > 14){ setErr('ePhone', 'err_phone'); bad = true; }
-    else patch.phone = CC[2] + rawPhone;
+    // Считаем длину ИТОГОВОЙ строки с кодом страны — сервер (validatePhone)
+    // меряет 7..16 именно её, а не голый номер (ревью 26.08).
+    const fullPhone = CC[2] + rawPhone;
+    if(fullPhone.length < 7 || fullPhone.length > 16){ setErr('ePhone', 'err_phone'); bad = true; }
+    else patch.phone = fullPhone;
   }
   if(birthTouched){
     const v = birthYMD();

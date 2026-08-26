@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +10,9 @@ import (
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
+
+// errNoSkillpoints — очко забрал параллельный запрос (ревью 26.08).
+var errNoSkillpoints = errors.New("no_skillpoints")
 
 // canInvestTalent — чистая проверка правил инвестиции очка навыка.
 // Вынесена отдельно ради тестируемости (см. talents_test.go).
@@ -147,8 +151,26 @@ func handleInvestTalent(c *gin.Context) {
 		} else if e := tx.Create(&st).Error; e != nil {
 			return e
 		}
-		return tx.Save(&user).Error
+		// Списываем очко атомарно и только его: полный Save(&user) писал бы
+		// заодно wallet_grosz/coin_minutes/coins_balance устаревшими
+		// значениями и затирал бы параллельный биллинг и депозиты
+		// (ревью 26.08). Условие skillpoints_available > 0 заодно закрывает
+		// гонку двух одновременных вложений одного очка.
+		res := tx.Model(&models.User{}).
+			Where("id = ? AND skillpoints_available > 0", user.ID).
+			UpdateColumn("skillpoints_available", gorm.Expr("skillpoints_available - 1"))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errNoSkillpoints
+		}
+		return nil
 	})
+	if errors.Is(err, errNoSkillpoints) {
+		c.JSON(http.StatusConflict, gin.H{"code": "no_skillpoints", "message": "Нет свободных очков навыков"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return

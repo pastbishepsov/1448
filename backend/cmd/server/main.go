@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -36,12 +37,33 @@ func main() {
 		log.Println(".env не найден — использую переменные окружения")
 	}
 
-	jwtSecret = []byte(getenv("JWT_SECRET", "dev_insecure_secret_change_me"))
+	// Часовой пояс процесса = часовой пояс клуба (ревью 26.08). Контейнер
+	// живёт в UTC, из-за чего «сегодня» в отчётах, дневные потолки админа и
+	// ночная скидка таланта night_mode считались со сдвигом на 2 часа: скидка
+	// «22:00–07:59» реально действовала утром, а не ночью. Все расчёты в коде
+	// идут от time.Now().Location(), поэтому одна эта строка выравнивает их
+	// разом — и с TimeZone=Europe/Warsaw в DSN.
+	time.Local = clubLocation
+	log.Printf("Часовой пояс клуба: %s", clubLocation)
+
+	jwtSecret = []byte(getenv("JWT_SECRET", devJWTSecret))
 	accessTTL = parseDuration(os.Getenv("JWT_ACCESS_TTL"), 15*time.Minute)
 	refreshTTL = parseDuration(os.Getenv("JWT_REFRESH_TTL"), 30*24*time.Hour)
 
 	if os.Getenv("SERVER_ENV") == "production" {
 		gin.SetMode(gin.ReleaseMode)
+		// Роль берётся из claims и в БД не перепроверяется, поэтому известный
+		// секрет = любой желающий подписывает себе токен владельца и получает
+		// депозиты, отчёты и настройки. В проде это не предупреждение, а стоп
+		// (ревью 26.08: Dockerfile.railway/railway.json переменную не задают).
+		if string(jwtSecret) == devJWTSecret {
+			log.Fatal("JWT_SECRET не задан: в production запуск с дефолтным секретом " +
+				"означает, что любой может подписать себе токен владельца. " +
+				"Задайте JWT_SECRET (например: openssl rand -hex 32).")
+		}
+		if len(jwtSecret) < 32 {
+			log.Fatalf("JWT_SECRET слишком короткий (%d символов): нужно не меньше 32.", len(jwtSecret))
+		}
 	}
 
 	// ── Подключение к PostgreSQL ────────────────────────────────────────────
@@ -64,8 +86,9 @@ func main() {
 	// ── Роуты ───────────────────────────────────────────────────────────────
 	r := gin.Default()
 	r.Use(corsMiddleware())        // разрешаем запросы из браузера (веб-приложение)
+	r.Use(bodyLimitMiddleware())   // потолок тела запроса — защита от OOM (ревью 26.08)
 	r.Use(crossOriginMiddleware()) // CSRF-защита мутаций (Go 1.25+), GET/агент не трогает
-	r.Use(rateLimitMiddleware())   // ~10 rps с IP (ТЗ 10.1), кроме /health
+	r.Use(rateLimitMiddleware())   // ~10 rps с IP (ТЗ 10.1), кроме /health и статики
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -553,6 +576,37 @@ func stub(name string) gin.HandlerFunc {
 			"message": "TODO: реализовать " + name,
 		})
 	}
+}
+
+// devJWTSecret — заведомо небезопасный дефолт для локальной разработки.
+// В production сервер с ним не стартует (см. main).
+const devJWTSecret = "dev_insecure_secret_change_me"
+
+// maxRequestBody — потолок тела запроса. ShouldBindJSON разбирает JSON в
+// память ДО любой валидации, поэтому без потолка публичный /auth/login с
+// гигабайтным телом укладывает контейнер в OOM (ревью 26.08). Фото товара
+// имеет собственный, больший лимит через io.LimitReader.
+const maxRequestBody = 1 << 20 // 1 МБ
+
+func bodyLimitMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body != nil && c.Request.Method != http.MethodGet && !strings.HasPrefix(c.FullPath(), "/api/v1/admin/goods") {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBody)
+		}
+		c.Next()
+	}
+}
+
+// safely — обёртка одного прогона фоновой задачи. Паника в горутине НЕ
+// перехватывается gin.Recovery и роняет весь процесс: один сбойный тик
+// биллинга не должен закрывать клуб (ревью 26.08).
+func safely(name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("ПАНИКА в фоновой задаче %s: %v\n%s", name, r, debug.Stack())
+		}
+	}()
+	fn()
 }
 
 // corsMiddleware — разрешает запросы из браузера (dev: любой источник).

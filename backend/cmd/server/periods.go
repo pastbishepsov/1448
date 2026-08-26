@@ -13,7 +13,12 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
+
+	// tzdata вшивается в бинарь: alpine-образ без пакета tzdata иначе не
+	// найдёт Europe/Warsaw и молча откатится на UTC (ревью 26.08).
+	_ "time/tzdata"
 )
 
 const (
@@ -22,9 +27,15 @@ const (
 )
 
 // clubLocation — часовой пояс клуба (рынок — Польша; TimeZone=Europe/Warsaw
-// стоит и в DSN). Фолбэк — локальная зона сервера.
+// стоит и в DSN). Переопределяется переменной CLUB_TZ. Фолбэк — локальная
+// зона сервера. main() выставляет по нему time.Local, чтобы «сегодня» во
+// всех отчётах и потолках считалось по клубу, а не по UTC контейнера.
 var clubLocation = func() *time.Location {
-	if loc, err := time.LoadLocation("Europe/Warsaw"); err == nil {
+	name := os.Getenv("CLUB_TZ")
+	if name == "" {
+		name = "Europe/Warsaw"
+	}
+	if loc, err := time.LoadLocation(name); err == nil {
 		return loc
 	}
 	return time.Local

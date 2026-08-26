@@ -27,10 +27,15 @@ CREATE INDEX IF NOT EXISTS idx_computers_zone ON computers (zone_id);
 -- текущим клубным тарифом, компьютеры без подписи уезжают в зону «Общая».
 -- После этого у каждого ПК есть зона, и владельцу остаётся только проставить
 -- разные цены.
+-- Ревью 26.08: бэкфилл выполняется ТОЛЬКО пока зон нет вообще. Раньше файл
+-- переигрывался при каждом старте: владелец снимал ПК с зоны и удалял пустую
+-- зону, а следующий перезапуск воссоздавал «Общую» и переприсваивал ей машины.
+-- Удалить её после этого нельзя — handleAdminZoneDelete отвечает has_computers.
 INSERT INTO zones (club_id, name, rate_pln, sort)
 SELECT c.club_id, COALESCE(NULLIF(TRIM(c.zone), ''), 'Общая'), cl.base_rate_pln, 0
 FROM computers c
 JOIN clubs cl ON cl.id = c.club_id
+WHERE NOT EXISTS (SELECT 1 FROM zones)
 GROUP BY c.club_id, COALESCE(NULLIF(TRIM(c.zone), ''), 'Общая'), cl.base_rate_pln
 ON CONFLICT (club_id, name) DO NOTHING;
 

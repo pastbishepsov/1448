@@ -6,6 +6,7 @@ package main
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,11 +68,24 @@ func (r *rateLimiter) Allow(key string) bool {
 	return true
 }
 
-// rateLimitMiddleware — глобальный лимитер (кроме /health, чтобы мониторинг не резался).
+// rateLimitExempt — пути, которые лимитер не режет: мониторинг и статика.
+// Холодный старт PWA — это страница, манифест, service worker и десяток
+// иконок ещё ДО первого запроса к API; вместе с залпом загрузчиков экрана они
+// пробивали burst, и гость видел «слишком много запросов» на ровном месте, а
+// упавший /auth/refresh выбрасывал его на экран входа (ревью 26.08).
+func rateLimitExempt(path string) bool {
+	switch path {
+	case "/health", "/app", "/register", "/admin", "/shell", "/aim.html", "/sw.js", "/app.webmanifest":
+		return true
+	}
+	return strings.HasPrefix(path, "/icons") || strings.HasPrefix(path, "/covers")
+}
+
+// rateLimitMiddleware — глобальный лимитер (кроме /health и статики).
 func rateLimitMiddleware() gin.HandlerFunc {
 	rl := newRateLimiter()
 	return func(c *gin.Context) {
-		if c.FullPath() == "/health" {
+		if rateLimitExempt(c.FullPath()) || rateLimitExempt(c.Request.URL.Path) {
 			c.Next()
 			return
 		}

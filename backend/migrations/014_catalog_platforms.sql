@@ -40,6 +40,12 @@ ON CONFLICT (id) DO NOTHING;
 -- Правки существующих строк — явными UPDATE, а не через INSERT:
 -- ON CONFLICT DO NOTHING не трогает уже вставленные строки, и при повторном
 -- прогоне (или после промежуточных версий 014) значения иначе не доехали бы.
+--
+-- Ревью 26.08: раньше файл переигрывался при КАЖДОМ старте контейнера, и эти
+-- UPDATE'ы тихо откатывали правки владельца — включённый в админке YouTube
+-- снова гас после перезапуска, а удалённые плитки возвращались. Теперь
+-- миграции однократны (журнал schema_migrations в entrypoint.sh), а условие
+-- ниже страхует переходный прогон на уже мигрированной базе.
 UPDATE catalog_apps SET subtitle = 'Коммуникация' WHERE id IN ('discord', 'teamspeak');
 UPDATE catalog_apps SET category = 'platform', subtitle = NULL, sort = 50 WHERE id = 'faceit';
 UPDATE catalog_apps SET name = 'Google Chrome' WHERE id = 'browser' AND name = 'Браузер';

@@ -68,11 +68,15 @@ func handleAdminStatsShift(c *gin.Context) {
 		depCount += r.Cnt
 	}
 
-	// продажи товаров (В2) — вторая половина выручки смены
+	// продажи товаров (В2) — вторая половина выручки смены.
+	// Р7: продажи «кошельком» в кассу НЕ идут — эти деньги уже посчитаны
+	// депозитом, которым гость пополнял кошелёк. Считать их второй раз значит
+	// показать владельцу выручку больше, чем реально в кассе (ревью 26.08:
+	// /admin/sales и aggMoney это правило соблюдают, сводка смены — нет).
 	depRows = nil
 	db.Model(&models.Sale{}).
 		Select("method, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", from, to).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> ?", from, to, "wallet").
 		Group("method").Scan(&depRows)
 	var goodsPLN float64
 	var saleCount int64
@@ -83,6 +87,17 @@ func handleAdminStatsShift(c *gin.Context) {
 		goodsPLN += r.Pln
 		saleCount += r.Cnt
 	}
+	// Кошельковые продажи показываем отдельной строкой — как оборот, не выручку.
+	var walletPLN float64
+	var walletCount int64
+	db.Model(&models.Sale{}).
+		Select("COALESCE(SUM(total_pln),0)").
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method = ?", from, to, "wallet").
+		Scan(&walletPLN)
+	db.Model(&models.Sale{}).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method = ?", from, to, "wallet").
+		Count(&walletCount)
+	saleCount += walletCount
 	totalPLN := depPLN + goodsPLN
 
 	// сессии: начатые в окне; часы — по завершённым в окне (начисления
@@ -177,7 +192,9 @@ func handleAdminStatsShift(c *gin.Context) {
 			"no_show":      noShow,      // стоял в графике, а табеля нет
 		},
 		"revenue": gin.H{"total_pln": totalPLN, "by_method": byMethod, "deposits": depCount,
-			"deposits_pln": depPLN, "goods_pln": goodsPLN, "sales": saleCount},
+			"deposits_pln": depPLN, "goods_pln": goodsPLN, "sales": saleCount,
+			// оборот кошельком — уже учтён в депозитах, в total_pln не входит
+			"wallet_pln": walletPLN, "wallet_sales": walletCount},
 		"sessions":   gin.H{"started": sessStarted, "minutes": minutes},
 		"new_guests": newGuests,
 		"bookings":   gin.H{"created": bkCreated, "cancelled": bkCancelled},

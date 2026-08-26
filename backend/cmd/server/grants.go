@@ -110,7 +110,17 @@ func handleAdminGrant(c *gin.Context) {
 		levelsGained = applyXP(user, req.Amount)
 		entry.Amount = &req.Amount
 		err = db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Save(user).Error; err != nil {
+			// Только XP-колонки: полный Save(user) писал бы и
+			// wallet_grosz/coin_minutes/coins_balance значениями на момент
+			// чтения и затирал бы параллельный депозит у стойки или списание
+			// биллинга (ревью 26.08).
+			if err := tx.Model(&models.User{}).Where("id = ?", user.ID).
+				Updates(map[string]any{
+					"xp_total":              user.XPTotal,
+					"xp_current":            user.XPCurrent,
+					"level":                 user.Level,
+					"skillpoints_available": gorm.Expr("skillpoints_available + ?", levelsGained),
+				}).Error; err != nil {
 				return err
 			}
 			return tx.Create(&entry).Error

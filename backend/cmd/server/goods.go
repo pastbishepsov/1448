@@ -11,6 +11,7 @@ package main
 // склада мимо кассы.
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -22,6 +23,9 @@ import (
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
+
+// errNegativeStock — остаток увели в минус параллельной корректировкой (ревью 26.08).
+var errNegativeStock = errors.New("negative_stock")
 
 const (
 	maxGoodPrice = 10000.0 // цена позиции, zł
@@ -336,13 +340,25 @@ func handleAdminGoodStock(c *gin.Context) {
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&models.Good{}).Where("id = ?", g.ID).
-			UpdateColumn("stock", gorm.Expr("stock + ?", req.Delta)).Error; err != nil {
-			return err
+		// CAS: проверка «не уйдём в минус» выше сделана вне транзакции, и два
+		// одновременных списания уводили склад в минус, раздувая «потери» в
+		// отчёте (ревью 26.08).
+		res := tx.Model(&models.Good{}).
+			Where("id = ? AND stock + ? >= 0", g.ID, req.Delta).
+			UpdateColumn("stock", gorm.Expr("stock + ?", req.Delta))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errNegativeStock
 		}
 		return tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: req.Delta,
 			Reason: req.Reason, Note: note, CreatedBy: &adminID}).Error
 	})
+	if errors.Is(err, errNegativeStock) {
+		goodFail(c, http.StatusConflict, "negative_stock")
+		return
+	}
 	if err != nil {
 		goodFail(c, http.StatusInternalServerError, "db_error")
 		return
@@ -598,8 +614,17 @@ func handleAdminSaleVoid(c *gin.Context) {
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&sale).Updates(map[string]any{"voided_at": now, "voided_by": adminID}).Error; err != nil {
-			return err
+		// CAS по voided_at: проверка выше вне транзакции, и двойной клик по
+		// «отменить» возвращал деньги на кошелёк и товар на склад дважды
+		// (ревью 26.08).
+		res := tx.Model(&models.Sale{}).
+			Where("id = ? AND voided_at IS NULL", sale.ID).
+			Updates(map[string]any{"voided_at": now, "voided_by": adminID})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errAlreadyVoid
 		}
 		// Г7: продажа «кошельком» — это выданный заказ кухни; отмена возвращает
 		// деньги в кошелёк гостя (иначе списание повисло бы без товара)
@@ -624,6 +649,10 @@ func handleAdminSaleVoid(c *gin.Context) {
 		return tx.Create(&models.StockMove{ClubID: sale.ClubID, GoodID: *sale.GoodID, Delta: sale.Qty,
 			Reason: "void", Note: "отмена продажи", SaleID: &saleID, CreatedBy: &adminID}).Error
 	})
+	if errors.Is(err, errAlreadyVoid) {
+		goodFail(c, http.StatusConflict, "already_void")
+		return
+	}
 	if err != nil {
 		goodFail(c, http.StatusInternalServerError, "db_error")
 		return

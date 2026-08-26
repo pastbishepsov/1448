@@ -48,6 +48,10 @@ const (
 
 var errSessionGone = errors.New("session_gone")
 
+// errComputerBusy — ПК заняли параллельным запросом между проверкой статуса и
+// транзакцией старта сессии (ревью 26.08).
+var errComputerBusy = errors.New("computer_busy")
+
 // costForMinutes — стоимость m минут по ставке rateGrosz за час, вверх до
 // гроша: на округлении клуб не теряет, гость не переплачивает больше гроша.
 func costForMinutes(rateGrosz int64, m int) int64 {
@@ -392,8 +396,10 @@ func startWalletBillingJob() {
 	go func() {
 		time.Sleep(15 * time.Second)
 		for {
-			billingSweep(time.Now())
-			bookingSweep(time.Now()) // Г4: напоминания и no-show броней
+			// Каждый тик под recover: паника здесь не перехватывается
+			// gin.Recovery и убивала процесс целиком (ревью 26.08).
+			safely("billingSweep", func() { billingSweep(time.Now()) })
+			safely("bookingSweep", func() { bookingSweep(time.Now()) }) // Г4: напоминания и no-show
 			time.Sleep(billingTickSeconds * time.Second)
 		}
 	}()

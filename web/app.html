@@ -667,6 +667,20 @@
    Язык «14:48 Noir»: токены, иконки и api() перенесены из web/shell.html
    (истина — shell.html). Правки — по тем же правилам верификации. */
 
+/* Аварийный парашют: если скрипт упал до init(), оба экрана оставались с
+   классом hidden — гость видел пустой фон без формы входа и без единого
+   слова о причине. Поднимаем экран входа и пишем ошибку туда, где её видно
+   (ревью 26.08). */
+window.onerror = function(msg, src, line){
+  try{
+    const av = document.getElementById('authView');
+    if (av) av.classList.remove('hidden');
+    const er = document.getElementById('authErr');
+    if (er && !er.textContent) er.textContent = '⚠ ' + msg + (line ? ' (' + line + ')' : '');
+  }catch(e){}
+  return false; // в консоль ошибка всё равно едет
+};
+
 /* ═══ СЛОВАРЬ СТРОК (решение №9: язык v1 — русский, всё через STR под EN/PL) ═══ */
 const STR_RU = {
   lang_line: '🌐 Язык',
@@ -1403,10 +1417,17 @@ const STR_PL = {
   ntf_streak_frozen: "❄ Przerwa przykryta zamrożeniem ({n} dni) — seria cała. Zostało: {left}",
 };
 
+/* localStorage в обёртке: на телефоне с запретом хранилища (Safari «блокировать
+   все cookie», встроенные браузеры мессенджеров) голый вызов бросает
+   SecurityError и убивает ВЕСЬ скрипт — оба экрана оставались скрытыми, гость
+   видел пустой фон без формы входа (ревью 26.08). */
+function lsGet(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch (e) {} }
+function lsDel(k){ try { localStorage.removeItem(k); } catch (e) {} }
+
 /* Г9-и1: выбор языка — localStorage сразу, профиль (/me) — источник истины */
 const LANGS = {ru: STR_RU, en: STR_EN, pl: STR_PL};
-let LANG = 'ru';
-try{ LANG = localStorage.getItem('1448_lang') || 'ru'; }catch(e){}
+let LANG = lsGet('1448_lang') || 'ru';
 if (!LANGS[LANG]) LANG = 'ru';
 let STR = Object.assign({}, STR_RU, LANGS[LANG]); // ru — фолбэк на случай дыр в словаре
 
@@ -1421,7 +1442,7 @@ function applyStrings(){
 /* ═══ КОНФИГ ═══ */
 /* PWA раздаётся самим бэкендом (/app) — API same-origin (решение №10).
    Ключ 1448_api — тот же оверрайд, что в shell.html; file:// — dev-fоллбэк. */
-const API = localStorage.getItem('1448_api') ||
+const API = lsGet('1448_api') ||
   (location.protocol.startsWith('http') ? location.origin + '/api/v1' : 'http://localhost:8080/api/v1');
 
 const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁','🐨','🐵','🐙']; // avatar_id 1..12
@@ -1444,9 +1465,9 @@ const UI = {
 function mountIcons(root){ (root||document).querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = UI[el.dataset.ic] || ''; }); }
 
 /* ═══ ТОКЕНЫ И API — перенесено из shell.html как есть (решение №3) ═══ */
-function tokens(){ return {a: localStorage.getItem('1448_access'), r: localStorage.getItem('1448_refresh')}; }
-function setTokens(a, r){ localStorage.setItem('1448_access', a); localStorage.setItem('1448_refresh', r); }
-function clearTokens(){ localStorage.removeItem('1448_access'); localStorage.removeItem('1448_refresh'); }
+function tokens(){ return {a: lsGet('1448_access'), r: lsGet('1448_refresh')}; }
+function setTokens(a, r){ lsSet('1448_access', a); lsSet('1448_refresh', r); }
+function clearTokens(){ lsDel('1448_access'); lsDel('1448_refresh'); }
 
 async function api(path, opts = {}, retry = true){
   const {a} = tokens();
@@ -1457,24 +1478,50 @@ async function api(path, opts = {}, retry = true){
   if (res.status === 401 && retry && tokens().r){
     const ok = await tryRefresh();
     if (ok) return api(path, opts, false);
-    logout(); throw new Error('unauthorized');
+    // logout ТОЛЬКО если сервер прямо отверг refresh. Раньше сюда попадала и
+    // сетевая ошибка, и 429 — гостя выбрасывало на экран входа посреди
+    // сессии (ревью 26.08).
+    if (refreshRejected) logout();
+    throw new Error('unauthorized');
   }
   const data = await res.json().catch(()=>({}));
   if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code, status:res.status});
   return data;
 }
 
-async function tryRefresh(){
-  try{
-    const res = await fetch(API + '/auth/refresh', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({refresh_token: tokens().r}),
-    });
-    if (!res.ok) return false;
-    const d = await res.json();
-    setTokens(d.access_token, d.refresh_token);
-    return true;
-  }catch(e){ return false; }
+/* Единый in-flight промис: при протухшем access десяток параллельных
+   загрузчиков (старт и каждый visibilitychange) слал десяток /auth/refresh.
+   Сервер ротирует refresh и отзывает старый, поэтому все, кроме первого,
+   получали token_revoked и разлогинивали гостя. Теперь второй и последующие
+   ждут тот же запрос (ревью 26.08). */
+let refreshInFlight = null;
+let refreshRejected = false;
+
+function tryRefresh(){
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try{
+      const res = await fetch(API + '/auth/refresh', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({refresh_token: tokens().r}),
+      });
+      if (!res.ok){
+        // 401/403 — токен действительно мёртв; 429/5xx/сеть — временно.
+        refreshRejected = (res.status === 401 || res.status === 403);
+        return false;
+      }
+      const d = await res.json();
+      setTokens(d.access_token, d.refresh_token);
+      refreshRejected = false;
+      return true;
+    }catch(e){
+      refreshRejected = false; // сеть моргнула — токены не трогаем
+      return false;
+    }finally{
+      setTimeout(() => { refreshInFlight = null; }, 0);
+    }
+  })();
+  return refreshInFlight;
 }
 
 /* ═══ СОСТОЯНИЕ ═══ */
@@ -1544,6 +1591,18 @@ function logout(){
     body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null; economy = null;
   stopPolls(); stopLive(); stopComms(); closeSheet(); closeTopup(); closeInstall();
+  // Всё, что осталось от прошлого гостя, увидит следующий: телефон дают
+  // подержать, а на демо-стенде вход общий. Раньше после выхода всплывали ЕГО
+  // уведомления и висели ЕГО кейсы, брони и заказы кухни (ревью 26.08).
+  notifQ = []; notifPumping = false; ntfFeed = [];
+  chatMsgs = []; chatUnread = 0; chatView = 'chat';
+  cases = []; bookings = []; sessionsArr = []; activeSession = null; sessComputer = '';
+  clubsArr = []; club = null; clubErr = false; lastCancelled = null; wl = {waiting: false};
+  talents = null; achievements = null; leaderboard = null; deposits = null; walletTx = [];
+  myPacks = []; packShop = [];
+  ktMenu = null; ktOrders = []; ktQty = {}; ktUnpaidPln = 0; ktShowMenu = false;
+  pfFavs = []; pfOpen = false;
+  updateCasesBub(); updateChatBub(); // бэйджи прошлого гостя гасим сразу
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('authView').classList.remove('hidden');
   const g = document.getElementById('pwdGate');
@@ -1564,10 +1623,17 @@ function enterApp(){
 
 async function loadMe(){
   try{
-    const [m, ec] = await Promise.all([api('/me'), api('/me/economy')]);
-    me = m.user || m; economy = ec;
+    // allSettled, а не all: раньше упавший /me/economy (429, 500, обрыв) ронял
+    // и присвоение me, и renderTop() — шапка оставалась с «—» и LVL 1, хотя
+    // профиль доехал. Применяем то, что доехало (ревью 26.08).
+    const [rm, rec] = await Promise.allSettled([api('/me'), api('/me/economy')]);
+    if (rec.status === 'fulfilled') economy = rec.value;
+    else console.warn('[1448] loadMe /me/economy:', rec.reason);
+    if (rm.status !== 'fulfilled') throw rm.reason; // без /me рисовать нечего
+    const m = rm.value;
+    me = m.user || m;
     if (me.language && LANGS[me.language] && me.language !== LANG){
-      try{ localStorage.setItem('1448_lang', me.language); }catch(e){}
+      lsSet('1448_lang', me.language);
       location.reload(); // Г9: язык профиля едет за гостем — применяем целиком
       return;
     }
@@ -1576,7 +1642,10 @@ async function loadMe(){
   }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
 }
 
-function xpNext(level){ return Math.floor(1000 * Math.pow(level, 1.4)); }
+/* Порог уровня считаем ТОЙ ЖЕ формулой, что и сервер (models.XPForNextLevel:
+   округление до сотни). Иначе полоса упиралась в 100% и «до уровня: 0 XP»,
+   а уровень не рос (ревью 26.08). */
+function xpNext(level){ return Math.round(1000 * Math.pow(level, 1.4) / 100) * 100; }
 const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
 
 function renderTop(){
@@ -1695,12 +1764,12 @@ async function loadClub(){
     clubsArr = d.clubs || [];
     club = clubsArr[0] || null;
     clubErr = !club;
-  }catch(e){ if (!club) clubErr = true; }
+  }catch(e){ console.warn('[1448] loadClub:', e); if (!club) clubErr = true; }
   renderClub();
 }
 async function loadBookings(){
   try{ bookings = (await api('/me/bookings')).bookings || []; renderBookings(); }
-  catch(e){ /* не роняем главную — следующий заход обновит */ }
+  catch(e){ console.warn('[1448] loadBookings:', e); /* не роняем главную — следующий заход обновит */ }
 }
 async function loadSessions(){
   try{
@@ -1718,7 +1787,7 @@ async function loadSessions(){
       toast(T('toast_ready_wait', {c: sessComputer || '—'}));
     }
     if (was && !activeSession) loadMe();  // сессия завершилась — свежие XP/монеты в топбар
-  }catch(e){ /* тихо: поллинг повторит */ }
+  }catch(e){ console.warn('[1448] loadSessions:', e); /* тихо: поллинг повторит */ }
 }
 
 /* ── Е1-и6: окно [Готов!] в телефоне ──────────────────────────────────
@@ -1781,7 +1850,7 @@ function renderClub(){
 
 /* ── вейтлист (Б9, «задел PWA»): сервер пускает в очередь только при 0 свободных ── */
 async function loadWaitlist(){
-  try{ wl = await api('/me/waitlist'); }catch(e){ /* тихо: поллинг повторит */ }
+  try{ wl = await api('/me/waitlist'); }catch(e){ console.warn('[1448] loadWaitlist:', e); /* тихо: поллинг повторит */ }
   renderWaitlist();
 }
 function renderWaitlist(){
@@ -2263,7 +2332,7 @@ async function loadPacks(){
     const [mine, shop] = await Promise.all([api('/me/packages'), api('/me/packages/catalog')]);
     myPacks = mine.packages || [];
     packShop = shop.packages || [];
-  }catch(e){ /* тихо: экран покажет то, что есть */ }
+  }catch(e){ console.warn('[1448] loadPacks:', e); /* тихо: экран покажет то, что есть */ }
 }
 
 /* Состояние словом: «0 из 180» без объяснения читается как поломка. */
@@ -2369,7 +2438,7 @@ const JACKPOT = 50000;
 const CONF_N = {light: 24, medium: 36, heavy: 54, titan: 80, gods: 120};
 const DROP_VIB = {light: [24], medium: [32], heavy: [18, 30, 48], titan: [18, 30, 70], gods: [24, 40, 24, 40, 110]};
 
-function vibroOn(){ return ('vibrate' in navigator) && localStorage.getItem('1448_vibro') !== '0'; }
+function vibroOn(){ return ('vibrate' in navigator) && lsGet('1448_vibro') !== '0'; }
 function vibro(p){ if (vibroOn()){ try{ navigator.vibrate(p); }catch(e){} } }
 function tierName(t){ return STR['tier_' + t] || t; }
 
@@ -2378,7 +2447,7 @@ async function loadCases(){
     const d = await api('/me/cases');
     cases = d.cases || [];
     renderCases(); updateCasesBub();
-  }catch(e){ /* тихо — обновится при следующем заходе */ }
+  }catch(e){ console.warn('[1448] loadCases:', e); /* тихо — обновится при следующем заходе */ }
 }
 function caseAlive(c){ return !c.opened_at && new Date(c.expires_at) > new Date(); }
 function updateCasesBub(){
@@ -2570,7 +2639,7 @@ function vibroLabel(){
   b.textContent = vibroOn() ? STR.set_vibro_on : STR.set_vibro_off;
 }
 function toggleVibro(){
-  localStorage.setItem('1448_vibro', vibroOn() ? '0' : '1');
+  lsSet('1448_vibro', vibroOn() ? '0' : '1');
   if (vibroOn()) vibro(30);
   vibroLabel();
 }
@@ -2597,7 +2666,7 @@ function stopComms(){ clearInterval(pollComms); pollComms = null; }
 /* ── бэйдж непрочитанных ответов персонала (решение №5) ── */
 async function loadChatUnread(){
   try{ chatUnread = (await api('/me/chat/unread')).count || 0; updateChatBub(); }
-  catch(e){ /* тихо */ }
+  catch(e){ console.warn('[1448] loadChatUnread:', e); /* тихо */ }
 }
 function updateChatBub(){
   const b = document.getElementById('chatBub');
@@ -2612,7 +2681,7 @@ async function loadChat(){
     chatMsgs = d.messages || [];
     if (mark && chatUnread){ chatUnread = 0; updateChatBub(); }
     renderChat();
-  }catch(e){ /* тихо: поллинг повторит */ }
+  }catch(e){ console.warn('[1448] loadChat:', e); /* тихо: поллинг повторит */ }
 }
 function renderChat(){
   const el = document.getElementById('thread');
@@ -2673,7 +2742,7 @@ async function loadKitchen(){
   try{
     const [m, o] = await Promise.all([api('/me/menu'), api('/me/kitchen/orders')]);
     ktMenu = m; ktOrders = o.orders || []; ktUnpaidPln = o.unpaid_pln || 0;
-  }catch(e){ return; }
+  }catch(e){ console.warn('[1448] loadKitchen:', e); return; }
   renderKitchen();
 }
 function renderKitchen(){
@@ -2744,7 +2813,7 @@ let pfGames = null, pfFavs = [], pfOpen = false, pfBusy = false;
 async function loadPfGames(){
   if (pfGames) return;
   try{ pfGames = ((await api('/catalog')).games || []).map(g => ({id: g.id, name: g.name})); }
-  catch(e){ pfGames = []; }
+  catch(e){ console.warn('[1448] loadPfGames:', e); pfGames = []; }
 }
 function renderProfileCard(){
   const el = document.getElementById('profileCard');
@@ -2780,7 +2849,7 @@ function renderProfileCard(){
 }
 async function setLang(l){
   if (!LANGS[l] || l === LANG) return;
-  try{ localStorage.setItem('1448_lang', l); }catch(e){}
+  lsSet('1448_lang', l);
   try{ await api('/me', {method:'PATCH', body:JSON.stringify({language: l})}); }catch(e){}
   location.reload(); // словарь и разметка применяются целиком
 }
@@ -2818,7 +2887,7 @@ async function pfSave(){
 async function loadNotifs(){
   let items;
   try{ items = (await api('/me/notifications')).items || []; }
-  catch(e){ return; }
+  catch(e){ console.warn('[1448] loadNotifs:', e); return; }
   if (!items.length) return;
   items.forEach(n => {
     const txt = ntfText(n);
@@ -2977,7 +3046,7 @@ async function nativeInstall(){
 const FX = (() => {
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
   /* дебаг-ручка: localStorage 1448_fx = '0' — FX всегда полные, '1' — всегда lite */
-  const fxOverride = localStorage.getItem('1448_fx');
+  const fxOverride = lsGet('1448_fx');
   let lite = fxOverride === '1' || (fxOverride !== '0' &&
     (reduced || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)));
   if (lite) document.body.classList.add('perf-lite');

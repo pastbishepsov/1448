@@ -699,6 +699,19 @@ func refundForVoid(priceGrosz int64, total, left int) int64 {
 	return priceGrosz * int64(left) / int64(total)
 }
 
+// refundCoinsForVoid — сколько монет вернуть при отмене выдачи времени.
+// Пропорционально НЕОТЫГРАННЫМ минутам: за уже отсиженное монеты не
+// возвращаются, иначе гость получает и час игры, и монеты назад (ревью 26.08).
+func refundCoinsForVoid(coins int64, total, takenBack int) int64 {
+	if total <= 0 || takenBack <= 0 || coins <= 0 {
+		return 0
+	}
+	if takenBack > total {
+		takenBack = total
+	}
+	return coins * int64(takenBack) / int64(total)
+}
+
 func refundSuffix(refund int64) string {
 	if refund <= 0 {
 		return ""
@@ -880,9 +893,11 @@ func startPackageWarnJob() {
 	go func() {
 		time.Sleep(time.Minute)
 		for {
-			if n := warnPackagesExpiring(time.Now()); n > 0 {
-				log.Printf("пакеты: предупреждено о сгорании — %d штук", n)
-			}
+			safely("packageWarn", func() {
+				if n := warnPackagesExpiring(time.Now()); n > 0 {
+					log.Printf("пакеты: предупреждено о сгорании — %d штук", n)
+				}
+			})
 			time.Sleep(6 * time.Hour)
 		}
 	}()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"errors"
 	"math"
 	"math/big"
 	"net/http"
@@ -20,6 +21,9 @@ const (
 	baseSessionCaseChance = 0.20 // базовый шанс выпадения кейса за сессию (тюнинг)
 	maxSessionCaseChance  = 0.85 // потолок шанса с учётом талантов
 )
+
+// errCaseAlreadyOpened — кейс успел открыться параллельным запросом (ревью 26.08).
+var errCaseAlreadyOpened = errors.New("case_already_opened")
 
 // chance — произошло ли событие с вероятностью p. crypto/rand, только на сервере.
 func chance(p float64) bool {
@@ -245,32 +249,54 @@ func handleOpenCase(c *gin.Context) {
 		return
 	}
 
-	// Применяем дроп к игроку.
-	switch dropType {
-	case models.DropTypeCoins:
-		user.CoinsBalance += amount
-	case models.DropTypeBuster:
-		// BusterAmount — в сотых процента (100 = 1%).
-		user.PaymentIncreasePct += float64(amount) / 100.0
-		if user.PaymentIncreasePct > maxPaymentIncrease {
-			user.PaymentIncreasePct = maxPaymentIncrease
-		}
-	}
-
 	now := time.Now()
 	err = db.Transaction(func(tx *gorm.DB) error {
+		// CAS по opened_at: два параллельных запроса (двойной тап в PWA) не
+		// должны открыть один кейс дважды — второй уйдёт в already_opened.
+		res := tx.Model(&models.Case{}).
+			Where("id = ? AND opened_at IS NULL", box.ID).
+			Updates(map[string]any{
+				"opened_at":   now,
+				"drop_type":   dropType,
+				"drop_amount": amount,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errCaseAlreadyOpened
+		}
 		box.OpenedAt = &now
 		box.DropType = &dropType
 		box.DropAmount = &amount
-		if err := tx.Save(&box).Error; err != nil {
-			return err
+
+		// ВАЖНО: только колонки награды. Полный Save(&user) писал бы и
+		// wallet_grosz/coin_minutes значениями на момент чтения и затирал бы
+		// параллельное списание биллинга или депозит у стойки (ревью 26.08).
+		switch dropType {
+		case models.DropTypeCoins:
+			return tx.Model(&models.User{}).Where("id = ?", user.ID).
+				UpdateColumn("coins_balance", gorm.Expr("coins_balance + ?", amount)).Error
+		case models.DropTypeBuster:
+			return tx.Model(&models.User{}).Where("id = ?", user.ID).
+				UpdateColumn("payment_increase_pct",
+					gorm.Expr("LEAST(payment_increase_pct + ?, ?)",
+						float64(amount)/100.0, maxPaymentIncrease)).Error
 		}
-		return tx.Save(&user).Error
+		return nil
 	})
+	if errors.Is(err, errCaseAlreadyOpened) {
+		c.JSON(http.StatusConflict, gin.H{"code": "already_opened", "message": "Кейс уже открыт"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+
+	// Балансы перечитываем после коммита: в памяти они устарели бы на любое
+	// параллельное начисление, а гость видит их сразу на экране.
+	_ = db.First(&user, "id = ?", userID).Error
 
 	c.JSON(http.StatusOK, gin.H{
 		"case_id":     box.ID,

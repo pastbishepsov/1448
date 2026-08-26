@@ -319,7 +319,12 @@ func handleAdminComputers(c *gin.Context) {
 	for _, pc := range computers {
 		row := gin.H{
 			"id": pc.ID, "name": pc.Name, "zone": pc.Zone, "status": pc.Status,
-			"club": pc.Club.Name, "club_id": pc.ClubID,
+			// zone_id обязателен: без него селект зоны в шторке правки ПК не
+			// подсвечивал текущую зону, и «Сохранить» после переименования
+			// молча снимал зону — ПК уезжал на базовый тариф клуба
+			// (ревью 26.08).
+			"zone_id": pc.ZoneID,
+			"club":    pc.Club.Name, "club_id": pc.ClubID,
 			"pos_x": pc.PosX, "pos_y": pc.PosY, // схема зала (спринт А8)
 			"mac":  pc.MAC,                     // WoL (Б8, редактор зала)
 			"shell_online": hub.IsConnected(pc.ID.String()),
@@ -591,6 +596,11 @@ func handleAdminSeatGuest(c *gin.Context) {
 	cid := pc.ID.String()
 	code, resp := startSessionFor(user.ID, &cid, req.PlannedMin)
 	if code < 300 {
+		// Ник в ответе обязателен: без него админка показывала в подтверждении
+		// поисковый ЗАПРОС, а не того, кого реально посадили — при выборе из
+		// списка однофамильцев это «списать деньги с чужого кошелька»
+		// (ревью 26.08).
+		resp["nickname"] = user.Nickname
 		target := user.ID
 		logAdminAction(c, "session_start", &target, user.Nickname+" за "+pc.Name)
 		if from, _ := resp["from_waitlist"].(bool); from { // Б9: посадка из очереди

@@ -14,6 +14,7 @@ package main
 // меняются (RESEARCH §4).
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -214,29 +215,57 @@ func handleCoinRedeemVoid(c *gin.Context) {
 
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
+	coinsReturned := rec.Coins
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&models.CoinRedemption{}).Where("id = ?", rec.ID).
-			Updates(map[string]any{"voided_at": now, "voided_by": adminID}).Error; err != nil {
-			return err
+		// CAS по voided_at: проверка выше сделана вне транзакции, и двойной
+		// клик по «отменить» возвращал монеты дважды (ревью 26.08).
+		res := tx.Model(&models.CoinRedemption{}).
+			Where("id = ? AND voided_at IS NULL", rec.ID).
+			Updates(map[string]any{"voided_at": now, "voided_by": adminID})
+		if res.Error != nil {
+			return res.Error
 		}
-		if err := tx.Model(&models.User{}).Where("id = ?", rec.UserID).
-			UpdateColumn("coins_balance", gorm.Expr("coins_balance + ?", rec.Coins)).Error; err != nil {
-			return err
+		if res.RowsAffected == 0 {
+			return errAlreadyVoid
 		}
-		// Г1-и5: забираем обратно и минутный запас — но не больше, чем у гостя
+		// Г1-и5: забираем обратно минутный запас — но не больше, чем у гостя
 		// осталось: если часть выданного времени уже отсижена, вернуть можно
 		// только неотсиженный хвост (отмена существует для свежих ошибок).
+		var before int
+		if err := tx.Model(&models.User{}).Where("id = ?", rec.UserID).
+			Select("coin_minutes").Scan(&before).Error; err != nil {
+			return err
+		}
+		takenBack := rec.Minutes
+		if before < takenBack {
+			takenBack = before
+		}
+		if err := tx.Model(&models.User{}).Where("id = ?", rec.UserID).
+			UpdateColumn("coin_minutes", gorm.Expr("GREATEST(coin_minutes - ?, 0)", rec.Minutes)).Error; err != nil {
+			return err
+		}
+		// Монеты возвращаем ПРОПОРЦИОНАЛЬНО реально изъятым минутам: иначе за
+		// уже отыгранный час гость получал и время, и все монеты назад — так
+		// же, как это делает refundForVoid у пакетов (ревью 26.08).
+		coinsReturned = refundCoinsForVoid(rec.Coins, rec.Minutes, takenBack)
+		if coinsReturned <= 0 {
+			return nil
+		}
 		return tx.Model(&models.User{}).Where("id = ?", rec.UserID).
-			UpdateColumn("coin_minutes", gorm.Expr("GREATEST(coin_minutes - ?, 0)", rec.Minutes)).Error
+			UpdateColumn("coins_balance", gorm.Expr("coins_balance + ?", coinsReturned)).Error
 	})
+	if errors.Is(err, errAlreadyVoid) {
+		c.JSON(http.StatusConflict, gin.H{"code": "already_void", "message": "Выдача уже отменена"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
 	target := rec.UserID
 	logAdminAction(c, "coin_redeem_void", &target,
-		fmt.Sprintf("отмена: %d мин%s, %d монет вернулись", rec.Minutes, zoneSuffix(rec.ZoneName), rec.Coins))
-	c.JSON(http.StatusOK, gin.H{"voided": rec.ID, "coins_returned": rec.Coins})
+		fmt.Sprintf("отмена: %d мин%s, %d монет вернулись", rec.Minutes, zoneSuffix(rec.ZoneName), coinsReturned))
+	c.JSON(http.StatusOK, gin.H{"voided": rec.ID, "coins_returned": coinsReturned})
 }
 
 // ── Отчёт «Монеты»: эмиссия и обязательства ───────────────────────────

@@ -931,7 +931,9 @@ const API = (() => {  /* ?api=адрес — задать сервер без De
   let q = null;
   try { q = new URLSearchParams(location.search).get('api'); } catch (e) {}
   if (q) { try { localStorage.setItem('1448_api', q); } catch (e) {} return q; }
-  return localStorage.getItem('1448_api') ||
+  let saved = null;
+  try { saved = localStorage.getItem('1448_api'); } catch (e) {} /* file:// без хранилища не должен ронять скрипт */
+  return saved ||
     (location.protocol.startsWith('http') ? location.origin + '/api/v1' : 'http://localhost:8080/api/v1');
 })();
 document.getElementById('srv').textContent = API;
@@ -2402,9 +2404,16 @@ let lastFavsKey = ''; // Г8: витрина пересобирается при
 let authMode = 'login';
 
 /* ═══════════════ API + refresh-токены ═══════════════ */
-function tokens(){ return {a: localStorage.getItem('1448_access'), r: localStorage.getItem('1448_refresh')}; }
-function setTokens(a, r){ localStorage.setItem('1448_access', a); localStorage.setItem('1448_refresh', r); }
-function clearTokens(){ localStorage.removeItem('1448_access'); localStorage.removeItem('1448_refresh'); }
+/* localStorage в обёртке: в киоске страница открыта с file://, и если доступ
+   к хранилищу запрещён политикой, голый вызов бросал SecurityError и убивал
+   ВЕСЬ скрипт — гость видел чёрный экран без объяснений (ревью 26.08). */
+function lsGet(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch (e) {} }
+function lsDel(k){ try { localStorage.removeItem(k); } catch (e) {} }
+
+function tokens(){ return {a: lsGet('1448_access'), r: lsGet('1448_refresh')}; }
+function setTokens(a, r){ lsSet('1448_access', a); lsSet('1448_refresh', r); }
+function clearTokens(){ lsDel('1448_access'); lsDel('1448_refresh'); }
 
 async function api(path, opts = {}, retry = true){
   const {a} = tokens();
@@ -2415,24 +2424,49 @@ async function api(path, opts = {}, retry = true){
   if (res.status === 401 && retry && tokens().r){
     const ok = await tryRefresh();
     if (ok) return api(path, opts, false);
-    logout(); throw new Error('unauthorized');
+    // logout ТОЛЬКО если сервер прямо отверг refresh. Раньше сюда попадала и
+    // сетевая ошибка, и 429 — гостя выбрасывало на экран входа посреди
+    // оплаченной сессии (ревью 26.08).
+    if (refreshRejected) logout();
+    throw new Error('unauthorized');
   }
   const data = await res.json().catch(()=>({}));
   if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code, status:res.status});
   return data;
 }
 
-async function tryRefresh(){
-  try{
-    const res = await fetch(API + '/auth/refresh', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({refresh_token: tokens().r}),
-    });
-    if (!res.ok) return false;
-    const d = await res.json();
-    setTokens(d.access_token, d.refresh_token);
-    return true;
-  }catch(e){ return false; }
+/* Единый in-flight промис: при протухшем access десяток параллельных
+   загрузчиков слал десяток /auth/refresh. Сервер ротирует refresh и отзывает
+   старый, поэтому все, кроме первого, получали token_revoked и разлогинивали
+   гостя. Теперь второй и последующие ждут тот же запрос (ревью 26.08). */
+let refreshInFlight = null;
+let refreshRejected = false;
+
+function tryRefresh(){
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try{
+      const res = await fetch(API + '/auth/refresh', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({refresh_token: tokens().r}),
+      });
+      if (!res.ok){
+        // 401/403 — токен действительно мёртв; 429/5xx/сеть — временно.
+        refreshRejected = (res.status === 401 || res.status === 403);
+        return false;
+      }
+      const d = await res.json();
+      setTokens(d.access_token, d.refresh_token);
+      refreshRejected = false;
+      return true;
+    }catch(e){
+      refreshRejected = false; // сеть моргнула — токены не трогаем
+      return false;
+    }finally{
+      setTimeout(() => { refreshInFlight = null; }, 0);
+    }
+  })();
+  return refreshInFlight;
 }
 
 /* ═══════════════ AUTH ═══════════════ */
@@ -2521,6 +2555,20 @@ function logout(){
   clearTokens(); me = null; activeSession = null;
   if (timerIv) clearInterval(timerIv);
   chatOpen = false; chatMsgs = []; chatLastAt = null; chatUnread = 0; // Б3
+  // Клубный ПК общий: всё, что осталось от прошлого гостя, увидит следующий.
+  // Раньше после выхода всплывали ЕГО уведомления («+150 монет за депозит»,
+  // «не забудь рассчитаться за кухню»), а в студии сенсы стояли его DPI —
+  // и «Сохранить в аккаунт» записывало их следующему (ревью 26.08).
+  notifQ = []; notifPumping = false;
+  if (typeof notifReloadT !== 'undefined' && notifReloadT) clearTimeout(notifReloadT);
+  if (typeof readyIv !== 'undefined' && readyIv) clearInterval(readyIv);
+  sensProfile = null; sensProfileApplied = false;
+  cases = []; sessions = []; bookings = []; achievements = null; leaderboard = null;
+  economy = null; talents = null; myPacks = []; myOrders = []; myUnpaidPln = 0;
+  packMinutesHere = 0; bookingDeadline = null; sessComputer = null; lastFavsKey = '';
+  lsDel('1448_aim_result'); lsDel('1448_dpi'); // результат калибратора чужой
+  const bub = document.getElementById('casesBub');
+  if (bub){ bub.classList.add('hidden'); bub.textContent = ''; }
   document.getElementById('chatPanel').classList.add('hidden');
   document.getElementById('lockOverlay').classList.remove('show');
   document.getElementById('shellView').classList.add('hidden');
@@ -2576,10 +2624,22 @@ async function loadAll(){
     if (favsKey !== lastFavsKey){ lastFavsKey = favsKey; if (CATALOG.games) renderCatalog(); }
     document.getElementById('casesBub').classList.toggle('hidden', !(cs.unopened > 0));
     document.getElementById('casesBub').textContent = cs.unopened;
-  }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
+  }catch(e){
+    if (e.message !== 'unauthorized') toast('⚠ ' + e.message);
+  }finally{
+    // Лок-экран поднимаем ВСЕГДА, даже если загрузка упала. Раньше
+    // renderLock() стоял внутри try после Promise.all: любая ошибка (429,
+    // обрыв сети, 500) оставляла гостя в полностью рабочем лаунчере без
+    // сессии — ПК играл бесплатно и сам из этого состояния не выходил
+    // (ревью 26.08, «fail-open»).
+    try { renderLock(); } catch (e2) {}
+  }
 }
 
-function xpNext(level){ return Math.floor(1000 * Math.pow(level, 1.4)); }
+/* Порог уровня считаем ТОЙ ЖЕ формулой, что и сервер (models.XPForNextLevel:
+   округление до сотни). Иначе полоса упиралась в 100% и «до уровня: 0 XP»,
+   а уровень не рос (ревью 26.08). */
+function xpNext(level){ return Math.round(1000 * Math.pow(level, 1.4) / 100) * 100; }
 
 function renderTop(){
   const need = xpNext(me.level);
@@ -3180,6 +3240,13 @@ function renderAgentDot(){
   el.title = agentOnline ? STR.tb_pc_title_on : STR.tb_pc_title_off;
 }
 
+/* Дев-инструменты на боевом экране гостя скрыты. Кнопка «+150 мин (dev)»
+   стояла рядом с «Пауза» и «Завершить»: гость читал её как «добавить время»,
+   жал — и сессия закрывалась (в production оверрайд минут сервер игнорирует,
+   так что просто терял оплаченное время). Включить: в консоли
+   localStorage.setItem('1448_dev','1') (ревью 26.08). */
+const DEV_TOOLS = (() => { try { return localStorage.getItem('1448_dev') === '1'; } catch (e) { return false; } })();
+
 let myComputerId = null; // Е1-и5: своя машина — агент знает её с рождения
 async function pingAgent(){
   try{
@@ -3222,7 +3289,7 @@ function renderSession(){
         <div style="display:flex; flex-direction:column; gap:8px">
           <button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>
           <button class="btn danger slim" onclick="endSession(null)">${esc(STR.btn_finish)}</button>
-          <button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>
+          ${DEV_TOOLS ? `<button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>` : ''}
         </div>
       </div>`;
     if (timerIv) clearInterval(timerIv);
@@ -3293,7 +3360,13 @@ async function resumeSession(){
 
 async function startSession(){
   try{
-    const d = await api('/me/sessions/start', {method:'POST', body:'{}'});
+    // computer_id ОБЯЗАТЕЛЕН: без него сервер брал первый свободный ПК по
+    // алфавиту, и гость за ПК-2 открывал сессию на ПК-1 — чужой тариф, чужая
+    // зона, кухня «к ПК-1», а ПК-2 числился свободным и его отдавали
+    // следующему (ревью 26.08).
+    if (!myComputerId) await pingAgent(); // не гадаем — спросим агента сейчас
+    const body = myComputerId ? JSON.stringify({computer_id: myComputerId}) : '{}';
+    const d = await api('/me/sessions/start', {method:'POST', body: body});
     toast(T('toast_sess_started', {c: d.computer || STR.pc_default}));
     await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -3573,7 +3646,7 @@ function renderSide(){
     const closedO = myOrders.filter(o => !o.unpaid && ['done','cancelled'].includes(o.status));
     const ordRow = o => `<div class="foodorder st-${o.status}">
       <span class="fst">${o.pay_method ? esc(STR.food_paid) : (stName[o.status]||o.status)}</span>
-      <span style="flex:1; min-width:0"><b>${o.name}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.unpaid?' · <b style="color:var(--acc)">'+esc(STR.food_unpaid)+'</b>':''}</span>
+      <span style="flex:1; min-width:0"><b>${esc(o.name)}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.unpaid?' · <b style="color:var(--acc)">'+esc(STR.food_unpaid)+'</b>':''}</span>
       ${o.can_cancel?`<button style="border:0; background:transparent; color:var(--dim); cursor:pointer; font-size:15px" title="${esc(STR.food_cancel_title)}" onclick="foodCancel('${o.id}')">✕</button>`:''}
     </div>`;
     const cats = {};
@@ -3589,8 +3662,8 @@ function renderSide(){
           return `<div class="fooditem ${m.out?'out':''}">
           ${m.photo ? `<img src="${API.replace('/api/v1','')}${m.photo}" alt="" loading="lazy">` : `<div class="fph">${ph(m.category||'')}</div>`}
           <div style="flex:1; min-width:0">
-            <div style="font-weight:800">${m.name} · <span class="cnum">${fmtZl(Math.round(m.price_pln*100))}</span></div>
-            ${m.description?`<div class="muted" style="font-size:12px">${m.description}</div>`:''}
+            <div style="font-weight:800">${esc(m.name)} · <span class="cnum">${fmtZl(Math.round(m.price_pln*100))}</span></div>
+            ${m.description?`<div class="muted" style="font-size:12px">${esc(m.description)}</div>`:''}
             ${m.out ? '<div class="muted" style="font-size:12px">'+esc(STR.food_out)+'</div>' : `
             <div class="foodqty"><button onclick="foodQ('${m.id}',-1)">−</button><b class="cnum">${q}</b><button onclick="foodQ('${m.id}',1)">+</button>
               <span class="muted cnum" style="font-size:12px">= ${fmtZl(Math.round(m.price_pln*q*100))}</span></div>`}
@@ -3663,7 +3736,7 @@ function renderSide(){
       const d = new Date(s.started_at);
       const dt = String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
       return `<div class="sess-item"><span>${dt}</span>
-        ${s.ended_at ? `<span class="cyan-t">+${fmt(s.xp_earned)} XP</span><span class="gold-t">+${fmt(s.coins_earned)} ${UI.coins}</span><span class="badge">${T('bk_min', {n: s.minutes_total})}</span>`
+        ${s.ended_at ? `<span class="cyan-t">+${fmt(s.xp_earned)} XP</span><span class="gold-t">+${fmt(s.coins_earned)} ${UI.coins}</span><span class="badge">${T('bk_min', {n: s.minutes_used})}</span>`
                      : '<span class="badge" style="color:var(--green)">' + esc(STR.hist_now) + '</span>'}
       </div>`;
     }).join('') + '</div>';
