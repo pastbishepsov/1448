@@ -1,0 +1,25 @@
+# Dockerfile.railway — образ для ОБЛАЧНОГО ДЕМО (Railway), 2026-08-26.
+# Отличия от backend/Dockerfile:
+#   • контекст сборки — корень репо: в образ попадает web/ (PWA /app, /admin);
+#   • в migrations/ докладываются сиды 900 (dev-данные) и 901 (демо-учётки) —
+#     entrypoint.sh применяет их при старте; боевой образ их НЕ содержит.
+FROM golang:1.26.5-alpine AS builder
+WORKDIR /app
+RUN apk --no-cache add git
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/server ./cmd/server
+
+FROM alpine:3.20
+RUN apk --no-cache add ca-certificates tzdata postgresql-client
+WORKDIR /app
+COPY --from=builder /bin/server .
+COPY backend/migrations/ ./migrations/
+COPY backend/seed_dev.sql ./migrations/900_seed_dev.sql
+COPY deploy/demo_seed.sql ./migrations/901_demo_seed.sql
+COPY backend/entrypoint.sh .
+COPY web/ /web/
+RUN chmod +x entrypoint.sh
+EXPOSE 8080
+ENTRYPOINT ["./entrypoint.sh"]

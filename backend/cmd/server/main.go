@@ -291,6 +291,10 @@ func main() {
 			c.Header("Content-Type", "application/manifest+json; charset=utf-8")
 			c.File(manifest)
 		})
+		// Стойка/демо: админка и обложки кейсов с того же origin, что и API
+		// (same-origin — CrossOriginProtection пропускает без допусков).
+		r.StaticFile("/admin", filepath.Join(webDir, "admin.html"))
+		r.Static("/covers", filepath.Join(webDir, "covers"))
 		log.Printf("PWA: раздаю /app из %s", webDir)
 	} else {
 		log.Println("PWA: папка web с app.html не найдена — /app отключён (подскажи путь через WEB_DIR)")

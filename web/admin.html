@@ -924,7 +924,8 @@
    переименовать, удалить без истории, размер сетки ±); admin видит схему,
    но не редактирует; fallback — прежняя группировка по зонам. */
 
-const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
+const API = localStorage.getItem('1448_api') ||
+  (location.protocol.startsWith('http') ? location.origin + '/api/v1' : 'http://localhost:8080/api/v1');
 const SECTIONS = ['hall','users','bookings','catalog','goods','kitchen','grants','stats','staff','settings'];
 const OWNER_SECTIONS = ['stats','settings']; // Б11: «Персонал» открыт admin'у read-only (график смен)
 let curTab = 'hall', refreshIv = null, me = null, lastSync = 0;
