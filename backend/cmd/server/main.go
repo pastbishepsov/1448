@@ -297,6 +297,10 @@ func main() {
 		// Витрина гостевого экрана (демо 27.08): тот же shell.html, что в
 		// киоске; запуск игр тут не работает — им занимается агент на ПК.
 		r.StaticFile("/shell", filepath.Join(webDir, "shell.html"))
+		// AI-калибратор сенсы: шелл открывает его относительной ссылкой
+		// aim.html?dpi=… — с /shell это /aim.html (мост через localStorage,
+		// API странице не нужен).
+		r.StaticFile("/aim.html", filepath.Join(webDir, "aim.html"))
 		r.Static("/covers", filepath.Join(webDir, "covers"))
 		log.Printf("PWA: раздаю /app из %s", webDir)
 	} else {
