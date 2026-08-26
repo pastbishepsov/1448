@@ -1844,6 +1844,7 @@ function renderPCDrawer(id){
     body += `<div class="dsub">Посадить гостя</div>
     <div class="uform" style="margin-top:0">
       <input id="seatNick" class="input" placeholder="Ник, телефон или имя" autocomplete="off"
+             oninput="seatSuggest('${pc.id}')"
              onkeydown="if(event.key==='Enter')seatGuest('${pc.id}')">
       <button class="btn" style="width:100%; justify-content:center" onclick="seatGuest('${pc.id}')">
         <span data-ic="clock"></span>Начать сессию</button>
@@ -1938,6 +1939,39 @@ async function seatGuest(pcId, forceId){
   }
 }
 function seatPick(id){ seatGuest(seatPcId, id); }
+
+/* Живой автопоиск в форме посадки: админ печатает 2+ символа — под полем
+   сразу совпадения (тот же /admin/users?q=, что глобальный поиск и палитра).
+   Клик по гостю сажает через seatPick — ровно как выбор кандидата при 409,
+   поэтому «первого попавшегося» по-прежнему не берём: выбирает человек. */
+let seatSugTimer = null, seatSugSeq = 0;
+function seatSuggest(pcId){
+  seatPcId = pcId;
+  clearTimeout(seatSugTimer);
+  seatSugTimer = setTimeout(seatSuggestNow, 250);
+}
+async function seatSuggestNow(){
+  const inp = document.getElementById('seatNick');
+  const box = document.getElementById('seatCands');
+  if (!inp || !box) return;
+  const q = inp.value.trim();
+  if (q.length < 2){ box.innerHTML = ''; return; }
+  const seq = ++seatSugSeq;
+  try{
+    const d = await api('/admin/users?q=' + encodeURIComponent(q));
+    if (seq !== seatSugSeq) return; // уже напечатали новое — этот ответ устарел
+    const cur = document.getElementById('seatNick'); // шторку могли закрыть
+    if (!cur || cur.value.trim() !== q) return;
+    const mt = d.matched || {};
+    const list = (d.users || []).filter(u => u.role === 'player').slice(0, 5)
+      .map(u => ({ id: u.id, nickname: u.nickname,
+        name: 'LVL ' + u.level + (u.status === 'banned' ? ' · бан' : ''),
+        phone: u.phone, matched_by: mt[u.id] }));
+    box.innerHTML = list.length
+      ? '<div class="muted">Клик по гостю — посадить:</div>' + candsHtml(list, 'seatPick')
+      : '';
+  }catch(e){ /* подсказки не критичны — молчим, как gqSearch */ }
+}
 
 /* ── Б11-и3: «на смене: …» в легенде Зала — по графику смен (виден всем) ── */
 let onShiftData = [];
