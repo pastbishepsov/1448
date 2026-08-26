@@ -927,7 +927,13 @@
 
 <script>
 /* ═══════════════ КОНФИГ ═══════════════ */
-const API = localStorage.getItem('1448_api') || 'http://localhost:8080/api/v1';
+const API = (() => {  /* ?api=адрес — задать сервер без DevTools (пилот, решение 26.08) */
+  let q = null;
+  try { q = new URLSearchParams(location.search).get('api'); } catch (e) {}
+  if (q) { try { localStorage.setItem('1448_api', q); } catch (e) {} return q; }
+  return localStorage.getItem('1448_api') ||
+    (location.protocol.startsWith('http') ? location.origin + '/api/v1' : 'http://localhost:8080/api/v1');
+})();
 document.getElementById('srv').textContent = API;
 
 /* ═══════════════ Г9-и2: ЯЗЫКИ ШЕЛЛА (ru/en/pl) ═══════════════

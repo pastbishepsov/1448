@@ -1,0 +1,51 @@
+# docker-compose.club.yml — установка в КЛУБЕ (ПК-1, стойка/сервер).
+# Отличается от dev-компоуза: production-образ (миграции применяются сами),
+# без pgadmin/redis, СВОЙ файл переменных.
+#
+#   Прогон дома (не мешает домашнему стеку):
+#     docker compose -p 1448club -f docker-compose.club.yml --env-file .env.club up -d --build
+#     проверка: http://localhost:8090/health   (PUBLISH_PORT=8090 в .env.club)
+#     снести:   docker compose -p 1448club -f docker-compose.club.yml --env-file .env.club down -v
+#
+#   В клубе: то же самое, но PUBLISH_PORT=8080.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?задай в .env.club}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задай в .env.club}
+      POSTGRES_DB: ${POSTGRES_DB:-1448_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-1448_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    ports:
+      - "${PUBLISH_PORT:-8080}:8080"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-1448_db}?sslmode=disable
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      JWT_SECRET: ${JWT_SECRET:?задай в .env.club}
+      SERVER_ENV: production
+      SERVER_PORT: "8080"
+      WEB_DIR: /web
+    volumes:
+      - ./web:/web:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
