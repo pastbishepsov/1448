@@ -294,6 +294,9 @@ func main() {
 		// Стойка/демо: админка и обложки кейсов с того же origin, что и API
 		// (same-origin — CrossOriginProtection пропускает без допусков).
 		r.StaticFile("/admin", filepath.Join(webDir, "admin.html"))
+		// Витрина гостевого экрана (демо 27.08): тот же shell.html, что в
+		// киоске; запуск игр тут не работает — им занимается агент на ПК.
+		r.StaticFile("/shell", filepath.Join(webDir, "shell.html"))
 		r.Static("/covers", filepath.Join(webDir, "covers"))
 		log.Printf("PWA: раздаю /app из %s", webDir)
 	} else {
