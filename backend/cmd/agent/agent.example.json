@@ -8,6 +8,16 @@
   "lock_action": "none",
   "kiosk_url": "",
 
+  "launch": {
+    "check_interval_sec": 60,
+    "check_timeout_sec": 5,
+    "attach_timeout_sec": 60,
+    "stop_timeout_sec": 10,
+    "watch_interval_sec": 3,
+    "stop_on_session_end": true,
+    "telemetry": true
+  },
+
   "cleanup": {
     "enabled": false,
     "dry_run": true,
@@ -19,7 +29,26 @@
   },
 
   "apps": {
-    "valorant": {"name": "Valorant (локальный путь)", "target": "C:\\Riot Games\\Riot Client\\RiotClientServices.exe", "args": ["--launch-product=valorant", "--launch-patchline=live"]},
-    "nvidia":   {"name": "NVIDIA (локальный путь)",   "target": "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\CEF\\NVIDIA app.exe"}
+    "valorant": {
+      "name": "Valorant (лаунчер отдаёт эстафету игре)",
+      "target": "C:\\Riot Games\\Riot Client\\RiotClientServices.exe",
+      "args": ["--launch-product=valorant", "--launch-patchline=live"],
+      "process": "VALORANT-Win64-Shipping.exe"
+    },
+    "cs2": {
+      "name": "CS2 с сетевого диска (прямой exe — честный PID)",
+      "target": "G:\\Games\\Counter-Strike Global Offensive\\game\\bin\\win64\\cs2.exe",
+      "dir": "G:\\Games\\Counter-Strike Global Offensive\\game\\bin\\win64",
+      "process": "cs2.exe"
+    },
+    "cs2_steam": {
+      "name": "CS2 через Steam (протокол — PID ловим по имени процесса)",
+      "target": "steam://rungameid/730",
+      "process": "cs2.exe"
+    },
+    "nvidia": {
+      "name": "NVIDIA (локальный путь)",
+      "target": "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\CEF\\NVIDIA app.exe"
+    }
   }
 }

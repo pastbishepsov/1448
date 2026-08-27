@@ -61,3 +61,28 @@ func TestCleanupPlan(t *testing.T) {
 		t.Error("пустой конфиг — пустой план")
 	}
 }
+
+// Порядок на session_end: сперва закрыть игру, которую запустил агент, и
+// только потом общая очистка по списку имён (иначе игра переживала сессию —
+// ровно та дыра, ради которой делался трекинг).
+func TestSessionEndOrder(t *testing.T) {
+	a := newTestAgent(&Config{Cleanup: CleanupConfig{Enabled: true, DryRun: true,
+		Kill: []string{"steam.exe"}}})
+	a.track.put(procRecord{appID: "cs2", pid: 0, state: stateLaunched})
+
+	a.onSessionEnd() // сухой прогон очистки: ничего не удаляет, только логирует
+
+	if len(a.track.snapshot()) != 0 {
+		t.Errorf("реестр запущенного должен быть очищен: %+v", a.track.snapshot())
+	}
+
+	// выключенное завершение оставляет реестр в покое (клубу может понадобиться
+	// оставить игру открытой между гостями — решается конфигом)
+	no := false
+	b := newTestAgent(&Config{Launch: LaunchConfig{StopOnSessionEnd: &no}})
+	b.track.put(procRecord{appID: "cs2", pid: 0, state: stateLaunched})
+	b.onSessionEnd()
+	if len(b.track.snapshot()) != 1 {
+		t.Error("при stop_on_session_end=false трекинг не трогаем")
+	}
+}

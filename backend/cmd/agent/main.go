@@ -41,6 +41,11 @@ type AppEntry struct {
 	Name   string   `json:"name,omitempty"`
 	Target string   `json:"target"` // exe-путь, протокол (steam://...) или ms-settings:
 	Args   []string `json:"args,omitempty"`
+	Dir    string   `json:"dir,omitempty"` // рабочая папка; пусто = папка exe
+	// Process — имя процесса игры (cs2.exe). Нужно там, где PID запуска не
+	// принадлежит игре: протоколы (steam://) и лаунчеры, которые сами
+	// закрываются после старта игры (Riot Client → VALORANT).
+	Process string `json:"process,omitempty"`
 }
 
 type Config struct {
@@ -52,6 +57,7 @@ type Config struct {
 	KioskURL   string              `json:"kiosk_url"`   // для lock_action=kiosk
 	Apps       map[string]AppEntry `json:"apps"`        // локальный allowlist (главнее каталога)
 	Cleanup    CleanupConfig       `json:"cleanup"`     // Г9-и4: очистка между гостями (cleanup.go)
+	Launch     LaunchConfig        `json:"launch"`      // жизненный цикл игры (launch.go)
 }
 
 func defaultConfig() *Config {
@@ -95,18 +101,15 @@ func resolveApp(cfg *Config, id string) (AppEntry, error) {
 	return app, nil
 }
 
-// startDetached — запустить и не ждать. На Windows `start` понимает и exe-пути,
-// и протоколы (steam://, discord://), и ms-settings:.
+// startDetached — «просто открой это и не жди» (kiosk_url в applyLockAction).
+// Запуск игр идёт не через него, а через handleLaunch: там нужны проверка
+// пути, PID и трекинг (launch.go).
 func startDetached(target string, args []string) error {
-	switch runtime.GOOS {
-	case "windows":
-		cmdArgs := append([]string{"/C", "start", "", target}, args...)
-		return exec.Command("cmd", cmdArgs...).Start()
-	case "darwin":
-		return exec.Command("open", target).Start()
-	default:
-		return exec.Command("xdg-open", target).Start()
+	if classifyTarget(target) == kindFile {
+		_, err := startFile(target, args, "")
+		return err
 	}
+	return startProtocol(target, args)
 }
 
 // ─────────────────────────── WS-клиент ───────────────────────────
@@ -121,6 +124,10 @@ type agent struct {
 	mu     sync.Mutex
 	conn   *websocket.Conn     // nil = связи нет
 	remote map[string]AppEntry // allowlist из каталога сервера
+
+	launch launchSettings // блок "launch" из конфига, с дефолтами
+	avail  *availability  // кэш доступности target'ов (launch.go)
+	track  *tracker       // что агент запустил на этом ПК (launch.go)
 }
 
 // ── Каталог с сервера (Admin Panel → все гостевые ПК) ──
@@ -178,6 +185,7 @@ func (a *agent) refreshCatalog() {
 	a.remote = remote
 	a.mu.Unlock()
 	log.Printf("Каталог с сервера: %d приложений с запуском", len(remote))
+	go a.refreshAvailability() // новые игры проверяем сразу, а не через цикл
 }
 
 func (a *agent) runCatalog() {
@@ -360,7 +368,9 @@ func (a *agent) handleCommand(msg wsMessage) {
 	case "session_end":
 		log.Printf("Команда: session_end %s", string(msg.Payload))
 		a.applyLockAction()
-		go runCleanup(a.cfg.Cleanup) // Г9-и4: очистка между гостями — фоном, экран уже заблокирован
+		// Фоном — экран уже заблокирован (тело в launch.go, чтобы порядок
+		// «сначала запущенное агентом, потом общая очистка» был тестируемым).
+		go a.onSessionEnd()
 	case "xp_update":
 		// Пробрасывать некуда: браузерный шелл живёт поллингом и
 		// уведомлениями (Б4); XP-оверлей — задача C#-киоска (shell/).
@@ -416,25 +426,25 @@ func main() {
 	if err != nil {
 		log.Printf("⚠ %v — использую дефолты (allowlist пуст!)", err)
 	}
-	a := &agent{cfg: cfg, remote: map[string]AppEntry{}}
+	a := &agent{
+		cfg:    cfg,
+		remote: map[string]AppEntry{},
+		launch: cfg.Launch.settings(),
+		avail:  newAvailability(nil),
+		track:  newTracker(nil),
+	}
 	disableAccessibilityShortcuts() // Г9-и3: и сразу на старте — ПК клубный, «как было» не нужно
 	go a.runWS()
 	go a.runCatalog()
+	go a.runAvailability() // фоновая проверка путей к играм, в т.ч. сетевых
+	go a.runProcWatch()    // заметить, что игра закрылась
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/ping", cors(func(w http.ResponseWriter, r *http.Request) {
-		seen := map[string]bool{}
-		for id := range cfg.Apps {
-			seen[id] = true
-		}
-		a.mu.Lock()
-		for id := range a.remote {
-			seen[id] = true
-		}
-		a.mu.Unlock()
-		ids := make([]string, 0, len(seen))
-		for id := range seen {
+		apps := a.allApps()
+		ids := make([]string, 0, len(apps))
+		for id := range apps {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
@@ -462,30 +472,13 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "accel": false})
 	}))
 
-	mux.HandleFunc("/launch", cors(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"code": "method"})
-			return
-		}
-		var req struct {
-			AppID string `json:"app_id"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AppID == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request", "message": "нужен app_id"})
-			return
-		}
-		app, err := a.lookupApp(req.AppID)
-		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"code": "unknown_app", "message": err.Error()})
-			return
-		}
-		if err := startDetached(app.Target, app.Args); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"code": "launch_failed", "message": err.Error()})
-			return
-		}
-		log.Printf("Запуск: %s → %s", req.AppID, app.Target)
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	}))
+	// Запуск игры: проверка достижимости target, честный PID, коды ошибок
+	// target_missing / launch_failed / already_running (launch.go).
+	mux.HandleFunc("/launch", cors(a.handleLaunch))
+
+	// Доступность игр и что сейчас запущено — это читает гостевая витрина.
+	// Отвечает из кэша, в сеть на запросе не ходит.
+	mux.HandleFunc("/apps-status", cors(a.handleAppsStatus))
 
 	mux.HandleFunc("/admin-call", cors(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
