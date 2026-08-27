@@ -38,6 +38,26 @@ func settingInt64(key string, def int64) int64 {
 	return v
 }
 
+// settingString — строковая настройка из БД или дефолт. PUT /admin/settings
+// принимает только числа (settingBounds), поэтому строковые настройки живут в
+// своих ручках рядом с тем, чем управляют: games_root — в /admin/catalog/config.
+func settingString(key, def string) string {
+	var s models.Setting
+	if err := db.First(&s, "key = ?", key).Error; err != nil {
+		return def
+	}
+	return s.Value
+}
+
+// settingSetString — сохранить строковую настройку (upsert по ключу).
+func settingSetString(key, val string) error {
+	var existing models.Setting
+	if err := db.First(&existing, "key = ?", key).Error; err == nil {
+		return db.Model(&existing).Update("value", val).Error
+	}
+	return db.Create(&models.Setting{Key: key, Value: val}).Error
+}
+
 // settingBounds — допустимые границы значений (валидация PUT).
 // Лимиты admin (Б0-и4, решение №6 в ADMIN.md): 0 = без лимита.
 var settingBounds = map[string][2]int64{

@@ -156,11 +156,12 @@ func main() {
 		clubs.GET("/:id/computers", handleGetClubComputers)                // ← настоящий
 		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
-		v1.GET("/ws/shell", handleShellWS)          // ← настоящий
-		v1.GET("/ws/admin", handleAdminWS)          // live-канал админки (спринт А6)
-		v1.GET("/catalog", handleGetCatalog)        // ← настоящий (гостевой экран + агент)
-		v1.GET("/cases/odds", handleGetCaseOdds)    // таблица шансов кейсов (прозрачность, RESEARCH §4)
-		v1.GET("/goods/:id/photo", handleGoodPhoto) // фото позиции кухни — как статика обложек (Г7)
+		v1.GET("/ws/shell", handleShellWS)               // ← настоящий
+		v1.GET("/ws/admin", handleAdminWS)               // live-канал админки (спринт А6)
+		v1.GET("/catalog", handleGetCatalog)             // ← настоящий (гостевой экран + агент)
+		v1.GET("/catalog/:id/cover", handleCatalogCover) // обложка плитки из БД (П1)
+		v1.GET("/cases/odds", handleGetCaseOdds)         // таблица шансов кейсов (прозрачность, RESEARCH §4)
+		v1.GET("/goods/:id/photo", handleGoodPhoto)      // фото позиции кухни — как статика обложек (Г7)
 
 		// Админка (role=admin/owner из users.role, миграция 008)
 		adm := v1.Group("/admin")
@@ -244,6 +245,13 @@ func main() {
 		// Каталог: правка/удаление — конфигурация запуска на гостевых ПК (Б0-и3)
 		own.POST("/catalog", handleAdminCatalogUpsert)
 		own.DELETE("/catalog/:id", handleAdminCatalogDelete)
+		// П1: наполнение каталога владельцем — обложки, корень игр, импорт/экспорт
+		own.GET("/catalog/config", handleAdminCatalogConfigGet) // корень игр для {GAMES}
+		own.PUT("/catalog/config", handleAdminCatalogConfigPut)
+		own.GET("/catalog/export", handleAdminCatalogExport)      // перенос каталога между клубами
+		own.POST("/catalog/import", handleAdminCatalogImport)     // пачкой, dry_run — превью
+		own.PUT("/catalog/:id/cover", handleAdminCatalogCoverPut) // обложка плитки (как фото кухни)
+		own.DELETE("/catalog/:id/cover", handleAdminCatalogCoverDelete)
 		// Отчёты за произвольный период (спринт В1): пресеты + «с…по…»,
 		// сравнение с предыдущим периодом, четыре разреза.
 		own.POST("/packages", handleAdminPackageCreate) // конструктор пакетов (Е2-и1)

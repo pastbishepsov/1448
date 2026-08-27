@@ -635,6 +635,9 @@
       <section id="s-catalog" class="hidden">
         <div class="toolrow">
           <button class="btn mini ownerOnly hidden" onclick="editApp('')"><span data-ic="plus"></span>Добавить</button>
+          <button class="btn ghost mini ownerOnly hidden" onclick="openCatalogImport()"><span data-ic="apps"></span>Импорт JSON</button>
+          <button class="btn ghost mini ownerOnly hidden" onclick="exportCatalog()"><span data-ic="save"></span>Экспорт</button>
+          <button class="btn ghost mini ownerOnly hidden" onclick="openGamesRoot()"><span data-ic="wrench"></span>Корень игр</button>
           <span class="muted" id="catHint">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
         </div>
         <div class="tablewrap" id="catalogTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -2752,15 +2755,19 @@ function openBookingDrawer(id){
 }
 
 /* ── Каталог приложений (форма переедет в drawer в А3) ── */
-let catApps = [];
+let catApps = [], catGamesRoot = '';
 async function renderCatalogTab(){
   try{
     const d = await api('/admin/catalog');
     catApps = d.apps || [];
+    catGamesRoot = d.games_root || '';
   }catch(e){ toast('⚠ ' + e.message); return; }
   // Б0-и3: admin — тумблер и порядок; формы правки/удаления — owner
+  const needRoot = !catGamesRoot && catApps.some(a => (a.target||'').includes('{GAMES}'));
   const hint = document.getElementById('catHint');
   if (hint) hint.textContent = (isOwner() ? '' : 'Правка и удаление — у владельца. ')
+    + (needRoot ? '⚠ В путях есть {GAMES}, а корень игр не задан — такие игры не запустятся. '
+                : (catGamesRoot ? '{GAMES} → ' + catGamesRoot + '. ' : ''))
     + 'Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)';
   const cat = {game:'игра', platform:'платформа', app:'приложение', system:'система'};
   setHTML('catalogTable', catApps.length === 0
@@ -2773,9 +2780,9 @@ async function renderCatalogTab(){
   ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}${isOwner()?';cursor:pointer':''}"${isOwner()?` onclick="editApp('${a.id}')"`:''}>
     <td class="muted">${a.sort}</td>
     <td><b>${esc(a.id)}</b></td>
-    <td>${a.tag?'['+esc(a.tag)+'] ':''}${esc(a.name)}</td>
+    <td>${a.cover ? `<img src="${esc(coverSrc(a.cover))}" alt="" loading="lazy" style="width:22px; height:33px; object-fit:cover; border-radius:4px; vertical-align:-11px; margin-right:7px">` : ''}${a.tag?'['+esc(a.tag)+'] ':''}${esc(a.name)}</td>
     <td>${cat[a.category]||a.category}</td>
-    <td class="muted" style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(a.target||'—')}</td>
+    <td class="muted" style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${esc(catTargetHint(a.target))}">${esc(a.target||'—')}</td>
     <td><span class="switch ${a.enabled?'on':''}" onclick="event.stopPropagation(); toggleApp('${a.id}')" title="${a.enabled?'Выключить':'Включить'}"><span class="knob"></span></span></td>
     <td style="white-space:nowrap">
       <button class="btn ghost mini" onclick="event.stopPropagation(); moveApp('${a.id}',-1)" title="Выше в списке">↑</button>
@@ -2841,8 +2848,20 @@ function editApp(id){
     <input id="f_tag" class="input" placeholder="TAG на тайле (CS2)" value="${esc(a.tag||'')}" oninput="updateCatPreview()">
     <input id="f_emoji" class="input" placeholder="Эмодзи (для прил.)" value="${esc(a.emoji||'')}">
     <input id="f_colors" class="input" placeholder="Цвета: #f59e0b,#ef4444" value="${esc((a.color_a||'')+(a.color_b?','+a.color_b:''))}" oninput="updateCatPreview()">
-    <input id="f_target" class="input" placeholder="target: steam://rungameid/730 или C:\\путь\\игра.exe" value="${esc(a.target||'')}">
+    <input id="f_target" class="input" placeholder="target: steam://rungameid/730 или C:\\путь\\игра.exe" value="${esc(a.target||'')}" oninput="updateCatPreview()">
+    <div class="muted" style="margin:-6px 0 0">Игра на сетевом диске? Вместо буквы диска пиши <b>{GAMES}</b> —
+      <code>{GAMES}\\CS2\\cs2.exe</code>. Сервер подставит корень клуба при отдаче каталога на ПК.
+      <button class="btn ghost mini" onclick="catInsertGames()">Вставить {GAMES}</button>
+      <span id="f_target_res"></span></div>
     <input id="f_args" class="input" placeholder='args (JSON): ["--flag=1"]' value="${esc(a.args||'')}">
+    <div class="sect" style="margin-top:4px">Обложка</div>
+    <input id="f_cover" class="input" placeholder="Ссылка: https://… или /covers/cs2.jpg" value="${esc(a.cover_url||'')}" oninput="updateCatPreview()">
+    ${isNew ? `<div class="muted" style="margin:-6px 0 0">Файл можно будет загрузить после первого сохранения записи.</div>`
+      : `<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:-6px 0 0">
+      <label class="btn ghost mini" style="cursor:pointer">Загрузить файл
+        <input type="file" accept="image/*" style="display:none" onchange="catCoverPick(this,'${a.id}')"></label>
+      ${catUploaded(a) ? `<button class="btn ghost mini" onclick="catCoverDel('${a.id}')">Убрать загруженную</button>` : ''}
+      <span class="muted">Файл жмётся до 512px и хранится в БД — переживает пересборку. Загруженная важнее ссылки.</span></div>`}
     <div style="display:flex; gap:10px">
       <button class="btn mini" onclick="saveApp()"><span data-ic="save"></span>Сохранить</button>
       <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
@@ -2858,16 +2877,27 @@ function updateCatPreview(){
   const id = v('f_id'), name = v('f_name') || 'Название', tag = v('f_tag'), sub = v('f_subtitle');
   const colors = v('f_colors').split(',').map(s => s.trim()).filter(Boolean);
   const ca = colors[0] || '#3d0b13', cb = colors[1] || '#12070a';
+  // Обложка: загруженный в БД файл важнее ссылки из поля (так же решает сервер)
+  const rec = catApps.find(x => x.id === id);
+  const art = (rec && catUploaded(rec) ? rec.cover : '') || v('f_cover');
+  const src = art ? coverSrc(art) : '';
   w.innerHTML = `<div class="tprev" id="tprev">
-    <div class="tp-art" style="background-image:${id ? "url('covers/" + id + ".jpg'), " : ''}linear-gradient(160deg,${ca},${cb})"></div>
+    <div class="tp-art" style="background-image:${src ? "url('" + src.replace(/'/g, "%27") + "'), " : ''}linear-gradient(160deg,${ca},${cb})"></div>
     <div class="tp-tag">${esc(tag || name)}</div>
     <div class="tp-meta"><b>${esc(name)}</b><span>${esc(sub || '')}</span></div>
   </div>
-  <div class="muted" style="text-align:center; margin-top:7px">так плитку видит гость (обложка — web/covers/${esc(id || 'id')}.jpg)</div>`;
-  if (id){
+  <div class="muted" style="text-align:center; margin-top:7px">${src ? 'так плитку видит гость' : 'обложки нет — гость увидит градиент и TAG'}</div>`;
+  if (src){
     const img = new Image();
     img.onload = () => { const t = document.getElementById('tprev'); if (t) t.classList.add('hasart'); };
-    img.src = 'covers/' + id + '.jpg';
+    img.src = src;
+  }
+  const res = document.getElementById('f_target_res');
+  if (res){
+    const t = v('f_target');
+    res.textContent = t.includes('{GAMES}')
+      ? (catGamesRoot ? '→ ' + catTargetHint(t) : '⚠ корень игр не задан — задай его кнопкой «Корень игр»')
+      : '';
   }
 }
 
@@ -2882,6 +2912,7 @@ async function saveApp(){
     emoji: v('f_emoji') || null,
     color_a: colors[0] || null, color_b: colors[1] || null,
     target: v('f_target') || null, args: v('f_args') || null,
+    cover_url: v('f_cover') || null,
   };
   if (body.args){
     try{ JSON.parse(body.args); }catch(e){ toast('⚠ args должен быть JSON-массивом строк'); return; }
@@ -2900,6 +2931,191 @@ async function toggleApp(id){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* ── Обложки, корень игр и массовое наполнение каталога (П1) ──
+   Обложка: ссылка (cover_url) или файл, загруженный в БД — загруженная важнее,
+   так же решает сервер (catalogCoverURL). Папки для загрузок нет: в клубе /web
+   примонтирован read-only, на демо-стенде файловая система эфемерна. */
+function coverSrc(u){
+  if (!u) return '';
+  return /^https?:\/\//i.test(u) ? u : API.replace('/api/v1','') + u;
+}
+function catUploaded(a){ return !!(a && a.cover && a.cover !== (a.cover_url || '')); }
+
+/* {GAMES} в target: как путь увидит гостевой ПК с текущим корнем игр */
+function catTargetHint(t){
+  if (!t) return '';
+  if (!t.includes('{GAMES}')) return t;
+  return catGamesRoot ? t.split('{GAMES}').join(catGamesRoot.replace(/[\\/]+$/, ''))
+                      : t + '  ⚠ корень игр не задан';
+}
+/* Кнопка «Вставить {GAMES}»: если в пути уже стоит корень клуба — заменяем его
+   на переменную (типовой случай: путь скопирован из проводника целиком),
+   иначе вставляем в позицию курсора. Второй раз плейсхолдер не дублируем. */
+function catInsertGames(){
+  const el = document.getElementById('f_target');
+  if (!el) return;
+  if (el.value.includes('{GAMES}')){ toast('{GAMES} в пути уже есть'); return; }
+  const root = (catGamesRoot || '').replace(/[\\/]+$/, '');
+  if (root && el.value.toLowerCase().startsWith(root.toLowerCase())){
+    el.value = '{GAMES}' + el.value.slice(root.length);
+  } else {
+    const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+    el.value = el.value.slice(0, a) + '{GAMES}' + el.value.slice(b);
+    el.focus(); el.setSelectionRange(a + 7, a + 7);
+  }
+  updateCatPreview();
+}
+
+async function catCoverPick(inp, id){
+  const f = inp.files && inp.files[0];
+  if (!f) return;
+  try{
+    const img = await new Promise((res, rej) => {
+      const u = URL.createObjectURL(f), i = new Image();
+      i.onload = () => res(i); i.onerror = rej; i.src = u;
+    });
+    const k = Math.min(1, 512 / Math.max(img.width, img.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    const blob = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.82));
+    const r = await fetch(API + '/admin/catalog/' + id + '/cover', {
+      method:'PUT', headers:{'Content-Type':'image/jpeg', 'Authorization':'Bearer ' + tokens().a}, body: blob});
+    if (!r.ok) throw new Error('обложка не сохранилась');
+    toast('✓ Обложка обновлена — гости увидят её на плитке');
+    await renderCatalogTab();
+    editApp(id);
+  }catch(e){ toast('⚠ ' + (e.message || 'обложка не загрузилась')); }
+}
+async function catCoverDel(id){
+  try{
+    await api('/admin/catalog/' + id + '/cover', {method:'DELETE'});
+    toast('✓ Загруженная обложка убрана');
+    await renderCatalogTab();
+    editApp(id);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* Корень игр: одна настройка вместо переписывания всех target при смене
+   буквы диска или адреса NAS */
+async function openGamesRoot(){
+  if (!isOwner()){ toast('Настройка — у владельца'); return; }
+  let cfg;
+  try{ cfg = await api('/admin/catalog/config'); }catch(e){ toast('⚠ ' + e.message); return; }
+  openDrawer('Корень игр', `
+  <div class="muted">Игры лежат на сетевом диске клуба. В поле «Запуск» пиши <b>{GAMES}</b> вместо буквы диска
+    (<code>{GAMES}\\CS2\\cs2.exe</code>) — сервер подставит этот корень, когда отдаёт каталог гостевым ПК.
+    Сменился диск или адрес NAS — правишь только здесь, записи каталога не трогаешь.</div>
+  <div class="uform" style="margin-top:14px">
+    <input id="f_gamesroot" class="input" placeholder="G:\\Games или \\\\nas\\games" value="${esc(cfg.games_root||'')}">
+    <div class="muted">Записей с {GAMES}: <b>${cfg.apps_using||0}</b>. Пусто = подстановка выключена,
+      {GAMES} останется в пути как есть и игра не запустится.</div>
+    <div style="display:flex; gap:10px">
+      <button class="btn mini" onclick="saveGamesRoot()"><span data-ic="save"></span>Сохранить</button>
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+  </div>`);
+}
+async function saveGamesRoot(){
+  const root = document.getElementById('f_gamesroot').value.trim();
+  try{
+    const d = await api('/admin/catalog/config', {method:'PUT', body: JSON.stringify({games_root: root})});
+    catGamesRoot = d.games_root || '';
+    toast(catGamesRoot ? '✓ Корень игр: ' + catGamesRoot : '✓ Подстановка {GAMES} выключена');
+    closeDrawer(); renderCatalogTab();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* Экспорт: файл в формате импорта — перенос каталога в другой клуб и бэкап */
+async function exportCatalog(){
+  try{
+    const d = await api('/admin/catalog/export');
+    const blob = new Blob([JSON.stringify(d, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'catalog-1448-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('✓ Каталог выгружен: ' + (d.count || 0) + ' записей');
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* Импорт: вставил JSON → «Проверить» (сервер считает план, ничего не пишет) →
+   «Сохранить». Записи, которых нет в файле, не трогаются. */
+function openCatalogImport(){
+  if (!isOwner()){ toast('Импорт каталога — у владельца'); return; }
+  openDrawer('Импорт каталога', `
+  <div class="muted">Вставь массив записей или целиком файл экспорта. Совпадение по <b>id</b>:
+    новые добавятся, существующие обновятся присланными полями. Того, чего нет в файле,
+    импорт не касается — удалять записи можно только вручную.</div>
+  <div class="muted" style="margin-top:6px">Обязательны <code>id</code>, <code>name</code>, <code>category</code>
+    (game | app | system | platform). Путь на сетевом диске — через <code>{GAMES}</code>,
+    в JSON слэши двойные: <code>"target": "{GAMES}\\\\CS2\\\\cs2.exe"</code>.</div>
+  <textarea id="impText" class="input" style="min-height:180px; margin-top:12px; font-family:ui-monospace,Consolas,monospace; font-size:12px"
+    placeholder='[{"id":"cs2","name":"Counter-Strike 2","category":"game","subtitle":"Steam","tag":"CS2","sort":10}]'></textarea>
+  <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap">
+    <label class="btn ghost mini" style="cursor:pointer">Взять из файла
+      <input type="file" accept=".json,application/json" style="display:none" onchange="impFromFile(this)"></label>
+    <button class="btn mini" onclick="impPreview()"><span data-ic="check"></span>Проверить</button>
+    <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+  </div>
+  <div id="impResult" style="margin-top:14px"></div>`);
+}
+function impFromFile(inp){
+  const f = inp.files && inp.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { document.getElementById('impText').value = r.result; impPreview(); };
+  r.readAsText(f);
+}
+function impParse(){
+  const t = (document.getElementById('impText').value || '').trim();
+  if (!t) throw new Error('Пусто — вставь JSON');
+  let d;
+  try{ d = JSON.parse(t); }catch(err){ throw new Error('JSON не разобрался: ' + err.message); }
+  const apps = Array.isArray(d) ? d : d.apps;
+  if (!Array.isArray(apps) || !apps.length) throw new Error('Ожидается массив записей или {"apps":[…]}');
+  return apps;
+}
+function impShow(html){
+  const box = document.getElementById('impResult');
+  if (box){ box.innerHTML = html; mountIcons(box); }
+}
+function impErrors(e){
+  const errs = (e.data && e.data.errors) || [];
+  if (!errs.length){ impShow(`<div>⚠ ${esc(e.message || 'ошибка')}</div>`); return; }
+  impShow(`<div style="margin-bottom:8px">⚠ ${esc(e.message || '')}</div>
+  <div style="max-height:330px; overflow:auto">
+  ${errs.slice(0, 30).map(x => `<div style="padding:5px 0; border-bottom:1px solid rgba(255,255,255,.06)">
+    <b>${esc(x.id || '(без id)')}</b> <span class="muted">запись №${(x.index ?? 0) + 1}</span><br>
+    <span>${esc(x.message || x.code || '')}</span></div>`).join('')}</div>
+  ${errs.length > 30 ? `<div class="muted">…и ещё ${errs.length - 30}</div>` : ''}`);
+}
+async function impPreview(){
+  try{
+    const apps = impParse();
+    const d = await api('/admin/catalog/import', {method:'POST', body: JSON.stringify({apps, dry_run:true})});
+    impShow(`<div class="muted" style="margin-bottom:8px">Всего ${d.total}: новых ${d.created}, обновится ${d.updated}${d.unchanged ? ', без изменений ' + d.unchanged : ''}</div>
+    <div style="max-height:330px; overflow:auto">
+    ${(d.items || []).map(it => `<div style="display:flex; gap:8px; align-items:baseline; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.06)">
+      <b style="min-width:92px; overflow:hidden; text-overflow:ellipsis">${esc(it.id)}</b>
+      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(it.name || '')}</span>
+      <span class="muted" style="white-space:nowrap">${it.action === 'create' ? 'новая'
+        : ((it.changes || []).length ? '→ ' + esc(it.changes.join(', ')) : 'без изменений')}</span>
+    </div>`).join('')}</div>
+    <button class="btn" style="margin-top:12px" onclick="impApply()"><span data-ic="save"></span>Сохранить ${d.total} записей</button>`);
+  }catch(e){ if (e.data) impErrors(e); else impShow(`<div>⚠ ${esc(e.message)}</div>`); }
+}
+async function impApply(){
+  try{
+    const apps = impParse();
+    const d = await api('/admin/catalog/import', {method:'POST', body: JSON.stringify({apps, dry_run:false})});
+    toast(`✓ Импорт: ${d.total} записей (+${d.created} новых, ${d.updated} обновлено)`);
+    if (d.unchanged) toast(`${d.unchanged} записей уже совпадали — их не трогали`);
+    closeDrawer(); renderCatalogTab();
+  }catch(e){ if (e.data) impErrors(e); else toast('⚠ ' + e.message); }
+}
+
 /* ── Журнал-аудит (А4): единая лента — начисления, депозиты, действия ── */
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
@@ -2912,7 +3128,8 @@ const AUD_GROUPS = {
              'seat_cancel','session_move'], // ревью 26.08
   bookings: ['booking_create','booking_cancel','booking_restore'],
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold'],
-  catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort'],
+  catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
+            'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
   staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding'], // ревью 26.08
 };
@@ -2923,7 +3140,9 @@ const AUD_LABEL = {
   pc_maintenance:'ПК в ремонт', pc_available:'ПК в строй',
   booking_create:'бронь', booking_cancel:'отмена брони', booking_restore:'возврат брони',
   catalog_upsert:'каталог: правка', catalog_toggle:'каталог: вкл/выкл', catalog_delete:'каталог: удаление',
-  catalog_sort:'каталог: порядок', settings_update:'настройки',
+  catalog_sort:'каталог: порядок', catalog_import:'каталог: импорт',
+  catalog_cover:'каталог: обложка', catalog_config:'каталог: корень игр',
+  settings_update:'настройки',
   package_create:'пакет заведён', package_update:'пакет: правка', package_delete:'пакет удалён',
   package_issue:'выдан пакет', package_void:'отмена выдачи пакета',
   pc_create:'ПК добавлен', pc_update:'ПК изменён', pc_delete:'ПК удалён', layout_update:'схема зала',
@@ -2958,7 +3177,8 @@ const AUD_ICON = {
   pc_maintenance:'wrench', pc_available:'check', booking_create:'cal',
   booking_cancel:'cross', booking_restore:'cal',
   catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
-  catalog_sort:'apps', settings_update:'gear',
+  catalog_sort:'apps', catalog_import:'apps', catalog_cover:'apps',
+  catalog_config:'wrench', settings_update:'gear',
   pc_create:'plus', pc_update:'edit', pc_delete:'cross', layout_update:'monitor',
   staff_promote:'users', staff_demote:'out',
   shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',

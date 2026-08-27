@@ -4,27 +4,86 @@ package main
 // GET /catalog — публичный (гостевой экран и shell-agent читают без токена; пути
 // запуска в LAN клуба не секрет).
 // Права (Б0-и3, решение №2 в ADMIN.md): admin — вкл/выкл и порядок;
-// создание/правка/удаление (target/args = что запускается на гостевых ПК) — owner.
+// создание/правка/удаление/импорт/обложки/корень игр (target/args = что
+// запускается на гостевых ПК) — owner.
 // До пилота агент получит собственную аутентификацию (MAC+токен, см. STATUS).
+//
+// Пакет П1 (docs/КАТАЛОГ-ИГР.md) — каталог наполняет владелец, без разработчика:
+//   • обложка у каждой записи: ссылка (cover_url) или файл, загруженный в БД;
+//   • target вида {GAMES}\CS2\cs2.exe — сервер подставляет корень игр клуба
+//     (настройка games_root) при отдаче /catalog;
+//   • импорт/экспорт JSON — 50 игр заводятся пачкой и переносятся между клубами.
+//
+// Статические ручки (/catalog/import, /catalog/config, /catalog/export) стоят
+// рядом с /catalog/:id — gin 1.10 разводит их правильно, включая возврат к
+// :id, если статика не совпала целиком; закреплено тестом
+// TestCatalogRoutesRegisterAndMatch, чтобы апгрейд gin не сломал это молча.
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
+	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
-var catalogIDRe = regexp.MustCompile(`^[a-z0-9_]{2,32}$`)
+const (
+	gamesRootKey     = "games_root" // настройка клуба: корень сетевого диска с играми
+	gamesPlaceholder = "{GAMES}"    // подстановка в target/args
+	maxCoverBytes    = 500 << 10    // обложка ≤500КБ (клиент жмёт до ~512px, как фото кухни)
+	maxCoverURLLen   = 500
+	maxTargetLen     = 500
+	maxImportApps    = 500     // записей за один импорт
+	maxImportBytes   = 4 << 20 // тело импорта ≤4МБ
+	catalogExportVer = 1       // версия формата импорта/экспорта
+)
 
-// validateCatalogApp — чистая проверка полей (тестируется отдельно).
+var (
+	catalogIDRe    = regexp.MustCompile(`^[a-z0-9_]{2,32}$`)
+	catalogColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$`)
+	// Корень игр: буква диска (G:\Games), UNC (\\nas\games) или POSIX (/mnt/games).
+	gamesRootRe = regexp.MustCompile(`^([A-Za-z]:[\\/]|\\\\[^\\/]+[\\/]|/)[^<>"|?*{}]*$`)
+)
+
+// catalogFields — набор полей записи каталога. Одинаково приходит из формы
+// админки (upsert) и из JSON-импорта, поэтому и проверяется одной функцией.
+// Указатели различают «поле не прислали» и «прислали пустым»: импорт правит
+// только присланное, форма — перезаписывает запись целиком.
+type catalogFields struct {
+	ID       string          `json:"id"`
+	Name     *string         `json:"name"`
+	Category *string         `json:"category"`
+	Subtitle *string         `json:"subtitle"`
+	Tag      *string         `json:"tag"`
+	Emoji    *string         `json:"emoji"`
+	ColorA   *string         `json:"color_a"`
+	ColorB   *string         `json:"color_b"`
+	Target   *string         `json:"target"`
+	Args     json.RawMessage `json:"args"`
+	CoverURL *string         `json:"cover_url"`
+	Sort     *int            `json:"sort"`
+	Enabled  *bool           `json:"enabled"`
+}
+
+// ── Чистые проверки и подстановки (тестируются без БД) ──────────────────────
+
+// validateCatalogApp — обязательный минимум записи (id/название/категория).
 func validateCatalogApp(id, name, category string) (ok bool, code string) {
 	if !catalogIDRe.MatchString(id) {
 		return false, "bad_id"
 	}
-	if name == "" || len(name) > 64 {
+	// длину считаем в символах, а не в байтах: колонка в БД — VARCHAR(64),
+	// то есть 64 символа, а len() резал русские названия вдвое раньше срока
+	if name == "" || utf8.RuneCountInString(name) > 64 {
 		return false, "bad_name"
 	}
 	if category != "game" && category != "app" && category != "system" && category != "platform" {
@@ -33,15 +92,232 @@ func validateCatalogApp(id, name, category string) (ok bool, code string) {
 	return true, ""
 }
 
+// validateCoverURL — ссылка на обложку: внешняя http(s) или свой путь от корня
+// (/covers/cs2.jpg из репо, /api/v1/catalog/<id>/cover). Схемы data:/javascript:
+// не пускаем: картинку вставляет гостевой экран, туда нельзя произвольный URL.
+func validateCoverURL(u string) (ok bool, msg string) {
+	u = strings.TrimSpace(u)
+	if u == "" {
+		return true, ""
+	}
+	if utf8.RuneCountInString(u) > maxCoverURLLen {
+		return false, fmt.Sprintf("Ссылка на обложку — до %d символов", maxCoverURLLen)
+	}
+	if strings.ContainsAny(u, " \t\r\n\"'<>") {
+		return false, "Ссылка на обложку: пробелы и кавычки недопустимы"
+	}
+	low := strings.ToLower(u)
+	if strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://") {
+		return true, ""
+	}
+	if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, "//") {
+		return true, ""
+	}
+	return false, "Ссылка на обложку: http(s)://… или путь от корня (/covers/cs2.jpg)"
+}
+
+// validateGamesRoot — корень игр клуба. Пусто = подстановка выключена.
+func validateGamesRoot(root string) (ok bool, msg string) {
+	if root == "" {
+		return true, ""
+	}
+	if utf8.RuneCountInString(root) > 200 {
+		return false, "Корень игр — до 200 символов"
+	}
+	if strings.ContainsAny(root, "\x00\n\r\t\"") {
+		return false, "Корень игр: недопустимые символы"
+	}
+	if !gamesRootRe.MatchString(root) {
+		return false, `Корень игр: «G:\Games», «\\nas\games» или «/mnt/games»`
+	}
+	return true, ""
+}
+
+// expandGames — подстановка {GAMES} в путь запуска. Хвостовой слэш в настройке
+// срезаем: «G:\Games\» + «\CS2\cs2.exe» дало бы «G:\Games\\CS2\cs2.exe».
+// Корень не задан — оставляем шаблон видимым: пусть агент честно не найдёт
+// файл и это будет заметно, чем молча собрать битый путь.
+func expandGames(target, root string) string {
+	if target == "" || root == "" || !strings.Contains(target, gamesPlaceholder) {
+		return target
+	}
+	return strings.ReplaceAll(target, gamesPlaceholder, strings.TrimRight(root, `\/`))
+}
+
+// expandGamesArgs — та же подстановка внутри JSON-массива аргументов. Корень
+// попадает в строковый литерал JSON, поэтому обратные слэши экранируем:
+// без этого «["--dir=G:\Games"]» перестанет разбираться у агента.
+func expandGamesArgs(args, root string) string {
+	if args == "" || root == "" || !strings.Contains(args, gamesPlaceholder) {
+		return args
+	}
+	esc := strings.ReplaceAll(strings.TrimRight(root, `\/`), `\`, `\\`)
+	return strings.ReplaceAll(args, gamesPlaceholder, esc)
+}
+
+// normalizeArgs — args приходят двумя способами: настоящим JSON-массивом (так
+// пишет экспорт и так удобно руками) и строкой с JSON внутри (так хранит
+// колонка jsonb и так шлёт форма админки). Наружу — текст для БД.
+func normalizeArgs(raw json.RawMessage) (val *string, ok bool, msg string) {
+	t := bytes.TrimSpace(raw)
+	if len(t) == 0 || string(t) == "null" {
+		return nil, true, ""
+	}
+	if t[0] == '"' {
+		var s string
+		if err := json.Unmarshal(t, &s); err != nil {
+			return nil, false, "args: строка не разобралась"
+		}
+		if strings.TrimSpace(s) == "" {
+			return nil, true, ""
+		}
+		t = []byte(strings.TrimSpace(s))
+	}
+	var arr []string
+	if err := json.Unmarshal(t, &arr); err != nil {
+		return nil, false, `args: JSON-массив строк, например ["--flag=1"]`
+	}
+	if len(arr) == 0 {
+		return nil, true, ""
+	}
+	out, err := json.Marshal(arr)
+	if err != nil {
+		return nil, false, "args: не сериализуется"
+	}
+	s := string(out)
+	return &s, true, ""
+}
+
+// validateCatalogFields — проверка присланных полей. full=true (форма админки,
+// новая запись импорта) требует id/название/категорию; для правки существующей
+// записи импортом проверяется только то, что прислали.
+func validateCatalogFields(f *catalogFields, full bool) (code, msg string) {
+	if !catalogIDRe.MatchString(f.ID) {
+		return "bad_id", "id: строчные латинские буквы/цифры/_, 2–32 символа"
+	}
+	if full {
+		name, cat := "", ""
+		if f.Name != nil {
+			name = strings.TrimSpace(*f.Name)
+		}
+		if f.Category != nil {
+			cat = strings.TrimSpace(*f.Category)
+		}
+		if ok, code := validateCatalogApp(f.ID, name, cat); !ok {
+			return code, map[string]string{
+				"bad_id":       "id: строчные латинские буквы/цифры/_, 2–32 символа",
+				"bad_name":     "Название: 1–64 символа",
+				"bad_category": "category: game | app | system | platform",
+			}[code]
+		}
+	} else {
+		if f.Name != nil && (strings.TrimSpace(*f.Name) == "" || utf8.RuneCountInString(*f.Name) > 64) {
+			return "bad_name", "Название: 1–64 символа"
+		}
+		if f.Category != nil {
+			switch strings.TrimSpace(*f.Category) {
+			case "game", "app", "system", "platform":
+			default:
+				return "bad_category", "category: game | app | system | platform"
+			}
+		}
+	}
+	lim := func(v *string, n int, code, msg string) (string, string) {
+		if v != nil && utf8.RuneCountInString(*v) > n {
+			return code, msg
+		}
+		return "", ""
+	}
+	if c, m := lim(f.Subtitle, 64, "bad_subtitle", "Подпись — до 64 символов"); c != "" {
+		return c, m
+	}
+	if c, m := lim(f.Tag, 12, "bad_tag", "TAG на тайле — до 12 символов"); c != "" {
+		return c, m
+	}
+	if c, m := lim(f.Emoji, 8, "bad_emoji", "Эмодзи — до 8 символов"); c != "" {
+		return c, m
+	}
+	if c, m := lim(f.Target, maxTargetLen, "bad_target",
+		fmt.Sprintf("target — до %d символов", maxTargetLen)); c != "" {
+		return c, m
+	}
+	for _, col := range []*string{f.ColorA, f.ColorB} {
+		if col != nil && strings.TrimSpace(*col) != "" && !catalogColorRe.MatchString(strings.TrimSpace(*col)) {
+			return "bad_color", "Цвет — #rrggbb (можно #rrggbbaa)"
+		}
+	}
+	if f.CoverURL != nil {
+		if ok, m := validateCoverURL(*f.CoverURL); !ok {
+			return "bad_cover", m
+		}
+	}
+	if f.Sort != nil && (*f.Sort < -10000 || *f.Sort > 10000) {
+		return "bad_sort", "Порядок — от -10000 до 10000"
+	}
+	if _, ok, m := normalizeArgs(f.Args); !ok {
+		return "bad_args", m
+	}
+	return "", ""
+}
+
+// ── Обложка и подстановка при отдаче ────────────────────────────────────────
+
+// catalogCoverURL — что показать витрине: загруженная в БД обложка приоритетнее
+// ссылки, введённой руками (владелец загрузил файл — значит, им и заменил).
+func catalogCoverURL(a *models.CatalogApp) string {
+	if a.CoverAt != nil {
+		return fmt.Sprintf("/api/v1/catalog/%s/cover?v=%d", a.ID, a.CoverAt.Unix())
+	}
+	if a.CoverURL != nil {
+		return strings.TrimSpace(*a.CoverURL)
+	}
+	return ""
+}
+
+// decorateCatalogApp — то, что считается на лету: обложка и подстановка корня
+// игр. public=false для админки: там показываем и правим исходное — шаблон
+// {GAMES} в target и ту ссылку на обложку, которую ввёл владелец.
+func decorateCatalogApp(a *models.CatalogApp, root string, public bool) {
+	a.Cover = catalogCoverURL(a)
+	if !public {
+		return
+	}
+	// В публичной выдаче cover_url = cover: витрине незачем знать, что было
+	// ссылкой, а что загруженным файлом. Иначе клиент, читающий поля в другом
+	// порядке, показал бы старую ссылку вместо только что загруженной обложки
+	// (web/shell.html берёт `cover_url || cover`).
+	if a.Cover == "" {
+		a.CoverURL = nil
+	} else {
+		cv := a.Cover
+		a.CoverURL = &cv
+	}
+	if a.Target != nil && strings.Contains(*a.Target, gamesPlaceholder) {
+		a.TargetRaw = *a.Target
+		t := expandGames(*a.Target, root)
+		a.Target = &t
+	}
+	if a.Args != nil && strings.Contains(*a.Args, gamesPlaceholder) {
+		s := expandGamesArgs(*a.Args, root)
+		a.Args = &s
+	}
+}
+
 // GET /catalog — включённые приложения по категориям (для экрана и агента).
+// target отдаётся уже с подставленным корнем игр; исходный шаблон — в
+// target_raw, а сам корень — полем games_root, чтобы агент при желании мог
+// собрать путь по-своему (per-PC буква диска, пакет П2).
 func handleGetCatalog(c *gin.Context) {
 	var apps []models.CatalogApp
 	if err := db.Where("enabled = ?", true).Order("sort").Order("name").Find(&apps).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 		return
 	}
+	root := settingString(gamesRootKey, "")
 	games, appsList, system, platforms := []models.CatalogApp{}, []models.CatalogApp{}, []models.CatalogApp{}, []models.CatalogApp{}
-	for _, a := range apps {
+	for i := range apps {
+		a := apps[i]
+		decorateCatalogApp(&a, root, true)
 		switch a.Category {
 		case "game":
 			games = append(games, a)
@@ -53,63 +329,56 @@ func handleGetCatalog(c *gin.Context) {
 			platforms = append(platforms, a)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"games": games, "apps": appsList, "system": system, "platforms": platforms})
+	c.JSON(http.StatusOK, gin.H{"games": games, "apps": appsList, "system": system,
+		"platforms": platforms, "games_root": root})
 }
 
-// GET /admin/catalog — все приложения, включая выключенные.
+// GET /admin/catalog — все приложения, включая выключенные. Без подстановки:
+// админка правит и показывает исходный шаблон {GAMES}\…
 func handleAdminCatalog(c *gin.Context) {
 	var apps []models.CatalogApp
 	db.Order("category").Order("sort").Order("name").Find(&apps)
-	c.JSON(http.StatusOK, gin.H{"count": len(apps), "apps": apps})
-}
-
-type catalogUpsertRequest struct {
-	ID       string  `json:"id" binding:"required"`
-	Name     string  `json:"name" binding:"required"`
-	Category string  `json:"category" binding:"required"`
-	Subtitle *string `json:"subtitle"`
-	Tag      *string `json:"tag"`
-	Emoji    *string `json:"emoji"`
-	ColorA   *string `json:"color_a"`
-	ColorB   *string `json:"color_b"`
-	Target   *string `json:"target"`
-	Args     *string `json:"args"`
-	Sort     *int    `json:"sort"`
+	root := settingString(gamesRootKey, "")
+	for i := range apps {
+		decorateCatalogApp(&apps[i], root, false)
+	}
+	c.JSON(http.StatusOK, gin.H{"count": len(apps), "apps": apps, "games_root": root})
 }
 
 // POST /admin/catalog — создать или обновить приложение (upsert по id).
+// Форма присылает запись целиком: пустое поле = очистить.
 func handleAdminCatalogUpsert(c *gin.Context) {
-	var req catalogUpsertRequest
+	var req catalogFields
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
 		return
 	}
-	if ok, code := validateCatalogApp(req.ID, req.Name, req.Category); !ok {
-		msg := map[string]string{
-			"bad_id":       "id: строчные латинские буквы/цифры/_, 2–32 символа",
-			"bad_name":     "Название: 1–64 символа",
-			"bad_category": "category: game | app | system | platform",
-		}[code]
+	if code, msg := validateCatalogFields(&req, true); code != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": msg})
 		return
 	}
+	args, _, _ := normalizeArgs(req.Args)
 
 	app := models.CatalogApp{
-		ID: req.ID, Name: req.Name, Category: req.Category,
-		Subtitle: req.Subtitle, Tag: req.Tag, Emoji: req.Emoji,
-		ColorA: req.ColorA, ColorB: req.ColorB,
-		Target: req.Target, Args: req.Args,
-		Sort: 100, Enabled: true,
+		ID: req.ID, Name: strings.TrimSpace(*req.Name), Category: strings.TrimSpace(*req.Category),
+		Subtitle: trimPtr(req.Subtitle), Tag: trimPtr(req.Tag), Emoji: trimPtr(req.Emoji),
+		ColorA: trimPtr(req.ColorA), ColorB: trimPtr(req.ColorB),
+		Target: trimPtr(req.Target), Args: args, CoverURL: trimPtr(req.CoverURL),
+		Sort: 100, Enabled: true, UpdatedAt: time.Now(),
 	}
 	if req.Sort != nil {
 		app.Sort = *req.Sort
 	}
 
-	// upsert: сохранить как новый или обновить существующий (enabled не трогаем)
+	// upsert: сохранить как новый или обновить существующий. Колонки перечислены
+	// явно — enabled остаётся за тумблером (Б0-и3), а загруженная обложка
+	// (cover/cover_type/cover_at) переживает правку формы.
 	var existing models.CatalogApp
 	if err := db.First(&existing, "id = ?", req.ID).Error; err == nil {
 		app.Enabled = existing.Enabled
-		if err := db.Model(&existing).Select("*").Omit("id").Updates(app).Error; err != nil {
+		if err := db.Model(&existing).Select("name", "category", "subtitle", "tag", "emoji",
+			"color_a", "color_b", "target", "args", "cover_url", "sort", "updated_at").
+			Updates(app).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
 			return
 		}
@@ -119,6 +388,18 @@ func handleAdminCatalogUpsert(c *gin.Context) {
 	}
 	logAdminAction(c, "catalog_upsert", nil, app.ID)
 	c.JSON(http.StatusOK, gin.H{"id": app.ID, "ok": true})
+}
+
+// trimPtr — обрезать пробелы; пустая строка = NULL в БД.
+func trimPtr(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	t := strings.TrimSpace(*s)
+	if t == "" {
+		return nil
+	}
+	return &t
 }
 
 // POST /admin/catalog/:id/toggle — включить/выключить приложение.
@@ -177,4 +458,440 @@ func handleAdminCatalogDelete(c *gin.Context) {
 	}
 	logAdminAction(c, "catalog_delete", nil, c.Param("id"))
 	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "deleted": true})
+}
+
+// ── Обложка: BYTEA в БД, байты живут только в этих трёх ручках ──────────────
+// (как фото позиции кухни, Г7: папки для загрузок нет ни в клубе — /web
+// примонтирован read-only, ни на Railway — эфемерная ФС.)
+
+// GET /catalog/:id/cover — публичная отдача обложки.
+func handleCatalogCover(c *gin.Context) {
+	var row struct {
+		Cover     []byte
+		CoverType *string
+		CoverAt   *time.Time
+	}
+	if err := db.Raw("SELECT cover, cover_type, cover_at FROM catalog_apps WHERE id = ?", c.Param("id")).
+		Scan(&row).Error; err != nil || len(row.Cover) == 0 || row.CoverAt == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	etag := fmt.Sprintf(`"c%d"`, row.CoverAt.Unix())
+	c.Header("Cache-Control", "public, max-age=300")
+	c.Header("ETag", etag)
+	if c.GetHeader("If-None-Match") == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	ct := "image/jpeg"
+	if row.CoverType != nil && *row.CoverType != "" {
+		ct = *row.CoverType
+	}
+	c.Data(http.StatusOK, ct, row.Cover)
+}
+
+// PUT /admin/catalog/:id/cover — владелец кладёт обложку (сырое тело запроса,
+// Content-Type = image/jpeg|png|webp), один в один как фото позиции кухни.
+func handleAdminCatalogCoverPut(c *gin.Context) {
+	var app models.CatalogApp
+	if err := db.First(&app, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "app_not_found", "message": "Приложение не найдено"})
+		return
+	}
+	ct := c.ContentType()
+	if ct != "image/jpeg" && ct != "image/png" && ct != "image/webp" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_cover", "message": "Обложка — JPEG, PNG или WebP"})
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(c.Request.Body, maxCoverBytes+1))
+	if err != nil || len(data) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_cover", "message": "Пустое тело запроса"})
+		return
+	}
+	if len(data) > maxCoverBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"code": "cover_too_big",
+			"message": fmt.Sprintf("Обложка — до %d КБ (сожми на клиенте)", maxCoverBytes>>10)})
+		return
+	}
+	if err := db.Exec("UPDATE catalog_apps SET cover = ?, cover_type = ?, cover_at = now(), updated_at = now() WHERE id = ?",
+		data, ct, app.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	// перечитываем в ЧИСТУЮ структуру: GORM не сбрасывает уже заполненные
+	// поля-указатели при NULL в колонке, и ответ соврал бы про обложку
+	var fresh models.CatalogApp
+	db.First(&fresh, "id = ?", app.ID)
+	logAdminAction(c, "catalog_cover", nil, app.ID+": обложка обновлена")
+	c.JSON(http.StatusOK, gin.H{"id": app.ID, "cover": catalogCoverURL(&fresh)})
+}
+
+// DELETE /admin/catalog/:id/cover — убрать загруженную обложку (ссылка остаётся).
+func handleAdminCatalogCoverDelete(c *gin.Context) {
+	var app models.CatalogApp
+	if err := db.First(&app, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "app_not_found", "message": "Приложение не найдено"})
+		return
+	}
+	if err := db.Exec("UPDATE catalog_apps SET cover = NULL, cover_type = NULL, cover_at = NULL, updated_at = now() WHERE id = ?",
+		app.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	var fresh models.CatalogApp
+	db.First(&fresh, "id = ?", app.ID)
+	logAdminAction(c, "catalog_cover", nil, app.ID+": обложка убрана")
+	c.JSON(http.StatusOK, gin.H{"id": app.ID, "cover": catalogCoverURL(&fresh), "deleted": true})
+}
+
+// ── Корень игр ──────────────────────────────────────────────────────────────
+
+// GET /admin/catalog/config — корень игр и сколько записей на него завязано.
+func handleAdminCatalogConfigGet(c *gin.Context) {
+	var uses int64
+	db.Model(&models.CatalogApp{}).
+		Where("target LIKE ? OR args LIKE ?", "%"+gamesPlaceholder+"%", "%"+gamesPlaceholder+"%").
+		Count(&uses)
+	c.JSON(http.StatusOK, gin.H{
+		"games_root":  settingString(gamesRootKey, ""),
+		"placeholder": gamesPlaceholder,
+		"apps_using":  uses,
+	})
+}
+
+// PUT /admin/catalog/config — сменить корень игр (owner). Одна правка вместо
+// переписывания всех target при смене буквы диска или адреса NAS.
+func handleAdminCatalogConfigPut(c *gin.Context) {
+	var req struct {
+		GamesRoot *string `json:"games_root"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.GamesRoot == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужно поле games_root"})
+		return
+	}
+	root := strings.TrimSpace(*req.GamesRoot)
+	if ok, msg := validateGamesRoot(root); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_games_root", "message": msg})
+		return
+	}
+	old := settingString(gamesRootKey, "")
+	if err := settingSetString(gamesRootKey, root); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	if old != root {
+		logAdminAction(c, "catalog_config", nil, fmt.Sprintf("games_root: %q → %q", old, root))
+	}
+	c.JSON(http.StatusOK, gin.H{"games_root": root})
+}
+
+// ── Импорт и экспорт ────────────────────────────────────────────────────────
+
+// GET /admin/catalog/export — весь каталог в формате импорта (owner).
+func handleAdminCatalogExport(c *gin.Context) {
+	var apps []models.CatalogApp
+	db.Order("category").Order("sort").Order("name").Find(&apps)
+	items := make([]gin.H, 0, len(apps))
+	for i := range apps {
+		a := &apps[i]
+		it := gin.H{"id": a.ID, "name": a.Name, "category": a.Category, "sort": a.Sort, "enabled": a.Enabled}
+		put := func(k string, v *string) {
+			if v != nil && *v != "" {
+				it[k] = *v
+			}
+		}
+		put("subtitle", a.Subtitle)
+		put("tag", a.Tag)
+		put("emoji", a.Emoji)
+		put("color_a", a.ColorA)
+		put("color_b", a.ColorB)
+		put("target", a.Target)
+		put("cover_url", a.CoverURL)
+		if a.Args != nil && *a.Args != "" {
+			// args — настоящим массивом, чтобы файл читался и правился глазами.
+			var arr []string
+			if json.Unmarshal([]byte(*a.Args), &arr) == nil {
+				it["args"] = arr
+			} else {
+				it["args"] = *a.Args
+			}
+		}
+		if a.CoverAt != nil {
+			// Загруженные байты в файл не кладём: обложка останется в своём
+			// клубе, в другом её надо загрузить заново или дать ссылку.
+			it["cover_uploaded"] = true
+		}
+		items = append(items, it)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"version":     catalogExportVer,
+		"exported_at": time.Now().UTC().Format(time.RFC3339),
+		"games_root":  settingString(gamesRootKey, ""),
+		"count":       len(items),
+		"apps":        items,
+	})
+}
+
+type catalogImportRequest struct {
+	Apps   []catalogFields `json:"apps"`
+	DryRun bool            `json:"dry_run"`
+}
+
+// POST /admin/catalog/import — массовое наполнение каталога (owner).
+// Семантика (решения 27.08): только upsert — записи, которых нет в файле,
+// остаются нетронутыми; enabled из файла уважается, если поле прислано;
+// у существующей записи меняются ТОЛЬКО присланные поля (пустая строка —
+// очистить, отсутствие поля — не трогать). dry_run=true считает план, ничего
+// не записывая; запись идёт одной транзакцией — либо всё, либо ничего.
+func handleAdminCatalogImport(c *gin.Context) {
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxImportBytes+1))
+	if err != nil || len(bytes.TrimSpace(body)) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Пустое тело запроса"})
+		return
+	}
+	if len(body) > maxImportBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"code": "import_too_big",
+			"message": fmt.Sprintf("Файл импорта — до %d МБ", maxImportBytes>>20)})
+		return
+	}
+	var req catalogImportRequest
+	trimmed := bytes.TrimSpace(body)
+	if trimmed[0] == '[' { // голый массив записей — тоже принимаем
+		if err := json.Unmarshal(trimmed, &req.Apps); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_json", "message": "JSON не разобрался: " + err.Error()})
+			return
+		}
+	} else if err := json.Unmarshal(trimmed, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_json", "message": "JSON не разобрался: " + err.Error()})
+		return
+	}
+	if c.Query("dry_run") == "1" {
+		req.DryRun = true
+	}
+	if len(req.Apps) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "empty_import",
+			"message": `Ни одной записи. Ожидается массив или {"apps":[…]}`})
+		return
+	}
+	if len(req.Apps) > maxImportApps {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "import_too_many",
+			"message": fmt.Sprintf("За один раз — до %d записей", maxImportApps)})
+		return
+	}
+
+	var all []models.CatalogApp
+	db.Find(&all)
+	existing := make(map[string]*models.CatalogApp, len(all))
+	for i := range all {
+		existing[all[i].ID] = &all[i]
+	}
+
+	type importStep struct {
+		f       *catalogFields
+		isOld   bool
+		changes []string
+	}
+	steps := make([]importStep, 0, len(req.Apps))
+	plan := make([]gin.H, 0, len(req.Apps))
+	errs := make([]gin.H, 0)
+	seen := make(map[string]int, len(req.Apps))
+	created, updated, unchanged := 0, 0, 0
+	for i := range req.Apps {
+		f := &req.Apps[i]
+		f.ID = strings.TrimSpace(f.ID)
+		if prev, dup := seen[f.ID]; dup {
+			errs = append(errs, gin.H{"index": i, "id": f.ID, "code": "duplicate_id",
+				"message": fmt.Sprintf("id повторяется (уже в записи №%d)", prev+1)})
+			continue
+		}
+		seen[f.ID] = i
+		old, isOld := existing[f.ID]
+		if code, msg := validateCatalogFields(f, !isOld); code != "" {
+			errs = append(errs, gin.H{"index": i, "id": f.ID, "code": code, "message": msg})
+			continue
+		}
+		row := gin.H{"index": i, "id": f.ID}
+		step := importStep{f: f, isOld: isOld}
+		if isOld {
+			step.changes = catalogImportChanges(f, old)
+			if len(step.changes) == 0 {
+				unchanged++
+			} else {
+				updated++
+			}
+			row["action"] = "update"
+			row["name"] = old.Name
+			row["changes"] = step.changes
+		} else {
+			created++
+			row["action"] = "create"
+			if f.Name != nil {
+				row["name"] = strings.TrimSpace(*f.Name)
+			}
+		}
+		steps = append(steps, step)
+		plan = append(plan, row)
+	}
+	if len(errs) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "import_invalid", "total": len(req.Apps),
+			"message": fmt.Sprintf("Ошибок в файле: %d — ничего не сохранено", len(errs)),
+			"errors":  errs, "items": plan})
+		return
+	}
+	if req.DryRun {
+		c.JSON(http.StatusOK, gin.H{"dry_run": true, "total": len(req.Apps), "created": created,
+			"updated": updated, "unchanged": unchanged, "items": plan})
+		return
+	}
+
+	err = db.Transaction(func(tx *gorm.DB) error {
+		for _, st := range steps {
+			f := st.f
+			if st.isOld {
+				// нечего менять — не трогаем строку, чтобы updated_at остался
+				// честной датой последней правки (его читает и админка)
+				if len(st.changes) == 0 {
+					continue
+				}
+				if e := tx.Model(&models.CatalogApp{}).Where("id = ?", f.ID).
+					Updates(catalogImportUpdates(f)).Error; e != nil {
+					return e
+				}
+				continue
+			}
+			args, _, _ := normalizeArgs(f.Args)
+			app := models.CatalogApp{
+				ID: f.ID, Name: strings.TrimSpace(*f.Name), Category: strings.TrimSpace(*f.Category),
+				Subtitle: trimPtr(f.Subtitle), Tag: trimPtr(f.Tag), Emoji: trimPtr(f.Emoji),
+				ColorA: trimPtr(f.ColorA), ColorB: trimPtr(f.ColorB),
+				Target: trimPtr(f.Target), Args: args, CoverURL: trimPtr(f.CoverURL),
+				Sort: 100, Enabled: true, UpdatedAt: time.Now(),
+			}
+			if f.Sort != nil {
+				app.Sort = *f.Sort
+			}
+			if f.Enabled != nil {
+				app.Enabled = *f.Enabled
+			}
+			if e := tx.Create(&app).Error; e != nil {
+				return e
+			}
+			// enabled=false отдельным UPDATE: у колонки DEFAULT TRUE, а GORM
+			// не пишет в INSERT нулевые значения полей с тегом default —
+			// выключенная в файле запись иначе приезжала бы включённой.
+			if f.Enabled != nil && !*f.Enabled {
+				if e := tx.Model(&models.CatalogApp{}).Where("id = ?", f.ID).
+					Update("enabled", false).Error; e != nil {
+					return e
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+	logAdminAction(c, "catalog_import", nil,
+		fmt.Sprintf("импорт каталога: %d записей (+%d новых, %d обновлено, %d без изменений)",
+			len(req.Apps), created, updated, unchanged))
+	c.JSON(http.StatusOK, gin.H{"ok": true, "total": len(req.Apps), "created": created,
+		"updated": updated, "unchanged": unchanged, "items": plan})
+}
+
+// catalogImportUpdates — колонки, которые импорт меняет у существующей записи:
+// только присланные. Пустая строка очищает поле, отсутствие поля — не трогает.
+func catalogImportUpdates(f *catalogFields) map[string]any {
+	up := map[string]any{"updated_at": time.Now()}
+	set := func(col string, v *string) {
+		if v == nil {
+			return
+		}
+		if t := strings.TrimSpace(*v); t != "" {
+			up[col] = t
+		} else {
+			up[col] = nil
+		}
+	}
+	if f.Name != nil {
+		up["name"] = strings.TrimSpace(*f.Name)
+	}
+	if f.Category != nil {
+		up["category"] = strings.TrimSpace(*f.Category)
+	}
+	set("subtitle", f.Subtitle)
+	set("tag", f.Tag)
+	set("emoji", f.Emoji)
+	set("color_a", f.ColorA)
+	set("color_b", f.ColorB)
+	set("target", f.Target)
+	set("cover_url", f.CoverURL)
+	if len(bytes.TrimSpace(f.Args)) > 0 {
+		if args, ok, _ := normalizeArgs(f.Args); ok {
+			if args != nil {
+				up["args"] = *args
+			} else {
+				up["args"] = nil
+			}
+		}
+	}
+	if f.Sort != nil {
+		up["sort"] = *f.Sort
+	}
+	if f.Enabled != nil {
+		up["enabled"] = *f.Enabled
+	}
+	return up
+}
+
+// catalogImportChanges — какие поля реально изменятся (для превью импорта).
+func catalogImportChanges(f *catalogFields, old *models.CatalogApp) []string {
+	// args в БД — jsonb: Postgres хранит его со своими пробелами, поэтому
+	// сравниваем оба значения в одном (компактном) виде, иначе реимпорт
+	// собственного экспорта показывал бы «изменился args» на ровном месте.
+	oldArgs := deref(old.Args)
+	if oldArgs != "" {
+		if v, ok, _ := normalizeArgs(json.RawMessage(oldArgs)); ok {
+			oldArgs = ""
+			if v != nil {
+				oldArgs = *v
+			}
+		}
+	}
+	cur := map[string]string{
+		"name": old.Name, "category": old.Category,
+		"subtitle": deref(old.Subtitle), "tag": deref(old.Tag), "emoji": deref(old.Emoji),
+		"color_a": deref(old.ColorA), "color_b": deref(old.ColorB),
+		"target": deref(old.Target), "cover_url": deref(old.CoverURL), "args": oldArgs,
+	}
+	next := catalogImportUpdates(f)
+	changed := make([]string, 0, 4)
+	for _, col := range []string{"name", "category", "subtitle", "tag", "emoji",
+		"color_a", "color_b", "target", "cover_url", "args"} {
+		v, sent := next[col]
+		if !sent {
+			continue
+		}
+		s := ""
+		if v != nil {
+			s = fmt.Sprint(v)
+		}
+		if s != cur[col] {
+			changed = append(changed, col)
+		}
+	}
+	if v, sent := next["sort"]; sent && v.(int) != old.Sort {
+		changed = append(changed, "sort")
+	}
+	if v, sent := next["enabled"]; sent && v.(bool) != old.Enabled {
+		changed = append(changed, "enabled")
+	}
+	return changed
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
