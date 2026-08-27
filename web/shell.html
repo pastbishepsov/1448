@@ -403,6 +403,40 @@
     justify-content:center; color:#f4f2f4; filter:drop-shadow(0 3px 12px rgba(0,0,0,.55))}
   .game.client .gemblem svg{width:54px; height:54px}
   .game.client:hover .gemblem{color:var(--acc); transform:translateZ(30px) scale(1.05)}
+  /* — П3: состояние приложения на ЭТОМ ПК (GET /apps-status у агента) — */
+  .gstate{position:absolute; top:8px; right:8px; z-index:3; font-size:10px; font-weight:800;
+    letter-spacing:.02em; padding:3px 8px; border-radius:999px; white-space:nowrap; line-height:1.35;
+    background:rgba(6,6,8,.82); border:1px solid rgba(255,255,255,.13); color:var(--dim)}
+  .game.st-off .art{filter:grayscale(1) brightness(.5)}
+  .game.st-off .tag, .game.st-off .meta .n{opacity:.5}
+  .game.st-off, .app.st-off{opacity:.78; cursor:not-allowed}
+  .game.st-off:hover{transform:none; border-color:var(--hair); box-shadow:none}
+  .app.st-off:hover{transform:none; border-color:var(--hair)}
+  .game.st-off:hover::after{opacity:0}
+  .game.st-off:hover .gemblem, .game.st-off .gemblem{color:#5a5a63; transform:none}
+  .game.st-off:hover .tag{transform:none; background:linear-gradient(180deg,#fff 20%,#6f6f78 115%);
+    -webkit-background-clip:text; background-clip:text}
+  .st-off .gstate{color:#9a9aa4; border-color:rgba(255,255,255,.1)}
+  .st-off .gstate::before{content:"⛔"; margin-right:4px; font-size:9px}
+  .game.st-launching{border-color:var(--acc2)}
+  .st-launching .gstate{color:#e8e6ec; border-color:rgba(201,204,214,.5)}
+  .st-launching .gstate::before{content:""; display:inline-block; width:6px; height:6px; margin-right:5px;
+    border-radius:50%; background:var(--acc2); vertical-align:middle; animation:gpulse 1.1s infinite}
+  @keyframes gpulse{0%,100%{opacity:.2; transform:scale(.7)}50%{opacity:1; transform:scale(1)}}
+  .game.st-running{border-color:var(--acc); box-shadow:0 10px 26px rgba(0,0,0,.45), var(--glow)}
+  .st-running .gstate{color:#ffd2d8; border-color:rgba(255,39,64,.55); background:rgba(60,6,12,.85)}
+  .st-running .gstate::before{content:"●"; margin-right:4px; color:var(--acc); font-size:9px}
+  .app .gstate{position:static; margin-top:1px}
+  .app.st-launching{border-color:var(--acc2)}
+  .app.st-running{border-color:var(--acc)}
+  /* демо-данные и «каталог не приехал» — гость должен понимать, что видит */
+  .demochip{display:inline-block; vertical-align:middle; margin-left:9px; padding:2px 8px;
+    border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.02em; color:var(--acc2);
+    background:rgba(201,204,214,.08); border:1px solid rgba(201,204,214,.32)}
+  .cat-offline{border:1px solid var(--hair); background:var(--card); border-radius:16px;
+    padding:26px 20px; text-align:center; margin:6px 0 26px}
+  .cat-offline .t{font-weight:800; font-size:15px; margin-bottom:6px}
+  .cat-offline .h{font-size:12.5px; color:var(--dim); line-height:1.5}
   /* — иконки приложений/системы — */
   .aicon{display:flex; align-items:center; justify-content:center; height:34px; color:#e6e4ea;
     transition:color .18s, transform .18s var(--smooth)}
@@ -1011,6 +1045,20 @@ const SH_RU = {
   launch_agent_err_def: "ошибка агента",
   launch_on_pc: "🖥 {n} запускается на игровом ПК клуба",
   launch_failed: "⚠ Не удалось запустить: {id}",
+  st_unavail: "недоступна",
+  st_launching: "запускается…",
+  st_running: "запущена",
+  launch_wait: "⏳ {n} уже запускается — подожди",
+  launch_started: "✅ {n} запущена",
+  launch_running: "✅ {n} уже запущена на этом ПК",
+  launch_noconfirm: "⚠ {n} не подтвердила запуск. Если экран не сменился — позови админа",
+  na_path_unreachable: "🚫 {n}: диск с играми сейчас недоступен. Позови админа — он подключит",
+  na_target_missing: "🚫 {n} не установлена на этом ПК",
+  na_not_allowed: "🚫 {n} не разрешена на этом ПК",
+  na_default: "🚫 {n} сейчас недоступна на этом ПК",
+  cat_demo: "демо-каталог",
+  cat_offline: "Каталог клуба сейчас недоступен",
+  cat_offline_hint: "Сервер не отвечает — пробуем снова. Если игры не появятся, позови админа",
   ch_head: "Связь с админом",
   ch_close: "Закрыть",
   ch_call_title: "Позвать админа к ПК",
@@ -1416,6 +1464,20 @@ const SH_EN = {
   launch_agent_err_def: "agent error",
   launch_on_pc: "🖥 {n} is starting on the club PC",
   launch_failed: "⚠ Could not launch: {id}",
+  st_unavail: "unavailable",
+  st_launching: "starting…",
+  st_running: "running",
+  launch_wait: "⏳ {n} is already starting — hold on",
+  launch_started: "✅ {n} is running",
+  launch_running: "✅ {n} is already running on this PC",
+  launch_noconfirm: "⚠ {n} did not confirm the start. If the screen did not change, call the admin",
+  na_path_unreachable: "🚫 {n}: the games drive is unreachable right now. Call the admin — they will reconnect it",
+  na_target_missing: "🚫 {n} is not installed on this PC",
+  na_not_allowed: "🚫 {n} is not allowed on this PC",
+  na_default: "🚫 {n} is unavailable on this PC right now",
+  cat_demo: "demo catalog",
+  cat_offline: "The club catalog is unavailable",
+  cat_offline_hint: "The server is not responding — retrying. If games do not show up, call the admin",
   ch_head: "Talk to the admin",
   ch_close: "Close",
   ch_call_title: "Call the admin to your PC",
@@ -1821,6 +1883,20 @@ const SH_PL = {
   launch_agent_err_def: "błąd agenta",
   launch_on_pc: "🖥 {n} uruchamia się na klubowym PC",
   launch_failed: "⚠ Nie udało się uruchomić: {id}",
+  st_unavail: "niedostępna",
+  st_launching: "uruchamia się…",
+  st_running: "uruchomiona",
+  launch_wait: "⏳ {n} już się uruchamia — poczekaj",
+  launch_started: "✅ {n} uruchomiona",
+  launch_running: "✅ {n} jest już uruchomiona na tym PC",
+  launch_noconfirm: "⚠ {n} nie potwierdziła startu. Jeśli ekran się nie zmienił — zawołaj admina",
+  na_path_unreachable: "🚫 {n}: dysk z grami jest teraz niedostępny. Zawołaj admina — podłączy go",
+  na_target_missing: "🚫 {n} nie jest zainstalowana na tym PC",
+  na_not_allowed: "🚫 {n} nie jest dozwolona na tym PC",
+  na_default: "🚫 {n} jest teraz niedostępna na tym PC",
+  cat_demo: "katalog demo",
+  cat_offline: "Katalog klubu jest niedostępny",
+  cat_offline_hint: "Serwer nie odpowiada — próbujemy ponownie. Jeśli gry się nie pojawią, zawołaj admina",
   ch_head: "Kontakt z adminem",
   ch_close: "Zamknij",
   ch_call_title: "Zawołaj admina do PC",
@@ -2221,41 +2297,37 @@ function langSwitch(cls){
 
 const AVATARS = ['😎','🦊','🐯','🐼','🐸','👾','🤖','🐺','🦁','🐨','🐵','🐙']; // avatar_id 1..12
 
-/* Каталог гостевого экрана. Приоритет: игры → приложения → система.
-   type:'proto' — запуск через протокол ОС (работает уже сейчас, если программа установлена),
-   type:'url' — открыть в браузере, type:'agent' — запуск с ПК через shell-agent (спринт 2). */
-/* Каталог грузится с сервера (GET /catalog, редактируется в админке).
-   Встроенный ниже — запасной на случай недоступности API.
-   id — ключ allowlist агента; если агент запущен, запуск идёт через него,
-   иначе fallback: proto/url прямо из браузера. */
-const FALLBACK_CATALOG = {
+/* ДЕМО-КАТАЛОГ (П3). Это НЕ каталог клуба: настоящий приезжает с сервера
+   (GET /catalog, редактируется в админке). Список ниже — витрина для показа
+   в браузере без сервера и без агента. Он намеренно короткий: длинный
+   разъезжался с БД и обещал гостю игры, которых на конкретном ПК нет.
+   На клубном ПК (нативный киоск или живой агент) фолбэк НЕ показывается —
+   если сервер молчит, честнее сказать «каталог недоступен», чем подсунуть
+   чужой список. Когда демо всё-таки на экране, в шапке висит чип «демо-каталог».
+   id — ключ allowlist агента; type:'proto' — протокол ОС, 'url' — браузер,
+   'agent' — только через shell-agent. */
+const DEMO_CATALOG = {
   // клиенты платформ — запускаемые карточки в шапках групп игр (game.sub = platform.name)
   platforms: [
-    {id:'steam',     name:'Steam',      em:'🎮', launch:{type:'proto', uri:'steam://open/main'}},
-    {id:'riot',      name:'Riot Games', em:'⚡', launch:{type:'agent'}},
-    {id:'epic',      name:'Epic Games', em:'🎪', launch:{type:'proto', uri:'com.epicgames.launcher://'}},
-    {id:'battlenet', name:'Battle.net', em:'🌀', launch:{type:'agent'}},
-    {id:'faceit',    name:'FACEIT',     em:'🎯', launch:{type:'url', uri:'https://www.faceit.com'}},
+    {id:'steam', name:'Steam',      em:'🎮', launch:{type:'proto', uri:'steam://open/main'}},
+    {id:'riot',  name:'Riot Games', em:'⚡', launch:{type:'agent'}},
+    {id:'epic',  name:'Epic Games', em:'🎪', launch:{type:'proto', uri:'com.epicgames.launcher://'}},
   ],
   games: [
     {id:'cs2',      name:'Counter-Strike 2', sub:'Steam',      tag:'CS2',  launch:{type:'proto', uri:'steam://rungameid/730'}},
     {id:'dota2',    name:'Dota 2',           sub:'Steam',      tag:'DOTA', launch:{type:'proto', uri:'steam://rungameid/570'}},
     {id:'gta5',     name:'GTA V',            sub:'Steam',      tag:'GTA',  launch:{type:'proto', uri:'steam://rungameid/271590'}},
     {id:'apex',     name:'Apex Legends',     sub:'Steam',      tag:'APEX', launch:{type:'proto', uri:'steam://rungameid/1172470'}},
-    {id:'pubg',     name:'PUBG',             sub:'Steam',      tag:'PUBG', launch:{type:'proto', uri:'steam://rungameid/578080'}},
-    {id:'rivals',   name:'Marvel Rivals',    sub:'Steam',      tag:'MR',   launch:{type:'proto', uri:'steam://rungameid/2767030'}},
     {id:'valorant', name:'Valorant',         sub:'Riot Games', tag:'VAL',  launch:{type:'agent'}},
-    {id:'lol',      name:'League of Legends',sub:'Riot Games', tag:'LoL',  launch:{type:'agent'}},
     {id:'fortnite', name:'Fortnite',         sub:'Epic Games', tag:'FN',   launch:{type:'proto', uri:'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true'}},
-    {id:'ow2',      name:'Overwatch 2',      sub:'Battle.net', tag:'OW2',  launch:{type:'proto', uri:'battlenet://Pro'}},
   ],
   apps: [ // sub — папка приложения (пусто = «Другие»)
-    {id:'discord',   name:'Discord',      sub:'Коммуникация', em:'💬', launch:{type:'proto', uri:'discord://'}},
-    {id:'teamspeak', name:'TeamSpeak',    sub:'Коммуникация', em:'🎙', launch:{type:'agent'}},
-    {id:'browser',   name:'Google Chrome',em:'🌐', launch:{type:'url',   uri:'https://www.google.com'}},
-    {id:'spotify',   name:'Spotify',      em:'🎵', launch:{type:'proto', uri:'spotify:'}},
-    {id:'obs',       name:'OBS Studio',   em:'📹', launch:{type:'agent'}},
+    {id:'discord', name:'Discord',       sub:'Коммуникация', em:'💬', launch:{type:'proto', uri:'discord://'}},
+    {id:'browser', name:'Google Chrome', em:'🌐', launch:{type:'url',   uri:'https://www.google.com'}},
+    {id:'spotify', name:'Spotify',       em:'🎵', launch:{type:'proto', uri:'spotify:'}},
   ],
+  // системные настройки Windows открываются протоколом ms-settings: прямо из
+  // браузера (BROWSER_PROTO) — они не «игры клуба» и в демо остаются целиком
   system: [
     {id:'sound',   name:'Звук',    em:'🔊', launch:{type:'agent'}},
     {id:'mouse',   name:'Мышь',    em:'🖱', launch:{type:'agent'}},
@@ -2263,7 +2335,10 @@ const FALLBACK_CATALOG = {
     {id:'nvidia',  name:'NVIDIA',  em:'◆', launch:{type:'agent'}},
   ],
 };
-let CATALOG = FALLBACK_CATALOG;
+const EMPTY_CATALOG = {platforms:[], games:[], apps:[], system:[]};
+let CATALOG = DEMO_CATALOG;
+let catalogDemo = true;   // на экране демо-данные, а не каталог клуба
+let catalogDown = false;  // сервер каталог не отдал, и подменять его нечем
 
 // target → способ запуска без агента: URL в браузер, протокол через iframe,
 // exe-путь (C:\...) — только агентом.
@@ -2279,10 +2354,13 @@ function mapCatalogRow(r){
     id: r.id, name: r.name, sub: r.subtitle || '', tag: r.tag || '',
     g: [r.color_a || '#170a0d', r.color_b || '#0b0b0d'],
     em: r.emoji || '🎮',
+    cover: r.cover_url || r.cover || '',   // П3: обложка из каталога (пакет 1)
     launch: launchFromTarget(r.target),
   };
 }
+let catRetryIv = null;
 async function loadCatalog(){
+  let ok = false;
   try{
     const r = await fetch(API + '/catalog');
     if (r.ok){
@@ -2293,9 +2371,22 @@ async function loadCatalog(){
         apps:   (d.apps  ||[]).map(mapCatalogRow),
         system: (d.system||[]).map(mapCatalogRow),
       };
+      ok = true;
     }
-  }catch(e){ /* остаёмся на встроенном каталоге */ }
+  }catch(e){ /* сервер молчит — что показать, решаем ниже */ }
+  if (ok){
+    catalogDemo = false; catalogDown = false;
+    if (catRetryIv){ clearInterval(catRetryIv); catRetryIv = null; }
+  } else if (isClubPC()){
+    // П3: на клубном ПК демо-список — вранье (этих игр тут может не быть).
+    // Честная заглушка + тихий повтор: сервер поднимут, витрина сама наполнится.
+    CATALOG = EMPTY_CATALOG; catalogDemo = false; catalogDown = true;
+    if (!catRetryIv) catRetryIv = setInterval(loadCatalog, 60000);
+  } else {
+    CATALOG = DEMO_CATALOG; catalogDemo = true; catalogDown = false;
+  }
   renderCatalog();
+  pollAppsStatus(); // состав каталога изменился — уточним доступность
 }
 
 /* монохромные глифы — цвет задаёт красная шкала --t-* (редкость = ярче/краснее) */
@@ -2375,11 +2466,22 @@ const ICONS = {
   nvidia: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.948 8.798v-1.43a6.7 6.7 0 0 1 .424-.018c3.922-.124 6.493 3.374 6.493 3.374s-2.774 3.851-5.75 3.851c-.398 0-.787-.062-1.158-.185v-4.346c1.528.185 1.837.857 2.747 2.385l2.04-1.714s-1.492-1.952-4-1.952a6.016 6.016 0 0 0-.796.035m0-4.735v2.138l.424-.027c5.45-.185 9.01 4.47 9.01 4.47s-4.08 4.964-8.33 4.964c-.37 0-.733-.035-1.095-.097v1.325c.3.035.61.062.91.062 3.957 0 6.82-2.023 9.593-4.408.459.371 2.34 1.263 2.73 1.652-2.633 2.208-8.772 3.984-12.253 3.984-.335 0-.653-.018-.971-.053v1.864H24V4.063zm0 10.326v1.131c-3.657-.654-4.673-4.46-4.673-4.46s1.758-1.944 4.673-2.262v1.237H8.94c-1.528-.186-2.73 1.245-2.73 1.245s.68 2.412 2.739 3.11M2.456 10.9s2.164-3.197 6.5-3.533V6.201C4.153 6.59 0 10.653 0 10.653s2.35 6.802 8.948 7.42v-1.237c-4.84-.6-6.492-5.936-6.492-5.936z"/></svg>`,
 };
 
-/* Обложки: web/covers/{id}.jpg (600x900, tools/covers/fetch-covers.ps1).
-   id в наборе + файл на месте = плитка с артом; нет файла — виден градиент-fallback. */
-const COVERS = new Set(['cs2','dota2','gta5','apex','pubg','rivals','ow2']); // + 'valorant','lol','fortnite' — когда появятся файлы
-const coverStyle = id => COVERS.has(id)
-  ? ` style="background-image:url('covers/${id}.jpg'), linear-gradient(168deg,#16161b 0%,#0b0b0e 90%)"` : '';
+/* Обложки (П3). Источник истины — каталог из БД: поле cover_url (пакет 1).
+   Фолбэк — локальный файл web/covers/{id}.jpg (600x900, tools/covers/fetch-covers.ps1):
+   он покрывает браузерное демо и клубы, где владелец обложку ещё не задал.
+   Нет ни того, ни другого — плитка рисует градиент и крупный тег, как раньше. */
+const COVERS = new Set(['cs2','dota2','gta5','apex','pubg','rivals','ow2']); // файлы в web/covers
+function coverUrl(it){
+  if (!it) return '';
+  const u = (it.cover || '').trim();
+  if (u) return u;
+  return COVERS.has(it.id) ? 'covers/' + it.id + '.jpg' : '';
+}
+/* url() внутри style-атрибута: адрес обложки задаёт владелец в админке —
+   гасим всё, чем можно закрыть кавычку, скобку или сам атрибут. */
+function cssUrl(u){ return String(u).replace(/[\\"'()\s<>]/g, c => '%' + c.charCodeAt(0).toString(16).padStart(2,'0')); }
+const coverStyle = it => { const u = coverUrl(it);
+  return u ? ` style="background-image:url('${cssUrl(u)}'), linear-gradient(168deg,#16161b 0%,#0b0b0e 90%)"` : ''; };
 
 /* ═══════════════ СОСТОЯНИЕ ═══════════════ */
 let me = null, cases = [], talents = null, achievements = null, leaderboard = null, sessions = [];
@@ -2864,23 +2966,105 @@ function openAppGroup(i){ if (catAppGroups[i]){ catFolder = {t:'appgrp', name:ca
 function closeCatFolder(){ catFolder = null; renderCatalog(); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && catFolder) closeCatFolder(); });
 
+/* ═════════ П3: СОСТОЯНИЕ ПРИЛОЖЕНИЯ НА ЭТОМ ПК ═════════
+   Данные — из GET http://127.0.0.1:1448/apps-status агента (пакет 2, см.
+   docs/ВИТРИНА-ИГР.md). Нет агента или нет эндпоинта → appState() пустой,
+   и плитка выглядит и ведёт себя ровно так же, как до П3.
+   Три состояния: off — агент говорит «путь недоступен»; launching — гость
+   нажал, процесса ещё нет; running — агент видит процесс. */
+let appsStatus = null;     // {id: {available, reason}} | null — данных нет
+let appsStatusOk = false;  // эндпоинт существует и ответил
+let runningApp = null;     // {app_id, pid, since} | null
+const LAUNCH_TIMEOUT = 45000;      // столько ждём появления процесса
+let launching = {}, launchTimers = {};
+/* коды reason от агента → строка для гостя (не «path_unreachable», а по-человечески) */
+const NA_REASON = {
+  path_unreachable: 'na_path_unreachable',
+  target_missing:   'na_target_missing',
+  not_installed:    'na_target_missing',
+  not_allowed:      'na_not_allowed',
+  not_in_allowlist: 'na_not_allowed',
+};
+const ST_KEY = {off:'st_unavail', launching:'st_launching', running:'st_running'};
+
+function appState(id){
+  if (!id) return '';
+  if (runningApp && runningApp.app_id === id) return 'running';
+  if (launching[id]) return 'launching';
+  const s = appsStatus && appsStatus[id];
+  if (s && s.available === false) return 'off';
+  return '';
+}
+function stCls(id){ const s = appState(id); return s ? ' st-' + s : ''; }
+function stBadge(id){
+  const s = appState(id);
+  return s ? `<span class="gstate">${esc(STR[ST_KEY[s]])}</span>` : '';
+}
+function appById(id){
+  for (const k of ['games','apps','system','platforms']){
+    const it = (CATALOG[k] || []).find(x => x.id === id);
+    if (it) return it;
+  }
+  return null;
+}
+function appTitle(id){ const it = appById(id); return appName(it ? it.name : id); }
+/* Перекрашиваем уже отрисованные плитки, а не перерисовываем витрину:
+   полный renderCatalog каждые 20 с сбрасывал бы анимацию появления. */
+function paintAppStates(){
+  document.querySelectorAll('[data-app]').forEach(el => {
+    const s = appState(el.getAttribute('data-app'));
+    el.classList.toggle('st-off', s === 'off');
+    el.classList.toggle('st-launching', s === 'launching');
+    el.classList.toggle('st-running', s === 'running');
+    let b = el.querySelector(':scope > .gstate');
+    if (!s){ if (b) b.remove(); return; }
+    if (!b){
+      b = document.createElement('span'); b.className = 'gstate';
+      if (el.classList.contains('app')) el.appendChild(b); else el.prepend(b);
+    }
+    b.textContent = STR[ST_KEY[s]];
+  });
+}
+function markLaunching(id){
+  if (!id) return;
+  launching[id] = Date.now();
+  if (launchTimers[id]) clearTimeout(launchTimers[id]);
+  launchTimers[id] = setTimeout(() => {
+    if (!launching[id]) return;
+    clearLaunching(id);
+    // со старым агентом (нет /apps-status) подтверждать нечем — молча гасим,
+    // с новым молчание значит, что процесс так и не появился
+    if (appsStatusOk) toast(T('launch_noconfirm', {n: appTitle(id)}));
+  }, LAUNCH_TIMEOUT);
+  paintAppStates();
+  bumpAppsPoll(); // ждём процесс — опрашиваем агента чаще
+}
+function clearLaunching(id){
+  if (!id || !launching[id]) return;
+  delete launching[id];
+  if (launchTimers[id]){ clearTimeout(launchTimers[id]); delete launchTimers[id]; }
+  paintAppStates();
+}
+
 function renderCatalog(){
   catGroups = buildCatGroups();
   catAppGroups = buildAppGroups();
   const favs = (me && me.favorite_games) || []; // Г8-и5: любимые игры из анкеты
   const area = document.getElementById('catalogArea');
   const gameTile = ({g,i}) => `
-    <div class="game${COVERS.has(g.id)?' hasart':''}" onclick="launch('games',${i})">
+    <div class="game${coverUrl(g)?' hasart':''}${stCls(g.id)}" data-app="${esc(g.id)}" onclick="launch('games',${i})">
+      ${stBadge(g.id)}
       ${favs.includes(g.id) ? '<span class="favstar">★</span>' : ''}
-      <div class="art"${coverStyle(g.id)}></div>
+      <div class="art"${coverStyle(g)}></div>
       <span class="tag">${esc(g.tag || g.name[0])}</span>
       <div class="gemblem">${ICONS[g.id] || ''}</div>
       <div class="meta"><div class="n">${esc(g.name)}</div><div class="s">${esc(grpName(g.sub))}</div></div>
     </div>`;
   const appTile = (cat,a,i) => `
-    <div class="app" onclick="launch('${cat}',${i})">
+    <div class="app${stCls(a.id)}" data-app="${esc(a.id)}" onclick="launch('${cat}',${i})">
       <div class="aicon">${ICONS[a.id] || `<span class="em">${a.em||'▪'}</span>`}</div>
       <div class="n">${esc(appName(a.name))}</div>
+      ${stBadge(a.id)}
     </div>`;
   const icon = it => ICONS[it.id] || `<b>${esc(it.tag || (it.em||'') || it.name[0])}</b>`;
   const backBtn = `<button class="plat-btn" onclick="closeCatFolder()">${esc(STR.back)}</button>`;
@@ -2891,7 +3075,8 @@ function renderCatalog(){
   if (gr){
     const n = gr.items.length;
     const clientTile = gr.p ? `
-      <div class="game client" onclick="launch('platforms',${gr.pi})">
+      <div class="game client${stCls(gr.p.id)}" data-app="${esc(gr.p.id)}" onclick="launch('platforms',${gr.pi})">
+        ${stBadge(gr.p.id)}
         <div class="art"></div>
         <div class="gemblem">${ICONS[gr.p.id] || FOLDER_ICON}</div>
         <div class="meta"><div class="n">${esc(gr.p.name)}</div><div class="s">${esc(STR.open_client)}</div></div>
@@ -2907,6 +3092,15 @@ function renderCatalog(){
       <div class="folder-top">${backBtn}${APPGRP_ICONS[ag.name] || FOLDER_ICON}<h2>${esc(grpName(ag.name))}</h2>
         <span class="cnt">${T('n_apps', {n: ag.items.length, w: plApp(ag.items.length)})}</span></div>
       <div class="apps">${ag.items.map(({a,i}) => appTile(ag.sys ? 'system' : 'apps', a, i)).join('')}</div>`;
+  }
+  // ── сервер не отдал каталог, а подменять его демо-списком на клубном ПК нельзя ──
+  else if (catalogDown){
+    catFolder = null;
+    area.innerHTML = `
+      <div class="cat-offline">
+        <div class="t">${esc(STR.cat_offline)}</div>
+        <div class="h">${esc(STR.cat_offline_hint)}</div>
+      </div>`;
   }
   // ── главный экран: (1) популярные игры, (2) платформы, (3) папки приложений ──
   else {
@@ -2936,8 +3130,9 @@ function renderCatalog(){
       T('n_apps', {n: s.items.length, w: plApp(s.items.length)}),
       s.items.slice(0,3).map(({a}) => icon(a)).join('') + (s.items.length > 3 ? '<b>+' + (s.items.length-3) + '</b>' : '')
     )).join('');
+    const demoChip = catalogDemo ? `<span class="demochip">${esc(STR.cat_demo)}</span>` : '';
     area.innerHTML = `
-      <div class="sec-h"><h2>${UI.ctrl} ${esc(STR.cat_games)}</h2><span class="cnt">${favs.length ? esc(STR.cat_fav_first) : esc(STR.cat_popular)}${T('cat_total', {n: CATALOG.games.length})}</span></div>
+      <div class="sec-h"><h2>${UI.ctrl} ${esc(STR.cat_games)}${demoChip}</h2><span class="cnt">${favs.length ? esc(STR.cat_fav_first) : esc(STR.cat_popular)}${T('cat_total', {n: CATALOG.games.length})}</span></div>
       <div class="games">${top.map(x => gameTile(x)).join('')}</div>
       <div class="sec-h"><h2>${UI.rocket} ${esc(STR.cat_platforms)}</h2><span class="cnt">${esc(STR.cat_plat_hint)}</span></div>
       <div class="folders">${platFolders}</div>
@@ -2951,23 +3146,61 @@ function renderCatalog(){
 }
 
 async function launch(cat, i){
-  const item = CATALOG[cat][i];
+  const item = (CATALOG[cat] || [])[i];
+  if (!item) return;
+  /* П3. Раньше любой клик отвечал «Запускаю…» — даже когда игры на ПК нет.
+     Теперь сначала спрашиваем состояние, известное от агента. */
+  const st0 = appState(item.id);
+  if (st0 === 'off'){
+    const s = (appsStatus && appsStatus[item.id]) || {};
+    toast(T(NA_REASON[s.reason] || 'na_default', {n: appName(item.name)}));
+    return;
+  }
+  if (st0 === 'running'){ toast(T('launch_running', {n: appName(item.name)})); return; } // второй раз не запускаем
+  if (st0 === 'launching'){ toast(T('launch_wait', {n: appName(item.name)})); return; }
+  markLaunching(item.id);
   // 0) нативный киоск (WebView2): запуск через C#-мост
   if (NATIVE && item.id){
-    if (nativePost({cmd:'launch', id:item.id})){ toast(T('launching', {n: appName(item.name)})); return; }
+    if (nativePost({cmd:'launch', id:item.id})){ toast(T('launching', {n: appName(item.name)})); return; }  // «запускается» уже висит на плитке
   }
   // 1) через агента (запускает всё: exe, протоколы, настройки)
   if (agentOnline && item.id){
     try{
       const r = await fetch(AGENT + '/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({app_id:item.id})});
-      if (r.ok){ toast(T('launching', {n: appName(item.name)})); return; }
-      if (r.status !== 404){ const d = await r.json().catch(()=>({})); toast(T('launch_agent_err', {m: d.message || STR.launch_agent_err_def})); return; }
+      const d = await r.json().catch(() => ({}));
+      if (r.ok){
+        // пакет 2 отвечает {ok, pid, state}; старый агент — просто {ok:true}
+        if (d.state === 'running' || d.code === 'already_running'){
+          clearLaunching(item.id);
+          runningApp = {app_id:item.id, pid:d.pid || null, since:d.since || null};
+          paintAppStates();
+          toast(T('launch_running', {n: appName(item.name)}));
+        } else {
+          toast(T('launching', {n: appName(item.name)}));
+        }
+        pollAppsStatus();
+        return;
+      }
+      if (r.status !== 404){
+        clearLaunching(item.id);
+        if (d.code === 'already_running'){ toast(T('launch_running', {n: appName(item.name)})); pollAppsStatus(); return; }
+        // агент точно знает, что цели нет — гасим плитку сразу, не дожидаясь опроса
+        if (d.code === 'target_missing' || d.code === 'path_unreachable'){
+          if (!appsStatus) appsStatus = {};
+          appsStatus[item.id] = {available:false, reason:d.code};
+          paintAppStates();
+          toast(T(NA_REASON[d.code] || 'na_default', {n: appName(item.name)}));
+          return;
+        }
+        toast(T('launch_agent_err', {m: d.message || STR.launch_agent_err_def}));
+        return;
+      }
       // 404 = нет в allowlist агента → пробуем fallback ниже
     }catch(e){ agentOnline = false; renderAgentDot(); }
   }
   // 2) fallback без агента (браузерное демо)
   const l = item.launch;
-  if (l.type === 'url'){ window.open(l.uri, '_blank'); return; }
+  if (l.type === 'url'){ clearLaunching(item.id); window.open(l.uri, '_blank'); return; }
   // системные настройки Windows открываются протоколом прямо из браузера
   const proto = l.type === 'proto' ? l.uri : BROWSER_PROTO[item.id];
   if (proto){
@@ -2975,9 +3208,10 @@ async function launch(cat, i){
     const f = document.createElement('iframe');
     f.style.display = 'none'; f.src = proto;
     document.body.appendChild(f); setTimeout(()=>f.remove(), 3000);
-    return;
+    return; // «запускается» на плитке снимет /apps-status или таймаут
   }
   // требует установленной программы на игровом ПК (запустится в киоске/через агента)
+  clearLaunching(item.id);
   toast(T('launch_on_pc', {n: appName(item.name)}));
 }
 // протоколы Windows, работающие из браузера без агента (для type:'agent')
@@ -3249,6 +3483,7 @@ const DEV_TOOLS = (() => { try { return localStorage.getItem('1448_dev') === '1'
 
 let myComputerId = null; // Е1-и5: своя машина — агент знает её с рождения
 async function pingAgent(){
+  const was = agentOnline;
   try{
     const r = await fetch(AGENT + '/ping', {signal: AbortSignal.timeout(1500)});
     agentOnline = r.ok;
@@ -3258,9 +3493,75 @@ async function pingAgent(){
     }
   }catch(e){ agentOnline = false; }
   renderAgentDot();
+  /* П3: агент только что появился — уточняем доступность игр, а на клубном ПК
+     ещё и каталог: демо-список там показывать нельзя. */
+  if (agentOnline && !was){
+    if (me && (catalogDemo || catalogDown)) loadCatalog();
+    pollAppsStatus();
+  } else if (!agentOnline && was){
+    appsStatus = null; runningApp = null; appsStatusOk = false; paintAppStates();
+  }
 }
 pingAgent(); // Е1-и5: свой номер нужен ещё на экране регистрации
 setInterval(pingAgent, 30000);
+
+/* ═════════ П3: ОПРОС GET /apps-status ═════════
+   Контракт (docs/ПРОМПТЫ-ИГРЫ.md, пакет 2):
+     {"apps":{"cs2":{"available":true},
+              "gta5":{"available":false,"reason":"path_unreachable"}},
+      "running":{"app_id":"cs2","pid":1234,"since":"2026-08-27T15:00:00Z"}}
+   Ритм: 20 с в покое, 2.5 с пока ждём запуск (не дольше минуты), 5 минут —
+   если эндпоинта ещё нет (агента дорабатывают, его могут обновить в смену).
+   Без агента не ходим никуда вообще. Любая ошибка — молча: старый агент
+   не должен ронять витрину. */
+const APPS_POLL_IDLE = 20000, APPS_POLL_FAST = 2500, APPS_POLL_MISSING = 300000;
+let appsPollIv = null, appsFastTo = null, appsInFlight = false;
+
+function isClubPC(){ return NATIVE || agentOnline; } // киоск или живой агент = настоящий ПК клуба
+
+function scheduleAppsPoll(ms){
+  if (appsPollIv) clearInterval(appsPollIv);
+  appsPollIv = setInterval(pollAppsStatus, ms);
+}
+function bumpAppsPoll(){
+  scheduleAppsPoll(APPS_POLL_FAST);
+  if (appsFastTo) clearTimeout(appsFastTo);
+  appsFastTo = setTimeout(() => scheduleAppsPoll(appsStatusOk ? APPS_POLL_IDLE : APPS_POLL_MISSING), 60000);
+  pollAppsStatus();
+}
+function appsSnapshot(){ return JSON.stringify([appsStatus, runningApp && runningApp.app_id]); }
+
+async function pollAppsStatus(){
+  if (appsInFlight) return;
+  if (!agentOnline){
+    if (appsStatus || runningApp){ appsStatus = null; runningApp = null; appsStatusOk = false; paintAppStates(); }
+    return;
+  }
+  appsInFlight = true;
+  const before = appsSnapshot();
+  const wasRunning = runningApp && runningApp.app_id;
+  try{
+    const r = await fetch(AGENT + '/apps-status', {signal: AbortSignal.timeout(2000)});
+    if (r.status === 404 || r.status === 501){
+      // агент старой сборки — ведём себя как до П3
+      appsStatusOk = false; appsStatus = null; runningApp = null;
+      scheduleAppsPoll(APPS_POLL_MISSING);
+    } else if (r.ok){
+      const d = await r.json();
+      appsStatusOk = true;
+      appsStatus = (d && d.apps) || {};
+      runningApp = (d && d.running && d.running.app_id) ? d.running : null;
+      const nowRunning = runningApp && runningApp.app_id;
+      if (nowRunning && nowRunning !== wasRunning){
+        if (launching[nowRunning]) toast(T('launch_started', {n: appTitle(nowRunning)}));
+        clearLaunching(nowRunning);
+      }
+    }
+  }catch(e){ /* агент моргнул — состояния не трогаем, следующий тик уточнит */ }
+  finally{ appsInFlight = false; }
+  if (appsSnapshot() !== before) paintAppStates();
+}
+scheduleAppsPoll(APPS_POLL_IDLE);
 
 /* ═══════════════ СЕССИЯ ═══════════════ */
 function renderSession(){
