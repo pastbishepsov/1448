@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -392,5 +395,139 @@ func TestCatalogRoutesRegisterAndMatch(t *testing.T) {
 		if w.Code != http.StatusOK || hit != tc.want {
 			t.Errorf("%s %s → код %d, попал в %q, ожидалось %q", tc.method, tc.path, w.Code, hit, tc.want)
 		}
+	}
+}
+
+// ── Сид каталога пилотного клуба (Фаза 0) ──────────────────────────────────
+//
+// seed/catalog-pilot.json собран из docs/РАЗВЕДКА-ИГРЫ.md и уезжает в клуб
+// кнопкой «Импорт JSON». Тест прогоняет файл ровно теми проверками, что и
+// ручка импорта (handleAdminCatalogImport): лимиты тела и количества,
+// дубликаты id, validateCatalogFields по каждой записи. Ошибка здесь
+// означает, что живой импорт откажет и не сохранит ничего.
+
+// seedPath — путь к сиду от backend/cmd/server.
+const seedPath = "../../../seed/catalog-pilot.json"
+
+// loadSeed — файл сида, разобранный как тело импорта.
+func loadSeed(t *testing.T) ([]byte, []catalogFields) {
+	t.Helper()
+	data, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatalf("сид не читается: %v", err)
+	}
+	var req catalogImportRequest
+	if err := json.Unmarshal(bytes.TrimSpace(data), &req); err != nil {
+		t.Fatalf("сид не разобрался как тело импорта: %v", err)
+	}
+	return data, req.Apps
+}
+
+// seedFull — так же, как импорт, решаем, требовать ли обязательные поля:
+// запись с name/category — новая (полная проверка), запись из одного id —
+// правка существующей (проверяется только присланное).
+func seedFull(f *catalogFields) bool { return f.Name != nil || f.Category != nil }
+
+func TestSeedCatalogPilotPassesImport(t *testing.T) {
+	data, apps := loadSeed(t)
+	if len(data) > maxImportBytes {
+		t.Fatalf("сид %d байт — импорт принимает до %d", len(data), maxImportBytes)
+	}
+	if len(apps) == 0 || len(apps) > maxImportApps {
+		t.Fatalf("в сиде %d записей — импорт принимает 1..%d", len(apps), maxImportApps)
+	}
+	seen := map[string]int{}
+	for i := range apps {
+		f := &apps[i]
+		f.ID = strings.TrimSpace(f.ID)
+		if prev, dup := seen[f.ID]; dup {
+			t.Errorf("запись №%d: id %q повторяется (уже в записи №%d)", i+1, f.ID, prev+1)
+			continue
+		}
+		seen[f.ID] = i
+		if code, msg := validateCatalogFields(f, seedFull(f)); code != "" {
+			t.Errorf("запись №%d (%s): %s — %s", i+1, f.ID, code, msg)
+		}
+	}
+}
+
+// TestSeedCatalogPilotPatchesOnlyExistingRows — записи без name/category
+// (fortnite, lol, ow2, …) импорт считает правкой существующей строки. Если
+// такой строки в базе нет, он потребует name/category и откажет всему файлу.
+// Проверяем, что каждый такой id заведён миграциями.
+func TestSeedCatalogPilotPatchesOnlyExistingRows(t *testing.T) {
+	_, apps := loadSeed(t)
+	entries, err := os.ReadDir("../../migrations")
+	if err != nil {
+		t.Fatalf("миграции не читаются: %v", err)
+	}
+	var sql strings.Builder
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join("../../migrations", e.Name()))
+		if err != nil {
+			t.Fatalf("%s: %v", e.Name(), err)
+		}
+		sql.Write(b)
+	}
+	all := sql.String()
+	for i := range apps {
+		f := &apps[i]
+		if seedFull(f) {
+			continue
+		}
+		if !strings.Contains(all, "('"+f.ID+"',") {
+			t.Errorf("запись №%d (%s): без name/category, но миграции такой строки не заводят — импорт ответит bad_name",
+				i+1, f.ID)
+		}
+	}
+}
+
+// TestSeedCatalogPilotGamesRoot — как ложится корень клуба на пути сида:
+// {GAMES} разворачивается без двойных слэшей и без остатка шаблона, и точно
+// так же на ПК с другой буквой диска. Абсолютные пути (EA app, CS 1.6 из
+// чужого образа) корнем не задеваются, steam:// — тем более.
+func TestSeedCatalogPilotGamesRoot(t *testing.T) {
+	_, apps := loadSeed(t)
+	roots := []string{`D:\online`, `D:\online\`, `E:\games\online`, `\\nas\online`}
+	tmpl, steam, abs := 0, 0, 0
+	for _, root := range roots {
+		if ok, msg := validateGamesRoot(root); !ok {
+			t.Fatalf("корень %q забракован: %s", root, msg)
+		}
+		for i := range apps {
+			f := &apps[i]
+			if f.Target == nil || *f.Target == "" {
+				continue
+			}
+			got := expandGames(*f.Target, root)
+			if strings.Contains(got, gamesPlaceholder) {
+				t.Errorf("%s: {GAMES} остался в %q", f.ID, got)
+			}
+			if strings.Contains(strings.TrimPrefix(got, `\\`), `\\`) {
+				t.Errorf("%s: двойной слэш в %q (корень %q)", f.ID, got, root)
+			}
+			if root == roots[0] {
+				switch {
+				case strings.Contains(*f.Target, gamesPlaceholder):
+					tmpl++
+					if !strings.HasPrefix(got, `D:\online\`) {
+						t.Errorf("%s: %q не под корнем клуба", f.ID, got)
+					}
+				case strings.HasPrefix(*f.Target, "steam://"):
+					steam++
+					if got != *f.Target {
+						t.Errorf("%s: steam-цель изменилась: %q", f.ID, got)
+					}
+				default:
+					abs++
+				}
+			}
+		}
+	}
+	if tmpl == 0 || steam == 0 || abs == 0 {
+		t.Errorf("сид потерял вид целей: {GAMES}=%d steam=%d абсолютных=%d", tmpl, steam, abs)
 	}
 }

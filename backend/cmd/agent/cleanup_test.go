@@ -86,3 +86,56 @@ func TestSessionEndOrder(t *testing.T) {
 		t.Error("при stop_on_session_end=false трекинг не трогаем")
 	}
 }
+
+// ── %ПЕРЕМЕННЫЕ% в путях очистки (Фаза 0) ──────────────────────────────────
+//
+// Имя гостевой учётки на каждом ПК своё (в пилотном клубе support), поэтому
+// сейвы и кэш адресуются через %LOCALAPPDATA% / %USERPROFILE%, а не буквой.
+
+func TestExpandEnvPath(t *testing.T) {
+	env := map[string]string{
+		"LOCALAPPDATA": `C:\Users\support\AppData\Local`,
+		"USERPROFILE":  `C:\Users\support`,
+		"EMPTY":        "",
+	}
+	getenv := func(k string) string { return env[k] }
+	cases := []struct{ in, want string }{
+		{`%LOCALAPPDATA%\Steam\htmlcache`, `C:\Users\support\AppData\Local\Steam\htmlcache`},
+		{`%USERPROFILE%\Saved Games`, `C:\Users\support\Saved Games`},
+		{`C:\Users\guest\Downloads`, `C:\Users\guest\Downloads`}, // без переменных — как есть
+		{`%EMPTY%\Steam`, ``}, // пустая переменная → путь непригоден
+		{`%NOPE%\Steam`, ``},  // неизвестная переменная → тоже
+	}
+	for _, c := range cases {
+		if got := expandEnvPath(c.in, getenv); got != c.want {
+			t.Errorf("expandEnvPath(%q) = %q, ожидалось %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestCleanupPlanExpandsEnv(t *testing.T) {
+	env := map[string]string{
+		"LOCALAPPDATA": `C:\Users\support\AppData\Local`,
+		"USERPROFILE":  `C:\Users\support`,
+	}
+	getenv := func(k string) string { return env[k] }
+	cfg := CleanupConfig{ClearDirs: []string{
+		`%LOCALAPPDATA%\Steam\htmlcache`, // раскроется и пройдёт проверку
+		`%NOPE%\Steam`,                   // переменной нет — в план как ПРОПУЩЕН
+		`%USERPROFILE%`,                  // раскроется, но глубина < 3 сегментов
+	}}
+	plan := cleanupPlanEnv(cfg, getenv)
+	want := []string{
+		`вычистить содержимое: C:\Users\support\AppData\Local\Steam\htmlcache`,
+		`ПРОПУЩЕН небезопасный путь: %NOPE%\Steam`,
+		`ПРОПУЩЕН небезопасный путь: %USERPROFILE%`,
+	}
+	if len(plan) != len(want) {
+		t.Fatalf("в плане %d шагов, ожидалось %d: %+v", len(plan), len(want), plan)
+	}
+	for i := range want {
+		if plan[i] != want[i] {
+			t.Errorf("шаг %d: %q, ожидалось %q", i+1, plan[i], want[i])
+		}
+	}
+}

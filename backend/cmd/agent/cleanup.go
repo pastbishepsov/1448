@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 )
@@ -30,6 +31,33 @@ type CleanupConfig struct {
 	ClearTemp       bool     `json:"clear_temp"`        // %TEMP% текущего пользователя
 	EmptyRecycleBin bool     `json:"empty_recycle_bin"` // корзина
 	ClearClipboard  bool     `json:"clear_clipboard"`   // буфер обмена
+}
+
+// envVarRe — %LOCALAPPDATA%, %APPDATA%, %USERPROFILE% в путях конфига.
+var envVarRe = regexp.MustCompile(`%([A-Za-z_][A-Za-z0-9_]*)%`)
+
+// expandEnvPath — раскрыть %ПЕРЕМЕННЫЕ% в пути (чистая функция, тест: getenv
+// инжектируется). Имя гостевой учётки на ПК своё (в пилотном клубе — support,
+// в чужом базовом образе был User), поэтому пути сейвов и кэша писать буквой
+// нельзя: один конфиг должен подходить всем ПК. Если переменная пустая —
+// возвращаем пустую строку, а не «полпути»: safeCleanupDir такой путь потом
+// отбракует, и в лог уедет «ПРОПУЩЕН» вместо чистки чего-то не того.
+func expandEnvPath(p string, getenv func(string) string) string {
+	if !strings.Contains(p, "%") {
+		return p
+	}
+	bad := false
+	out := envVarRe.ReplaceAllStringFunc(p, func(m string) string {
+		v := getenv(m[1 : len(m)-1])
+		if strings.TrimSpace(v) == "" {
+			bad = true
+		}
+		return v
+	})
+	if bad {
+		return ""
+	}
+	return out
 }
 
 // safeCleanupDir — можно ли чистить такой путь (чистая функция, тест).
@@ -66,7 +94,10 @@ func safeCleanupDir(path string) bool {
 
 // cleanupPlan — человекочитаемый план действий (чистая функция, тест).
 // Небезопасные пути попадают в план с пометкой «ПРОПУЩЕН» — видно в логе.
-func cleanupPlan(cfg CleanupConfig) []string {
+func cleanupPlan(cfg CleanupConfig) []string { return cleanupPlanEnv(cfg, os.Getenv) }
+
+// cleanupPlanEnv — то же с инжектируемым getenv (для теста).
+func cleanupPlanEnv(cfg CleanupConfig, getenv func(string) string) []string {
 	var plan []string
 	for _, p := range cfg.Kill {
 		if strings.TrimSpace(p) != "" {
@@ -74,8 +105,8 @@ func cleanupPlan(cfg CleanupConfig) []string {
 		}
 	}
 	for _, d := range cfg.ClearDirs {
-		if safeCleanupDir(d) {
-			plan = append(plan, "вычистить содержимое: "+d)
+		if e := expandEnvPath(d, getenv); safeCleanupDir(e) {
+			plan = append(plan, "вычистить содержимое: "+e)
 		} else {
 			plan = append(plan, "ПРОПУЩЕН небезопасный путь: "+d)
 		}
@@ -141,11 +172,12 @@ func runCleanup(cfg CleanupConfig) {
 		}
 	}
 	for _, d := range cfg.ClearDirs {
-		if !safeCleanupDir(d) {
+		e := expandEnvPath(d, os.Getenv)
+		if !safeCleanupDir(e) {
 			continue
 		}
-		rm, fail := clearDirContents(d)
-		log.Printf("🧹 %s: удалено %d, не удалось %d", d, rm, fail)
+		rm, fail := clearDirContents(e)
+		log.Printf("🧹 %s: удалено %d, не удалось %d", e, rm, fail)
 	}
 	if cfg.ClearTemp {
 		rm, fail := clearDirContents(os.TempDir())

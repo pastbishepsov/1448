@@ -46,7 +46,7 @@ func TestRemoteAllowlist(t *testing.T) {
 		{ID: "", Target: &target}, // без id — пропускаем
 		{ID: "bad_args", Target: &target, Args: &badArgs},
 	}
-	out := remoteAllowlist(items)
+	out := remoteAllowlist(items, "") // своего корня у ПК нет — берём готовый target
 
 	if len(out) != 2 {
 		t.Fatalf("в allowlist %d записей, ожидалось 2 (cs2, bad_args): %+v", len(out), out)
@@ -284,5 +284,76 @@ func TestLaunchTrackStop(t *testing.T) {
 	}
 	if len(a.track.snapshot()) != 0 {
 		t.Errorf("реестр после session_end должен быть пуст: %+v", a.track.snapshot())
+	}
+}
+
+// ── Свой корень игр на ПК (docs/КАТАЛОГ-ИГР.md §2) ─────────────────────────
+//
+// В пилотном клубе игры лежат ЛОКАЛЬНО на D:\online (разведка 31.08), поэтому
+// сервер отдаёт агенту уже развёрнутый target и монтировать ничего не нужно.
+// Но буква диска — свойство конкретного ПК: если на каком-то из них корень
+// E:\online, агент разворачивает шаблон target_raw своим games_root, и правок
+// на сервере это не требует.
+
+func TestExpandGamesRoot(t *testing.T) {
+	cases := []struct {
+		in, root string
+		esc      bool
+		want     string
+	}{
+		{`{GAMES}\Steam\steam.exe`, `D:\online`, false, `D:\online\Steam\steam.exe`},
+		{`{GAMES}\Steam\steam.exe`, `D:\online\`, false, `D:\online\Steam\steam.exe`}, // хвостовой слэш срезан
+		{`{GAMES}\Steam\steam.exe`, `E:\online`, false, `E:\online\Steam\steam.exe`},
+		{`{GAMES}\Steam\steam.exe`, `\\nas\online`, false, `\\nas\online\Steam\steam.exe`},
+		{`steam://rungameid/730`, `D:\online`, false, `steam://rungameid/730`}, // не шаблон — не трогаем
+		{`{GAMES}\x`, ``, false, `{GAMES}\x`},                                  // корня нет — шаблон видим
+		{``, `D:\online`, false, ``},
+		// args: корень уезжает внутрь строки JSON, слэши экранируются
+		{`["--dir={GAMES}\HoYoPlay"]`, `D:\online`, true, `["--dir=D:\\online\HoYoPlay"]`},
+	}
+	for _, c := range cases {
+		if got := expandGamesRoot(c.in, c.root, c.esc); got != c.want {
+			t.Errorf("expandGamesRoot(%q, %q, %v) = %q, ожидалось %q", c.in, c.root, c.esc, got, c.want)
+		}
+	}
+}
+
+func TestRemoteAllowlistLocalGamesRoot(t *testing.T) {
+	clubTarget := `D:\online\Steam\steam.exe` // как развернул сервер
+	raw := `{GAMES}\Steam\steam.exe`
+	steamProto := "steam://rungameid/730"
+	argsRaw := `["--dir={GAMES}\\HoYoPlay"]` // в JSON-колонке слэш уже экранирован
+	items := []catalogItem{
+		{ID: "steam", Target: &clubTarget, TargetRaw: &raw},
+		{ID: "cs2", Target: &steamProto}, // протокол — корень ни при чём
+		{ID: "genshin", Target: &clubTarget, TargetRaw: &raw, Args: &argsRaw},
+	}
+
+	// у ПК своего корня нет — берём то, что дал сервер
+	out := remoteAllowlist(items, "")
+	if out["steam"].Target != clubTarget {
+		t.Errorf("без своего корня ожидался клубный путь, получено %q", out["steam"].Target)
+	}
+
+	// ПК с другой буквой диска — разворачиваем шаблон сами
+	out = remoteAllowlist(items, `E:\online`)
+	if want := `E:\online\Steam\steam.exe`; out["steam"].Target != want {
+		t.Errorf("свой корень: %q, ожидалось %q", out["steam"].Target, want)
+	}
+	if out["cs2"].Target != steamProto {
+		t.Errorf("протокол не должен зависеть от корня: %q", out["cs2"].Target)
+	}
+	if a := out["genshin"].Args; len(a) != 1 || a[0] != `--dir=E:\online\HoYoPlay` {
+		t.Errorf("args со своим корнем собраны неверно: %+v", a)
+	}
+}
+
+// TestRemoteAllowlistLocalRootWithoutTemplate — на старом сервере, который ещё
+// не шлёт target_raw, свой games_root не должен обнулять запись.
+func TestRemoteAllowlistLocalRootWithoutTemplate(t *testing.T) {
+	target := `D:\online\Steam\steam.exe`
+	out := remoteAllowlist([]catalogItem{{ID: "steam", Target: &target}}, `E:\online`)
+	if out["steam"].Target != target {
+		t.Errorf("без target_raw ожидался готовый путь сервера, получено %q", out["steam"].Target)
 	}
 }

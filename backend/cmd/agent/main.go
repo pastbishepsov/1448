@@ -56,8 +56,13 @@ type Config struct {
 	LockAction string              `json:"lock_action"` // none | lock_windows | kiosk
 	KioskURL   string              `json:"kiosk_url"`   // для lock_action=kiosk
 	Apps       map[string]AppEntry `json:"apps"`        // локальный allowlist (главнее каталога)
-	Cleanup    CleanupConfig       `json:"cleanup"`     // Г9-и4: очистка между гостями (cleanup.go)
-	Launch     LaunchConfig        `json:"launch"`      // жизненный цикл игры (launch.go)
+	// GamesRoot — корень игр ИМЕННО ЭТОГО ПК, если он отличается от клубного
+	// (у клуба D:\online, а тут, скажем, E:\online). Пусто — обычный случай:
+	// берём готовый target, который сервер уже развернул своим games_root.
+	// Задан — разворачиваем шаблон target_raw сами (docs/КАТАЛОГ-ИГР.md §2).
+	GamesRoot string        `json:"games_root"`
+	Cleanup   CleanupConfig `json:"cleanup"` // Г9-и4: очистка между гостями (cleanup.go)
+	Launch    LaunchConfig  `json:"launch"`  // жизненный цикл игры (launch.go)
 }
 
 func defaultConfig() *Config {
@@ -133,29 +138,62 @@ type agent struct {
 // ── Каталог с сервера (Admin Panel → все гостевые ПК) ──
 
 type catalogItem struct {
-	ID     string  `json:"id"`
-	Target *string `json:"target"`
-	Args   *string `json:"args"` // JSON-массив строк
+	ID        string  `json:"id"`
+	Target    *string `json:"target"`     // путь с уже подставленным корнем клуба
+	TargetRaw *string `json:"target_raw"` // исходный шаблон {GAMES}\… (если он был)
+	Args      *string `json:"args"`       // JSON-массив строк
 }
 
 type catalogResponse struct {
 	Games     []catalogItem `json:"games"`
 	Apps      []catalogItem `json:"apps"`
 	System    []catalogItem `json:"system"`
-	Platforms []catalogItem `json:"platforms"` // клиенты платформ (Steam, Riot, Epic...)
+	Platforms []catalogItem `json:"platforms"`  // клиенты платформ (Steam, Riot, Epic...)
+	GamesRoot string        `json:"games_root"` // корень игр клуба (справочно, для лога)
+}
+
+// gamesPlaceholder — та же переменная, что и на сервере (docs/КАТАЛОГ-ИГР.md §2).
+const gamesPlaceholder = "{GAMES}"
+
+// expandGamesRoot — подстановка {GAMES} своим корнем. Ровно та же, что делает
+// сервер: хвостовой слэш корня срезается, иначе «D:\online\» + «\Steam» дало бы
+// «D:\online\\Steam». Для args корень попадает внутрь строки JSON, поэтому там
+// обратные слэши экранируются. Чистая функция, тест.
+func expandGamesRoot(s, root string, jsonEscaped bool) string {
+	if s == "" || root == "" || !strings.Contains(s, gamesPlaceholder) {
+		return s
+	}
+	r := strings.TrimRight(root, `\/`)
+	if jsonEscaped {
+		r = strings.ReplaceAll(r, `\`, `\\`)
+	}
+	return strings.ReplaceAll(s, gamesPlaceholder, r)
 }
 
 // remoteAllowlist — чистая сборка allowlist из каталога (тестируется отдельно).
-func remoteAllowlist(items []catalogItem) map[string]AppEntry {
+//
+// localRoot — games_root этого ПК из agent.json. Пусто (обычный случай) —
+// берём target, который сервер уже развернул клубным корнем. Задан — сами
+// разворачиваем шаблон target_raw: так ПК с другой буквой диска не требует
+// правок на сервере и не ломает остальным путь (docs/КАТАЛОГ-ИГР.md §2).
+func remoteAllowlist(items []catalogItem, localRoot string) map[string]AppEntry {
 	out := map[string]AppEntry{}
 	for _, it := range items {
-		if it.ID == "" || it.Target == nil || *it.Target == "" {
+		target := ""
+		if it.Target != nil {
+			target = *it.Target
+		}
+		if localRoot != "" && it.TargetRaw != nil && *it.TargetRaw != "" {
+			target = expandGamesRoot(*it.TargetRaw, localRoot, false)
+		}
+		if it.ID == "" || target == "" {
 			continue
 		}
-		e := AppEntry{Target: *it.Target}
+		e := AppEntry{Target: target}
 		if it.Args != nil && *it.Args != "" {
+			raw := expandGamesRoot(*it.Args, localRoot, true)
 			var args []string
-			if json.Unmarshal([]byte(*it.Args), &args) == nil {
+			if json.Unmarshal([]byte(raw), &args) == nil {
 				e.Args = args
 			}
 		}
@@ -180,11 +218,16 @@ func (a *agent) refreshCatalog() {
 		return
 	}
 	items := append(append(append(cr.Games, cr.Apps...), cr.System...), cr.Platforms...)
-	remote := remoteAllowlist(items)
+	remote := remoteAllowlist(items, a.cfg.GamesRoot)
 	a.mu.Lock()
 	a.remote = remote
 	a.mu.Unlock()
-	log.Printf("Каталог с сервера: %d приложений с запуском", len(remote))
+	if a.cfg.GamesRoot != "" {
+		log.Printf("Каталог с сервера: %d приложений с запуском (корень этого ПК: %s, у клуба %s)",
+			len(remote), a.cfg.GamesRoot, cr.GamesRoot)
+	} else {
+		log.Printf("Каталог с сервера: %d приложений с запуском", len(remote))
+	}
 	go a.refreshAvailability() // новые игры проверяем сразу, а не через цикл
 }
 
