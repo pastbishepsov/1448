@@ -2471,10 +2471,16 @@ const ICONS = {
    он покрывает браузерное демо и клубы, где владелец обложку ещё не задал.
    Нет ни того, ни другого — плитка рисует градиент и крупный тег, как раньше. */
 const COVERS = new Set(['cs2','dota2','gta5','apex','pubg','rivals','ow2']); // файлы в web/covers
+/* Каталог отдаёт адрес обложки путём ОТ КОРНЯ (/api/v1/catalog/cs2/cover?v=…
+   или /covers/cs2.jpg), а киоск открывает shell.html с file:// — там такой
+   путь ведёт в корень диска, и обложка не грузится вовсе. Склеиваем с адресом
+   сервера, ровно как уже сделано для фото позиции кухни. Внешнюю http(s)-ссылку
+   и относительный локальный фолбэк не трогаем. */
+function coverSrc(u){ return u.startsWith('/') ? API.replace('/api/v1','') + u : u; }
 function coverUrl(it){
   if (!it) return '';
   const u = (it.cover || '').trim();
-  if (u) return u;
+  if (u) return coverSrc(u);
   return COVERS.has(it.id) ? 'covers/' + it.id + '.jpg' : '';
 }
 /* url() внутри style-атрибута: адрес обложки задаёт владелец в админке —
