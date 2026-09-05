@@ -25,7 +25,7 @@ const (
 )
 
 type startSessionRequest struct {
-	ComputerID *string `json:"computer_id"` // необязательно: иначе берём первый свободный
+	ComputerID *string `json:"computer_id"` // К0-и6: обязателен — гость стартует только со своей машины
 	PlannedMin *int    `json:"planned_min"` // Г3: сколько планирует сидеть (для ПК с бронью); пусто = 30
 }
 
@@ -76,16 +76,33 @@ func handleStartSession(c *gin.Context) {
 			"message": "Сначала задай свой пароль вместо временного"})
 		return
 	}
+	if rejectBanned(c, userID) { // К0-и4: бан действует сразу, а не через 15 мин токена
+		return
+	}
 	var req startSessionRequest
 	_ = c.ShouldBindJSON(&req) // тело необязательно
-	code, resp := startSessionFor(userID, req.ComputerID, req.PlannedMin)
+	// К0-и6 (KIOSK.md): без computer_id сервер брал первый свободный ПК по
+	// алфавиту — гость за ПК-2 получал сессию на ПК-1 (баг 26.08 №5 закрывался
+	// только через /ping Go-агента; в C#-киоске без агента номера нет). PWA
+	// сессий не начинает (в app.html только /ready), так что гостевой старт —
+	// всегда со своей машины, и «угадывать» больше нечего.
+	if req.ComputerID == nil || *req.ComputerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "computer_required",
+			"message": "ПК не определён — позови админа, он посадит тебя у стойки"})
+		return
+	}
+	// Р10 (KIOSK.md): гость сам нажал «Начать сессию» у ПК — он уже за ним,
+	// окно [Готов!] ему не нужно; окно остаётся для посадки от стойки.
+	code, resp := startSessionFor(userID, req.ComputerID, req.PlannedMin, true)
 	c.JSON(code, resp)
 }
 
 // startSessionFor — общий старт сессии (Б8): гость сам (/me/sessions/start)
 // или админ сажает его у стойки (/admin/computers/:id/session). Скидки и
 // таланты всегда гостя. Возвращает HTTP-код и готовое тело ответа.
-func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int, gin.H) {
+// readyNow — точка отсчёта денег ставится сразу (гость сам стартовал с ПК,
+// Р10 KIOSK.md); false — окно [Готов!] по ready_wait_min (посадка от стойки, Е1).
+func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, readyNow bool) (int, gin.H) {
 	// Уже есть активная сессия?
 	var activeCount int64
 	db.Model(&models.Session{}).
@@ -210,6 +227,12 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 	// started_at ставим сейчас и СДВИНЕМ при подтверждении (confirmReady):
 	// так все потребители времени сессии продолжают читать одно поле.
 	readyDeadline := readyDeadlineFor(now, settingInt64("ready_wait_min", readyWaitMinDef))
+	var readyAt *time.Time
+	if readyNow { // Р10: сам за ПК — время идёт с этой секунды, окна нет
+		readyDeadline = nil
+		t := now
+		readyAt = &t
+	}
 
 	session := models.Session{
 		UserID:           userID,
@@ -218,6 +241,7 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 		Status:           models.SessionStatusActive,
 		StartedAt:        now,
 		ReadyDeadline:    readyDeadline,
+		ReadyAt:          readyAt,
 		BaseRatePLN:      baseRate,
 		EffectiveRatePLN: rate,
 	}
@@ -245,6 +269,12 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 	})
 	if errors.Is(err, errComputerBusy) {
 		return http.StatusConflict, gin.H{"code": "computer_busy", "message": "Компьютер уже занят"}
+	}
+	if isDuplicate(err) {
+		// К0-и6: двойной тап/ретрай проскочил проверку activeCount выше и
+		// упёрся в уникальный индекс активной сессии (миграция 053) — это не
+		// «ошибка базы», а «сессия уже идёт».
+		return http.StatusConflict, gin.H{"code": "session_active", "message": "Сессия уже идёт"}
 	}
 	if err != nil {
 		return http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()}
@@ -283,7 +313,8 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int) (int
 		"discount_pct":       discountPct,
 		"from_waitlist":      fromWaitlist,
 		"booking_claimed":    claimed != nil,
-		"ready_deadline":     session.ReadyDeadline, // Е1: nil — окно выключено
+		"ready_deadline":     session.ReadyDeadline, // Е1: nil — окно выключено или старт с ПК (Р10)
+		"ready_at":           session.ReadyAt,       // К0-и6: сам стартовал — время уже идёт
 	}
 }
 
@@ -361,6 +392,17 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 	userID := session.UserID.String()
 
 	now := time.Now()
+
+	// К0-и3 (KIOSK.md): гость ещё не нажал [Готов!] — денег не брали, минут
+	// не было. Раньше завершение в окне ожидания (админ через «Завершить»,
+	// гость с телефона, бан) считало минуты от started_at и списывало
+	// «дорогу к компьютеру», а заодно начисляло XP/монеты и «сессию дня».
+	// Теперь это отмена посадки, как у seat-cancel: статус cancelled, ноль
+	// минут, ноль наград. Защита стоит только в тике биллинга и паузе —
+	// здесь её не было.
+	if sessionWaitingReady(session) {
+		return cancelWaitingSession(session, now, reason)
+	}
 	// Г2: паузы не тарифицируются и XP не приносят — минуты БЕЗ пауз, вверх.
 	minutes := effectiveMinutesCeil(session, now)
 

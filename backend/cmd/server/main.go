@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -85,6 +86,13 @@ func main() {
 
 	// ── Роуты ───────────────────────────────────────────────────────────────
 	r := gin.Default()
+	// К0-и5: кому верить про адрес клиента. gin по умолчанию доверяет ЛЮБОМУ
+	// прокси, и X-Forwarded-For от самого клиента обходил лимитер по IP. Пусто
+	// (клуб: ПК ходят напрямую) — не верить никому; список CIDR/IP через
+	// запятую — для стенда за реальным прокси (Railway).
+	if err := r.SetTrustedProxies(trustedProxies(os.Getenv("TRUSTED_PROXIES"))); err != nil {
+		log.Fatalf("TRUSTED_PROXIES: %v", err)
+	}
 	r.Use(corsMiddleware())        // разрешаем запросы из браузера (веб-приложение)
 	r.Use(bodyLimitMiddleware())   // потолок тела запроса — защита от OOM (ревью 26.08)
 	r.Use(crossOriginMiddleware()) // CSRF-защита мутаций (Go 1.25+), GET/агент не трогает
@@ -430,16 +438,30 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
+	// К0-и5: перебор пароля режем по аккаунту, а не по IP (IP подделывается
+	// заголовком X-Forwarded-For). Проверка стоит ДО поиска в БД, чтобы и
+	// несуществующий логин не давал бесконечных попыток.
+	now := time.Now()
+	if locked, wait := loginGuardian.locked(req.Login, now); locked {
+		c.JSON(http.StatusTooManyRequests, gin.H{"code": "login_locked",
+			"message": fmt.Sprintf("Слишком много неверных попыток. Подожди %d мин или подойди к стойке — админ сбросит пароль",
+				int(wait.Minutes())+1)})
+		return
+	}
+
 	var user models.User
 	if err := db.Where("nickname = ? OR email = ?", req.Login, req.Login).First(&user).Error; err != nil {
+		loginGuardian.fail(req.Login, now)
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_credentials", "message": "Неверный логин или пароль"})
 		return
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+		loginGuardian.fail(req.Login, now)
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_credentials", "message": "Неверный логин или пароль"})
 		return
 	}
+	loginGuardian.reset(req.Login)
 
 	if user.Status == models.UserStatusBanned {
 		c.JSON(http.StatusForbidden, gin.H{"code": "banned", "message": "Аккаунт заблокирован"})
@@ -684,6 +706,17 @@ func findWebDir() string {
 		}
 	}
 	return ""
+}
+
+// trustedProxies — список из TRUSTED_PROXIES; пусто = nil (никому не верить).
+func trustedProxies(raw string) []string {
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getenv(key, def string) string {

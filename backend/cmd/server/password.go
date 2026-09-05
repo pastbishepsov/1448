@@ -140,6 +140,7 @@ func handleAdminPasswordReset(c *gin.Context) {
 	target := user.ID
 	logAdminAction(c, "password_reset", &target, "выдан временный пароль") // без значения
 	notifyUser(user.ID, "password_reset", map[string]any{"by": "admin"})
+	loginGuardian.reset(user.Nickname) // К0-и5: сброс пароля снимает блокировку входа
 
 	c.JSON(http.StatusOK, gin.H{
 		"user_id":       user.ID,

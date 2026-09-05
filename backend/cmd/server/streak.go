@@ -149,6 +149,10 @@ func handleBuyStreakFreeze(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "not_found", "message": "Пользователь не найден"})
 		return
 	}
+	if user.Status == models.UserStatusBanned { // К0-и4
+		c.JSON(http.StatusConflict, gin.H{"code": "banned", "message": bannedMessage})
+		return
+	}
 	if max > 0 && int64(user.StreakFreezes) >= max {
 		c.JSON(http.StatusConflict, gin.H{"code": "freeze_full", "message": fmt.Sprintf(
 			"В запасе уже %d заморозки — больше не берём", user.StreakFreezes)})

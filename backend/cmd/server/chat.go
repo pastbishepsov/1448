@@ -92,6 +92,9 @@ func handleGuestChatPost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": msg})
 		return
 	}
+	if rejectBanned(c, userID) { // К0-и4: забаненный не зовёт и не пишет
+		return
+	}
 
 	// пауза между сообщениями одного вида
 	var last models.ChatMessage

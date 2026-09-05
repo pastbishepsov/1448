@@ -135,20 +135,44 @@ func handleAdminSeatCancel(c *gin.Context) {
 	}
 
 	now := time.Now()
+	res, err := cancelWaitingSession(&s, now, "seat_cancel")
+	if err != nil {
+		if errors.Is(err, errSessionGone) {
+			c.JSON(http.StatusConflict, gin.H{"code": "already_playing",
+				"message": "Гость успел нажать [Готов!] — отменять уже нечего"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		return
+	}
+
+	notifyUser(s.UserID, "seat_cancelled", map[string]any{})
+	target := s.UserID
+	logAdminAction(c, "seat_cancel", &target, res.User.Nickname+": посадка отменена до нажатия [Готов!]")
+
+	c.JSON(http.StatusOK, gin.H{"session_id": s.ID, "status": models.SessionStatusCancelled})
+}
+
+// cancelWaitingSession — отмена посадки, пока гость не нажал [Готов!]: общая
+// точка для seat-cancel у стойки и для любого завершения в окне ожидания
+// (finishSession, К0-и3). Это НЕ завершение: минут ноль, XP/монет/кейсов нет,
+// сессия дня не засчитывается, прогресс ачивок не пишется. ended_reason —
+// кто отменил (seat_cancel | manual | admin), статус — cancelled.
+func cancelWaitingSession(s *models.Session, now time.Time, reason string) (*finishResult, error) {
 	var user models.User
 	db.First(&user, "id = ?", s.UserID)
 
 	err := db.Transaction(func(tx *gorm.DB) error {
-		// Закрываем только пока active — гость может нажать [Готов!] ровно
-		// сейчас, и тогда отменять уже нечего (та же защита от гонки трёх
-		// акторов, что в finishSession).
+		// Закрываем только пока active и до нажатия — гость может нажать
+		// [Готов!] ровно сейчас, и тогда это уже настоящее завершение (та же
+		// защита от гонки трёх акторов, что в finishSession).
 		res := tx.Model(&models.Session{}).
 			Where("id = ? AND status = ? AND ready_at IS NULL", s.ID, models.SessionStatusActive).
 			Updates(map[string]any{
 				"status":       models.SessionStatusCancelled,
 				"ended_at":     now,
 				"minutes_used": 0,
-				"ended_reason": "seat_cancel",
+				"ended_reason": reason,
 			})
 		if res.Error != nil {
 			return res.Error
@@ -160,21 +184,16 @@ func handleAdminSeatCancel(c *gin.Context) {
 			Update("status", models.ComputerStatusAvailable).Error
 	})
 	if err != nil {
-		if errors.Is(err, errSessionGone) {
-			c.JSON(http.StatusConflict, gin.H{"code": "already_playing",
-				"message": "Гость успел нажать [Готов!] — отменять уже нечего"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
-		return
+		return nil, err
 	}
+	s.Status = models.SessionStatusCancelled
+	s.EndedAt = &now
+	s.MinutesUsed = 0
+	s.EndedReason = &reason
 
-	// Экрану гостя — снять окно (если Shell на связи), гостю — уведомление,
-	// админкам — живое событие: плитка ПК должна освободиться сразу.
+	// Экрану гостя — снять окно (если Shell на связи), админкам — живое
+	// событие: плитка ПК должна освободиться сразу.
 	notifyShell(s.ComputerID.String(), websocket.MsgSessionEnd, gin.H{"session_id": s.ID})
-	notifyUser(s.UserID, "seat_cancelled", map[string]any{})
-	target := s.UserID
-	logAdminAction(c, "seat_cancel", &target, user.Nickname+": посадка отменена до нажатия [Готов!]")
 	hub.AdminBroadcast("session_end", map[string]any{
 		"computer_id": s.ComputerID.String(),
 		"nickname":    user.Nickname,
@@ -182,7 +201,8 @@ func handleAdminSeatCancel(c *gin.Context) {
 	})
 	checkWaitlistNotify(s.ClubID) // Б9: ПК освободился — зовём очередь
 
-	c.JSON(http.StatusOK, gin.H{"session_id": s.ID, "status": models.SessionStatusCancelled})
+	rank, _ := accountRankFor(userHoursPlayed(s.UserID.String()))
+	return &finishResult{Session: s, Rank: rank, User: user}, nil
 }
 
 // ── Е1-и5: придержать ПК под регистрацию нового гостя ─────────────────────

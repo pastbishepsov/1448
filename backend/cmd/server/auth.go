@@ -212,3 +212,32 @@ func handleLogout(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
+
+// ── К0-и4 (KIOSK.md): бан действует сразу ────────────────────────────────
+//
+// Роль и статус живут в JWT до 15 минут (осознанный компромисс STATUS.md), а
+// бан у стойки должен работать в ту же секунду: раньше забаненный с живым
+// токеном тут же начинал новую сессию, заказывал кухню и писал в чат —
+// setUserStatus завершал только ТЕКУЩУЮ сессию. Проверка — одно поле из БД в
+// точках, где гость что-то начинает или тратит; посадку админом (Б8) она не
+// трогает, у стойки человека опознали лично.
+
+const bannedMessage = "Аккаунт заблокирован — подойди к стойке"
+
+// userBanned — статус аккаунта из БД (не из токена).
+func userBanned(userID uuid.UUID) bool {
+	var u models.User
+	if err := db.Select("status").First(&u, "id = ?", userID).Error; err != nil {
+		return false
+	}
+	return u.Status == models.UserStatusBanned
+}
+
+// rejectBanned — 409 banned, если гость заблокирован; true = ответ уже ушёл.
+func rejectBanned(c *gin.Context, userID uuid.UUID) bool {
+	if !userBanned(userID) {
+		return false
+	}
+	c.JSON(http.StatusConflict, gin.H{"code": "banned", "message": bannedMessage})
+	return true
+}

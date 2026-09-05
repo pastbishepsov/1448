@@ -72,6 +72,10 @@ func handleCreateBooking(c *gin.Context) {
 	// клиенты показывают «откроется на LVL N», админский walk-in не гейтим.
 	var guest models.User
 	_ = db.First(&guest, "id = ?", userID).Error
+	if guest.Status == models.UserStatusBanned { // К0-и4: бан действует сразу
+		c.JSON(http.StatusConflict, gin.H{"code": "banned", "message": bannedMessage})
+		return
+	}
 	if minLvl := settingInt64("booking_min_level", bookingMinLevelDef); minLvl > 0 && int64(guest.Level) < minLvl {
 		c.JSON(http.StatusConflict, gin.H{"code": "booking_level", "message": fmt.Sprintf(
 			"Бронь откроется на уровне %d — сейчас LVL %d. XP капает за каждую минуту игры", minLvl, guest.Level)})

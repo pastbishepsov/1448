@@ -594,7 +594,7 @@ func handleAdminSeatGuest(c *gin.Context) {
 		return
 	}
 	cid := pc.ID.String()
-	code, resp := startSessionFor(user.ID, &cid, req.PlannedMin)
+	code, resp := startSessionFor(user.ID, &cid, req.PlannedMin, false) // посадка от стойки: окно [Готов!] (Е1)
 	if code < 300 {
 		// Ник в ответе обязателен: без него админка показывала в подтверждении
 		// поисковый ЗАПРОС, а не того, кого реально посадили — при выборе из

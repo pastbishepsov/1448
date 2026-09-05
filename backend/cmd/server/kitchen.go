@@ -150,6 +150,9 @@ func handleMyKitchenOrderCreate(c *gin.Context) {
 			"message": fmt.Sprintf("За раз — до %d шт; больше закажи у стойки", maxOrderQty)})
 		return
 	}
+	if rejectBanned(c, userID) { // К0-и4: постоплата забаненному не выдаётся
+		return
+	}
 
 	// Р10: только из-за компа — постоплата привязана к живой сессии
 	var sess models.Session
