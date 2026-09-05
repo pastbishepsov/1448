@@ -127,7 +127,14 @@ public partial class MainWindow : Window
                 }
                 break;
             case PipeMsg.Lock:
-                HardLockReason.Text = "Потеряна связь с сервером клуба";
+                // К0-и1: причина из payload — пауза/AFK от сервера или fail-safe сервиса.
+                var reason = msg.Payload is { } lp && lp.TryGetProperty("reason", out var lr) ? lr.GetString() : null;
+                HardLockReason.Text = reason switch
+                {
+                    "paused" => "Пауза — нажми ▶ Продолжить на экране или в приложении",
+                    "afk" => "Пауза: тебя давно нет за ПК — шевельни мышью, и продолжим",
+                    _ => "Потеряна связь с сервером клуба",
+                };
                 HardLock.Visibility = Visibility.Visible;
                 break;
             case PipeMsg.Unlock:

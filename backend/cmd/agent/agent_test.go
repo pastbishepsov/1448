@@ -287,6 +287,44 @@ func TestLaunchTrackStop(t *testing.T) {
 	}
 }
 
+// К0-и1 (KIOSK.md, Р1): пауза и AFK приходят как lock — экран запирается,
+// а запущенная агентом игра ЖИВЁТ; закрывает её только session_end. До этой
+// итерации сервер слал на паузе session_end, и гость терял матч.
+func TestLockKeepsTrackedGameAlive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("сценарий гоняется на Linux/CI; на Windows проверяется вживую по доку")
+	}
+	sleepBin, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("нет sleep")
+	}
+	a := newTestAgent(&Config{Apps: map[string]AppEntry{
+		"cs2": {Target: sleepBin, Args: []string{"60"}},
+	}})
+	rec := httptest.NewRecorder()
+	a.handleLaunch(rec, httptest.NewRequest(http.MethodPost, "/launch", strings.NewReader(`{"app_id":"cs2"}`)))
+	var launched struct {
+		PID int `json:"pid"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &launched); err != nil || launched.PID <= 0 {
+		t.Fatalf("запуск: %d %s", rec.Code, rec.Body.String())
+	}
+	defer func() { a.cfg.Cleanup = CleanupConfig{}; a.onSessionEnd() }()
+
+	a.handleCommand(wsMessage{Type: "lock", Payload: json.RawMessage(`{"reason":"paused"}`)})
+	if !processAlive(launched.PID) {
+		t.Fatalf("lock закрыл процесс %d — пауза не должна рвать игру", launched.PID)
+	}
+	if len(a.track.snapshot()) != 1 {
+		t.Errorf("после lock трекинг должен остаться: %+v", a.track.snapshot())
+	}
+	a.handleCommand(wsMessage{Type: "lock", Payload: json.RawMessage(`{"reason":"afk"}`)})
+	a.handleCommand(wsMessage{Type: "unlock", Payload: json.RawMessage(`{"resumed":true}`)})
+	if !processAlive(launched.PID) {
+		t.Fatalf("afk-lock/unlock закрыли процесс %d", launched.PID)
+	}
+}
+
 // ── Свой корень игр на ПК (docs/КАТАЛОГ-ИГР.md §2) ─────────────────────────
 //
 // В пилотном клубе игры лежат ЛОКАЛЬНО на D:\online (разведка 31.08), поэтому

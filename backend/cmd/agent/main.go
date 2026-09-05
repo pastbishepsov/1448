@@ -414,6 +414,20 @@ func (a *agent) handleCommand(msg wsMessage) {
 		// Фоном — экран уже заблокирован (тело в launch.go, чтобы порядок
 		// «сначала запущенное агентом, потом общая очистка» был тестируемым).
 		go a.onSessionEnd()
+	case "lock":
+		// К0-и1 (KIOSK.md, Р1): пауза или AFK — экран запереть, игру НЕ трогать.
+		// Раньше сервер слал сюда session_end, и агент закрывал матч гостя.
+		// Закрытие игры и очистка между гостями — только по session_end.
+		var p struct {
+			Reason string `json:"reason"`
+		}
+		_ = json.Unmarshal(msg.Payload, &p)
+		log.Printf("Команда: lock (%s) — экран заперт, запущенное остаётся", p.Reason)
+		a.applyLockAction()
+	case "unlock":
+		// Пауза снята: с lock_action=none/kiosk снимать нечего — гостевой экран
+		// сам показывает, что сессия идёт; lock_windows отпирает гость паролем.
+		log.Printf("Команда: unlock %s", string(msg.Payload))
 	case "xp_update":
 		// Пробрасывать некуда: браузерный шелл живёт поллингом и
 		// уведомлениями (Б4); XP-оверлей — задача C#-киоска (shell/).

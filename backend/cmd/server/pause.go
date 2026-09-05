@@ -103,13 +103,26 @@ func startPause(s *models.Session, now time.Time, by string) error {
 	t := now
 	s.PausedAt, s.PausedBy = &t, &by
 	hub.AdminBroadcast("session_pause", map[string]any{"computer_id": s.ComputerID, "by": by})
-	// Блокируем экран: на паузе биллинг не тикает, и без этой команды гость
+	// Запираем экран: на паузе биллинг не тикает, и без этой команды гость
 	// ставил паузу с телефона и продолжал играть бесплатно ровно
 	// pause_limit_min минут каждую сессию (ревью 26.08).
-	notifyShell(s.ComputerID.String(), websocket.MsgSessionEnd, gin.H{
-		"session_id": s.ID, "reason": "paused",
+	// К0-и1 (Р1 KIOSK.md): именно `lock`, а не `session_end` — на session_end
+	// агент закрывал запущенную игру и запускал очистку между гостями, то есть
+	// пауза и AFK-автопауза рвали матч гостя. Игра живёт, экран заперт;
+	// закрывает игру только настоящее завершение сессии.
+	notifyShell(s.ComputerID.String(), websocket.MsgLock, gin.H{
+		"session_id": s.ID, "reason": lockReason(by), "by": by,
 	})
 	return nil
+}
+
+// lockReason — причина блокировки для агента/киоска: paused (гость или
+// админ поставил паузу) | afk (автопауза по простою). Чистая, под тестом.
+func lockReason(pausedBy string) string {
+	if pausedBy == "afk" {
+		return "afk"
+	}
+	return "paused"
 }
 
 func resumePause(s *models.Session, now time.Time) error {
@@ -126,8 +139,10 @@ func resumePause(s *models.Session, now time.Time) error {
 	s.PausedAt, s.PausedBy = nil, nil
 	s.PausedTotalSec = total
 	hub.AdminBroadcast("session_resume", map[string]any{"computer_id": s.ComputerID})
-	// Снимаем блокировку экрана, поставленную startPause.
-	notifyShell(s.ComputerID.String(), websocket.MsgSessionStart, gin.H{
+	// Снимаем блокировку экрана, поставленную startPause (К0-и1: unlock, а не
+	// session_start — старт сессии на ПК уже был, второй «старт» сбивал бы
+	// таймер оверлея C#-киоска и логику агента).
+	notifyShell(s.ComputerID.String(), websocket.MsgUnlock, gin.H{
 		"session_id": s.ID, "resumed": true,
 	})
 	return nil

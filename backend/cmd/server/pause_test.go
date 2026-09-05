@@ -73,3 +73,15 @@ func TestPauseBudget(t *testing.T) {
 		t.Errorf("открытая пауза: ждали 60, получили %d", got)
 	}
 }
+
+// К0-и1 (KIOSK.md, Р1): на паузе агенту уходит lock с причиной, а не
+// session_end — иначе агент закрывал игру гостя. Причина нужна киоску для
+// подписи на экране блокировки («пауза» / «AFK»).
+func TestLockReason(t *testing.T) {
+	cases := map[string]string{"guest": "paused", "admin": "paused", "": "paused", "afk": "afk"}
+	for by, want := range cases {
+		if got := lockReason(by); got != want {
+			t.Errorf("lockReason(%q) = %q, ждали %q", by, got, want)
+		}
+	}
+}

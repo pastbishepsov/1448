@@ -18,11 +18,16 @@ const (
 	MsgSessionStart MessageType = "session_start" // сервер → shell: началась сессия
 	MsgSessionTick  MessageType = "session_tick"  // shell → сервер: heartbeat
 	MsgSessionEnd   MessageType = "session_end"   // сервер → shell: завершить
-	MsgXPUpdate     MessageType = "xp_update"      // сервер → shell: новый XP (для оверлея C#-киоска)
-	MsgAdminCall    MessageType = "admin_call"     // shell → сервер: кнопка вызова
-	MsgPCPower      MessageType = "pc_power"       // сервер → shell: restart|shutdown (Б8)
-	MsgWOL          MessageType = "wol"            // сервер → shell: разбудить соседа по MAC (Б8)
-	MsgWalletUpdate MessageType = "wallet_update"  // сервер → shell: кошелёк/прогноз после тика биллинга (Г1)
+	MsgXPUpdate     MessageType = "xp_update"     // сервер → shell: новый XP (для оверлея C#-киоска)
+	MsgAdminCall    MessageType = "admin_call"    // shell → сервер: кнопка вызова
+	MsgPCPower      MessageType = "pc_power"      // сервер → shell: restart|shutdown (Б8)
+	MsgWOL          MessageType = "wol"           // сервер → shell: разбудить соседа по MAC (Б8)
+	MsgWalletUpdate MessageType = "wallet_update" // сервер → shell: кошелёк/прогноз после тика биллинга (Г1)
+	// К0-и1 (KIOSK.md, Р1): пауза и AFK запирают экран, но НЕ завершают
+	// сессию — раньше на паузе уходил session_end, и агент закрывал игру
+	// гостя (stop_on_session_end) и запускал очистку между гостями.
+	MsgLock   MessageType = "lock"   // сервер → shell: запереть экран (payload.reason: paused|afk), игру не трогать
+	MsgUnlock MessageType = "unlock" // сервер → shell: снять блокировку — пауза снята
 	// force_unlock удалён (Б7-и3): сервер его никогда не слал — мёртвый тип.
 )
 

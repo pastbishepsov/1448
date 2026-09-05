@@ -44,7 +44,9 @@ Base URL: `http://localhost:8080/api/v1`
 
 ### События (Сервер → Shell)
 - `session_start` — начало сессии
-- `session_end` — завершение
+- `session_end` — завершение (закрыть игру, очистка между гостями)
+- `lock` — пауза/AFK: запереть экран, игру не трогать (`payload.reason: paused|afk`) — К0-и1
+- `unlock` — пауза снята
 - `xp_update` — новый XP
 - `force_unlock` — принудительная разблокировка
 - `timer_sync` — синхронизация таймера

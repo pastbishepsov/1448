@@ -122,6 +122,14 @@ public sealed class Worker(
                 _state.OnForceUnlock();
                 pipe.Broadcast(PipeMessage.Of(PipeMsg.ForceUnlock));
                 break;
+            // К0-и1 (KIOSK.md, Р1): пауза/AFK — запереть экран, сессию и игру не трогать.
+            // Раньше сервер слал на паузе session_end, и киоск вёл себя как при конце сессии.
+            case "lock":
+                pipe.Broadcast(PipeMessage.Of(PipeMsg.Lock, payload));
+                break;
+            case "unlock":
+                pipe.Broadcast(PipeMessage.Of(PipeMsg.Unlock, payload));
+                break;
             case "xp_update":
                 pipe.Broadcast(PipeMessage.Of(PipeMsg.XpUpdate, payload));
                 break;
