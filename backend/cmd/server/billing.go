@@ -31,6 +31,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -372,6 +373,23 @@ func billSession(s *models.Session, now time.Time) bool {
 		s.Warn15At = &zs
 	}
 	return true
+}
+
+// reviveActiveSession — свежие деньги/минуты оживляют активную сессию гостя:
+// предупреждения и грейс нуля начинаются заново, накопившийся хвост грейса
+// биллинг доначислит следующим тиком уже из живых средств (Г1). Депозит и
+// redeem монет (zoneID=nil) годятся на любой машине; минуты пакета тратятся
+// только в СВОЕЙ зоне (Р10 OPERATOR.md), поэтому пакет чужой зоны сессию не
+// оживляет — иначе гость на нуле получал бы второй бесплатный грейс.
+// К0-и2 (KIOSK.md): до этой правки пакет, купленный у стойки на нуле, сессию
+// не спасал — тик всё равно завершал её по zero_since.
+func reviveActiveSession(userID uuid.UUID, zoneID *uuid.UUID) {
+	q := db.Model(&models.Session{}).
+		Where("user_id = ? AND status = ?", userID, models.SessionStatusActive)
+	if zoneID != nil {
+		q = q.Where("computer_id IN (SELECT id FROM computers WHERE zone_id = ?)", *zoneID)
+	}
+	q.Updates(map[string]any{"warn15_at": nil, "warn5_at": nil, "zero_since": nil})
 }
 
 // billingSweep — один проход по всем активным сессиям (now — параметром).

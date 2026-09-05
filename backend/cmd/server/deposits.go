@@ -165,10 +165,8 @@ func handleAdminDeposit(c *gin.Context) {
 
 	// Г1: додеп оживляет активную сессию — предупреждения и грейс начинаются
 	// заново; накопившиеся минуты грейса биллинг доначислит следующим тиком
-	// уже из живых денег.
-	db.Model(&models.Session{}).
-		Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).
-		Updates(map[string]any{"warn15_at": nil, "warn5_at": nil, "zero_since": nil})
+	// уже из живых денег (общая точка — reviveActiveSession, К0-и2).
+	reviveActiveSession(user.ID, nil)
 
 	// Ачивки (first_deposit и будущие deposit_count-пороги).
 	uid := user.ID.String()

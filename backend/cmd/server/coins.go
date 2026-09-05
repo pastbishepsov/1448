@@ -161,10 +161,8 @@ func handleAdminRedeemCoins(c *gin.Context) {
 	}
 
 	// Г1: свежие минуты оживляют активную сессию — предупреждения и грейс
-	// начинаются заново (как у депозита).
-	db.Model(&models.Session{}).
-		Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).
-		Updates(map[string]any{"warn15_at": nil, "warn5_at": nil, "zero_since": nil})
+	// начинаются заново (как у депозита; общая точка — reviveActiveSession).
+	reviveActiveSession(user.ID, nil)
 
 	db.First(user, "id = ?", user.ID)
 	target := user.ID

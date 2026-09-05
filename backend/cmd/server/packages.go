@@ -461,6 +461,12 @@ func issuePackage(user *models.User, pack *models.TimePackage, zone models.Zone,
 		}
 		return nil, 0, "db_error"
 	}
+	// К0-и2 (KIOSK.md): пакет своей зоны оживляет сессию на нуле — как депозит.
+	// Гость упёрся в ноль, добежал до стойки, заплатил за 3 часа — тик больше
+	// не завершит его по zero_since. Пакет ЧУЖОЙ зоны здесь не тратится, и
+	// сессию не спасает (иначе второй бесплатный грейс).
+	zid := pack.ZoneID
+	reviveActiveSession(user.ID, &zid)
 	notifyUser(user.ID, "package_added", map[string]any{
 		"name": up.Name, "zone": up.ZoneName, "minutes": up.MinutesTotal,
 		"expires_at": up.ExpiresAt,
