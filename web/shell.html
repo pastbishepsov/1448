@@ -624,6 +624,9 @@
   body.perf-lite .tb-sens{animation:none}
   body.perf-lite .logo1448 .l-colon{animation:none}
   body.perf-lite .attract .logo1448{animation:none}
+  /* К1-и5: взведённая «Завершить» / ⏻ — второй клик в течение 5 с */
+  .btn.armed{box-shadow:0 0 0 3px rgba(255,255,255,.45), var(--glow)}
+  .iconbtn.armed{border-color:#fff; color:#fff}
 </style>
 </head>
 <body>
@@ -701,7 +704,7 @@
     </button>
     <button class="iconbtn" data-str-title="tb_info_title" onclick="openInfo()"><span data-ic="info"></span></button>
     <button class="iconbtn" onclick="toggleChat()"><span data-ic="bell"></span> <span data-str="tb_admin"></span><span class="ch-badge hidden" id="chatBadge"></span></button>
-    <button class="iconbtn" data-str-title="tb_logout_title" onclick="logout()">⏻</button>
+    <button class="iconbtn" data-str-title="tb_logout_title" onclick="logoutClick(this)">⏻</button>
   </div>
 
   <div class="main">
@@ -758,7 +761,7 @@
     <button id="pwdBtn" class="btn" style="width:100%; justify-content:center; margin-top:6px"
             onclick="submitPwdChange()" data-str="pwd_btn"></button>
     <button class="btn ghost" style="width:100%; justify-content:center; margin-top:8px"
-            onclick="logout()" data-str="pwd_logout"></button>
+            onclick="endAndLogout()" data-str="pwd_logout"></button>
   </div>
 </div>
 
@@ -833,7 +836,7 @@
       <div class="res" style="font-size:17px"><span class="ic" data-ic="coins"></span><span class="gold-t" id="eoCoins">+0</span></div>
     </div>
     <div class="muted" id="eoExtra"></div>
-    <button class="btn" style="margin-top:18px" onclick="closeOverlay('endOverlay')" data-str="ok"></button>
+    <button class="btn" style="margin-top:18px" onclick="closeOverlay('endOverlay'); logout()" data-str="ok"></button>
   </div>
 </div>
 
@@ -851,9 +854,13 @@
   <div class="lock-clock" id="lockClock">--:--</div>
   <div class="lock-sub" data-str="lock_sub"></div>
   <div class="lock-card">
-    <button class="btn" onclick="startSession()" data-str="btn_start"></button>
+    <!-- К1-и1: сессия гостя идёт на другой машине — этот ПК ему не открываем -->
+    <div class="lock-user hidden" id="lockForeign" style="color:var(--acc); margin:0 0 4px"></div>
+    <button class="btn" id="lockStart" onclick="startSession()" data-str="btn_start"></button>
     <button class="btn ghost" onclick="openPackShop()" data-str="pack_shop"></button>
     <div class="lock-user" id="lockUser"></div>
+    <!-- К1-и3 (Р3): после конца сессии аккаунт уходит с ПК сам; «Остаться» отменяет -->
+    <div class="lock-user hidden" id="lockLogout"><span></span> · <a href="#" style="color:var(--txt)" onclick="lockLogoutStop();return false" data-str="lock_stay"></a></div>
     <button class="btn ghost" onclick="logout()" data-str="btn_switch_acc"></button>
     <div class="lock-info"><a href="#" onclick="openInfo();return false" data-str="lock_rules"></a></div>
     <div id="lockLang"></div>
@@ -922,6 +929,17 @@
           <li data-str-html="info_lic4"></li>
         </ul>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="confirmOverlay" class="overlay" style="z-index:96">
+  <div class="modal">
+    <h2 id="cfTitle"></h2>
+    <div class="muted" id="cfSub" style="margin-top:8px"></div>
+    <div style="display:flex; gap:10px; margin-top:18px">
+      <button class="btn ghost" onclick="confirmAnswer(false)" data-str="cf_no"></button>
+      <button class="btn" id="cfYes" onclick="confirmAnswer(true)"></button>
     </div>
   </div>
 </div>
@@ -1395,6 +1413,17 @@ const SH_RU = {
   ntf_streak_frozen: "❄ Пропуск прикрыт заморозкой ({n} дн) — стрик цел. Осталось: {left}",
   calc_min_short: "{n}м",
   calc_h_short: "{n}ч",
+  lock_foreign: "Твоя сессия идёт на {c} — этот ПК свободен для других",
+  lock_logout_in: "Выход из аккаунта через {t}",
+  lock_stay: "Остаться",
+  logout_arm: "⏻ Ещё раз — завершить сессию и выйти",
+  end_arm: "Ещё раз — завершить сессию",
+  btn_finish_sure: "Точно завершить",
+  pack_confirm_title: "Купить «{n}» за {p} zł?",
+  pack_confirm_sub: "С кошелька спишется {p} zł, останется {w}",
+  pack_confirm_yes: "Купить",
+  cf_yes: "Да",
+  cf_no: "Отмена",
 };
 
 /* english */
@@ -1814,6 +1843,17 @@ const SH_EN = {
   ntf_streak_frozen: "❄ A miss was covered by a freeze ({n} d) — the streak is safe. Left: {left}",
   calc_min_short: "{n}m",
   calc_h_short: "{n}h",
+  lock_foreign: "Your session is running on {c} — this PC is free for others",
+  lock_logout_in: "Signing out in {t}",
+  lock_stay: "Stay",
+  logout_arm: "⏻ Once more — end the session and sign out",
+  end_arm: "Once more — end the session",
+  btn_finish_sure: "Really finish",
+  pack_confirm_title: "Buy “{n}” for {p} zł?",
+  pack_confirm_sub: "{p} zł will be taken from your wallet, {w} left",
+  pack_confirm_yes: "Buy",
+  cf_yes: "Yes",
+  cf_no: "Cancel",
 };
 
 /* polski */
@@ -2233,6 +2273,17 @@ const SH_PL = {
   ntf_streak_frozen: "❄ Przerwa przykryta zamrożeniem ({n} dni) — seria cała. Zostało: {left}",
   calc_min_short: "{n}m",
   calc_h_short: "{n}h",
+  lock_foreign: "Twoja sesja trwa na {c} — ten PC jest wolny dla innych",
+  lock_logout_in: "Wylogowanie za {t}",
+  lock_stay: "Zostań",
+  logout_arm: "⏻ Jeszcze raz — zakończ sesję i wyloguj się",
+  end_arm: "Jeszcze raz — zakończ sesję",
+  btn_finish_sure: "Na pewno zakończ",
+  pack_confirm_title: "Kupić „{n}” za {p} zł?",
+  pack_confirm_sub: "Z portfela zejdzie {p} zł, zostanie {w}",
+  pack_confirm_yes: "Kup",
+  cf_yes: "Tak",
+  cf_no: "Anuluj",
 };
 
 const SH_LANGS = {ru: SH_RU, en: SH_EN, pl: SH_PL};
@@ -2502,7 +2553,7 @@ const SENS_GAMES = [
   {id:'quake',    name:'Quake',         yaw:0.022},
   {id:'deadlock', name:'Deadlock',      yaw:0.022},
 ];
-let sensDPI = +(localStorage.getItem('1448_dpi') || 800);
+let sensDPI = +(lsGet('1448_dpi') || 800); // К1-и6: обёртка — политика хранилища не должна ронять скрипт
 let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
 let sensProfile = null, sensProfileApplied = false;
 let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
@@ -2683,6 +2734,37 @@ function logout(){
   document.getElementById('authView').classList.remove('hidden');
   const pov = document.getElementById('pwdOverlay');
   if (pov) pov.classList.add('hidden'); // Е0-и5в: вышли — экран смены не висит
+  // К1: взводы кнопок, отсчёт авто-выхода и всплывшие окна прошлого гостя
+  foreignSession = null; lockLogoutStop();
+  if (logoutArmT){ clearTimeout(logoutArmT); logoutArmT = null; }
+  if (endArmT){ clearTimeout(endArmT); endArmT = null; }
+  ['caseOverlay','lvlOverlay','rankOverlay','endOverlay','oddsOverlay','infoOverlay','profOverlay','confirmOverlay']
+    .forEach(id => { const o = document.getElementById(id); if (o) o.classList.remove('show'); });
+  if (confirmResolve){ const r = confirmResolve; confirmResolve = null; r(false); }
+  closePackShop(); paintReadyGate(); renderZeroTick();
+}
+
+/* К1-и2 (Р2): выход во время сессии = завершение сессии. ⏻ взводится на 5 с,
+   второй клик завершает, а «Ок» на экране итогов выходит из аккаунта (и3).
+   Раньше ⏻ просто чистил токены: сессия жила, ПК оставался занят, деньги
+   списывались до нуля (ревью 03.09). */
+let logoutArmT = null;
+function logoutClick(btn){
+  if (!activeSession){ logout(); return; }
+  if (logoutArmT){
+    clearTimeout(logoutArmT); logoutArmT = null;
+    if (btn) btn.classList.remove('armed');
+    endSession(null);
+    return;
+  }
+  toast(STR.logout_arm);
+  if (btn) btn.classList.add('armed');
+  logoutArmT = setTimeout(() => { logoutArmT = null; if (btn) btn.classList.remove('armed'); }, 5000);
+}
+/* Без взвода — с экрана смены пароля: играть оттуда всё равно нельзя. */
+async function endAndLogout(){
+  if (activeSession){ try{ await api('/me/sessions/end', {method:'POST', body:'{}'}); }catch(e){} }
+  logout();
 }
 
 /* ═══════════════ SHELL ═══════════════ */
@@ -2722,8 +2804,9 @@ async function loadAll(){
       if (g[sensFrom] != null) sensVal = g[sensFrom];
       sensProfileApplied = true;
     }
-    activeSession = sessions.find(s => !s.ended_at) || null;
-    sessComputer = ss.computer || sessComputer; // Е1: имя машины для «Готов?»
+    activeSession = mySession(sessions);           // К1-и1: сессия ЭТОЙ машины
+    foreignSession = foreignSessionOf(sessions);   // идёт на другом ПК — лок с подсказкой
+    sessComputer = ss.computer || sessComputer; // Е1: имя машины для «Готов?» и подсказки лока
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
     renderTop(); renderWallet(); renderSession(); renderSide(); renderLock();
     paintReadyGate(); // Е1: посадили, но время ещё не пошло — просим подтвердить
@@ -2896,6 +2979,16 @@ function paintPackShop(){
 
 async function buyPack(id){
   if (packBusy) return;
+  // К1-и5: пакет за 60 zł одним кликом — слишком дорого для промаха. Не хватает
+  // денег — говорим сразу, без запроса; хватает — спрашиваем с ценой и остатком.
+  const p = packShop.find(x => x.id === id);
+  if (p){
+    const priceGr = Math.round(p.price_pln * 100), walletGr = me ? (me.wallet_grosz || 0) : 0;
+    if (walletGr < priceGr){ toast(STR.pack_poor); return; }
+    const yes = await askConfirm(T('pack_confirm_title', {n: p.name, p: fmtNum(p.price_pln)}),
+      T('pack_confirm_sub', {p: fmtNum(p.price_pln), w: fmtZl(walletGr - priceGr)}), STR.pack_confirm_yes);
+    if (!yes) return;
+  }
   packBusy = true;
   try{
     const d = await api('/me/packages', {method:'POST', body: JSON.stringify({package_id: id})});
@@ -2970,7 +3063,11 @@ function buildAppGroups(){
 function openCatFolder(i){ if (catGroups[i]){ catFolder = {t:'plat', name:catGroups[i].name}; renderCatalog(); } }
 function openAppGroup(i){ if (catAppGroups[i]){ catFolder = {t:'appgrp', name:catAppGroups[i].name, sys:catAppGroups[i].sys}; renderCatalog(); } }
 function closeCatFolder(){ catFolder = null; renderCatalog(); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && catFolder) closeCatFolder(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (confirmResolve){ confirmAnswer(false); return; } // К1-и5
+  if (catFolder) closeCatFolder();
+});
 
 /* ═════════ П3: СОСТОЯНИЕ ПРИЛОЖЕНИЯ НА ЭТОМ ПК ═════════
    Данные — из GET http://127.0.0.1:1448/apps-status агента (пакет 2, см.
@@ -3487,7 +3584,17 @@ function renderAgentDot(){
    localStorage.setItem('1448_dev','1') (ревью 26.08). */
 const DEV_TOOLS = (() => { try { return localStorage.getItem('1448_dev') === '1'; } catch (e) { return false; } })();
 
-let myComputerId = null; // Е1-и5: своя машина — агент знает её с рождения
+/* К1-и1: своя машина. Источники по убыванию доверия: /ping агента (он
+   физически на этом ПК), ?pc=<uuid> в адресе (C#-киоск задаёт в shell_url),
+   localStorage 1448_pc (запомнили с прошлого раза). Без номера шелл сессий
+   не начинает («первый свободный» отменён сервером в К0-и6) и не
+   открывается по чужой сессии. */
+let myComputerId = (() => {
+  let q = null;
+  try{ q = new URLSearchParams(location.search).get('pc'); }catch(e){}
+  if (q){ lsSet('1448_pc', q); return q; }
+  return lsGet('1448_pc');
+})();
 async function pingAgent(){
   const was = agentOnline;
   try{
@@ -3495,7 +3602,7 @@ async function pingAgent(){
     agentOnline = r.ok;
     if (r.ok){
       const d = await r.json().catch(() => ({}));
-      if (d.computer_id) myComputerId = d.computer_id;
+      if (d.computer_id){ myComputerId = d.computer_id; lsSet('1448_pc', d.computer_id); }
     }
   }catch(e){ agentOnline = false; }
   renderAgentDot();
@@ -3585,7 +3692,7 @@ function renderSession(){
         </div>
         <div style="display:flex; flex-direction:column; gap:8px">
           <button class="btn slim" onclick="resumeSession()">${esc(STR.btn_resume)}</button>
-          <button class="btn danger slim" onclick="endSession(null)">${esc(STR.btn_finish)}</button>
+          <button class="btn danger slim" onclick="endClick(this)">${esc(STR.btn_finish)}</button>
         </div>
       </div>` : `
       <div class="sess-on">
@@ -3595,7 +3702,7 @@ function renderSession(){
         </div>
         <div style="display:flex; flex-direction:column; gap:8px">
           <button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>
-          <button class="btn danger slim" onclick="endSession(null)">${esc(STR.btn_finish)}</button>
+          <button class="btn danger slim" onclick="endClick(this)">${esc(STR.btn_finish)}</button>
           ${DEV_TOOLS ? `<button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>` : ''}
         </div>
       </div>`;
@@ -3694,7 +3801,19 @@ async function endSession(devMinutes){
     document.getElementById('endOverlay').classList.add('show');
     if (d.levels_gained > 0) setTimeout(()=>showLevelUp(d.user.level), 400);
     await loadAll();
+    lockLogoutStart(LOCK_LOGOUT_SEC); // К1-и3: не нажал «Ок» и ушёл — аккаунт уйдёт сам
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* К1-и5: «Завершить» — arm-паттерн: первый клик взводит кнопку на 5 с, второй
+   завершает. Промах по кнопке рядом с «Пауза» закрывал оплаченную сессию
+   (и агент закрывал игру). */
+let endArmT = null;
+function endClick(btn){
+  if (endArmT){ clearTimeout(endArmT); endArmT = null; endSession(null); return; }
+  toast(STR.end_arm);
+  if (btn){ btn.textContent = STR.btn_finish_sure; btn.classList.add('armed'); }
+  endArmT = setTimeout(() => { endArmT = null; renderSession(); }, 5000);
 }
 
 function showLevelUp(level){
@@ -3760,9 +3879,57 @@ async function pressReady(){
 function renderLock(){
   const inShell = !document.getElementById('shellView').classList.contains('hidden');
   const lock = document.getElementById('lockOverlay');
-  lock.classList.toggle('show', inShell && !activeSession);
-  if (!(inShell && !activeSession)) attractOff(); // лок ушёл (сессия/логаут) — заставку долой
+  const show = inShell && !activeSession;
+  lock.classList.toggle('show', show);
+  if (!show){ attractOff(); lockLogoutStop(); } // лок ушёл (сессия/логаут) — заставку и отсчёт долой
   if (me) document.getElementById('lockUser').textContent = T('lock_user', {n: me.nickname, l: me.level});
+  // К1-и1: сессия гостя идёт на другой машине — этот ПК ему не открываем
+  const fe = document.getElementById('lockForeign'), sb = document.getElementById('lockStart');
+  if (fe){
+    fe.classList.toggle('hidden', !foreignSession);
+    fe.textContent = foreignSession ? T('lock_foreign', {c: sessComputer || STR.ntf_other_pc}) : '';
+  }
+  if (sb) sb.disabled = !!foreignSession;
+}
+
+/* К1-и1: сессия ЭТОЙ машины. Шелл раньше открывался по ЛЮБОЙ активной сессии
+   гостя: посадили за PC-01, сел за VIP-01 и вошёл — VIP открылся и запускал
+   игры, а PC-01 оплачивался и числился занятым. Без номера машины (нет ни
+   ?pc=, ни агента, ни памяти) ведём себя как раньше — первая незавершённая. */
+let foreignSession = null;
+function mySession(rows){
+  const live = (rows || []).filter(s => !s.ended_at);
+  if (!myComputerId) return live[0] || null;
+  return live.find(s => s.computer_id === myComputerId) || null;
+}
+function foreignSessionOf(rows){
+  if (!myComputerId) return null;
+  return (rows || []).find(s => !s.ended_at && s.computer_id !== myComputerId) || null;
+}
+
+/* К1-и3 (Р3): конец сессии = выход из аккаунта. Свой конец — «Ок» на экране
+   итогов выходит сразу; внешний (ноль, бронь, админ, AFK) — на лок-экране
+   идёт отсчёт, «Остаться» его снимает. Чужой аккаунт на ПК не задерживается. */
+const LOCK_LOGOUT_SEC = 60;
+let lockLogoutT = null, lockLogoutAt = 0;
+function lockLogoutStart(sec){
+  lockLogoutAt = Date.now() + sec * 1000;
+  if (!lockLogoutT) lockLogoutT = setInterval(lockLogoutTick, 500);
+  lockLogoutTick();
+}
+function lockLogoutStop(){
+  if (lockLogoutT){ clearInterval(lockLogoutT); lockLogoutT = null; }
+  lockLogoutAt = 0;
+  const el = document.getElementById('lockLogout');
+  if (el) el.classList.add('hidden');
+}
+function lockLogoutTick(){
+  const el = document.getElementById('lockLogout');
+  if (!el || !lockLogoutAt) return;
+  const left = Math.max(0, Math.ceil((lockLogoutAt - Date.now()) / 1000));
+  el.classList.remove('hidden');
+  el.querySelector('span').textContent = T('lock_logout_in', {t: Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')});
+  if (left <= 0){ lockLogoutStop(); logout(); }
 }
 
 // Поллинг: сессию завершили извне — лок сам опустится; сессию НАЧАЛ админ
@@ -3777,7 +3944,7 @@ setInterval(async () => {
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
-      if (!still){ toast(STR.toast_sess_ended); await loadAll(); }
+      if (!still){ toast(STR.toast_sess_ended); await loadAll(); lockLogoutStart(LOCK_LOGOUT_SEC); } // К1-и3
       // Е1: сервер подтвердил сессию сам (дедлайн истёк) или гость нажал
       // [Готов!] с телефона — экран обязан погаснуть здесь же.
       else if (!!still.ready_at !== !!activeSession.ready_at){
@@ -3789,8 +3956,9 @@ setInterval(async () => {
         activeSession = still; renderSession(); renderZeroTick(); // Г2/Г1-и6
       }
     } else {
-      const started = rows.find(s => s.status === 'active');
+      const started = mySession(rows); // К1-и1: только сессия этой машины открывает шелл
       if (started){ toast(STR.toast_sess_started_desk); await loadAll(); }
+      else if (!!foreignSessionOf(rows) !== !!foreignSession){ await loadAll(); } // чужая появилась/ушла — обновить лок
     }
     if (activeSession){ // Г1: свежий кошелёк и прогноз, пока идёт списание
       try{
@@ -3812,7 +3980,12 @@ function attractFreeText(){
   return total ? T('attract_free', {f: free, t: total}) : '';
 }
 function attractShow(){
-  if (!document.getElementById('lockOverlay').classList.contains('show')) return;
+  const lockOn = document.getElementById('lockOverlay').classList.contains('show');
+  const authOn = !document.getElementById('authView').classList.contains('hidden');
+  if (!lockOn && !authOn) return;
+  // К1-и3 (Р3): 2,5 минуты тишины на лок-экране — аккаунт гостя с ПК уходит,
+  // заставка встаёт уже без него; следующий видит чистый экран входа.
+  if (lockOn && me) logout();
   document.getElementById('attract').classList.add('show');
   document.getElementById('attractFree').innerHTML = attractFreeText();
   clearInterval(attractIv);
@@ -4082,12 +4255,18 @@ async function cancelMyBooking(id){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+let investBusy = false; // К1-и5: двойной клик по «+1» — второе очко ждёт ответа на первое
 async function invest(id){
+  if (investBusy) return;
+  investBusy = true;
+  document.querySelectorAll('#sideBody .tal .inv').forEach(b => { b.disabled = true; });
   try{
     await api('/me/talents/invest', {method:'POST', body:JSON.stringify({talent_id:id})});
     toast(STR.toast_tal_up);
     await loadAll();
   }catch(e){ toast('⚠ ' + e.message); }
+  investBusy = false;
+  if (curTab === 'talents') renderSide();
 }
 
 /* ═══════════════ КАЛЬКУЛЯТОР КОЙНОВ ═══════════════ */
@@ -4352,12 +4531,12 @@ function sensAllGamesHtml(){
   }).join('');
 }
 
-function setDpiPreset(d){ sensDPI = d; localStorage.setItem('1448_dpi', d); renderSide(); }
+function setDpiPreset(d){ sensDPI = d; lsSet('1448_dpi', d); renderSide(); }
 
 function sensUpdate(){
   const dpiEl = document.getElementById('sensDpi');
   sensDPI = Math.max(1, +dpiEl.value || 800);
-  localStorage.setItem('1448_dpi', sensDPI);
+  lsSet('1448_dpi', sensDPI);
   sensFrom = document.getElementById('sensFrom').value;
   sensTo = document.getElementById('sensTo').value;
   sensVal = Math.max(0, +document.getElementById('sensVal').value || 0);
@@ -4777,6 +4956,23 @@ function toast(msg){
   clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 3200);
 }
 function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
+/* К1-и5: общее подтверждение — промис; Esc и «Отмена» = false */
+let confirmResolve = null;
+function askConfirm(title, sub, yes){
+  return new Promise(res => {
+    if (confirmResolve){ const r = confirmResolve; confirmResolve = null; r(false); }
+    confirmResolve = res;
+    document.getElementById('cfTitle').textContent = title || '';
+    document.getElementById('cfSub').textContent = sub || '';
+    document.getElementById('cfYes').textContent = yes || STR.cf_yes;
+    document.getElementById('confirmOverlay').classList.add('show');
+  });
+}
+function confirmAnswer(v){
+  document.getElementById('confirmOverlay').classList.remove('show');
+  const r = confirmResolve; confirmResolve = null;
+  if (r) r(!!v);
+}
 setInterval(() => {
   const d = new Date();
   const t = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
