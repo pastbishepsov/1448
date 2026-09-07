@@ -1448,6 +1448,13 @@ const SH_RU = {
   toast_ready_go: "▶ Поехали — время пошло",
   ntf_ready_auto: "▶ Время пошло: окно ожидания истекло",
   ntf_seat_cancel: "Посадку отменили у стойки",
+  ntf_ach: "🏆 {t}",
+  ntf_ach_case: " · кейс {c}",
+  ntf_ach_xp: " · +{n} XP",
+  ntf_ach_sp: " · +{n} очков",
+  ach_left_min: "ещё {n} мин",
+  ach_left_h: "ещё {n} ч",
+  ach_left_n: "ещё {n}",
   fld_nickname: "никнейм", fld_first_name: "имя", fld_last_name: "фамилия",
   fld_phone: "телефон", fld_email: "e-mail",
   pwd_title: "Задай свой пароль",
@@ -1931,6 +1938,13 @@ const SH_EN = {
   toast_ready_go: "▶ Off we go — the clock is running",
   ntf_ready_auto: "▶ The clock started: the waiting window ran out",
   ntf_seat_cancel: "Your seat was cancelled at the desk",
+  ntf_ach: "🏆 {t}",
+  ntf_ach_case: " · {c} case",
+  ntf_ach_xp: " · +{n} XP",
+  ntf_ach_sp: " · +{n} points",
+  ach_left_min: "{n} min to go",
+  ach_left_h: "{n} h to go",
+  ach_left_n: "{n} to go",
   fld_nickname: "nickname", fld_first_name: "first name", fld_last_name: "last name",
   fld_phone: "phone", fld_email: "e-mail",
   pwd_title: "Set your own password",
@@ -2414,6 +2428,13 @@ const SH_PL = {
   toast_ready_go: "▶ Jedziemy — czas leci",
   ntf_ready_auto: "▶ Czas ruszył: okno oczekiwania minęło",
   ntf_seat_cancel: "Posadzenie anulowano przy ladzie",
+  ntf_ach: "🏆 {t}",
+  ntf_ach_case: " · skrzynka {c}",
+  ntf_ach_xp: " · +{n} XP",
+  ntf_ach_sp: " · +{n} pkt",
+  ach_left_min: "jeszcze {n} min",
+  ach_left_h: "jeszcze {n} h",
+  ach_left_n: "jeszcze {n}",
   fld_nickname: "nick", fld_first_name: "imię", fld_last_name: "nazwisko",
   fld_phone: "telefon", fld_email: "e-mail",
   pwd_title: "Ustaw własne hasło",
@@ -3824,6 +3845,11 @@ function notifText(n){
     case 'package_added': return T('ntf_pack_added', {n: p.name || '', m: p.minutes || 0, z: p.zone || ''});
     case 'package_void': return T('ntf_pack_void', {n: p.name || ''});
     case 'package_expiring': return T('ntf_pack_soon', {n: p.name || '', d: p.days_left || 0, m: p.minutes || 0});
+    // К5-и2: ачивка выдана прямо в игре — «🏆 Разогрев · кейс light»
+    case 'achievement_earned': return T('ntf_ach', {t: p.title || ''})
+      + (p.reward_case_tier ? T('ntf_ach_case', {c: p.reward_case_tier}) : '')
+      + (p.reward_xp > 0 ? T('ntf_ach_xp', {n: p.reward_xp}) : '')
+      + (p.reward_skillpoints > 0 ? T('ntf_ach_sp', {n: p.reward_skillpoints}) : '');
     case 'ready_auto': return STR.ntf_ready_auto;   // Е1: окно истекло, время пошло
     case 'seat_cancelled': return STR.ntf_seat_cancel; // Е1: посадку сняли у стойки
   }
@@ -3867,7 +3893,8 @@ async function buyFreeze(){
    borderless/оконные — показывают (README агента). Текст уже локализован
    словарями шелла, агент его не знает. Нет агента — молча. */
 const AGENT_NOTIFY_TYPES = new Set(['balance_low', 'balance_zero', 'booking_soon', 'booking_deadline',
-  'booking_reminder', 'pause_over', 'afk_warn', 'afk_pause', 'ready_auto', 'session_moved', 'waitlist_ready']);
+  'booking_reminder', 'pause_over', 'afk_warn', 'afk_pause', 'ready_auto', 'session_moved', 'waitlist_ready',
+  'achievement_earned']); // К5-и2: кейс прямо в игре
 function notifCritical(n){
   if (n.type === 'kitchen_status') return ['delivering', 'done'].includes((n.payload || {}).status);
   return AGENT_NOTIFY_TYPES.has(n.type);
@@ -3901,6 +3928,12 @@ setInterval(async () => {
     if (items.some(n => n.type === 'kitchen_status')) loadKitchen(); // Г7
   }catch(e){}
 }, 12000);
+// К5-и3: бары ачивок живут во время игры — сервер досчитывает идущую сессию
+// (К5-и1); пока открыта вкладка и идёт сессия, обновляем раз в минуту.
+setInterval(async () => {
+  if (!me || !activeSession || curTab !== 'ach') return;
+  try{ achievements = await api('/me/achievements'); renderSide(); }catch(e){}
+}, 60000);
 setInterval(async () => {
   if (!me || chatOpen) return;
   try{
@@ -4515,13 +4548,18 @@ function renderSide(){
         resetTxt = T('ach_reset', {t: h + ':' + String(m).padStart(2,'0')});
       }
     }
-    const achRow = a => {
+    // К5-и3: сколько осталось до ближайшей дневной — в единицах условия (unit с сервера)
+    const achLeft = pr => {
+      const n = Math.max(0, pr.target - pr.value);
+      return T(pr.unit === 'min' ? 'ach_left_min' : pr.unit === 'hours' ? 'ach_left_h' : 'ach_left_n', {n});
+    };
+    const achRow = (a, near) => {
       const pr = a.progress, pct = pr && pr.target ? Math.min(100, 100*pr.value/pr.target) : 0;
       return `
       <div class="card ach ${a.earned?'got':''}">
         <div class="st">${a.earned?UI.check:UI.lock}</div>
         <div style="flex:1; min-width:0"><div class="t">${a.title}</div><div class="d">${a.description||''}</div>
-        ${pr && !a.earned ? `<div class="achbar"><i style="width:${pct}%"></i></div><div class="d cnum">${pr.value} / ${pr.target}</div>` : ''}
+        ${pr && !a.earned ? `<div class="achbar"><i style="width:${pct}%"></i></div><div class="d cnum">${pr.value} / ${pr.target}${near && pr.target ? ' · <b class="cyan-t">' + esc(achLeft(pr)) + '</b>' : ''}</div>` : ''}
         <div class="rw">${a.reward_xp ? '+'+a.reward_xp+' XP ' : ''}${a.reward_skillpoints ? '+'+a.reward_skillpoints+' '+UI.sp+' ' : ''}${a.reward_case_tier ? T('ach_reward_case', {t: a.reward_case_tier}) : ''}</div></div>
       </div>`;
     };
@@ -4534,8 +4572,11 @@ function renderSide(){
         if (!items.length) return '';
         const rest = items.filter(a=>!a.earned).sort((x,y)=>near(x)-near(y)); // ближайшие к закрытию — сверху
         const got = items.filter(a=>a.earned);
+        // К5-и3: у ближайшей незакрытой ДНЕВНОЙ — подпись «ещё N мин» (прогресс живой, К5-и1);
+        // цель уже достигнута (выдача — на ближайшем тике) — подписи «ещё 0» не нужно
+        const nearest = cat === 'daily' ? rest.find(a => a.progress && a.progress.target && a.progress.value < a.progress.target) || null : null;
         return `<div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${lbl}</div>`
-          + [...rest, ...got].map(achRow).join('');
+          + [...rest, ...got].map(a => achRow(a, a === nearest)).join('');
       }).join('');
   }
   if (curTab === 'food'){

@@ -25,11 +25,11 @@ Base URL: `http://localhost:8080/api/v1`
 | POST | `/me/cases/:id/open` | Открыть кейс |
 | GET | `/me/talents` | Дерево талантов |
 | POST | `/me/talents/invest` | Вложить SP в талант |
-| GET | `/me/achievements` | Достижения |
+| GET | `/me/achievements` | Достижения с прогрессом; идущая сессия досчитывается на лету (минуты, активные минуты, визит, часы), `progress {value, target, unit: min\|hours\|days\|count}` (К5) |
 | GET | `/me/sessions` | История сессий; 15 мин после завершения без активной сессии — ещё и `receipt` (К3-и6) |
 | POST | `/me/sessions/end` | Завершить сессию; в ответе `receipt {wallet_grosz, kitchen_unpaid_pln, streak_days}` — чек на экран «Сессия завершена» (К3-и6) |
 | GET | `/me/economy` | Ранг, таланты и `rates` — ставки из настроек клуба, по ним считает калькулятор (К3-и1); `pause_limit_min` (0 = паузы нет, кнопку не показывать) и `afk_stop_min` — правила паузы и AFK (К4-и4) |
-| GET | `/me/notifications?client=kiosk\|app` | Непрочитанные уведомления (до 50), выдача помечает. С `client=` — своя отметка у киоска и PWA, тост доходит до обоих; без параметра — как раньше, «прочитано вообще» (К3-и2, миграция 055) |
+| GET | `/me/notifications?client=kiosk\|app` | Непрочитанные уведомления (до 50), выдача помечает. С `client=` — своя отметка у киоска и PWA, тост доходит до обоих; без параметра — как раньше, «прочитано вообще» (К3-и2, миграция 055). Тип `achievement_earned {id, title, category, reward_xp, reward_skillpoints, reward_case_tier}` — ачивка выдана, в т.ч. прямо во время сессии (К5-и2) |
 | GET | `/me/chat?after=&mark=1` | Переписка со стойкой: без `after` — ПОСЛЕДНИЕ 100, старые сверху; с `after` — доливка (К3-и5) |
 
 ## Ошибки (К3-и3)
@@ -46,6 +46,7 @@ Base URL: `http://localhost:8080/api/v1`
 
 | Метод | Путь | Описание |
 |-------|------|----------|
+| GET | `/catalog` | Витрина: игры/приложения/системные/платформы. Публично — без путей на диске, аргументов, `target_raw` и `games_root` (ссылки и протоколы остаются); `?full=1` с токеном агента — всё, без токена — 401 (К4-и3) |
 | GET | `/clubs` | Список клубов с геолокацией, счётчиками ПК и тарифами зон `zones[{name, rate_pln}]` (К2-и5) |
 | GET | `/clubs/:id` | Детали клуба |
 | GET | `/clubs/:id/computers` | Доступные ПК |
@@ -54,7 +55,9 @@ Base URL: `http://localhost:8080/api/v1`
 
 ## WebSocket
 
-`WS /api/v1/ws/shell?computer_id=UUID&token=JWT`
+`WS /api/v1/ws/shell?computer_id=UUID` — с заголовком `X-Agent-Token: <AGENT_TOKEN>`
+(или `Authorization: Bearer`, или `?token=`); при заданном на сервере
+`AGENT_TOKEN` без верного токена — `401 agent_token_invalid` (К4-и3).
 
 ### События (Сервер → Shell)
 - `session_start` — начало сессии

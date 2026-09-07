@@ -602,14 +602,12 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 
 	// Г5: суточный прогресс (топливо периодических ачивок, резет 14:48) +
 	// проверка ВСЕХ достижений — lifetime и периодических. Дев-оверрайд минут
-	// честно тестирует и ачивки (пишется как активные минуты).
+	// честно тестирует и ачивки (пишется как активные минуты). К5: сессия через
+	// 14:48 ложится в двое суток; выданное по ходу сессии (тик биллинга) второй
+	// раз не выдаётся — сессия уже completed, живого досчёта нет.
 	devOverride := minutesOverride != nil && os.Getenv("SERVER_ENV") != "production"
 	recordSessionProgress(session.UserID, minutes, session.ActiveMinutes, session.StartedAt, now, devOverride)
-	stats := gatherPeriodicStats(session.UserID, now)
-	stats.HoursPlayed = userHoursPlayed(userID)
-	stats.LoginCount = 1
-	stats.DepositCount = userDepositCount(userID)
-	stats.BookingsCount = userBookingsCount(userID)
+	stats := fullPlayerStats(session.UserID, now)
 	checkAchievements(session.UserID, stats)
 
 	// Г7/Р10: доиграл с неоплаченной кухней → гостю напоминание «рассчитайся

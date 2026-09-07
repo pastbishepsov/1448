@@ -522,12 +522,7 @@ func kitchenProgress(userID uuid.UUID) {
 		ON CONFLICT (user_id, day_key) DO UPDATE SET
 			kitchen_orders = user_progress.kitchen_orders + 1`,
 		userID, achDayKey(now))
-	stats := gatherPeriodicStats(userID, now)
-	stats.HoursPlayed = userHoursPlayed(userID.String())
-	stats.LoginCount = 1
-	stats.DepositCount = userDepositCount(userID.String())
-	stats.BookingsCount = userBookingsCount(userID.String())
-	checkAchievements(userID, stats)
+	checkAchievements(userID, fullPlayerStats(userID, now))
 }
 
 // ── Фото позиции (Г7): BYTEA в БД, байты живут только в этих трёх ручках ──

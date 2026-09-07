@@ -831,6 +831,10 @@ const STR_RU = {
   ntf_grant_xp: '⚡ Начислено +{n} XP',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 Тебе выдан кейс {t}',
+  ntf_ach: '🏆 {t}',
+  ntf_ach_case: ' · кейс {c}',
+  ntf_ach_xp: ' · +{n} XP',
+  ntf_ach_sp: ' · +{n} очков',
   ntf_default: '🔔 Обновление аккаунта',
   ntf_profile: '🔔 Админ обновил твои данные: {f}',
   ntf_pwd_reset: '🔑 Пароль сброшен у стойки — задай свой при входе',
@@ -1076,6 +1080,10 @@ const STR_EN = {
   ntf_grant_xp: '⚡ +{n} XP granted',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 You got a {t} case',
+  ntf_ach: '🏆 {t}',
+  ntf_ach_case: ' · {c} case',
+  ntf_ach_xp: ' · +{n} XP',
+  ntf_ach_sp: ' · +{n} points',
   ntf_default: '🔔 Account update',
   ntf_profile: '🔔 An admin updated your details: {f}',
   ntf_pwd_reset: '🔑 Your password was reset at the desk — set your own when you sign in',
@@ -1319,6 +1327,10 @@ const STR_PL = {
   ntf_grant_xp: '⚡ Przyznano +{n} XP',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 Dostałeś skrzynkę {t}',
+  ntf_ach: '🏆 {t}',
+  ntf_ach_case: ' · skrzynka {c}',
+  ntf_ach_xp: ' · +{n} XP',
+  ntf_ach_sp: ' · +{n} pkt',
   ntf_default: '🔔 Aktualizacja konta',
   ntf_profile: '🔔 Administrator zaktualizował twoje dane: {f}',
   ntf_pwd_reset: '🔑 Hasło zostało zresetowane przy ladzie — ustaw własne przy logowaniu',
@@ -2905,6 +2917,12 @@ function ntfText(n){
     // Е1: сервер сам подтвердил сессию по истечении окна (Р1).
     case 'ready_auto':
       return STR.ntf_ready_auto;
+    // К5-и2 (трек К, KIOSK.md): ачивка выдана — в т.ч. прямо во время сессии
+    case 'achievement_earned':
+      return T('ntf_ach', {t: p.title || ''})
+        + (p.reward_case_tier ? T('ntf_ach_case', {c: tierName(p.reward_case_tier)}) : '')
+        + (p.reward_xp > 0 ? T('ntf_ach_xp', {n: p.reward_xp}) : '')
+        + (p.reward_skillpoints > 0 ? T('ntf_ach_sp', {n: p.reward_skillpoints}) : '');
   }
   return STR.ntf_default;
 }
@@ -2932,7 +2950,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-07.1';
+const APP_VER = '2026-09-07.2';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

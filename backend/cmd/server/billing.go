@@ -336,6 +336,12 @@ func billSession(s *models.Session, now time.Time) bool {
 			UpdateColumn("active_minutes", gorm.Expr("active_minutes + ?", billedDelta))
 		s.ActiveMinutes += billedDelta
 	}
+	// К5-и2: кейс прямо в игре — на каждой пятой учтённой минуте проверяем
+	// ачивки по живым статам (идущая сессия досчитана, progress.go); выданное
+	// уходит уведомлением achievement_earned. При завершении не задвоится.
+	if crossedEvery(prevBilled, s.BilledMinutes, achLiveCheckMin) {
+		checkAchievements(s.UserID, fullPlayerStats(s.UserID, now))
+	}
 
 	packLeft := livePackMinutes(s.UserID, zoneOfComputer(s.ComputerID), now) // Е2-и3
 	left := minutesLeft(user.CoinMinutes, packLeft, user.WalletGrosz, rateGrosz, s.MoneyMinutes)

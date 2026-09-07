@@ -9,6 +9,12 @@ package main
 // user_progress (progress.go): минуты/активные минуты/визиты по ачивочным
 // суткам, стрик визитов. Награды прежним путём: очки навыков + кейс
 // (CaseSourceAchievement).
+//
+// К5-и2: ачивки проверяются и ПО ХОДУ сессии — тик биллинга раз в
+// achLiveCheckMin учтённых минут прогоняет checkAchievements по живым статам
+// (progress.go досчитывает идущую сессию), выданное уходит гостю уведомлением
+// achievement_earned — тост на киоске, поверх игры (К4-и2) и в PWA. Повторной
+// выдачи при завершении нет: тот же unique(user, ach, period_key).
 
 import (
 	"encoding/json"
@@ -52,11 +58,40 @@ type playerStats struct {
 	ProfileComplete int
 }
 
+// achLiveCheckMin — как часто тик биллинга проверяет ачивки идущей сессии:
+// на каждой пятой учтённой минуте (К5-и2). Тик идёт раз в 30 с, минуты
+// прибавляются по одной — граница пересекается ровно один раз.
+const achLiveCheckMin = 5
+
+// crossedEvery — прошла ли граница кратности every между prev и cur (чистая, тест).
+func crossedEvery(prev, cur, every int) bool {
+	if every <= 0 || cur <= prev {
+		return false
+	}
+	return cur/every != prev/every
+}
+
 // achCondition — разобранное условие ({"min":10} / {"count":1} / {"days":7}).
 type achCondition struct {
 	Min   *int `json:"min"`
 	Count *int `json:"count"`
 	Days  *int `json:"days"`
+}
+
+// conditionUnit — в чём меряется прогресс условия: подпись на клиенте
+// («ещё 12 мин», К5-и3). По ТИПУ условия, не по ключу JSON: сид пишет
+// {"min": 1} и для «заказал на кухне» — это штука, не минута.
+func conditionUnit(condType string) string {
+	switch condType {
+	case "minutes_today", "active_minutes_today", "minutes_week", "active_minutes_week",
+		"minutes_month", "active_minutes_month":
+		return "min"
+	case "hours_played":
+		return "hours"
+	case "visit_streak":
+		return "days"
+	}
+	return "count"
 }
 
 func (c achCondition) threshold() int {
@@ -134,14 +169,19 @@ func conditionMet(condType, condValueJSON string, s playerStats) bool {
 	return ok && v >= cv.threshold()
 }
 
-// userHoursPlayed — суммарные часы игрока по завершённым сессиям.
-func userHoursPlayed(userID string) int {
+// userMinutesPlayed — суммарные минуты игрока по завершённым сессиям.
+func userMinutesPlayed(userID string) int64 {
 	var totalMin int64
 	db.Model(&models.Session{}).
 		Where("user_id = ? AND status = ?", userID, models.SessionStatusCompleted).
 		Select("COALESCE(SUM(minutes_used), 0)").
 		Scan(&totalMin)
-	return int(totalMin / 60)
+	return totalMin
+}
+
+// userHoursPlayed — суммарные часы игрока по завершённым сессиям (ранг).
+func userHoursPlayed(userID string) int {
+	return int(userMinutesPlayed(userID) / 60)
 }
 
 // userBookingsCount — сколько броней гость создавал за всё время (Г6: «первая бронь»).
@@ -187,7 +227,7 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 		tier := a.RewardCaseTier
 		sp := a.RewardSkillpoints
 		xp := a.RewardXP
-		_ = db.Transaction(func(tx *gorm.DB) error {
+		err := db.Transaction(func(tx *gorm.DB) error {
 			ua := models.UserAchievement{UserID: userID, AchievementID: a.ID, EarnedAt: now, PeriodKey: pk}
 			if err := tx.Create(&ua).Error; err != nil {
 				return err
@@ -209,6 +249,14 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 				}
 			}
 			return nil
+		})
+		if err != nil {
+			continue // unique(user, ach, period_key) — параллельная выдача или сбой: без уведомления
+		}
+		// К5-и2: гость узнаёт сразу — тост на киоске и поверх игры, в PWA
+		notifyUser(userID, "achievement_earned", map[string]any{
+			"id": a.ID, "title": a.Title, "category": a.Category,
+			"reward_xp": xp, "reward_skillpoints": sp, "reward_case_tier": tier,
 		})
 	}
 }
@@ -248,11 +296,7 @@ func handleGetMyAchievements(c *gin.Context) {
 	}
 	now := time.Now()
 
-	stats := gatherPeriodicStats(uid, now)
-	stats.HoursPlayed = userHoursPlayed(userID)
-	stats.LoginCount = 1
-	stats.DepositCount = userDepositCount(userID)
-	stats.BookingsCount = userBookingsCount(userID)
+	stats := fullPlayerStats(uid, now) // К5-и1: с досчётом идущей сессии
 
 	var me models.User
 	db.First(&me, "id = ?", uid) // Г6-и4: запас заморозок стрика — рядом со стриком
@@ -303,7 +347,7 @@ func handleGetMyAchievements(c *gin.Context) {
 			if v > target {
 				v = target
 			}
-			item["progress"] = gin.H{"value": v, "target": target}
+			item["progress"] = gin.H{"value": v, "target": target, "unit": conditionUnit(a.ConditionType)} // К5-и3
 		}
 		out = append(out, item)
 	}
