@@ -1462,6 +1462,10 @@ const SH_RU = {
   toast_ready_go: "▶ Поехали — время пошло",
   ntf_ready_auto: "▶ Время пошло: окно ожидания истекло",
   ntf_seat_cancel: "Посадку отменили у стойки",
+  ntf_comp: "🛠 Компенсация за проблему с ПК: {c}",
+  ntf_comp_min: "+{n} мин",
+  ntf_comp_pln: "+{a} zł",
+  ntf_comp_and: " и ",
   ntf_ach: "🏆 {t}",
   ntf_ach_case: " · кейс {c}",
   ntf_ach_xp: " · +{n} XP",
@@ -1956,6 +1960,10 @@ const SH_EN = {
   toast_ready_go: "▶ Off we go — the clock is running",
   ntf_ready_auto: "▶ The clock started: the waiting window ran out",
   ntf_seat_cancel: "Your seat was cancelled at the desk",
+  ntf_comp: "🛠 Compensation for the PC issue: {c}",
+  ntf_comp_min: "+{n} min",
+  ntf_comp_pln: "+{a} zł",
+  ntf_comp_and: " and ",
   ntf_ach: "🏆 {t}",
   ntf_ach_case: " · {c} case",
   ntf_ach_xp: " · +{n} XP",
@@ -2450,6 +2458,10 @@ const SH_PL = {
   toast_ready_go: "▶ Jedziemy — czas leci",
   ntf_ready_auto: "▶ Czas ruszył: okno oczekiwania minęło",
   ntf_seat_cancel: "Posadzenie anulowano przy ladzie",
+  ntf_comp: "🛠 Rekompensata za problem z PC: {c}",
+  ntf_comp_min: "+{n} min",
+  ntf_comp_pln: "+{a} zł",
+  ntf_comp_and: " i ",
   ntf_ach: "🏆 {t}",
   ntf_ach_case: " · skrzynka {c}",
   ntf_ach_xp: " · +{n} XP",
@@ -3873,6 +3885,13 @@ function notifText(n){
     case 'package_added': return T('ntf_pack_added', {n: p.name || '', m: p.minutes || 0, z: p.zone || ''});
     case 'package_void': return T('ntf_pack_void', {n: p.name || ''});
     case 'package_expiring': return T('ntf_pack_soon', {n: p.name || '', d: p.days_left || 0, m: p.minutes || 0});
+    // К8 (Р4): админ компенсировал проблему с ПК — минуты в запас и/или деньги на кошелёк
+    case 'incident_compensation': {
+      const parts = [];
+      if (p.minutes > 0) parts.push(T('ntf_comp_min', {n: p.minutes}));
+      if (p.wallet_pln > 0) parts.push(T('ntf_comp_pln', {a: fmtNum(p.wallet_pln)}));
+      return T('ntf_comp', {c: parts.join(STR.ntf_comp_and)}) + (p.note ? ' · ' + p.note : '');
+    }
     // К5-и2: ачивка выдана прямо в игре — «🏆 Разогрев · кейс light»
     case 'achievement_earned': return T('ntf_ach', {t: p.title || ''})
       + (p.reward_case_tier ? T('ntf_ach_case', {c: p.reward_case_tier}) : '')
@@ -3922,7 +3941,7 @@ async function buyFreeze(){
    словарями шелла, агент его не знает. Нет агента — молча. */
 const AGENT_NOTIFY_TYPES = new Set(['balance_low', 'balance_zero', 'booking_soon', 'booking_deadline',
   'booking_reminder', 'pause_over', 'afk_warn', 'afk_pause', 'ready_auto', 'session_moved', 'waitlist_ready',
-  'achievement_earned']); // К5-и2: кейс прямо в игре
+  'achievement_earned', 'incident_compensation']); // К5-и2: кейс прямо в игре; К8: компенсация
 function notifCritical(n){
   if (n.type === 'kitchen_status') return ['delivering', 'done'].includes((n.payload || {}).status);
   return AGENT_NOTIFY_TYPES.has(n.type);

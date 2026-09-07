@@ -680,6 +680,7 @@
             <button onclick="audKindSet('sessions',this)">Сессии</button>
             <button onclick="audKindSet('bookings',this)">Брони</button>
             <button onclick="audKindSet('pc',this)">ПК</button>
+            <button onclick="audKindSet('incidents',this)">Проблемы<span id="incSegN"></span></button>
             <button onclick="audKindSet('catalog',this)">Каталог</button>
             <button class="ownerOnly hidden" onclick="audKindSet('staff',this)">Персонал</button>
           </div>
@@ -1221,7 +1222,7 @@ async function refresh(){
     if (curTab === 'hall' && !hallEdit) await renderHall(); // в редакторе не дёргаем схему
     if (curTab === 'users') await renderUsersTable();
     if (curTab === 'bookings') await renderBookings();
-    if (curTab === 'grants') await renderAudit();
+    if (curTab === 'grants'){ await renderAudit(); if (audKind !== 'incidents') loadIncidentsBadge(); }
     if (curTab === 'staff') await renderStaff();
     // каталог не обновляем по таймеру — там форма редактирования
     lastSync = Date.now();
@@ -1306,6 +1307,9 @@ function feedLine(m){
     case 'session_end': return (d.nickname||'гость') + ': ' + (d.minutes||0) + ' мин, +' + (d.xp||0) + ' XP, +' + (d.coins||0);
     case 'shell_online': return pcName(d.computer_id) + ' — shell online';
     case 'shell_offline': return pcName(d.computer_id) + ' — shell offline';
+    case 'incident': return d.auto && d.open && !d.minutes ? '⚠ агент пропал на ' + pcName(d.computer_id) + ' во время сессии — запись в «Проблемах»'
+      : d.compensation ? 'проблема: компенсация ' + d.compensation
+      : d.open ? 'проблема: запись в журнале' + (d.minutes ? ' — ' + d.minutes + ' мин' : '') : 'проблема: закрыта';
     case 'deposit': return (d.nickname||'гость') + ' внёс ' + (+d.amount_pln||0) + ' zł (+' + (d.coins||0) + ' монет)';
     case 'sale': return d.kind === 'void'
       ? 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł'
@@ -1385,6 +1389,11 @@ function handleLiveEvent(m){
   // открытая карточка гостя; занятую шторку не трогаем (ревью 26.08)
   if (m.type === 'deposit' && drawerUserId && !drawerBusy()) loadUserDrawer();
   if (m.type === 'kitchen') kitBadgeLoad(); // Г7: очередь и бейдж
+  if (m.type === 'incident'){ // К8-и3: бейдж «Проблемы» и открытый раздел
+    const d = m.data || {};
+    if (d.auto && d.open && !d.minutes) toast('⚠ Агент пропал на ' + pcName(d.computer_id) + ' — запись в «Журнал → Проблемы»');
+    if (curTab === 'grants' && audKind === 'incidents') renderIncidents(); else loadIncidentsBadge();
+  }
   if (m.type === 'staff_chat'){ // Е6: свой написал — счётчик и открытая лента
     const d = m.data || {};
     loadStaffChat(true);
@@ -1923,6 +1932,11 @@ function renderPCDrawer(id){
     <button class="btn ghost" style="width:100%; justify-content:center; margin-top:12px"
       onclick="setPCStatus('${pc.id}','maintenance')"><span data-ic="wrench"></span>В ремонт</button>`;
   }
+  // К8-и3: проблема с этим ПК — запись в журнал, компенсация сидящему гостю
+  body += `<div class="dsub">Проблема с ПК</div>
+    <button class="btn ${pcIncOpen === pc.id ? '' : 'ghost'}" style="width:100%; justify-content:center"
+      onclick="pcIncOpen = pcIncOpen === '${pc.id}' ? null : '${pc.id}'; renderPCDrawer('${pc.id}')"><span data-ic="wrench"></span>Проблема${pc.session ? ' у ' + esc(pc.session.nickname) : ''}</button>
+    ${pcIncOpen === pc.id ? incFormHtml({computer_id: pc.id, has_guest: !!pc.session}) : ''}`;
   // Б8: питание — WoL спящему, restart/shutdown живому без сессии
   if (!pc.session){
     body += `<div class="dsub">Питание</div><div class="actrow">`;
@@ -2236,6 +2250,7 @@ function renderUserDrawer(){
       <button class="btn mini ${uForm==='pack'?'':'ghost'}" onclick="uFormToggle('pack')"><span data-ic="clock"></span>Пакет</button>
       <button class="btn mini ${uForm==='edit'?'':'ghost'}" onclick="uFormToggle('edit')"><span data-ic="user"></span>Данные</button>
       <button class="btn mini ${uForm==='pwd'?'':'ghost'}" onclick="uFormToggle('pwd')"><span data-ic="lock"></span>Пароль</button>
+      <button class="btn mini ${uForm==='incident'?'':'ghost'}" onclick="uFormToggle('incident')" title="К8: проблема с ПК — запись и компенсация"><span data-ic="wrench"></span>Проблема</button>
       ${u.status === 'banned'
         ? `<button class="btn ghost mini" onclick="unbanNow('${u.id}','${esc(u.nickname)}')"><span data-ic="unban"></span>Разбанить</button>`
         : `<button class="btn danger mini" onclick="armBan(this,'${u.id}','${esc(u.nickname)}')"><span data-ic="ban"></span>Бан</button>`}
@@ -2440,6 +2455,7 @@ async function openUserChat(id){
 
 function uFormHtml(){
   if (!uForm) return '';
+  if (uForm === 'incident') return incFormHtml({user_id: uData.user.id, has_guest: true}); // К8-и3
   if (uForm === 'deposit') return `<div class="uform">
     <input id="d_sum" class="input" type="number" min="1" step="1" placeholder="Сумма, zł" value="50">
     <div class="segs">
@@ -3119,7 +3135,7 @@ async function impApply(){
 /* ── Журнал-аудит (А4): единая лента — начисления, депозиты, действия ── */
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
-  money: ['deposit','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn',
+  money: ['deposit','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn','incident_compensate', // К8: компенсация — обязательство
           'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
           'kitchen_done','kitchen_pay','kitchen_cancel'], // кухню считают у той же стойки (ревью 26.08)
   grant: ['grant'],
@@ -3169,6 +3185,7 @@ const AUD_LABEL = {
   kitchen_cancel:'кухня: заказ отменён',
   package_warn:'пакеты: предупреждение о сгорании',
   onboarding:'обучение пройдено',
+  incident_create:'проблема: запись', incident_compensate:'проблема: компенсация', incident_resolve:'проблема: закрыта', // К8
 };
 const AUD_ICON = {
   deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
@@ -3198,6 +3215,7 @@ const AUD_ICON = {
   seat_cancel:'cross', session_move:'monitor',
   kitchen_done:'check', kitchen_pay:'coins', kitchen_cancel:'cross',
   package_warn:'bell', onboarding:'scroll',
+  incident_create:'wrench', incident_compensate:'coins', incident_resolve:'check', // К8
 };
 function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
 function relTime(iso){
@@ -3208,6 +3226,7 @@ function relTime(iso){
   return fmtTime(iso);
 }
 async function renderAudit(useCache){
+  if (audKind === 'incidents') return renderIncidents(); // К8-и3: свой раздел
   if (!useCache){
     const d = await api('/admin/audit');
     audData = d.items || [];
@@ -3231,6 +3250,118 @@ async function renderAudit(useCache){
     <td class="muted">${esc(x.admin||'—')}</td>
   </tr>`).join('')}</table>`);
 }
+
+/* ── К8-и3: журнал проблем (Р4). Факт пишет админ или хаб (обрыв агента во
+   время сессии — автозапись с бейджем «авто»); компенсацию — минутами в запас
+   гостя или деньгами на кошелёк — назначает админ; открытая = ещё не решил. ── */
+const INC_KINDS = [['pc_hang','ПК завис'], ['agent_lost','агент пропал'], ['power','свет / питание'], ['other','другое']];
+let incOnlyOpen = true, incComp = null; // incComp — id записи с раскрытой формой компенсации
+function incKindName(k){ const f = INC_KINDS.find(x => x[0] === k); return f ? f[1] : k; }
+function incCompText(x){
+  const p = [];
+  if (x.comp_minutes > 0) p.push('+' + x.comp_minutes + ' мин');
+  if (x.comp_pln > 0) p.push('+' + fmtPLN(x.comp_pln) + ' zł');
+  return p.join(' и ');
+}
+function incBadge(n){ const el = document.getElementById('incSegN'); if (el) el.textContent = n > 0 ? ' · ' + n : ''; }
+async function loadIncidentsBadge(){ try{ const d = await api('/admin/incidents?open=1'); incBadge(d.open || 0); }catch(e){} }
+async function renderIncidents(){
+  let d;
+  try{ d = await api('/admin/incidents' + (incOnlyOpen ? '?open=1' : '')); }
+  catch(e){ setHTML('auditTable', '<div class="empty">' + esc(e.message) + '</div>'); return; }
+  const rows = d.items || [];
+  incBadge(d.open || 0);
+  const head = `<div class="toolrow" style="margin-bottom:10px">
+    <div class="segs">
+      <button class="${incOnlyOpen ? 'on' : ''}" onclick="incOnlyOpen=true; renderIncidents()">Открытые${d.open ? ' · ' + d.open : ''}</button>
+      <button class="${!incOnlyOpen ? 'on' : ''}" onclick="incOnlyOpen=false; renderIncidents()">Все</button>
+    </div>
+    <span class="muted">Запись — факт; компенсацию решает админ: минуты в запас гостя или деньги на кошелёк. Это рост обязательства клуба, не выручка</span>
+  </div>`;
+  if (!rows.length){
+    setHTML('auditTable', head + '<div class="empty"><span data-ic="wrench"></span>' + (incOnlyOpen ? 'Открытых проблем нет' : 'Записей нет — проблемы с ПК пишутся сюда из шторки ПК и карточки гостя') + '</div>');
+    return;
+  }
+  setHTML('auditTable', head + `<table><tr><th>Когда</th><th>Что</th><th>ПК</th><th>Гость</th><th>Длилось</th><th>Заметка</th><th>Решение</th><th></th></tr>
+  ${rows.map(x => `<tr>
+    <td class="muted" title="${fmtTime(x.started_at)}">${relTime(x.started_at)}</td>
+    <td style="white-space:nowrap"><span data-ic="wrench"></span> ${esc(incKindName(x.kind))}${x.auto ? ' <span class="st maintenance" title="записал сервер: агент пропал во время сессии">авто</span>' : ''}</td>
+    <td>${esc(x.computer || '—')}</td>
+    <td>${x.nickname ? '<b>' + esc(x.nickname) + '</b>' : '<span class="muted">—</span>'}</td>
+    <td>${x.ended_at || !x.auto ? (x.minutes || 0) + ' мин' : '<span class="muted">ещё идёт</span>'}</td>
+    <td style="white-space:normal">${esc(x.note || '')}</td>
+    <td style="white-space:normal">${x.open ? '<span class="st in_session">открыта</span>'
+      : (x.compensated_at ? '<span class="st available">' + esc(incCompText(x)) + '</span>' : '<span class="muted">закрыта без компенсации</span>')
+        + (x.admin ? ' <span class="muted">· ' + esc(x.admin) + '</span>' : '')}</td>
+    <td style="white-space:nowrap">${x.open ? (incComp === x.id ? '' :
+      `<button class="btn mini" onclick="incComp='${x.id}'; renderIncidents()" ${x.user_id ? '' : 'disabled title="у записи нет гостя — компенсировать некому"'}><span data-ic="coins"></span>Компенсировать</button>
+       <button class="btn ghost mini" onclick="resolveIncident('${x.id}')"><span data-ic="check"></span>Закрыть</button>`) : ''}</td>
+  </tr>${x.open && incComp === x.id ? `<tr><td colspan="8"><div class="uform" style="margin-top:0">
+      <div class="actrow">
+        <input id="ic_min" class="input" type="number" min="0" step="5" placeholder="Минут в запас" value="${x.minutes || 30}" style="flex:1">
+        <input id="ic_pln" class="input" type="number" min="0" step="0.5" placeholder="zł на кошелёк" value="0" style="flex:1">
+      </div>
+      <input id="ic_note" class="input" placeholder="Заметка (в журнал и гостю)" value="${esc(x.note || '')}">
+      <div class="actrow">
+        <button class="btn" onclick="submitIncidentComp('${x.id}')"><span data-ic="coins"></span>Компенсировать и закрыть</button>
+        <button class="btn ghost" onclick="incComp=null; renderIncidents()">Отмена</button>
+      </div>
+      <div class="muted">Минуты попадут в запас гостя (тратятся раньше кошелька), деньги — на кошелёк с записью в его журнале; гость получит уведомление</div>
+    </div></td></tr>` : ''}`).join('')}</table>`);
+}
+async function submitIncidentComp(id){
+  return once('inc:' + id, async () => {
+    const body = {comp_minutes: +document.getElementById('ic_min').value || 0, comp_pln: +document.getElementById('ic_pln').value || 0,
+                  note: document.getElementById('ic_note').value.trim()};
+    if (!body.comp_minutes && !body.comp_pln){ toast('⚠ Укажи минуты или сумму'); return; }
+    try{
+      const d = await api('/admin/incidents/' + id + '/compensate', {method:'POST', body: JSON.stringify(body)});
+      toast('🛠 ' + (d.nickname || 'гость') + ': ' + incCompText(d));
+      incComp = null;
+      await renderIncidents();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+async function resolveIncident(id){
+  return once('incres:' + id, async () => {
+    try{
+      await api('/admin/incidents/' + id + '/resolve', {method:'POST', body:'{}'});
+      toast('✓ Запись закрыта без компенсации');
+      await renderIncidents();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+/* форма «Проблема» — общая для шторки ПК и карточки гостя */
+function incFormHtml(scope){
+  const canComp = !!scope.has_guest; // гость сидит за ПК (сервер сам подставит его с ПК) или карточка гостя
+  return `<div class="uform" id="incForm" style="margin-top:0">
+    <select id="inc_kind" class="input">${INC_KINDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
+    <input id="inc_min" class="input" type="number" min="0" step="1" placeholder="Сколько минут длилось" value="10">
+    ${canComp ? `<div class="actrow">
+      <input id="inc_cmin" class="input" type="number" min="0" step="5" placeholder="Компенсация: минут в запас" value="0" style="flex:1">
+      <input id="inc_cpln" class="input" type="number" min="0" step="0.5" placeholder="zł на кошелёк" value="0" style="flex:1">
+    </div>` : `<div class="muted">За ПК никто не сидит — запишем факт без компенсации</div>`}
+    <input id="inc_note" class="input" placeholder="Заметка (что случилось)">
+    <button class="btn" style="width:100%; justify-content:center" onclick="submitIncident(${JSON.stringify(scope).replace(/"/g, '&quot;')})"><span data-ic="wrench"></span>Записать${canComp ? ' (и компенсировать, если указано)' : ''}</button>
+    <div class="muted">Без компенсации запись остаётся открытой в «Журнал → Проблемы» — решить можно позже</div>
+  </div>`;
+}
+async function submitIncident(scope){
+  return once('incnew:' + (scope.computer_id || scope.user_id), async () => {
+    const g = id => document.getElementById(id);
+    const body = {computer_id: scope.computer_id || '', user_id: scope.user_id || '', kind: g('inc_kind').value,
+                  minutes: +g('inc_min').value || 0, note: g('inc_note').value.trim(),
+                  comp_minutes: g('inc_cmin') ? +g('inc_cmin').value || 0 : 0, comp_pln: g('inc_cpln') ? +g('inc_cpln').value || 0 : 0};
+    try{
+      const d = await api('/admin/incidents', {method:'POST', body: JSON.stringify(body)});
+      toast(d.open ? '🛠 Записано — открыто в «Журнал → Проблемы»' : '🛠 ' + (d.nickname || 'гость') + ': ' + incCompText(d));
+      pcIncOpen = null; if (uForm === 'incident') uForm = null;
+      if (drawerPCId) renderPCDrawer(drawerPCId); else if (drawerUserId) renderUserDrawer();
+      loadIncidentsBadge();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+let pcIncOpen = null;
 
 /* ── брони: отмена с undo («Вернуть» → restore), walk-in форма (А3) ── */
 async function cancelBooking(id){
@@ -3887,6 +4018,7 @@ function paintMoney(d){
   const loss = d.losses || {units:0, pln:0, moves:0};
   const wal = d.wallet || {liability_pln:0, guests_with_balance:0, period_spent_pln:0, period_spends:0};
   const pk = d.packages || {liability_pln:0, minutes_left:0, guests:0, period_pln:0, period_count:0, period_minutes:0}; // Е2-и6
+  const ic = d.incidents || {period_count:0, compensated:0, comp_minutes:0, comp_pln:0, open:0}; // К8
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln,
@@ -3931,6 +4063,13 @@ function paintMoney(d){
                 {title:'сколько времени гости купили и ещё не забрали'})}
        ${repKpi('Продано времени', packHM(pk.period_minutes || 0), undefined,
                 {title:'за период, ' + (pk.period_count || 0) + ' пакетов за живые деньги'})}
+     </div>
+     <div class="kpis">
+       ${repKpi('Компенсации', fmtPLN(ic.comp_pln || 0) + ' zł · ' + packHM(ic.comp_minutes || 0), undefined,
+                {title:'за проблемы с ПК (К8): деньги на кошельки и минуты в запас — рост обязательства клуба, НЕ выручка и не выручка со знаком минус · '
+                       + (ic.compensated || 0) + ' компенсаций из ' + (ic.period_count || 0) + ' записей за период'})}
+       ${repKpi('Проблем за период', ic.period_count || 0, undefined, {title:'записей в журнале проблем: руками и автозаписи обрыва агента'})}
+       ${repKpi('Открытых сейчас', ic.open || 0, undefined, {title:'ждут решения админа — «Журнал → Проблемы»'})}
      </div>
      <div class="sect">Выручка по дням</div>
      ${repChart(days, x => x.value,

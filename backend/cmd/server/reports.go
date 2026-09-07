@@ -528,6 +528,9 @@ func handleReportMoney(c *gin.Context) {
 		},
 		"days": days, "by_admin": byAdmin, "top_goods": topGoods,
 		"losses": gin.H{"units": loss.Units, "pln": math.Round(loss.Pln*100) / 100, "moves": loss.Moves},
+		// К8 (Р4/Р7): компенсации за проблемы с ПК — рост обязательства клуба,
+		// не выручка и не выручка со знаком минус; отдельной строкой.
+		"incidents": incidentsReport(p.From, p.To),
 	})
 }
 

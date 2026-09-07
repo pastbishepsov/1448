@@ -610,6 +610,9 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 	stats := fullPlayerStats(session.UserID, now)
 	checkAchievements(session.UserID, stats)
 
+	// К8-и2: открытая автозапись обрыва агента по этой сессии — закрыть длительностью
+	closeSessionIncidents(session.ID, now)
+
 	// Г7/Р10: доиграл с неоплаченной кухней → гостю напоминание «рассчитайся
 	// у стойки», админам сигнал в живую ленту
 	kCnt, kSum := unpaidKitchen(session.UserID)

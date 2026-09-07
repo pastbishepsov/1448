@@ -28,6 +28,11 @@ const (
 	// гостя (stop_on_session_end) и запускал очистку между гостями.
 	MsgLock   MessageType = "lock"   // сервер → shell: запереть экран (payload.reason: paused|afk), игру не трогать
 	MsgUnlock MessageType = "unlock" // сервер → shell: снять блокировку — пауза снята
+	// К4-и1 (KIOSK.md, №13): ответ на каждый session_tick — истина о сессии
+	// этого ПК {session_active, paused, session_id, reason}. Команды выше могли
+	// не дойти (WS лежал в момент завершения) — по state агент догоняет:
+	// закрывает игру без сессии, запирает экран на паузе.
+	MsgState MessageType = "state" // сервер → shell: состояние сессии ПК
 	// force_unlock удалён (Б7-и3): сервер его никогда не слал — мёртвый тип.
 )
 
@@ -122,6 +127,16 @@ type Hub struct {
 	// websocket не знает о БД, main.go подставляет обработчик, который
 	// пишет вызов в чат и рассылает админкам.
 	OnAdminCall func(computerID string)
+
+	// StateFor — состояние сессии ПК для ответа state на session_tick (К4-и1).
+	// nil — ответа нет (тесты хаба без БД).
+	StateFor func(computerID string) any
+
+	// OnShellOffline / OnShellOnline — агент отвалился / вернулся (К8-и2:
+	// журнал проблем пишет автозапись обрыва во время сессии и закрывает её
+	// длительностью). Вызываются в своей горутине — цикл хаба не ждёт БД.
+	OnShellOffline func(computerID string)
+	OnShellOnline  func(computerID string)
 }
 
 func NewHub() *Hub {
@@ -150,6 +165,9 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("WS: PC Shell подключён (computer=%s, club=%s)", client.ComputerID, client.ClubID)
 			h.AdminBroadcast("shell_online", map[string]any{"computer_id": client.ComputerID})
+			if h.OnShellOnline != nil {
+				go h.OnShellOnline(client.ComputerID)
+			}
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -166,6 +184,9 @@ func (h *Hub) Run() {
 			log.Printf("WS: PC Shell отключён (computer=%s)", client.ComputerID)
 			if live {
 				h.AdminBroadcast("shell_offline", map[string]any{"computer_id": client.ComputerID})
+				if h.OnShellOffline != nil {
+					go h.OnShellOffline(client.ComputerID)
+				}
 			}
 		}
 	}
@@ -331,6 +352,14 @@ func (h *Hub) handleMessage(c *Client, msg Message) {
 			c.idleSec = *p.IdleSec
 			c.idleAt = time.Now()
 			h.mu.Unlock()
+		}
+		// К4-и1: каждому тику — state. Send берёт RLock сам; здесь лока нет.
+		if h.StateFor != nil {
+			if st := h.StateFor(c.ComputerID); st != nil {
+				if err := h.Send(c.ComputerID, MsgState, st); err != nil {
+					log.Printf("WS: state для computer=%s не ушёл: %v", c.ComputerID, err)
+				}
+			}
 		}
 	case MsgAdminCall:
 		log.Printf("Вызов администратора от computer=%s", c.ComputerID)

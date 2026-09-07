@@ -845,6 +845,10 @@ const STR_RU = {
   ntf_grant_xp: '⚡ Начислено +{n} XP',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 Тебе выдан кейс {t}',
+  ntf_comp: '🛠 Компенсация за проблему с ПК: {c}',
+  ntf_comp_min: '+{n} мин',
+  ntf_comp_pln: '+{a} zł',
+  ntf_comp_and: ' и ',
   ntf_ach: '🏆 {t}',
   ntf_ach_case: ' · кейс {c}',
   ntf_ach_xp: ' · +{n} XP',
@@ -1102,6 +1106,10 @@ const STR_EN = {
   ntf_grant_xp: '⚡ +{n} XP granted',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 You got a {t} case',
+  ntf_comp: '🛠 Compensation for the PC issue: {c}',
+  ntf_comp_min: '+{n} min',
+  ntf_comp_pln: '+{a} zł',
+  ntf_comp_and: ' and ',
   ntf_ach: '🏆 {t}',
   ntf_ach_case: ' · {c} case',
   ntf_ach_xp: ' · +{n} XP',
@@ -1356,6 +1364,10 @@ const STR_PL = {
   ntf_grant_xp: '⚡ Przyznano +{n} XP',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
   ntf_grant_case: '🎁 Dostałeś skrzynkę {t}',
+  ntf_comp: '🛠 Rekompensata za problem z PC: {c}',
+  ntf_comp_min: '+{n} min',
+  ntf_comp_pln: '+{a} zł',
+  ntf_comp_and: ' i ',
   ntf_ach: '🏆 {t}',
   ntf_ach_case: ' · skrzynka {c}',
   ntf_ach_xp: ' · +{n} XP',
@@ -3004,6 +3016,13 @@ function ntfText(n){
     // Е1: сервер сам подтвердил сессию по истечении окна (Р1).
     case 'ready_auto':
       return STR.ntf_ready_auto;
+    // К8 (трек К, Р4): админ компенсировал проблему с ПК — минуты и/или деньги
+    case 'incident_compensation': {
+      const parts = [];
+      if (p.minutes > 0) parts.push(T('ntf_comp_min', {n: p.minutes}));
+      if (p.wallet_pln > 0) parts.push(T('ntf_comp_pln', {a: (Number.isInteger(+p.wallet_pln) ? String(+p.wallet_pln) : (+p.wallet_pln).toFixed(2)).replace('.', ',')}));
+      return T('ntf_comp', {c: parts.join(STR.ntf_comp_and)}) + (p.note ? ' · ' + p.note : '');
+    }
     // К5-и2 (трек К, KIOSK.md): ачивка выдана — в т.ч. прямо во время сессии
     case 'achievement_earned':
       return T('ntf_ach', {t: p.title || ''})
@@ -3037,7 +3056,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-07.3';
+const APP_VER = '2026-09-07.4';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

@@ -82,8 +82,10 @@ func main() {
 
 	// ── WebSocket Hub (PC Shell) ────────────────────────────────────────────
 	hub = websocket.NewHub()
-	hub.OnAdminCall = agentAdminCall // Б2: admin_call агента → чат + админки
-	hub.StateFor = shellStateFor     // К4-и1: state в ответ на session_tick
+	hub.OnAdminCall = agentAdminCall   // Б2: admin_call агента → чат + админки
+	hub.StateFor = shellStateFor       // К4-и1: state в ответ на session_tick
+	hub.OnShellOffline = agentLostOpen // К8-и2: обрыв агента во время сессии → автозапись в журнал проблем
+	hub.OnShellOnline = agentLostClose // К8-и2: агент вернулся → длительность обрыва
 	go hub.Run()
 
 	// ── Роуты ───────────────────────────────────────────────────────────────
@@ -192,12 +194,16 @@ func main() {
 		adm.POST("/users/:id/deposit", handleAdminDeposit)
 		adm.POST("/users/:id/grant", handleAdminGrant)
 		adm.GET("/grants", handleAdminGrants)
-		adm.GET("/audit", handleAdminAudit)              // единая лента действий (спринт А4)
-		adm.GET("/chat/pending", handleAdminChatPending) // очередь вызовов/сообщений (Б2)
-		adm.POST("/chat/:id/ack", handleAdminChatAck)    // «принял» (Б2)
-		adm.GET("/chats", handleAdminChatThreads)        // треды чата (Б3)
-		adm.GET("/chats/:id", handleAdminChatThread)     // переписка с гостем (Б3)
-		adm.POST("/chats/:id", handleAdminChatPost)      // ответ гостю (Б3)
+		adm.GET("/audit", handleAdminAudit)         // единая лента действий (спринт А4)
+		adm.GET("/incidents", handleAdminIncidents) // К8: журнал проблем (?open=1)
+		adm.POST("/incidents", handleAdminIncidentCreate)
+		adm.POST("/incidents/:id/compensate", handleAdminIncidentCompensate) // минуты/деньги гостю
+		adm.POST("/incidents/:id/resolve", handleAdminIncidentResolve)       // закрыть без компенсации
+		adm.GET("/chat/pending", handleAdminChatPending)                     // очередь вызовов/сообщений (Б2)
+		adm.POST("/chat/:id/ack", handleAdminChatAck)                        // «принял» (Б2)
+		adm.GET("/chats", handleAdminChatThreads)                            // треды чата (Б3)
+		adm.GET("/chats/:id", handleAdminChatThread)                         // переписка с гостем (Б3)
+		adm.POST("/chats/:id", handleAdminChatPost)                          // ответ гостю (Б3)
 		adm.GET("/computers", handleAdminComputers)
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
 		adm.POST("/computers/:id/power", handleAdminPCPower)             // вкл/перезагрузка/выкл (Б8)

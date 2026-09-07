@@ -33,7 +33,7 @@ Base URL: `http://localhost:8080/api/v1`
 | GET | `/me/sessions` | История сессий; 15 мин после завершения без активной сессии — ещё и `receipt` (К3-и6) |
 | POST | `/me/sessions/end` | Завершить сессию; в ответе `receipt {wallet_grosz, kitchen_unpaid_pln, streak_days}` — чек на экран «Сессия завершена» (К3-и6) |
 | GET | `/me/economy` | Ранг, таланты и `rates` — ставки из настроек клуба, по ним считает калькулятор (К3-и1); `pause_limit_min` (0 = паузы нет, кнопку не показывать) и `afk_stop_min` — правила паузы и AFK (К4-и4) |
-| GET | `/me/notifications?client=kiosk\|app` | Непрочитанные уведомления (до 50), выдача помечает. С `client=` — своя отметка у киоска и PWA, тост доходит до обоих; без параметра — как раньше, «прочитано вообще» (К3-и2, миграция 055). Тип `achievement_earned {id, title, category, reward_xp, reward_skillpoints, reward_case_tier}` — ачивка выдана, в т.ч. прямо во время сессии (К5-и2) |
+| GET | `/me/notifications?client=kiosk\|app` | Непрочитанные уведомления (до 50), выдача помечает. С `client=` — своя отметка у киоска и PWA, тост доходит до обоих; без параметра — как раньше, «прочитано вообще» (К3-и2, миграция 055). Тип `achievement_earned {id, title, category, reward_xp, reward_skillpoints, reward_case_tier}` — ачивка выдана, в т.ч. прямо во время сессии (К5-и2). Тип `incident_compensation {kind, minutes, wallet_pln, note}` — админ компенсировал проблему с ПК (К8) |
 | GET | `/me/chat?after=&mark=1` | Переписка со стойкой: без `after` — ПОСЛЕДНИЕ 100, старые сверху; с `after` — доливка (К3-и5) |
 
 ## Ошибки (К3-и3)
@@ -56,6 +56,23 @@ Base URL: `http://localhost:8080/api/v1`
 | GET | `/clubs/:id/computers` | Доступные ПК |
 | POST | `/clubs/:id/bookings` | Создать бронь |
 | DELETE | `/me/bookings/:id` | Отменить бронь |
+
+## Журнал проблем для стойки (К8, admin)
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/admin/incidents?open=1` | Записи журнала проблем: `items[{id, kind, kind_name, auto, computer, nickname, started_at, ended_at, minutes, note, comp_minutes, comp_pln, open, admin}]` + `open` (сколько открытых). Без `open=1` админ видит открытые + сегодняшние, владелец — всё (до 200) |
+| POST | `/admin/incidents` | `{computer_id?, user_id?, session_id?, kind: pc_hang\|agent_lost\|power\|other, minutes, note, comp_minutes?, comp_pln?}` → `201`. Гость и сессия подставляются с ПК, если там идёт сессия. С компенсацией — сразу закрыта; без — открытая. Компенсация без гостя — `409 incident_no_guest` |
+| POST | `/admin/incidents/:id/compensate` | `{comp_minutes?, comp_pln?, note?}` — минуты в запас гостя (`coin_minutes`), деньги на кошелёк (`wallet_transactions` kind=adjust, ref_type=incident); закрывает запись, оживляет сессию, гостю `incident_compensation`. Повторно — `409 incident_compensated` |
+| POST | `/admin/incidents/:id/resolve` | `{note?}` — закрыть без компенсации; уже закрытая — `409 incident_resolved` |
+
+Автозапись (К8-и2): хаб при обрыве агента во время оплачиваемой сессии пишет
+`kind=agent_lost, auto=true` без компенсации; возврат агента или конец сессии
+проставляет `ended_at`/`minutes`; обрыв короче 20 с записью не считается.
+Отчёт `/admin/reports/money` отдаёт блок `incidents {period_count, compensated,
+comp_minutes, comp_pln, open}` — компенсации отдельной строкой: рост
+обязательства клуба, не выручка. Аудит: `incident_create`,
+`incident_compensate`, `incident_resolve`.
 
 ## WebSocket
 
