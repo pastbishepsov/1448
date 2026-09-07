@@ -387,7 +387,7 @@ type authResponse struct {
 func handleRegister(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	// QA Б9–Б11: символьный инвариант ника (кавычки/скобки/бэктик — XSS-вектор
@@ -421,7 +421,7 @@ func handleRegister(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"code": "already_exists", "message": "Никнейм, email или телефон уже заняты"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 
@@ -434,7 +434,7 @@ func handleRegister(c *gin.Context) {
 func handleLogin(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 

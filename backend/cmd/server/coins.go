@@ -156,7 +156,7 @@ func handleAdminRedeemCoins(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 
@@ -257,7 +257,7 @@ func handleCoinRedeemVoid(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := rec.UserID

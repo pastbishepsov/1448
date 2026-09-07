@@ -71,7 +71,7 @@ func handlePutSensitivity(c *gin.Context) {
 
 	var req sensitivityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	if req.Games == nil {
@@ -97,7 +97,7 @@ func handlePutSensitivity(c *gin.Context) {
 		Columns:   []clause.Column{{Name: "user_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"dpi", "games", "updated_at"}),
 	}).Create(&profile).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 

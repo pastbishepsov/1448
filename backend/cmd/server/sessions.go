@@ -59,6 +59,47 @@ func boostedXP(baseXP int64, effect float64) int64 {
 	return int64(math.Round(float64(baseXP) * (1 + effect)))
 }
 
+// walletLowMessage — отказ в старте словами гостя (К3-и3, №18): сколько
+// нужно, сколько есть; минуты монетами и пакетом упоминаются, только если
+// они есть — «0 мин монетами и 0 мин пакетом» ничего не объясняло. Читается
+// и с экрана посадки в админке: админ видит те же цифры.
+func walletLowMessage(minStart int64, needPLN, walletPLN float64, coinMin, packMin int64) string {
+	msg := fmt.Sprintf("Не хватает на старт: нужно ~%s zł на %d мин, на кошельке %s zł", plnRU(needPLN), minStart, plnRU(walletPLN))
+	if coinMin > 0 {
+		msg += fmt.Sprintf(" + %d мин монетами", coinMin)
+	}
+	if packMin > 0 {
+		msg += fmt.Sprintf(" + %d мин пакетом", packMin)
+	}
+	return msg + ". Пополни у стойки"
+}
+
+// economyRates — ставки начисления из настроек клуба (settings, А5) с
+// дефолтами кода. Одна точка чтения для finishSession и GET /me/economy
+// (К3-и1): раньше калькулятор отдавал константы и расходился с начислением,
+// стоило владельцу поменять ставку в админке.
+type economyRateSet struct {
+	XPPerMin, CoinsPerMin, CoinsPerPLN int64
+}
+
+func economyRates() economyRateSet {
+	return economyRateSet{
+		XPPerMin:    settingInt64("xp_per_min", xpPerMinute),
+		CoinsPerMin: settingInt64("coins_per_min", coinsPerMinute),
+		CoinsPerPLN: settingInt64("coins_per_pln", coinsPerPLN),
+	}
+}
+
+// sessionRewards — XP и монеты за minutes активной игры (чистая функция, тест).
+// XP: база × (1 + xp_boost) × множитель ранга; монеты: база × множитель ранга.
+// Итог кратен 5 (правило цифр). Калькулятор на клиенте считает по той же
+// формуле из /me/economy — при любых ставках цифры обязаны совпадать.
+func sessionRewards(minutes int, r economyRateSet, xpBoost float64, rank AccountRank) (xp, coins int64) {
+	xp = models.RoundToStep(int64(math.Round(float64(boostedXP(int64(minutes)*r.XPPerMin, xpBoost))*rank.XPMult)), 5)
+	coins = models.RoundToStep(int64(math.Round(float64(int64(minutes)*r.CoinsPerMin)*rank.CoinMult)), 5)
+	return xp, coins
+}
+
 // POST /me/sessions/start — начать игровую сессию за компьютером.
 func handleStartSession(c *gin.Context) {
 	userID, err := uuid.Parse(c.GetString("user_id"))
@@ -218,8 +259,7 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		if covered < minStart {
 			needPLN := models.PLNFromGrosz(costForMinutes(rateGrosz, int(minStart)))
 			return http.StatusConflict, gin.H{"code": "wallet_low",
-				"message": fmt.Sprintf("Не хватает на старт: нужен запас на %d мин (~%.2f zł), у гостя %.2f zł, %d мин монетами и %d мин пакетом. Пополни баланс у стойки",
-					minStart, needPLN, models.PLNFromGrosz(user.WalletGrosz), user.CoinMinutes, packMin)}
+				"message": walletLowMessage(minStart, needPLN, models.PLNFromGrosz(user.WalletGrosz), user.CoinMinutes, packMin)}
 		}
 	}
 
@@ -277,7 +317,8 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		return http.StatusConflict, gin.H{"code": "session_active", "message": "Сессия уже идёт"}
 	}
 	if err != nil {
-		return http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()}
+		log.Printf("db_error старт сессии: %v", err) // К3-и3: гостю — фраза, причина — в лог
+		return http.StatusInternalServerError, gin.H{"code": "db_error", "message": dbErrorMessage}
 	}
 
 	// Команда на ПК в реальном времени (если Shell подключён).
@@ -338,7 +379,7 @@ func handleEndSession(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"code": "session_closed", "message": "Сессия уже завершена"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, finishResponse(res))
@@ -357,11 +398,33 @@ type finishResult struct {
 	BonusCaseTier2 models.CaseTier
 	Rank           AccountRank
 	User           models.User
+	Receipt        receipt // К3-и6 (Р5): чек на экран «Сессия завершена»
+}
+
+// receipt — что гость должен знать, вставая из-за ПК (К3-и6, Р5): остаток
+// кошелька, долг кухни (постоплата, Р10 трека Г) и стрик визитов. Те же три
+// числа отдаёт GET /me/sessions после внешнего завершения — киоск показывает
+// один и тот же экран независимо от того, кто закрыл сессию.
+type receipt struct {
+	WalletGrosz      int64   `json:"wallet_grosz"`
+	KitchenUnpaidPLN float64 `json:"kitchen_unpaid_pln"`
+	StreakDays       int     `json:"streak_days"`
+}
+
+// receiptFor — чек по текущему состоянию гостя.
+func receiptFor(userID uuid.UUID, walletGrosz int64, now time.Time) receipt {
+	_, kSum := unpaidKitchen(userID)
+	return receipt{
+		WalletGrosz:      walletGrosz,
+		KitchenUnpaidPLN: kSum,
+		StreakDays:       gatherPeriodicStats(userID, now).VisitStreak,
+	}
 }
 
 func finishResponse(r *finishResult) gin.H {
 	return gin.H{
 		"session_id":        r.Session.ID,
+		"receipt":           r.Receipt,
 		"minutes":           r.Minutes,
 		"xp_earned":         r.XPGained,
 		"coins_earned":      r.CoinsGained,
@@ -430,14 +493,9 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 	// Ранг аккаунта (по наигранным часам) множит XP/coins и бустит кейсы.
 	rank, _ := accountRankFor(userHoursPlayed(userID))
 
-	// Ставки начисления — из настроек клуба (settings, спринт А5).
-	xpRate := settingInt64("xp_per_min", xpPerMinute)
-	coinRate := settingInt64("coins_per_min", coinsPerMinute)
-
-	// XP: базовый × (1 + xp_boost) × множитель ранга. Итог кратен 5 (правило цифр).
-	xpGained := models.RoundToStep(int64(math.Round(float64(boostedXP(int64(minutes)*xpRate, talentEffect(userID, "xp_boost")))*rank.XPMult)), 5)
-	// coins: базовый × множитель ранга. Итог кратен 5.
-	coinsGained := models.RoundToStep(int64(math.Round(float64(int64(minutes)*coinRate)*rank.CoinMult)), 5)
+	// Ставки начисления — из настроек клуба (settings, спринт А5); формула —
+	// одна на начисление и калькулятор (К3-и1), см. sessionRewards.
+	xpGained, coinsGained := sessionRewards(minutes, economyRates(), talentEffect(userID, "xp_boost"), rank)
 
 	// Первый визит за день: +50 XP (фиксировано, без модификаторов — ТЗ 4.1).
 	dailyBonusXP := int64(0)
@@ -556,7 +614,8 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 
 	// Г7/Р10: доиграл с неоплаченной кухней → гостю напоминание «рассчитайся
 	// у стойки», админам сигнал в живую ленту
-	if kCnt, kSum := unpaidKitchen(session.UserID); kCnt > 0 {
+	kCnt, kSum := unpaidKitchen(session.UserID)
+	if kCnt > 0 {
 		notifyUser(session.UserID, "kitchen_unpaid", map[string]any{"count": kCnt, "total_pln": kSum})
 		hub.AdminBroadcast("kitchen", map[string]any{
 			"kind": "unpaid", "nickname": user.Nickname, "total_pln": kSum, "count": kCnt})
@@ -590,6 +649,10 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 		BonusCase:    bonusCase, BonusCaseTier: bonusCaseTier, BonusCaseTier2: bonusCaseTier2,
 		Rank: rank,
 		User: user,
+		// К3-и6: кошелёк — после финального расчёта (user прочитан после settle),
+		// стрик — с учётом только что закрытой сессии (stats собраны после
+		// recordSessionProgress).
+		Receipt: receipt{WalletGrosz: user.WalletGrosz, KitchenUnpaidPLN: kSum, StreakDays: stats.VisitStreak},
 	}, nil
 }
 
@@ -608,10 +671,12 @@ func handleGetMySessions(c *gin.Context) {
 	var bookingDeadline *time.Time
 	var activeComputer string // Е1: экран [Готов!] называет машину — «ПК-07»
 	var packMinutes int64     // Е2-и5: минуты пакета, годные ЗДЕСЬ — прогноз без них врёт
+	hasActive := false
 	for i := range sessions {
 		if sessions[i].Status != models.SessionStatusActive {
 			continue
 		}
+		hasActive = true
 		if nb := nextForeignBooking(sessions[i].ComputerID, sessions[i].UserID, time.Now()); nb != nil {
 			d := nb.StartTime.Add(-time.Duration(settingInt64("booking_lock_min", bookingLockMinDef)) * time.Minute)
 			bookingDeadline = &d
@@ -627,7 +692,22 @@ func handleGetMySessions(c *gin.Context) {
 		break
 	}
 
-	c.JSON(http.StatusOK, gin.H{"count": len(sessions), "sessions": sessions,
+	resp := gin.H{"count": len(sessions), "sessions": sessions,
 		"booking_deadline": bookingDeadline, "computer": activeComputer,
-		"pack_minutes": packMinutes})
+		"pack_minutes": packMinutes}
+	// К3-и6: сессию закрыли не с этого экрана (админ, ноль кошелька, бронь,
+	// AFK, телефон) — киоск узнаёт об этом из поллинга и показывает тот же
+	// экран «Сессия завершена» с чеком. Чек считаем только когда он к месту:
+	// активной сессии нет, а последняя закрылась только что.
+	if !hasActive && len(sessions) > 0 && sessions[0].EndedAt != nil &&
+		time.Since(*sessions[0].EndedAt) < receiptWindow {
+		var me models.User
+		if db.Select("wallet_grosz").First(&me, "id = ?", userID).Error == nil {
+			resp["receipt"] = receiptFor(sessions[0].UserID, me.WalletGrosz, time.Now())
+		}
+	}
+	c.JSON(http.StatusOK, resp)
 }
+
+// receiptWindow — сколько после завершения GET /me/sessions ещё отдаёт чек.
+const receiptWindow = 15 * time.Minute

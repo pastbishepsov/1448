@@ -133,7 +133,7 @@ func handleAdminSettingsGet(c *gin.Context) {
 func handleAdminSettingsPut(c *gin.Context) {
 	var req map[string]int64
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	for key, val := range req {
@@ -158,11 +158,11 @@ func handleAdminSettingsPut(c *gin.Context) {
 		var existing models.Setting
 		if err := db.First(&existing, "key = ?", key).Error; err == nil {
 			if err := db.Model(&existing).Update("value", strVal).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+				respondDBError(c, err)
 				return
 			}
 		} else if err := db.Create(&models.Setting{Key: key, Value: strVal}).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+			respondDBError(c, err)
 			return
 		}
 		if changes != "" {

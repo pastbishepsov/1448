@@ -71,7 +71,7 @@ func handleOnboardingDone(c *gin.Context) {
 	now := time.Now()
 	if err := db.Model(&models.User{}).Where("id = ?", c.GetString("user_id")).
 		Updates(map[string]any{"onboarded_at": now, "onboarded_version": tourVersion}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	what := "тур пройден"
@@ -88,7 +88,7 @@ func handleOnboardingDone(c *gin.Context) {
 func handleOnboardingReset(c *gin.Context) {
 	if err := db.Model(&models.User{}).Where("id = ?", c.GetString("user_id")).
 		Updates(map[string]any{"onboarded_at": nil, "onboarded_version": 0}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"needs_tour": true, "tour_version": tourVersion})

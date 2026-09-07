@@ -16,6 +16,12 @@ type Notification struct {
 	Payload   string     `json:"-"          gorm:"type:jsonb;not null;default:'{}'"`
 	CreatedAt time.Time  `json:"created_at"`
 	ReadAt    *time.Time `json:"read_at,omitempty"`
+	// К3-и2 (KIOSK.md №16/№17): прочитано на киоске / в PWA. read_at остаётся
+	// «прочитано вообще»: его ставит клиент без ?client= (старая PWA) или
+	// второй из типизированных клиентов. Так тост доходит и до ПК, и до
+	// телефона, а не до того, кто первым успел опросить.
+	ReadKioskAt *time.Time `json:"read_kiosk_at,omitempty"`
+	ReadAppAt   *time.Time `json:"read_app_at,omitempty"`
 }
 
 func (n *Notification) BeforeCreate(tx *gorm.DB) error {

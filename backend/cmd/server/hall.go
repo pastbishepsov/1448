@@ -95,7 +95,7 @@ func handleAdminCreateComputer(c *gin.Context) {
 		pc.ZoneID, pc.Zone = &z.ID, z.Name
 	}
 	if err := db.Create(&pc).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "pc_create", nil, pc.Name)
@@ -120,7 +120,7 @@ func handleAdminUpdateComputer(c *gin.Context) {
 	}
 	var req computerPatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	updates := map[string]any{}
@@ -184,7 +184,7 @@ func handleAdminUpdateComputer(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&pc).Updates(updates).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	if changes == "" {
@@ -212,7 +212,7 @@ func handleAdminDeleteComputer(c *gin.Context) {
 		return
 	}
 	if err := db.Delete(&pc).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "pc_delete", nil, pc.Name)
@@ -248,7 +248,7 @@ func handleAdminClubLayout(c *gin.Context) {
 	}
 	old := fmt.Sprintf("%d×%d", club.LayoutW, club.LayoutH)
 	if err := db.Model(&club).Updates(map[string]any{"layout_w": req.LayoutW, "layout_h": req.LayoutH}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "layout_update", nil, fmt.Sprintf("%s → %d×%d", old, req.LayoutW, req.LayoutH))

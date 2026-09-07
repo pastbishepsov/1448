@@ -15,7 +15,7 @@ import (
 func handleGetClubs(c *gin.Context) {
 	var clubs []models.Club
 	if err := db.Where("is_active = ?", true).Order("name").Find(&clubs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 
@@ -46,15 +46,31 @@ func handleGetClubs(c *gin.Context) {
 		}
 	}
 
+	// К2-и5 (KIOSK.md, Р8): тарифы зон — публично, как ценник на стене клуба.
+	// Заставка киоска показывает «Standard 23 zł/ч · VIP 30 zł/ч»; только
+	// имя и цена часа, без id и служебных полей.
+	var zones []models.Zone
+	db.Order("club_id, sort, name").Find(&zones)
+	zonesBy := map[string][]gin.H{}
+	for _, z := range zones {
+		k := z.ClubID.String()
+		zonesBy[k] = append(zonesBy[k], gin.H{"name": z.Name, "rate_pln": z.RatePLN})
+	}
+
 	out := make([]gin.H, 0, len(clubs))
 	for _, cl := range clubs {
 		r := counts[cl.ID.String()]
+		zs := zonesBy[cl.ID.String()]
+		if zs == nil {
+			zs = []gin.H{}
+		}
 		out = append(out, gin.H{
 			"id": cl.ID, "name": cl.Name, "address": cl.Address,
 			"latitude": cl.Latitude, "longitude": cl.Longitude,
 			"phone": cl.Phone, "telegram": cl.Telegram, "instagram": cl.Instagram,
 			"base_rate_pln":   cl.BaseRatePLN,
 			"computers_total": r.Total, "computers_free": r.Free,
+			"zones": zs,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "clubs": out})
@@ -74,7 +90,7 @@ func handleGetClub(c *gin.Context) {
 func handleGetClubComputers(c *gin.Context) {
 	var computers []models.Computer
 	if err := db.Where("club_id = ?", c.Param("id")).Order("name").Find(&computers).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	free := 0

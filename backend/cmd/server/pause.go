@@ -199,7 +199,7 @@ func handleResumeSession(c *gin.Context) {
 		return
 	}
 	if err := resumePause(&s, time.Now()); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"paused_total_sec": s.PausedTotalSec})
@@ -218,7 +218,7 @@ func handleAdminMoveSession(c *gin.Context) {
 		ComputerID string `json:"computer_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	var target models.Computer

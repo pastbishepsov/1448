@@ -103,7 +103,7 @@ func handleSessionReady(c *gin.Context) {
 	}
 	now := time.Now()
 	if err := confirmReady(&s, now); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	hub.AdminBroadcast("session", map[string]any{"kind": "ready", "session_id": s.ID})
@@ -142,7 +142,7 @@ func handleAdminSeatCancel(c *gin.Context) {
 				"message": "Гость успел нажать [Готов!] — отменять уже нечего"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 
@@ -202,7 +202,8 @@ func cancelWaitingSession(s *models.Session, now time.Time, reason string) (*fin
 	checkWaitlistNotify(s.ClubID) // Б9: ПК освободился — зовём очередь
 
 	rank, _ := accountRankFor(userHoursPlayed(s.UserID.String()))
-	return &finishResult{Session: s, Rank: rank, User: user}, nil
+	return &finishResult{Session: s, Rank: rank, User: user,
+		Receipt: receiptFor(s.UserID, user.WalletGrosz, now)}, nil
 }
 
 // ── Е1-и5: придержать ПК под регистрацию нового гостя ─────────────────────
@@ -248,7 +249,7 @@ func handleAdminComputerHold(c *gin.Context) {
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	if err := db.Model(&models.Computer{}).Where("id = ?", pc.ID).
 		Updates(map[string]any{"hold_until": until, "hold_by": adminID}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "pc_hold", nil, pc.Name+": придержан под регистрацию")

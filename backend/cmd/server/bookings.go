@@ -91,7 +91,7 @@ func handleCreateBooking(c *gin.Context) {
 
 	var req createBookingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	if req.DurationMin == 0 {
@@ -165,7 +165,7 @@ func handleCreateBooking(c *gin.Context) {
 		Notes:       req.Notes,
 	}
 	if err := db.Create(&booking).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 
@@ -209,7 +209,7 @@ func handleCancelBooking(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&booking).Update("status", models.BookingStatusCancelled).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	var u models.User

@@ -149,7 +149,7 @@ func handleAdminGuestUpdate(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"code": code, "message": msg})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 

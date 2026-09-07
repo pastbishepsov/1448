@@ -85,6 +85,7 @@ func handleGetEconomy(c *gin.Context) {
 	_ = db.First(&me, "id = ?", userID).Error
 
 	caseHunter := talentEffect(userID, "case_hunter")
+	rates := economyRates()
 	resp := gin.H{
 		"wallet_grosz": me.WalletGrosz,
 		"wallet_pln":   models.PLNFromGrosz(me.WalletGrosz),
@@ -98,9 +99,11 @@ func handleGetEconomy(c *gin.Context) {
 			"case_chance_bonus": rank.CaseChanceBonus, "tier_boost": rank.TierBoost,
 			"max": next == nil,
 		},
+		// К3-и1 (№15): ставки — из настроек клуба, а не константы: калькулятор
+		// на киоске обязан сходиться с тем, что начислит finishSession.
 		"rates": gin.H{
-			"coins_per_min": coinsPerMinute, "xp_per_min": xpPerMinute,
-			"deposit_coins_per_pln": coinsPerPLN,
+			"coins_per_min": rates.CoinsPerMin, "xp_per_min": rates.XPPerMin,
+			"deposit_coins_per_pln": rates.CoinsPerPLN,
 		},
 		"talents": gin.H{
 			"xp_boost":        talentEffect(userID, "xp_boost"),

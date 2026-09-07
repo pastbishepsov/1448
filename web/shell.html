@@ -627,6 +627,53 @@
   /* К1-и5: взведённая «Завершить» / ⏻ — второй клик в течение 5 с */
   .btn.armed{box-shadow:0 0 0 3px rgba(255,255,255,.45), var(--glow)}
   .iconbtn.armed{border-color:#fff; color:#fff}
+  /* К3-и6 (Р5): чек на экране «Сессия завершена» */
+  #eoReason{margin:-12px 0 14px; font-size:13.5px}
+  .eo-receipt{margin-top:14px; padding:10px 12px; border:1px solid var(--hair); border-radius:12px; font-size:13.5px;
+    color:var(--dim); display:flex; flex-direction:column; gap:4px; text-align:left}
+  .eo-receipt b{color:var(--txt)}
+  .eo-receipt .debt b{color:var(--acc)}
+  /* ═══ К2 «Раскладка» ═══ */
+  /* и1: профиль — при 38 играх модалка была 1200px: кнопки за экраном, выхода нет */
+  #profOverlay .modal{max-height:90vh; overflow-y:auto; text-align:left}
+  #profOverlay .modal h2{text-align:center}
+  #profOverlay .modal::-webkit-scrollbar{width:6px}
+  #profOverlay .modal::-webkit-scrollbar-thumb{background:var(--card2); border-radius:6px}
+  #profOverlay .modal{padding-bottom:0}
+  .pfoot{position:sticky; bottom:0; margin-top:8px; padding:10px 0 22px; background:rgba(16,16,20,.97); border-top:1px solid var(--hair)}
+  .pfoot .plang{display:flex; align-items:center; gap:8px; margin-bottom:10px}
+  .pfoot .pbtns{display:flex; gap:10px}
+  .pfoot .pbtns .btn{flex:1; min-width:0}
+  #profOverlay .favpick button.on::after{content:" ✕"; opacity:.7}
+  /* и2: сайдбар в две строки — иконка И подпись у каждой вкладки, ничего не обрезается на 390px */
+  .sidetabs.two{flex-direction:column}
+  .sidetabs .strow{display:flex}
+  .sidetabs .strow + .strow{border-top:1px solid var(--hair)}
+  .sidetabs.two button{flex:1 1 auto; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 2px 7px; font-size:11px; line-height:1.1; min-width:0}
+  .sidetabs.two button .isvg{width:17px; height:17px}
+  .sidetabs.two button i{font-style:normal; font-size:16px; line-height:1}
+  .sidetabs.two button span:not(.bub){max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .sidetabs.two .bub{position:absolute; top:4px; left:calc(50% + 6px); margin:0}
+  /* и3: подписи у чисел в шапке; предупреждение об агенте — только когда его нет */
+  .res .rl{font-size:10.5px; font-weight:700; color:var(--dim); text-transform:lowercase}
+  #agentDot.warn{color:var(--acc)}
+  .auth-hint{color:var(--dim); font-size:12.5px; text-align:center; margin-top:-8px}
+  /* и4: панель каталога — вкладки-категории + поиск (В1/В2), «Показать ещё» (В7) */
+  .cat-bar{display:flex; align-items:center; gap:10px; margin:0 2px 14px; flex-wrap:wrap}
+  .cat-tabs{display:flex; gap:6px; flex-wrap:wrap; flex:1; min-width:0}
+  .cat-tabs button{background:var(--glass-2); border:1px solid var(--glass-brd); color:var(--dim); border-radius:999px;
+    padding:6px 11px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; transition:color .15s, border-color .15s}
+  .cat-tabs button:hover{color:var(--txt); border-color:var(--acc)}
+  .cat-tabs button.on{color:var(--txt); border-color:var(--acc); background:rgba(255,39,64,.12)}
+  .cat-search{position:relative; flex:0 0 210px}
+  .cat-search input{width:100%; margin:0; padding:8px 32px 8px 12px; font-size:13.5px; border-radius:11px}
+  .cat-search .x{position:absolute; right:6px; top:50%; transform:translateY(-50%); border:0; background:transparent;
+    color:var(--dim); cursor:pointer; font-size:15px; padding:4px 6px}
+  .cat-search .x:hover{color:var(--txt)}
+  .cat-more{display:block; margin:-14px auto 30px}
+  /* и5: тарифы на заставке (Р8) */
+  .att-rates{color:var(--dim); font-size:15px; letter-spacing:.3px}
+  .att-rates b{color:var(--txt); font-weight:700}
 </style>
 </head>
 <body>
@@ -664,7 +711,9 @@
     <div id="authErr" class="err"></div>
     <button id="authBtn" class="btn" onclick="submitAuth()" data-str="btn_login"></button>
   </div>
-  <div class="muted"><span data-str="server"></span> <span id="srv"></span></div>
+  <div class="auth-hint" data-str="auth_forgot"></div>
+  <!-- К2-и3: адрес сервера — техническая строка, на клубном ПК гостю не нужна; остаётся для демо и ?api= -->
+  <div class="muted" id="srvLine"><span data-str="server"></span> <span id="srv"></span></div>
     <div id="authLang"></div>
 </div>
 
@@ -692,9 +741,9 @@
       <div class="xpwrap"><div class="xpbar" id="xpBar"></div></div>
       <div class="xpnums"><span id="xpText">0 / 1000 XP</span><span id="xpLeft"></span></div>
     </div>
-    <div class="res"><span class="ic" data-ic="coins"></span><span class="gold-t" id="coins">0</span></div>
+    <div class="res" data-str-title="tb_coins_title"><span class="ic" data-ic="coins"></span><span class="gold-t" id="coins">0</span><span class="rl" data-str="tb_coins"></span></div>
     <div class="res" id="walletChip" data-str-title="tb_wallet_title"><span class="ic" data-ic="wallet"></span><span class="gold-t" id="walletZl">—</span><span class="muted" id="walletEta"></span></div>
-    <div class="res"><span class="ic" data-ic="sp"></span><span class="cyan-t" id="sp">0</span></div>
+    <div class="res" data-str-title="tb_sp_title"><span class="ic" data-ic="sp"></span><span class="cyan-t" id="sp">0</span><span class="rl" data-str="tb_sp"></span></div>
     <div class="res timerchip" id="timerChip"><span class="ic" data-ic="timer"></span><span id="timer">00:00</span></div>
     <div class="clock" id="clock">--:--</div>
     <div class="muted" id="agentDot" style="font-weight:700; white-space:nowrap"><span data-ic="monitor"></span> <span id="agentTxt"></span></div>
@@ -715,16 +764,22 @@
 
     <div class="side">
       <div class="sesscard" id="sessCard"><!-- JS --></div>
-      <div class="sidetabs">
-        <button id="st-cases" class="on" onclick="sideTab('cases')"><span data-str="tab_cases"></span><span class="bub hidden" id="casesBub">0</span></button>
-        <button id="st-talents" onclick="sideTab('talents')" data-str="tab_talents"></button>
-        <button id="st-top" onclick="sideTab('top')" data-str="tab_top"></button>
-        <button id="st-ach" onclick="sideTab('ach')" data-str="tab_ach"></button>
-        <button id="st-hist" onclick="sideTab('hist')" data-str="tab_hist"></button>
-        <button id="st-food" onclick="sideTab('food')" data-str-title="tab_food_title">🍔</button>
-        <button id="st-book" onclick="sideTab('book')"><span data-ic="cal"></span></button>
-        <button id="st-coins" onclick="sideTab('coins')"><span data-ic="coins"></span></button>
-        <button id="st-pack" onclick="sideTab('pack')" data-str-title="tab_pack_title"><span data-ic="timer"></span></button>
+      <!-- К2-и2: две строки, у каждой вкладки иконка и подпись. Раньше девять вкладок
+           в одной строке: четыре — иконки без подписей, «Пакеты» обрезались (в EN/PL — невидимы). -->
+      <div class="sidetabs two">
+        <div class="strow">
+          <button id="st-cases" class="on" onclick="sideTab('cases')"><span data-ic="chest"></span><span data-str="tab_cases"></span><span class="bub hidden" id="casesBub">0</span></button>
+          <button id="st-talents" onclick="sideTab('talents')"><span data-ic="sp"></span><span data-str="tab_talents"></span></button>
+          <button id="st-ach" onclick="sideTab('ach')"><span data-ic="trophy"></span><span data-str="tab_ach"></span></button>
+          <button id="st-top" onclick="sideTab('top')"><span data-ic="laurels"></span><span data-str="tab_top"></span></button>
+          <button id="st-hist" onclick="sideTab('hist')"><span data-ic="clip"></span><span data-str="tab_hist"></span></button>
+        </div>
+        <div class="strow">
+          <button id="st-food" onclick="sideTab('food')" data-str-title="tab_food_title"><i>🍔</i><span data-str="tab_food"></span></button>
+          <button id="st-book" onclick="sideTab('book')"><span data-ic="cal"></span><span data-str="tab_book"></span></button>
+          <button id="st-pack" onclick="sideTab('pack')" data-str-title="tab_pack_title"><span data-ic="timer"></span><span data-str="tab_pack"></span></button>
+          <button id="st-coins" onclick="sideTab('coins')"><span data-ic="coins"></span><span data-str="tab_coins"></span></button>
+        </div>
       </div>
       <div class="sidebody" id="sideBody"><!-- JS --></div>
     </div>
@@ -835,8 +890,10 @@
       <div class="res" style="font-size:17px"><span class="ic" data-ic="xp"></span><span class="cyan-t" id="eoXP">+0 XP</span></div>
       <div class="res" style="font-size:17px"><span class="ic" data-ic="coins"></span><span class="gold-t" id="eoCoins">+0</span></div>
     </div>
+    <div class="muted hidden" id="eoReason"></div>
     <div class="muted" id="eoExtra"></div>
-    <button class="btn" style="margin-top:18px" onclick="closeOverlay('endOverlay'); logout()" data-str="ok"></button>
+    <div class="eo-receipt hidden" id="eoReceipt"></div>
+    <button class="btn" style="margin-top:18px" onclick="endOk()" data-str="ok"></button>
   </div>
 </div>
 
@@ -891,6 +948,7 @@
     <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="10"/><circle cx="143" cy="72" r="10"/></g>
   </svg>
   <div class="att-free" id="attractFree"></div>
+  <div class="att-rates" id="attractRates"></div>
 </div>
 
 <div id="oddsOverlay" class="overlay" onclick="if(event.target===this)closeOverlay('oddsOverlay')">
@@ -944,7 +1002,7 @@
   </div>
 </div>
 
-<div id="profOverlay" class="overlay">
+<div id="profOverlay" class="overlay" onclick="if(event.target===this)closeOverlay('profOverlay')">
   <div class="modal">
     <h2 data-str="prof_title"></h2>
     <input id="pNick" class="input" style="margin-top:16px" data-str-ph="ph_nick">
@@ -957,7 +1015,11 @@
       <input id="pTelegram" class="input" placeholder="Telegram" maxlength="64">
     </div>
     <div class="muted" style="margin:10px 0 2px" data-str="prof_fav_hint"></div>
-    <div class="favpick" id="favPick"></div>
+    <!-- К2-и1: выбранные — чипами, остальное — через поиск (38 кнопок не влезали в экран) -->
+    <div class="favpick" id="favSel"></div>
+    <input id="favSearch" class="input" data-str-ph="prof_fav_search" autocomplete="off" style="margin:6px 0 4px"
+           oninput="favSearchInput(this.value)">
+    <div class="favpick" id="favResults"></div>
     <div class="qrblock" id="qrBlock">
       <canvas id="clubQR" width="132" height="132"></canvas>
       <div>
@@ -966,13 +1028,15 @@
       </div>
     </div>
     <div id="pErr" class="err"></div>
-    <div style="display:flex; gap:10px">
-      <div style="width:100%; display:flex; align-items:center; gap:8px; margin-bottom:4px">
+    <div class="pfoot">
+      <div class="plang">
         <span class="muted" style="flex:1; font-size:12.5px" data-str="lang_line"></span>
         <span id="profLang"></span>
       </div>
-      <button class="btn ghost" onclick="closeOverlay('profOverlay')" data-str="prof_cancel"></button>
-      <button class="btn" onclick="saveProfile()" data-str="prof_save"></button>
+      <div class="pbtns">
+        <button class="btn ghost" onclick="closeOverlay('profOverlay')" data-str="prof_cancel"></button>
+        <button class="btn" onclick="saveProfile()" data-str="prof_save"></button>
+      </div>
     </div>
   </div>
 </div>
@@ -1424,6 +1488,56 @@ const SH_RU = {
   pack_confirm_yes: "Купить",
   cf_yes: "Да",
   cf_no: "Отмена",
+  tab_food: "Кухня",
+  tab_book: "Брони",
+  tab_pack: "Пакеты",
+  tab_coins: "Койны",
+  tb_coins: "монеты",
+  tb_coins_title: "Монеты — кэшбек за игру, гасятся временем у стойки",
+  tb_sp: "очки",
+  tb_sp_title: "Очки навыков — вкладывай в таланты",
+  tb_agent_warn: "⚠ агент не найден — игры не запустятся, позови админа",
+  auth_forgot: "Забыл пароль? Подойди к стойке — админ сбросит",
+  cat_search_ph: "Поиск игры…",
+  cat_tab_all: "Все",
+  cat_tab_apps: "Приложения",
+  cat_results: "найдено {n}",
+  cat_nothing: "Ничего не нашлось — попробуй другое название",
+  cat_more: "Показать ещё ({n})",
+  prof_fav_search: "Найти игру…",
+  att_rate: "{z} <b>{r} zł</b>/ч",
+  /* К3-и2: уведомления, которых шелл не знал */
+  ntf_burn_soon: "⏳ Через {d} дн монеты начнут таять: −{p}% в неделю от {c}. Зайди поиграть — таймер сбросится",
+  ntf_burned: "🔥 Сгорело {c} монет за {d} дн простоя — осталось {l}",
+  ntf_wl_ready: "🎮 ПК {c} свободен — подойди к стойке",
+  ntf_wl_remove: "📋 Тебя сняли с очереди на ПК",
+  /* К3-и4: сырые ключи сервера → слова */
+  src_daily_visit: "бонус за сессию",
+  src_level_up: "за новый уровень",
+  src_achievement: "за ачивку",
+  src_admin_grant: "от админа",
+  src_birthday: "подарок на ДР",
+  src_deposit: "за пополнение",
+  bk_st_pending: "ждёт подтверждения",
+  bk_st_confirmed: "подтверждена",
+  bk_st_seated: "ты сел",
+  bk_st_completed: "завершена",
+  bk_st_no_show: "сгорела — не пришёл",
+  bk_st_cancelled: "отменена",
+  br_strength: "Сила",
+  br_agility: "Ловкость",
+  br_intellect: "Интеллект",
+  tal_on: "включено",
+  tal_days: "{n} дн",
+  /* К3-и6: экран «Сессия завершена» — причина и чек */
+  eo_r_admin: "Сессию завершил админ у стойки",
+  eo_r_balance: "Кошелёк на нуле — время вышло",
+  eo_r_booking: "ПК уходит под бронь",
+  eo_r_afk: "Тебя долго не было за ПК",
+  eo_r_manual: "Сессия завершена из приложения",
+  eo_left: "Осталось на кошельке: <b>{z}</b>",
+  eo_kitchen: "Кухня к оплате: <b>{z}</b> — рассчитайся у стойки",
+  eo_streak: "Стрик визитов: <b>{s}</b>",
 };
 
 /* english */
@@ -1854,6 +1968,56 @@ const SH_EN = {
   pack_confirm_yes: "Buy",
   cf_yes: "Yes",
   cf_no: "Cancel",
+  tab_food: "Kitchen",
+  tab_book: "Bookings",
+  tab_pack: "Packs",
+  tab_coins: "Coins",
+  tb_coins: "coins",
+  tb_coins_title: "Coins — cashback for playing, redeemed for time at the desk",
+  tb_sp: "points",
+  tb_sp_title: "Skill points — invest them in talents",
+  tb_agent_warn: "⚠ agent not found — games will not launch, call the admin",
+  auth_forgot: "Forgot your password? Ask at the desk — the admin will reset it",
+  cat_search_ph: "Search games…",
+  cat_tab_all: "All",
+  cat_tab_apps: "Apps",
+  cat_results: "{n} found",
+  cat_nothing: "Nothing found — try another name",
+  cat_more: "Show more ({n})",
+  prof_fav_search: "Find a game…",
+  att_rate: "{z} <b>{r} zł</b>/h",
+  /* К3-и2 */
+  ntf_burn_soon: "⏳ In {d} d your coins start melting: −{p}% a week of {c}. Come play — the timer resets",
+  ntf_burned: "🔥 {c} coins burned after {d} idle days — {l} left",
+  ntf_wl_ready: "🎮 PC {c} is free — come to the desk",
+  ntf_wl_remove: "📋 You were removed from the PC queue",
+  /* К3-и4 */
+  src_daily_visit: "session bonus",
+  src_level_up: "for a new level",
+  src_achievement: "for an achievement",
+  src_admin_grant: "from the admin",
+  src_birthday: "birthday gift",
+  src_deposit: "for a top-up",
+  bk_st_pending: "awaiting confirmation",
+  bk_st_confirmed: "confirmed",
+  bk_st_seated: "seated",
+  bk_st_completed: "completed",
+  bk_st_no_show: "burned — no-show",
+  bk_st_cancelled: "cancelled",
+  br_strength: "Strength",
+  br_agility: "Agility",
+  br_intellect: "Intellect",
+  tal_on: "on",
+  tal_days: "{n} d",
+  /* К3-и6 */
+  eo_r_admin: "Ended by the admin at the desk",
+  eo_r_balance: "Wallet at zero — time is up",
+  eo_r_booking: "The PC is reserved for a booking",
+  eo_r_afk: "You were away from the PC too long",
+  eo_r_manual: "Ended from the app",
+  eo_left: "Wallet left: <b>{z}</b>",
+  eo_kitchen: "Kitchen to pay: <b>{z}</b> — settle at the desk",
+  eo_streak: "Visit streak: <b>{s}</b>",
 };
 
 /* polski */
@@ -2284,6 +2448,56 @@ const SH_PL = {
   pack_confirm_yes: "Kup",
   cf_yes: "Tak",
   cf_no: "Anuluj",
+  tab_food: "Kuchnia",
+  tab_book: "Rezerwacje",
+  tab_pack: "Pakiety",
+  tab_coins: "Coiny",
+  tb_coins: "coiny",
+  tb_coins_title: "Coiny — cashback za grę, wymieniane na czas przy ladzie",
+  tb_sp: "punkty",
+  tb_sp_title: "Punkty umiejętności — inwestuj w talenty",
+  tb_agent_warn: "⚠ brak agenta — gry się nie uruchomią, zawołaj admina",
+  auth_forgot: "Nie pamiętasz hasła? Podejdź do lady — admin je zresetuje",
+  cat_search_ph: "Szukaj gry…",
+  cat_tab_all: "Wszystkie",
+  cat_tab_apps: "Aplikacje",
+  cat_results: "znaleziono {n}",
+  cat_nothing: "Nic nie znaleziono — spróbuj innej nazwy",
+  cat_more: "Pokaż więcej ({n})",
+  prof_fav_search: "Znajdź grę…",
+  att_rate: "{z} <b>{r} zł</b>/h",
+  /* К3-и2 */
+  ntf_burn_soon: "⏳ Za {d} dni coiny zaczną topnieć: −{p}% tygodniowo z {c}. Wpadnij pograć — licznik się wyzeruje",
+  ntf_burned: "🔥 Spłonęło {c} coinów po {d} dniach przerwy — zostało {l}",
+  ntf_wl_ready: "🎮 PC {c} jest wolny — podejdź do lady",
+  ntf_wl_remove: "📋 Usunięto cię z kolejki do PC",
+  /* К3-и4 */
+  src_daily_visit: "bonus za sesję",
+  src_level_up: "za nowy poziom",
+  src_achievement: "za osiągnięcie",
+  src_admin_grant: "od admina",
+  src_birthday: "prezent urodzinowy",
+  src_deposit: "za doładowanie",
+  bk_st_pending: "czeka na potwierdzenie",
+  bk_st_confirmed: "potwierdzona",
+  bk_st_seated: "usiadłeś",
+  bk_st_completed: "zakończona",
+  bk_st_no_show: "przepadła — nie przyszedłeś",
+  bk_st_cancelled: "anulowana",
+  br_strength: "Siła",
+  br_agility: "Zwinność",
+  br_intellect: "Intelekt",
+  tal_on: "włączone",
+  tal_days: "{n} dni",
+  /* К3-и6 */
+  eo_r_admin: "Sesję zakończył admin przy ladzie",
+  eo_r_balance: "Portfel na zerze — czas minął",
+  eo_r_booking: "PC idzie pod rezerwację",
+  eo_r_afk: "Za długo nie było cię przy PC",
+  eo_r_manual: "Sesja zakończona z aplikacji",
+  eo_left: "Zostało w portfelu: <b>{z}</b>",
+  eo_kitchen: "Kuchnia do zapłaty: <b>{z}</b> — rozlicz się przy ladzie",
+  eo_streak: "Seria wizyt: <b>{s}</b>",
 };
 
 const SH_LANGS = {ru: SH_RU, en: SH_EN, pl: SH_PL};
@@ -2479,7 +2693,29 @@ const TIER = {
   heavy:  {c:'var(--t-heavy)',  em:'◆'}, titan:  {c:'var(--t-titan)',  em:'✦'},
   gods:   {c:'var(--t-gods)',   em:'★'},
 };
-const BRANCH = {strength:UI.brStr+' Strength', agility:UI.brAgi+' Agility', intellect:UI.brInt+' Intellect'};
+/* К3-и4 (№18): сырые ключи сервера → слова гостя. Данные сервера не трогаем —
+   карты ключей живут в трёх словарях; незнакомый ключ показывается как есть. */
+function branchName(br){
+  const ic = {strength: UI.brStr, agility: UI.brAgi, intellect: UI.brInt}[br] || '';
+  return ic + ' ' + esc(STR['br_' + br] || br);
+}
+function caseSourceName(s){ return STR['src_' + s] || s; }
+function bkStatusName(s){ return STR['bk_st_' + s] || s; }
+/* Эффект таланта по его типу: доли → проценты, буст тира → множитель, дни →
+   дни. Сырое число вроде 0.44999999999999996 (сумма float на сервере) гостю
+   ничего не говорило. */
+const TAL_FMT = {
+  case_drop_chance:  v => '+' + Math.round(v * 100) + '%',
+  double_case_chance: v => '+' + Math.round(v * 100) + '%',
+  xp_multiplier:     v => '+' + Math.round(v * 100) + '% XP',
+  deposit_bonus:     v => '+' + Math.round(v * 100) + '%',
+  cashback_pct:      v => '+' + Math.round(v * 100) + '%',
+  night_discount:    v => '−' + Math.round(v * 100) + '%',
+  case_tier_boost:   v => '×' + String(Math.round((1 + v) * 100) / 100).replace('.', ','),
+  free_booking:      v => v > 0 ? STR.tal_on : '—',
+  coins_ttl_bonus:   v => '+' + T('tal_days', {n: Math.round(v)}),
+};
+function talEffect(type, v){ const f = TAL_FMT[type]; return f ? f(+v || 0) : fmtNum(v); }
 
 /* Логотипы — Simple Icons (CC0, https://simpleicons.org), монохром fill=currentColor:
    светлый по умолчанию, красный на hover. Встроены локально — офлайн-киоск.
@@ -3029,7 +3265,14 @@ function appName(n){ return APP_KEYS[n] ? STR[APP_KEYS[n]] : n; }
    (3) папки приложений: Коммуникация / Системные / Другие (группа = subtitle).
    catFolder: null = главный экран | {t:'plat', name} | {t:'appgrp', name, sys} */
 let catFolder = null, catGroups = [], catAppGroups = [];
-const TOP_GAMES = 6; // сколько популярных игр в верхнем ряду (порядок = sort админки)
+const TOP_GAMES = 6; // запас: сколько популярных игр в верхнем ряду, если ширина неизвестна
+/* К2-и4: верхний ряд = одна строка. Сетка .games — minmax(158px,1fr) с зазором 14,
+   считаем, сколько колонок влезло, и берём ровно столько игр (порядок = sort админки). */
+function topCount(){
+  const el = document.getElementById('catalogArea');
+  const cols = el ? Math.floor((el.clientWidth + 14) / (158 + 14)) : 0;
+  return cols >= 3 ? cols : TOP_GAMES;
+}
 const FOLDER_ICON = `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,80H32V56a8,8,0,0,1,8-8H92.69a8,8,0,0,1,5.65,2.34Z" fill="var(--acc)" opacity=".45"/><path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM92.69,56l16,16H40V56ZM216,200H40V88H216Z"/></svg>`;
 const APPGRP_ICONS = {
   'Коммуникация': `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,128A96,96,0,0,1,79.93,211.11h0L42.54,223.58a8,8,0,0,1-10.12-10.12l12.47-37.39h0A96,96,0,1,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-4-1.08,7.85,7.85,0,0,0-2.53.42L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm12-88a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm-44,0a12,12,0,1,1-12-12A12,12,0,0,1,96,128Zm88,0a12,12,0,1,1-12-12A12,12,0,0,1,184,128Z"/></svg>`,
@@ -3060,12 +3303,61 @@ function buildAppGroups(){
   if (oi === -1) groups.push(sysGroup); else groups.splice(oi, 0, sysGroup);
   return groups;
 }
-function openCatFolder(i){ if (catGroups[i]){ catFolder = {t:'plat', name:catGroups[i].name}; renderCatalog(); } }
-function openAppGroup(i){ if (catAppGroups[i]){ catFolder = {t:'appgrp', name:catAppGroups[i].name, sys:catAppGroups[i].sys}; renderCatalog(); } }
-function closeCatFolder(){ catFolder = null; renderCatalog(); }
+function openCatFolder(i){ if (catGroups[i]){ catFolder = {t:'plat', name:catGroups[i].name}; catPage = 1; renderCatalog(); } }
+function openAppGroup(i){ if (catAppGroups[i]){ catFolder = {t:'appgrp', name:catAppGroups[i].name, sys:catAppGroups[i].sys}; catPage = 1; renderCatalog(); } }
+function closeCatFolder(){ catFolder = null; catPage = 1; renderCatalog(); }
+
+/* ═══ К2-и4: поиск, вкладки-категории, «Показать ещё» (В1/В2/В7) ═══
+   Панель над витриной: вкладки «Все / Steam / Riot … / Приложения» + поиск.
+   Поиск идёт по имени, подзаголовку, тегу и id всего каталога; результаты
+   ложатся поверх папок, Esc или ✕ возвращают витрину. Внутри папки плитки
+   выдаются по CAT_PAGE с кнопкой «Показать ещё»: 34 игры Steam одной простынёй
+   листались до боли. Ввод в поиске перерисовывает только тело витрины
+   (#catBody), иначе поле теряло бы фокус на каждой букве. */
+let catQuery = '', catPage = 1;
+const CAT_PAGE = 20;
+function catSearchInput(v){
+  catQuery = v || ''; catPage = 1;
+  const x = document.querySelector('.cat-search .x');
+  if (x) x.classList.toggle('hidden', !catQuery.trim());
+  renderCatalog(true);
+}
+function catSearchClear(){
+  catQuery = ''; catPage = 1;
+  const inp = document.getElementById('catSearch');
+  if (inp) inp.value = '';
+  const x = document.querySelector('.cat-search .x');
+  if (x) x.classList.add('hidden');
+  renderCatalog(true);
+}
+function catMore(){ catPage++; renderCatalog(true); }
+function catTab(kind, i){
+  catQuery = ''; catPage = 1;
+  if (kind === 'all') catFolder = null;
+  else if (kind === 'apps') catFolder = {t:'apps'};
+  else if (catGroups[i]) catFolder = {t:'plat', name: catGroups[i].name};
+  renderCatalog();
+}
+function catMatch(it, q){
+  return [it.name, it.sub, it.tag, it.id].some(v => String(v || '').toLowerCase().includes(q));
+}
+function catBarHtml(){
+  const onAll = !catFolder, onApps = !!catFolder && catFolder.t !== 'plat';
+  const tabs = [`<button class="${onAll ? 'on' : ''}" onclick="catTab('all')">${esc(STR.cat_tab_all)}</button>`]
+    .concat(catGroups.map((g, i) => ({g, i})).filter(x => x.g.items.length)
+      .map(({g, i}) => `<button class="${catFolder && catFolder.t === 'plat' && catFolder.name === g.name ? 'on' : ''}" onclick="catTab('plat', ${i})">${esc(grpName(g.name))}</button>`))
+    .concat(catAppGroups.length ? [`<button class="${onApps ? 'on' : ''}" onclick="catTab('apps')">${esc(STR.cat_tab_apps)}</button>`] : []);
+  return `<div class="cat-bar"><div class="cat-tabs">${tabs.join('')}</div>
+    <div class="cat-search"><input id="catSearch" class="input" placeholder="${esc(STR.cat_search_ph)}" value="${esc(catQuery).replace(/"/g, '&quot;')}" autocomplete="off"
+      oninput="catSearchInput(this.value)" onkeydown="if(event.key==='Escape'){catSearchClear(); this.blur()}">
+      <button class="x${catQuery.trim() ? '' : ' hidden'}" onclick="catSearchClear()" aria-label="✕">✕</button></div></div>`;
+}
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (confirmResolve){ confirmAnswer(false); return; } // К1-и5
+  const prof = document.getElementById('profOverlay');
+  if (prof && prof.classList.contains('show')){ closeOverlay('profOverlay'); return; } // К2-и1
+  if (catQuery){ catSearchClear(); return; } // К2-и4
   if (catFolder) closeCatFolder();
 });
 
@@ -3149,7 +3441,7 @@ function clearLaunching(id){
   paintAppStates();
 }
 
-function renderCatalog(){
+function renderCatalog(bodyOnly){
   catGroups = buildCatGroups();
   catAppGroups = buildAppGroups();
   const favs = (me && me.favorite_games) || []; // Г8-и5: любимые игры из анкеты
@@ -3169,41 +3461,67 @@ function renderCatalog(){
       <div class="n">${esc(appName(a.name))}</div>
       ${stBadge(a.id)}
     </div>`;
+  // плитка клиента платформы — в папке и в результатах поиска
+  const clientTile = (p, pi) => `
+      <div class="game client${stCls(p.id)}" data-app="${esc(p.id)}" onclick="launch('platforms',${pi})">
+        ${stBadge(p.id)}
+        <div class="art"></div>
+        <div class="gemblem">${ICONS[p.id] || FOLDER_ICON}</div>
+        <div class="meta"><div class="n">${esc(p.name)}</div><div class="s">${esc(STR.open_client)}</div></div>
+      </div>`;
   const icon = it => ICONS[it.id] || `<b>${esc(it.tag || (it.em||'') || it.name[0])}</b>`;
   const backBtn = `<button class="plat-btn" onclick="closeCatFolder()">${esc(STR.back)}</button>`;
+  const appGroupHtml = (s) => `
+      <div class="plat-h"><h3>${esc(grpName(s.name))}</h3><span class="cnt">${T('n_apps', {n: s.items.length, w: plApp(s.items.length)})}</span></div>
+      <div class="apps">${s.items.map(({a,i}) => appTile(s.sys ? 'system' : 'apps', a, i)).join('')}</div>`;
 
-  // ── внутри папки платформы: плитка клиента (понятно, куда жать) + её игры ──
+  const q = catQuery.trim().toLowerCase();
   const gr = catFolder && catFolder.t === 'plat' && catGroups.find(x => x.name === catFolder.name);
   const ag = catFolder && catFolder.t === 'appgrp' && catAppGroups.find(x => x.name === catFolder.name && x.sys === catFolder.sys);
-  if (gr){
-    const n = gr.items.length;
-    const clientTile = gr.p ? `
-      <div class="game client${stCls(gr.p.id)}" data-app="${esc(gr.p.id)}" onclick="launch('platforms',${gr.pi})">
-        ${stBadge(gr.p.id)}
-        <div class="art"></div>
-        <div class="gemblem">${ICONS[gr.p.id] || FOLDER_ICON}</div>
-        <div class="meta"><div class="n">${esc(gr.p.name)}</div><div class="s">${esc(STR.open_client)}</div></div>
-      </div>` : '';
-    area.innerHTML = `
-      <div class="folder-top">${backBtn}${gr.p ? (ICONS[gr.p.id]||'') : ''}<h2>${esc(grpName(gr.name))}</h2>
-        <span class="cnt">${n ? T('n_games', {n: n, w: plGame(n)}) : esc(STR.plat_client)}</span></div>
-      <div class="games">${clientTile}${gr.items.map(gameTile).join('')}</div>`;
-  }
-  // ── внутри папки приложений (Коммуникация / Системные / Другие / свои) ──
-  else if (ag){
-    area.innerHTML = `
-      <div class="folder-top">${backBtn}${APPGRP_ICONS[ag.name] || FOLDER_ICON}<h2>${esc(grpName(ag.name))}</h2>
-        <span class="cnt">${T('n_apps', {n: ag.items.length, w: plApp(ag.items.length)})}</span></div>
-      <div class="apps">${ag.items.map(({a,i}) => appTile(ag.sys ? 'system' : 'apps', a, i)).join('')}</div>`;
-  }
+  let body = '';
   // ── сервер не отдал каталог, а подменять его демо-списком на клубном ПК нельзя ──
-  else if (catalogDown){
+  if (catalogDown){
     catFolder = null;
-    area.innerHTML = `
+    body = `
       <div class="cat-offline">
         <div class="t">${esc(STR.cat_offline)}</div>
         <div class="h">${esc(STR.cat_offline_hint)}</div>
       </div>`;
+  }
+  // ── К2-и4: результаты поиска поверх папок ──
+  else if (q){
+    const gHits = CATALOG.games.map((g, i) => ({g, i})).filter(x => catMatch(x.g, q));
+    const pHits = (CATALOG.platforms || []).map((p, i) => ({p, i})).filter(x => catMatch(x.p, q));
+    const aHits = (CATALOG.apps || []).map((a, i) => ({a, i, cat:'apps'}))
+      .concat((CATALOG.system || []).map((a, i) => ({a, i, cat:'system'})))
+      .filter(x => catMatch(x.a, q));
+    const total = gHits.length + pHits.length + aHits.length;
+    body = `<div class="sec-h"><h2>${UI.ctrl} ${esc(STR.cat_games)}</h2><span class="cnt">${T('cat_results', {n: total})}</span></div>`;
+    if (!total) body += `<div class="cat-offline"><div class="t">${esc(STR.cat_nothing)}</div></div>`;
+    if (gHits.length || pHits.length) body += `<div class="games">${pHits.map(({p,i}) => clientTile(p, i)).join('')}${gHits.map(gameTile).join('')}</div>`;
+    if (aHits.length) body += `<div class="apps">${aHits.map(({a,i,cat}) => appTile(cat, a, i)).join('')}</div>`;
+  }
+  // ── внутри папки платформы: плитка клиента (понятно, куда жать) + её игры постранично ──
+  else if (gr){
+    const n = gr.items.length;
+    const shown = gr.items.slice(0, CAT_PAGE * catPage);
+    const rest = n - shown.length;
+    body = `
+      <div class="folder-top">${backBtn}${gr.p ? (ICONS[gr.p.id]||'') : ''}<h2>${esc(grpName(gr.name))}</h2>
+        <span class="cnt">${n ? T('n_games', {n: n, w: plGame(n)}) : esc(STR.plat_client)}</span></div>
+      <div class="games">${gr.p ? clientTile(gr.p, gr.pi) : ''}${shown.map(gameTile).join('')}</div>
+      ${rest > 0 ? `<button class="plat-btn cat-more" onclick="catMore()">${esc(T('cat_more', {n: rest}))}</button>` : ''}`;
+  }
+  // ── внутри папки приложений (Коммуникация / Системные / Другие / свои) ──
+  else if (ag){
+    body = `
+      <div class="folder-top">${backBtn}${APPGRP_ICONS[ag.name] || FOLDER_ICON}<h2>${esc(grpName(ag.name))}</h2>
+        <span class="cnt">${T('n_apps', {n: ag.items.length, w: plApp(ag.items.length)})}</span></div>
+      <div class="apps">${ag.items.map(({a,i}) => appTile(ag.sys ? 'system' : 'apps', a, i)).join('')}</div>`;
+  }
+  // ── вкладка «Приложения»: все группы одной лентой ──
+  else if (catFolder && catFolder.t === 'apps'){
+    body = `<div class="folder-top">${backBtn}${UI.apps}<h2>${esc(STR.cat_apps)}</h2></div>` + catAppGroups.map(appGroupHtml).join('');
   }
   // ── главный экран: (1) популярные игры, (2) платформы, (3) папки приложений ──
   else {
@@ -3218,7 +3536,7 @@ function renderCatalog(){
     // Г8-и5: любимые игры гостя всплывают в начало витрины (индексы родные)
     const idx = CATALOG.games.map((g, i) => ({g, i}));
     const favFirst = [...idx.filter(x => favs.includes(x.g.id)), ...idx.filter(x => !favs.includes(x.g.id))];
-    const top = favFirst.slice(0, TOP_GAMES);
+    const top = favFirst.slice(0, topCount());
     const platFolders = catGroups.map((g,i) => folderTile(
       `openCatFolder(${i})`,
       g.p ? (ICONS[g.p.id] || FOLDER_ICON) : FOLDER_ICON,
@@ -3234,7 +3552,7 @@ function renderCatalog(){
       s.items.slice(0,3).map(({a}) => icon(a)).join('') + (s.items.length > 3 ? '<b>+' + (s.items.length-3) + '</b>' : '')
     )).join('');
     const demoChip = catalogDemo ? `<span class="demochip">${esc(STR.cat_demo)}</span>` : '';
-    area.innerHTML = `
+    body = `
       <div class="sec-h"><h2>${UI.ctrl} ${esc(STR.cat_games)}${demoChip}</h2><span class="cnt">${favs.length ? esc(STR.cat_fav_first) : esc(STR.cat_popular)}${T('cat_total', {n: CATALOG.games.length})}</span></div>
       <div class="games">${top.map(x => gameTile(x)).join('')}</div>
       <div class="sec-h"><h2>${UI.rocket} ${esc(STR.cat_platforms)}</h2><span class="cnt">${esc(STR.cat_plat_hint)}</span></div>
@@ -3242,6 +3560,9 @@ function renderCatalog(){
       <div class="sec-h"><h2>${UI.apps} ${esc(STR.cat_apps)}</h2><span class="cnt">${esc(STR.cat_apps_hint)}</span></div>
       <div class="folders">${appFolders}</div>`;
   }
+  const bodyEl = document.getElementById('catBody');
+  if (bodyOnly && bodyEl) bodyEl.innerHTML = body;
+  else area.innerHTML = (catalogDown ? '' : catBarHtml()) + `<div id="catBody">${body}</div>`;
   // оживление: наклон тайлов + появление со stagger
   const content = document.querySelector('.content');
   FX.bindTilt(content);
@@ -3482,6 +3803,12 @@ function notifText(n){
     // русское «телефон».
     case 'profile_updated': return T('ntf_profile', {f: (p.fields||[]).map(fieldLabel).join(', ')});
     case 'password_reset': return STR.ntf_pwd_reset;
+    // К3-и2 (№16): таяние монет (В4-3) и очередь на ПК (Б9) — раньше падали в
+    // «🔔 Обновление аккаунта», и гость не понимал, что у него сгорели монеты.
+    case 'coins_burn_soon': return T('ntf_burn_soon', {d: p.days||0, p: p.pct||0, c: fmt(p.coins||0)});
+    case 'coins_burned': return T('ntf_burned', {c: fmt(p.coins||0), d: p.idle_days||0, l: fmt(p.left||0)});
+    case 'waitlist_ready': return T('ntf_wl_ready', {c: p.computer || STR.pc_default});
+    case 'waitlist_remove': return STR.ntf_wl_remove;
     // Е2: пакеты времени
     case 'package_added': return T('ntf_pack_added', {n: p.name || '', m: p.minutes || 0, z: p.zone || ''});
     case 'package_void': return T('ntf_pack_void', {n: p.name || ''});
@@ -3531,7 +3858,7 @@ function pumpNotif(){
 setInterval(async () => {
   if (!me) return;
   try{
-    const d = await api('/me/notifications');
+    const d = await api('/me/notifications?client=kiosk'); // К3-и2: своя отметка, телефон не «съест» тост
     const items = d.items || [];
     if (!items.length) return;
     notifQ.push(...items.map(notifText));
@@ -3571,11 +3898,20 @@ const AGENT = 'http://127.0.0.1:1448';
 let agentOnline = false;
 
 function renderAgentDot(){
+  // К2-и3: «ПК ●» гостю ни о чём; показываем только беду — агент не найден,
+  // значит игры с этого экрана не запустятся, и это надо сказать словами.
   const el = document.getElementById('agentDot');
-  el.innerHTML = UI.monitor + ' ' + (agentOnline ? STR.tb_pc_on : STR.tb_pc_off);
-  el.style.color = agentOnline ? 'var(--green)' : 'var(--dim)';
+  el.classList.toggle('hidden', agentOnline);
+  el.classList.toggle('warn', !agentOnline);
+  el.innerHTML = agentOnline ? '' : UI.monitor + ' ' + esc(STR.tb_agent_warn);
   el.title = agentOnline ? STR.tb_pc_title_on : STR.tb_pc_title_off;
+  // Строка «Сервер: …» на экране входа — техника для демо и ?api=; на
+  // клубном ПК (нативный киоск или живой агент) гостю она не нужна.
+  const srv = document.getElementById('srvLine');
+  if (srv) srv.classList.toggle('hidden', isClubPC() && !apiFromQuery);
 }
+let apiFromQuery = false;
+try{ apiFromQuery = !!new URLSearchParams(location.search).get('api'); }catch(e){}
 
 /* Дев-инструменты на боевом экране гостя скрыты. Кнопка «+150 мин (dev)»
    стояла рядом с «Пауза» и «Завершить»: гость читал её как «добавить время»,
@@ -3790,19 +4126,51 @@ async function endSession(devMinutes){
   try{
     const body = devMinutes ? JSON.stringify({minutes:devMinutes}) : '{}';
     const d = await api('/me/sessions/end', {method:'POST', body});
-    document.getElementById('eoXP').textContent = '+' + fmt(d.xp_earned) + ' XP';
-    document.getElementById('eoCoins').textContent = '+' + fmt(d.coins_earned);
-    let extra = [];
-    if (d.daily_bonus_xp > 0) extra.push(T('end_daily', {n: d.daily_bonus_xp}));
-    if (d.levels_gained > 0) extra.push(T('end_levels', {n: d.levels_gained}));
-    if (d.bonus_case) extra.push(UI.chest + ' ' + T('end_bonus_case', {t: esc(d.bonus_case_tier||'')}));
-    if (d.bonus_case_tier_2) extra.push(UI.chest + UI.chest + ' ' + T('end_double_case', {t: esc(d.bonus_case_tier_2)}));
-    document.getElementById('eoExtra').innerHTML = extra.join(' · ');
-    document.getElementById('endOverlay').classList.add('show');
+    showEndScreen(d, '', false);
     if (d.levels_gained > 0) setTimeout(()=>showLevelUp(d.user.level), 400);
     await loadAll();
     lockLogoutStart(LOCK_LOGOUT_SEC); // К1-и3: не нажал «Ок» и ушёл — аккаунт уйдёт сам
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* К3-и6 (Р5): экран «Сессия завершена» — один и тот же для своего завершения
+   (ответ /me/sessions/end) и внешнего (строка сессии из /me/sessions + receipt):
+   награды, причина, и чек — остаток кошелька, долг кухни, стрик. Гость,
+   вставая из-за ПК, видит, что ему делать у стойки. */
+let endExternal = false;
+function showEndScreen(d, reasonKey, external){
+  endExternal = !!external;
+  document.getElementById('eoXP').textContent = '+' + fmt(d.xp_earned) + ' XP';
+  document.getElementById('eoCoins').textContent = '+' + fmt(d.coins_earned);
+  const rs = document.getElementById('eoReason');
+  rs.textContent = reasonKey ? (STR[reasonKey] || '') : '';
+  rs.classList.toggle('hidden', !rs.textContent);
+  let extra = [];
+  if (d.daily_bonus_xp > 0) extra.push(T('end_daily', {n: d.daily_bonus_xp}));
+  if (d.levels_gained > 0) extra.push(T('end_levels', {n: d.levels_gained}));
+  if (d.bonus_case) extra.push(UI.chest + ' ' + T('end_bonus_case', {t: esc(d.bonus_case_tier||'')}));
+  if (d.bonus_case_tier_2) extra.push(UI.chest + UI.chest + ' ' + T('end_double_case', {t: esc(d.bonus_case_tier_2)}));
+  document.getElementById('eoExtra').innerHTML = extra.join(' · ');
+  const r = d.receipt, rc = document.getElementById('eoReceipt');
+  if (r){
+    const lines = [T('eo_left', {z: fmtZl(r.wallet_grosz)})];
+    if (r.kitchen_unpaid_pln > 0) lines.push('<span class="debt">' + T('eo_kitchen', {z: fmtZl(Math.round(r.kitchen_unpaid_pln * 100))}) + '</span>');
+    if (r.streak_days > 0) lines.push(T('eo_streak', {s: T('streak_days', {n: r.streak_days})}));
+    rc.innerHTML = lines.map(l => `<span>${l}</span>`).join('');
+  }
+  rc.classList.toggle('hidden', !r);
+  document.getElementById('endOverlay').classList.add('show');
+}
+/* «Ок»: своё завершение — выход из аккаунта (К1-и3, Р3); внешнее — только
+   закрыть экран: под ним лок с отсчётом выхода и «Остаться» — гость, которого
+   закрыл ноль кошелька, может пополнить у стойки и продолжить (К1-и3). */
+function endOk(){
+  closeOverlay('endOverlay');
+  if (!endExternal) logout();
+}
+/* причина внешнего завершения (ended_reason сервера) → строка на экране */
+function endReasonKey(reason){
+  return {admin:'eo_r_admin', balance:'eo_r_balance', booking:'eo_r_booking', afk:'eo_r_afk', manual:'eo_r_manual'}[reason] || '';
 }
 
 /* К1-и5: «Завершить» — arm-паттерн: первый клик взводит кнопку на 5 с, второй
@@ -3944,7 +4312,13 @@ setInterval(async () => {
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
-      if (!still){ toast(STR.toast_sess_ended); await loadAll(); lockLogoutStart(LOCK_LOGOUT_SEC); } // К1-и3
+      if (!still){ // К1-и3; К3-и6: тот же экран итогов с чеком, что и при своём завершении
+        const row = rows.find(s => s.id === activeSession.id);
+        toast(STR.toast_sess_ended);
+        await loadAll();
+        if (row && row.status !== 'cancelled') showEndScreen({...row, receipt: ss.receipt}, endReasonKey(row.ended_reason), true);
+        lockLogoutStart(LOCK_LOGOUT_SEC);
+      }
       // Е1: сервер подтвердил сессию сам (дедлайн истёк) или гость нажал
       // [Готов!] с телефона — экран обязан погаснуть здесь же.
       else if (!!still.ready_at !== !!activeSession.ready_at){
@@ -3979,6 +4353,12 @@ function attractFreeText(){
   clubs.forEach(c => { free += c.computers_free || 0; total += c.computers_total || 0; });
   return total ? T('attract_free', {f: free, t: total}) : '';
 }
+/* К2-и5 (Р8): тарифы зон на заставке — как ценник на стене; данные из
+   публичного /clubs (zones[{name, rate_pln}]). */
+function attractRatesText(){
+  const zones = (clubs[0] && clubs[0].zones) || [];
+  return zones.map(z => T('att_rate', {z: esc(z.name), r: fmtNum(z.rate_pln)})).join(' · ');
+}
 function attractShow(){
   const lockOn = document.getElementById('lockOverlay').classList.contains('show');
   const authOn = !document.getElementById('authView').classList.contains('hidden');
@@ -3988,11 +4368,14 @@ function attractShow(){
   if (lockOn && me) logout();
   document.getElementById('attract').classList.add('show');
   document.getElementById('attractFree').innerHTML = attractFreeText();
+  document.getElementById('attractRates').innerHTML = attractRatesText();
   clearInterval(attractIv);
   const tick = async () => {           // счётчик дышит, пока заставка на экране
     await loadClubs();
-    if (document.getElementById('attract').classList.contains('show'))
+    if (document.getElementById('attract').classList.contains('show')){
       document.getElementById('attractFree').innerHTML = attractFreeText();
+      document.getElementById('attractRates').innerHTML = attractRatesText();
+    }
   };
   tick();
   attractIv = setInterval(tick, 60000);
@@ -4037,7 +4420,7 @@ function renderSide(){
       if (opened) sub = c.drop_type==='coins' ? T('case_opened_coins', {n: fmt(c.drop_amount), ic: UI.coins})
                                                 : T('case_opened_buster', {n: c.drop_amount});
       else if (expired) sub = UI.fire + ' ' + esc(STR.case_expired);
-      else sub = T('case_source', {s: c.source}) + (daysLeft !== null
+      else sub = T('case_source', {s: esc(caseSourceName(c.source))}) + (daysLeft !== null
         ? ` · <span style="color:${daysLeft <= 3 ? 'var(--red)' : 'var(--dim)'}">${T('case_expires_in', {n: daysLeft})}</span>` : '');
       const dead = opened || expired;
       return `<div class="card case-i tier-${c.tier} ${dead?'opened':''}" ${dead?'':`onclick="openCase('${c.id}','${c.tier}')"`}>
@@ -4056,12 +4439,12 @@ function renderSide(){
     for (const br of ['strength','agility','intellect']){
       const list = (talents.talents||[]).filter(t => t.branch === br);
       if (!list.length) continue;
-      html += `<div class="tal-branch">${BRANCH[br]}</div>` + list.map(t => `
+      html += `<div class="tal-branch">${branchName(br)}</div>` + list.map(t => `
         <div class="card tal ${t.unlocked?'':'locked'}">
           <div class="top"><div class="n">${t.name}</div><div class="lv">${t.current_level}/${t.max_level}</div></div>
           <div class="d">${t.description||''}</div>
           <div class="row">
-            <div class="eff">${t.current_level>0 ? T('tal_now', {e: t.effect_now}) : ''} ${t.current_level<t.max_level ? T('tal_next', {e: t.effect_next}) : ''}</div>
+            <div class="eff">${t.current_level>0 ? T('tal_now', {e: talEffect(t.effect_type, t.effect_now)}) : ''} ${t.current_level<t.max_level ? T('tal_next', {e: talEffect(t.effect_type, t.effect_next)}) : ''}</div>
             <button class="inv" ${(!t.unlocked || sp<1 || t.current_level>=t.max_level)?'disabled':''}
               onclick="invest('${t.id}')">${t.unlocked ? (t.current_level>=t.max_level?'MAX':'+1 '+UI.sp) : 'LVL '+t.min_user_level}</button>
           </div>
@@ -4180,7 +4563,7 @@ function renderSide(){
       const cancellable = (b.status==='pending'||b.status==='confirmed') && new Date(b.start_time) > new Date();
       return `<div class="sess-item"><span><b>${dt}</b> · ${T('bk_min', {n: b.duration_min})}</span>
         <span class="muted">${esc(b.computer ? b.computer.name : '')}</span>
-        <span class="badge">${b.status}${b.prepaid===false?esc(STR.bk_no_prepaid):''}</span>
+        <span class="badge">${esc(bkStatusName(b.status))}${b.prepaid===false?esc(STR.bk_no_prepaid):''}</span>
         ${cancellable ? `<button class="btn danger slim" style="padding:5px 9px; font-size:12px" onclick="cancelMyBooking('${b.id}')">✕</button>` : ''}
       </div>`;
     };
@@ -4905,6 +5288,7 @@ function openProfile(){
   document.getElementById('pTelegram').value = me.telegram || '';
   document.getElementById('pSource').value = me.source || '';
   profFavs = [...(me.favorite_games || [])];
+  favQuery = ''; const fs = document.getElementById('favSearch'); if (fs) fs.value = '';
   paintFavPick();
   document.getElementById('pErr').textContent = '';
   const pl = document.getElementById('profLang');
@@ -4912,11 +5296,23 @@ function openProfile(){
   drawClubQR(); // М5: QR на /app
   document.getElementById('profOverlay').classList.add('show');
 }
+/* К2-и1: выбранные — чипами (клик снимает), остальные — через поиск по имени,
+   первые FAV_SHOW совпадений. 38 кнопок делали модалку выше экрана. */
+let favQuery = '';
+const FAV_SHOW = 8;
+function favSearchInput(v){ favQuery = (v || '').trim().toLowerCase(); paintFavPick(); }
 function paintFavPick(){
   const games = (CATALOG.games || []);
-  document.getElementById('favPick').innerHTML = games.map(g =>
-    `<button class="${profFavs.includes(g.id)?'on':''}" onclick="pickFav('${g.id}')">${esc(g.name)}</button>`).join('')
-    || '<span class="muted">' + esc(STR.catalog_empty) + '</span>';
+  const sel = document.getElementById('favSel'), res = document.getElementById('favResults');
+  if (!sel || !res) return;
+  const chosen = profFavs.map(id => games.find(g => g.id === id)).filter(Boolean);
+  sel.innerHTML = chosen.map(g => `<button class="on" onclick="pickFav('${g.id}')">${esc(g.name)}</button>`).join('');
+  const rest = games.filter(g => !profFavs.includes(g.id) && (!favQuery || catMatch(g, favQuery)));
+  res.innerHTML = games.length
+    ? rest.slice(0, FAV_SHOW).map(g => `<button onclick="pickFav('${g.id}')">${esc(g.name)}</button>`).join('')
+      + (rest.length > FAV_SHOW ? `<span class="muted" style="align-self:center; font-size:12px">+${rest.length - FAV_SHOW}</span>` : '')
+      + (!rest.length && favQuery ? `<span class="muted">${esc(STR.cat_nothing)}</span>` : '')
+    : '<span class="muted">' + esc(STR.catalog_empty) + '</span>';
 }
 function pickFav(id){
   if (profFavs.includes(id)) profFavs = profFavs.filter(x => x !== id);

@@ -134,7 +134,7 @@ func handleAdminPasswordReset(c *gin.Context) {
 		return
 	}
 	if _, err := setPassword(user.ID, temp, true); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := user.ID
@@ -195,7 +195,7 @@ func handleChangeMyPassword(c *gin.Context) {
 	}
 	cutoff, err := setPassword(user.ID, req.NewPassword, false)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	// Перечитать: в ответ уходит пользователь уже без флага смены.

@@ -310,7 +310,7 @@ func decorateCatalogApp(a *models.CatalogApp, root string, public bool) {
 func handleGetCatalog(c *gin.Context) {
 	var apps []models.CatalogApp
 	if err := db.Where("enabled = ?", true).Order("sort").Order("name").Find(&apps).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	root := settingString(gamesRootKey, "")
@@ -350,7 +350,7 @@ func handleAdminCatalog(c *gin.Context) {
 func handleAdminCatalogUpsert(c *gin.Context) {
 	var req catalogFields
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	if code, msg := validateCatalogFields(&req, true); code != "" {
@@ -379,11 +379,11 @@ func handleAdminCatalogUpsert(c *gin.Context) {
 		if err := db.Model(&existing).Select("name", "category", "subtitle", "tag", "emoji",
 			"color_a", "color_b", "target", "args", "cover_url", "sort", "updated_at").
 			Updates(app).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+			respondDBError(c, err)
 			return
 		}
 	} else if err := db.Create(&app).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "catalog_upsert", nil, app.ID)
@@ -411,7 +411,7 @@ func handleAdminCatalogToggle(c *gin.Context) {
 	}
 	newEnabled := !app.Enabled
 	if err := db.Model(&app).Update("enabled", newEnabled).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	state := "выключено"
@@ -438,7 +438,7 @@ func handleAdminCatalogSort(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&app).Update("sort", *req.Sort).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "catalog_sort", nil, fmt.Sprintf("%s → %d", app.ID, *req.Sort))
@@ -449,7 +449,7 @@ func handleAdminCatalogSort(c *gin.Context) {
 func handleAdminCatalogDelete(c *gin.Context) {
 	res := db.Delete(&models.CatalogApp{}, "id = ?", c.Param("id"))
 	if res.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": res.Error.Error()})
+		respondDBError(c, res.Error)
 		return
 	}
 	if res.RowsAffected == 0 {
@@ -515,7 +515,7 @@ func handleAdminCatalogCoverPut(c *gin.Context) {
 	}
 	if err := db.Exec("UPDATE catalog_apps SET cover = ?, cover_type = ?, cover_at = now(), updated_at = now() WHERE id = ?",
 		data, ct, app.ID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	// перечитываем в ЧИСТУЮ структуру: GORM не сбрасывает уже заполненные
@@ -535,7 +535,7 @@ func handleAdminCatalogCoverDelete(c *gin.Context) {
 	}
 	if err := db.Exec("UPDATE catalog_apps SET cover = NULL, cover_type = NULL, cover_at = NULL, updated_at = now() WHERE id = ?",
 		app.ID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	var fresh models.CatalogApp
@@ -576,7 +576,7 @@ func handleAdminCatalogConfigPut(c *gin.Context) {
 	}
 	old := settingString(gamesRootKey, "")
 	if err := settingSetString(gamesRootKey, root); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	if old != root {
@@ -789,7 +789,7 @@ func handleAdminCatalogImport(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "catalog_import", nil,

@@ -111,7 +111,7 @@ func handleStaffChatPost(c *gin.Context) {
 		Role: c.GetString("user_role"), Text: text,
 	}
 	if err := db.Create(&m).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	// Своё сообщение прочитанным считается сразу: иначе счётчик у автора
@@ -133,7 +133,7 @@ func handleStaffChatRead(c *gin.Context) {
 	now := time.Now()
 	if err := db.Model(&models.User{}).Where("id = ?", c.GetString("user_id")).
 		Update("staff_chat_read_at", now).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"read_at": now, "unread": 0})

@@ -108,7 +108,7 @@ func joinWaitlist(c *gin.Context, user *models.User, addedBy *uuid.UUID) *models
 			c.JSON(http.StatusConflict, gin.H{"code": "already_waiting", "message": "Гость уже в очереди"})
 			return nil
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return nil
 	}
 	kind := map[bool]string{true: "add", false: "join"}[addedBy != nil]
@@ -261,7 +261,7 @@ func handleAdminWaitlistRemove(c *gin.Context) {
 		return
 	}
 	if err := closeWaitlistEntry(&entry); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := entry.UserID
@@ -327,7 +327,7 @@ func handleLeaveWaitlist(c *gin.Context) {
 		return
 	}
 	if err := closeWaitlistEntry(&entry); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	hub.AdminBroadcast("waitlist", map[string]any{"kind": "leave", "nickname": nicknameOf(entry.User)})

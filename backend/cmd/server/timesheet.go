@@ -168,7 +168,7 @@ func handleWorkStart(c *gin.Context) {
 		entry.ShiftID = &sh.ID
 	}
 	if err := db.Create(&entry).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	name := ""
@@ -203,7 +203,7 @@ func handleWorkStop(c *gin.Context) {
 	if err := db.Model(&models.WorkEntry{}).Where("id = ?", open.ID).Updates(map[string]any{
 		"ended_at": now, "minutes": mins, "edited_by": userID, "updated_at": now,
 	}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "work_stop", nil, fmt.Sprintf("ушёл · %s", hoursRU(int64(mins))))
@@ -372,7 +372,7 @@ func handleWorkCreate(c *gin.Context) {
 		entry.ShiftID = &sh.ID
 	}
 	if err := db.Create(&entry).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := user.ID
@@ -416,7 +416,7 @@ func handleWorkUpdate(c *gin.Context) {
 		"auto_closed": false, "note": strings.TrimSpace(req.Note),
 		"edited_by": admin, "updated_at": time.Now(),
 	}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := w.UserID
@@ -433,7 +433,7 @@ func handleWorkDelete(c *gin.Context) {
 		return
 	}
 	if err := db.Delete(&models.WorkEntry{}, "id = ?", w.ID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := w.UserID

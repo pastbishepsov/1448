@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"errors"
+	"log"
 	"math"
 	"math/big"
 	"net/http"
@@ -191,20 +192,22 @@ func tierForLevel(level int) models.CaseTier {
 func handleGetMyCases(c *gin.Context) {
 	userID := c.GetString("user_id")
 
+	// К3-и5 (№18): список ограничен сотней — неоткрытые сверху, дальше свежие;
+	// у завсегдатая за год набираются сотни открытых кейсов, и киоск тянул их
+	// все каждые 10 с. Счётчик неоткрытых — отдельным COUNT по всей таблице,
+	// без сгоревших (expires_at в прошлом), чтобы бейдж не зависел от лимита.
+	now := time.Now()
 	var cases []models.Case
 	db.Where("user_id = ?", userID).
 		Order("(opened_at IS NULL) DESC").
 		Order("created_at DESC").
+		Limit(100).
 		Find(&cases)
 
-	// Неоткрытые считаем без сгоревших (expires_at в прошлом).
-	now := time.Now()
-	unopened := 0
-	for _, x := range cases {
-		if x.OpenedAt == nil && x.ExpiresAt.After(now) {
-			unopened++
-		}
-	}
+	var unopened int64
+	db.Model(&models.Case{}).
+		Where("user_id = ? AND opened_at IS NULL AND expires_at > ?", userID, now).
+		Count(&unopened)
 
 	c.JSON(http.StatusOK, gin.H{"count": len(cases), "unopened": unopened, "cases": cases})
 }
@@ -239,7 +242,8 @@ func handleOpenCase(c *gin.Context) {
 
 	dropType, amount, err := box.Roll(rtp)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "roll_error", "message": err.Error()})
+		log.Printf("roll_error кейс %s: %v", caseID, err) // К3-и3
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "roll_error", "message": "Кейс не открылся — попробуй ещё раз или позови админа"})
 		return
 	}
 
@@ -290,7 +294,7 @@ func handleOpenCase(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 

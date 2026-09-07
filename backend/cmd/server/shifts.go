@@ -131,7 +131,7 @@ func handleAdminShiftCreate(c *gin.Context) {
 		StartMin: *req.StartMin, EndMin: *req.EndMin, DaysMask: mask, Sort: req.Sort, Active: true,
 	}
 	if err := db.Create(&s).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "shift_tpl_create", nil,
@@ -149,7 +149,7 @@ func handleAdminShiftUpdate(c *gin.Context) {
 	}
 	var req shiftTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	if req.Name != "" {
@@ -175,7 +175,7 @@ func handleAdminShiftUpdate(c *gin.Context) {
 		return
 	}
 	if err := db.Save(&s).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "shift_tpl_update", nil,
@@ -194,7 +194,7 @@ func handleAdminShiftDelete(c *gin.Context) {
 		return
 	}
 	if err := db.Delete(&s).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	logAdminAction(c, "shift_tpl_delete", nil, s.Name)
@@ -318,7 +318,7 @@ func handleAdminShiftAssign(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"code": "already_assigned", "message": "Уже в графике на эту смену"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := user.ID
@@ -339,7 +339,7 @@ func handleAdminShiftUnassign(c *gin.Context) {
 		return
 	}
 	if err := db.Delete(&a).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	shiftName := ""

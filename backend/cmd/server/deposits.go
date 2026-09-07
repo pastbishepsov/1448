@@ -159,7 +159,7 @@ func handleAdminDeposit(c *gin.Context) {
 			}).Error
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 

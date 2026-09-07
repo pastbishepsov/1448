@@ -124,7 +124,7 @@ func handleAdminStaffPromote(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&user).Update("role", models.UserRoleAdmin).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	// человек мог у нас уже работать — снимаем отметку об увольнении,
@@ -174,7 +174,7 @@ func handleAdminStaffDemote(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&user).Update("role", models.UserRolePlayer).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	// БАГ до этого фикса: снятый админ оставался висеть в будущих сменах —
@@ -368,11 +368,11 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 				"hired_at": hired, "dismissed_at": dismissed,
 				"rate_type": rateType, "rate_amount": rate, "note": note, "updated_at": p.UpdatedAt,
 			}).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+			respondDBError(c, err)
 			return
 		}
 	} else if err := db.Create(&p).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 
@@ -514,7 +514,7 @@ func handleAdminStaffHire(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"code": "already_exists", "message": hireErrors["already_exists"]})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := user.ID
@@ -580,7 +580,7 @@ func handleAdminStaffDismiss(c *gin.Context) {
 		return tx.Create(&models.StaffProfile{UserID: user.ID, DismissedAt: date, RateType: "none"}).Error
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	removed := clearFutureShifts(user.ID)

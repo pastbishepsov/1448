@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -30,12 +31,20 @@ func notifyUser(userID uuid.UUID, ntype string, payload map[string]any) {
 	}
 }
 
-// GET /me/notifications — непрочитанные уведомления гостя (старые сверху,
-// до 50); выдача помечает прочитанными.
+// GET /me/notifications?client=kiosk|app — непрочитанные уведомления гостя
+// (старые сверху, до 50); выдача помечает прочитанными.
+//
+// К3-и2 (№16/№17): у каждого клиента своя отметка — read_kiosk_at у киоска,
+// read_app_at у PWA — и один тост доходит и до ПК, и до телефона. Без
+// ?client= (текущая PWA до своей итерации в треке М) — как раньше: отдаём
+// непрочитанное «вообще» (read_at IS NULL) и ставим все три отметки.
+// read_at = «прочитано вообще»: ставится нетипизированным клиентом или
+// вторым из типизированных.
 func handleGetMyNotifications(c *gin.Context) {
 	userID := c.GetString("user_id")
+	client := notifClient(c.Query("client"))
 	var items []models.Notification
-	db.Where("user_id = ? AND read_at IS NULL", userID).
+	db.Where("user_id = ? AND "+notifUnreadCond(client), userID).
 		Order("created_at ASC").Limit(50).Find(&items)
 
 	if len(items) > 0 {
@@ -43,7 +52,7 @@ func handleGetMyNotifications(c *gin.Context) {
 		for _, n := range items {
 			ids = append(ids, n.ID)
 		}
-		db.Model(&models.Notification{}).Where("id IN ?", ids).Update("read_at", time.Now())
+		markNotificationsRead(ids, client, time.Now())
 	}
 
 	out := make([]gin.H, 0, len(items))
@@ -54,4 +63,50 @@ func handleGetMyNotifications(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "items": out})
+}
+
+// notifClient — нормализованный клиент из ?client=: kiosk | app | "" (все).
+func notifClient(q string) string {
+	switch q {
+	case "kiosk", "app":
+		return q
+	}
+	return ""
+}
+
+// notifUnreadCond — условие «непрочитано этим клиентом» (чистая, тест).
+// Типизированный клиент не видит и то, что прочитано «вообще» (read_at):
+// это уведомления до миграции 055 или показанные старой PWA.
+func notifUnreadCond(client string) string {
+	switch client {
+	case "kiosk":
+		return "read_kiosk_at IS NULL AND read_at IS NULL"
+	case "app":
+		return "read_app_at IS NULL AND read_at IS NULL"
+	}
+	return "read_at IS NULL"
+}
+
+// markNotificationsRead — поставить отметки выдачи. Свою — всегда; read_at —
+// нетипизированный клиент сразу, типизированный — когда прочитал и второй.
+func markNotificationsRead(ids []uuid.UUID, client string, now time.Time) {
+	q := db.Model(&models.Notification{}).Where("id IN ?", ids)
+	switch client {
+	case "kiosk":
+		q.Updates(map[string]any{
+			"read_kiosk_at": now,
+			"read_at":       gorm.Expr("CASE WHEN read_app_at IS NULL THEN read_at ELSE ? END", now),
+		})
+	case "app":
+		q.Updates(map[string]any{
+			"read_app_at": now,
+			"read_at":     gorm.Expr("CASE WHEN read_kiosk_at IS NULL THEN read_at ELSE ? END", now),
+		})
+	default:
+		q.Updates(map[string]any{
+			"read_at":       now,
+			"read_kiosk_at": gorm.Expr("COALESCE(read_kiosk_at, ?)", now),
+			"read_app_at":   gorm.Expr("COALESCE(read_app_at, ?)", now),
+		})
+	}
 }

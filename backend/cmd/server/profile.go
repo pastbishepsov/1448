@@ -197,7 +197,7 @@ func handlePatchMe(c *gin.Context) {
 
 	var req patchMeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 
@@ -350,7 +350,7 @@ func handlePatchMe(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"code": code, "message": msg})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 

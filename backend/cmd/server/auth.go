@@ -133,7 +133,7 @@ type refreshRequest struct {
 func handleRefresh(c *gin.Context) {
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 
@@ -206,7 +206,7 @@ func handleLogout(c *gin.Context) {
 	}
 	if jti := claimString(claims, "jti"); jti != "" {
 		if err := revokeToken(jti, claimString(claims, "sub"), claimExpiry(claims)); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+			respondDBError(c, err)
 			return
 		}
 	}

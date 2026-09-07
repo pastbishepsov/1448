@@ -133,7 +133,7 @@ func handleGuestChatPost(c *gin.Context) {
 		}
 	}
 	if err := db.Create(&m).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	broadcastChat(&m, user.Nickname, computerName)
@@ -257,16 +257,22 @@ func resolveNicknames(idSet map[string]bool) map[string]string {
 // GET /me/chat?after=&mark=1 — переписка гостя, старые сверху, до 100.
 // after — created_at последнего известного сообщения (RFC3339Nano);
 // mark=1 (панель открыта) помечает ответы персонала прочитанными (Б3).
+// К3-и5 (№18): первая страница — ПОСЛЕДНИЕ 100 сообщений (DESC + разворот):
+// раньше брались первые 100 от начала переписки, и у разговорчивого гостя
+// свежие ответы админа в панель не попадали. Доливка по after — как была.
 func handleGuestChatList(c *gin.Context) {
 	userID := c.GetString("user_id")
-	q := db.Where("user_id = ?", userID).Order("created_at ASC").Limit(100)
+	q := db.Where("user_id = ?", userID).Limit(100)
+	var msgs []models.ChatMessage
 	if after := c.Query("after"); after != "" {
 		if t, err := time.Parse(time.RFC3339Nano, after); err == nil {
 			q = q.Where("created_at > ?", t)
 		}
+		q.Order("created_at ASC").Find(&msgs)
+	} else {
+		q.Order("created_at DESC").Find(&msgs)
+		reverseMessages(msgs)
 	}
-	var msgs []models.ChatMessage
-	q.Find(&msgs)
 
 	if c.Query("mark") == "1" {
 		db.Model(&models.ChatMessage{}).
@@ -291,6 +297,13 @@ func handleGuestChatList(c *gin.Context) {
 		out = append(out, row)
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "messages": out})
+}
+
+// reverseMessages — DESC-выборка → старые сверху, как ждёт панель (тест).
+func reverseMessages(m []models.ChatMessage) {
+	for i, j := 0, len(m)-1; i < j; i, j = i+1, j-1 {
+		m[i], m[j] = m[j], m[i]
+	}
 }
 
 // GET /me/chat/unread — счётчик непрочитанных ответов персонала (для бэйджа).
@@ -413,7 +426,7 @@ func handleAdminChatPost(c *gin.Context) {
 		Text: strings.TrimSpace(req.Text), ReadStaff: true,
 	}
 	if err := db.Create(&m).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	broadcastChat(&m, user.Nickname, "")
@@ -432,7 +445,7 @@ func handleAdminChatAck(c *gin.Context) {
 		updates["admin_id"] = adminID
 	}
 	if err := db.Model(&m).Updates(updates).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"id": m.ID, "read_staff": true})

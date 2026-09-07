@@ -140,7 +140,7 @@ func handleAdminUsers(c *gin.Context) {
 	}
 	var users []models.User
 	if err := q.Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	resp := gin.H{"count": len(users), "users": users}
@@ -169,7 +169,7 @@ func setUserStatus(c *gin.Context, status models.UserStatus) {
 		return
 	}
 	if err := db.Model(user).Update("status", status).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	action, details := "unban", ""
@@ -304,7 +304,7 @@ func handleAdminUserCard(c *gin.Context) {
 func handleAdminComputers(c *gin.Context) {
 	var computers []models.Computer
 	if err := db.Preload("Club").Order("name").Find(&computers).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 
@@ -401,7 +401,7 @@ func handleAdminEndSession(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"code": "session_closed", "message": "Сессия уже завершена"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := session.UserID
@@ -483,7 +483,7 @@ func handleAdminSetComputerStatus(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&pc).Update("status", req.Status).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	action := "pc_available"
@@ -623,7 +623,7 @@ func handleAdminCancelBooking(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&booking).Update("status", models.BookingStatusCancelled).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := booking.UserID
@@ -652,7 +652,7 @@ func handleAdminCreateBooking(c *gin.Context) {
 		DurationMin int     `json:"duration_min"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": err.Error()})
+		respondBindError(c, err)
 		return
 	}
 	if req.DurationMin == 0 {
@@ -717,7 +717,7 @@ func handleAdminCreateBooking(c *gin.Context) {
 		DurationMin: req.DurationMin, Prepaid: false,
 	}
 	if err := db.Create(&booking).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := user.ID
@@ -757,7 +757,7 @@ func handleAdminRestoreBooking(c *gin.Context) {
 		}
 	}
 	if err := db.Model(&booking).Update("status", models.BookingStatusConfirmed).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "db_error", "message": err.Error()})
+		respondDBError(c, err)
 		return
 	}
 	target := booking.UserID
