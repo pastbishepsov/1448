@@ -92,6 +92,9 @@ func handleGetEconomy(c *gin.Context) {
 		// Г4: правила броней — клиенты показывают гейт и лимит честно
 		"booking_min_level":   settingInt64("booking_min_level", bookingMinLevelDef),
 		"max_active_bookings": settingInt64("max_active_bookings", maxActiveBookingsDef),
+		// К4-и4: правила паузы и AFK — киоск и PWA прячут «Паузу» при 0
+		"pause_limit_min": settingInt64("pause_limit_min", pauseLimitMinDef),
+		"afk_stop_min":    settingInt64("afk_stop_min", afkStopMinDef),
 		"hours_played": hours,
 		"rank": gin.H{
 			"level": rank.Level, "name": rank.Name, "min_hours": rank.MinHours,

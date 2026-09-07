@@ -1855,7 +1855,7 @@ function renderLive(){
       <div class="muted">≈ +<b class="cnum" id="liveXP" data-v="0" style="color:var(--txt)">0</b> ${esc(STR.live_xp_lbl)}</div>
       ${activeSession.pack_minutes_used > 0
         ? `<div class="muted">${esc(T('live_pack', {n: activeSession.pack_minutes_used}))}</div>` : ''}
-      <button class="btn ghost slim" style="margin-top:8px" onclick="appPause()">${esc(STR.btn_pause)}</button>`;
+      ${economy && economy.pause_limit_min === 0 ? '' : `<button class="btn ghost slim" style="margin-top:8px" onclick="appPause()">${esc(STR.btn_pause)}</button>`}`; // К4-и4: паузы нет, пока владелец её не включил
   }
   el.classList.remove('hidden');
   tickLive();
@@ -2932,7 +2932,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-08-26.1';
+const APP_VER = '2026-09-07.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

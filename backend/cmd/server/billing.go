@@ -277,23 +277,27 @@ func billSession(s *models.Session, now time.Time) bool {
 		}
 	}
 
-	// — AFK-детект (Г2-и2): только с живым датчиком и включённой настройкой —
+	// — AFK-детект (Г2-и2, К4-и4): только с живым датчиком и включённой
+	// настройкой. За 5 минут до порога — предупреждение (тост поверх игры,
+	// К4-и2), на пороге — завершение; автопауза только там, где владелец
+	// включил паузу и бюджет сессии ещё есть. —
 	if afkStop > 0 && idleKnown && s.PausedAt == nil {
-		if idle >= int(afkStop)*60 {
-			if s.AfkWarnedAt == nil {
-				notifyUser(s.UserID, "afk_warn", map[string]any{"idle_min": idle / 60})
-				db.Model(&models.Session{}).Where("id = ?", s.ID).Update("afk_warned_at", now)
-				t := now
-				s.AfkWarnedAt = &t
+		pauseAvail := pauseLimit > 0 && pauseBudgetLeftSec(s, pauseLimit, now) > 0
+		switch afkDecision(idle, afkStop, pauseAvail, s.AfkWarnedAt != nil) {
+		case afkWarn:
+			endIn := (int(afkStop)*60 - idle + 59) / 60
+			notifyUser(s.UserID, "afk_warn", map[string]any{"idle_min": idle / 60, "end_in_min": endIn, "pause": pauseAvail})
+			db.Model(&models.Session{}).Where("id = ?", s.ID).Update("afk_warned_at", now)
+			t := now
+			s.AfkWarnedAt = &t
+		case afkPause:
+			if err := startPause(s, now, "afk"); err == nil {
+				notifyUser(s.UserID, "afk_pause", map[string]any{"limit_min": pauseLimit})
 			}
-			if pauseLimit > 0 && pauseBudgetLeftSec(s, pauseLimit, now) > 0 {
-				if err := startPause(s, now, "afk"); err == nil {
-					notifyUser(s.UserID, "afk_pause", map[string]any{"limit_min": pauseLimit})
-				}
-				return true
-			}
+			return true
+		case afkEnd:
 			if _, err := finishSession(s, nil, "afk"); err == nil {
-				log.Printf("биллинг: сессия %s завершена по AFK (пауза недоступна)", s.ID)
+				log.Printf("биллинг: сессия %s завершена по AFK (%d мин тишины)", s.ID, idle/60)
 			}
 			return true
 		}

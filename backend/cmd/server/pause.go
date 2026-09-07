@@ -3,16 +3,22 @@ package main
 // Пауза сессии, AFK и пересадка (трек Г, спринт Г2; GUEST.md, этап I).
 //
 // Пауза: время, деньги (биллинг Г1) и XP стоят, ПК остаётся за гостем.
-// Лимит — НА СЕССИЮ (настройка pause_limit_min, деф. 15 мин, 0 = пауза
-// выключена); по исчерпании биллинг снимает паузу сам и время снова тикает.
-// (В плане лимит звался «дневным» — дневной учёт придёт с user_progress Г5;
-// на сессию — строже к абьюзу «держать ПК бесплатно» и без новой таблицы.)
+// Лимит — НА СЕССИЮ (настройка pause_limit_min, 0 = пауза выключена); по
+// исчерпании биллинг снимает паузу сам и время снова тикает.
+//
+// К4-и4 (KIOSK.md, решение основателя 07.09): пауза ВЫКЛЮЧЕНА по умолчанию
+// (деф. 0, миграция 056 ставит 0 и уже настроенным клубам). Клуб зарабатывает,
+// пока гость держит ПК, — бесплатной «передышки» нет; кнопки «Пауза» в киоске
+// и PWA при 0 не показываются. Владелец другого клуба может включить паузу в
+// админке — механика остаётся.
 //
 // AFK: агент кладёт в session_tick секунды простоя ввода (GetLastInputInfo);
-// порог afk_stop_min (деф. 10 мин, 0 = выкл). Реакция на тике биллинга:
-// afk_warn (один раз) → автопауза от системы (paused_by=afk), если паузный
-// бюджет есть; гость шевельнул мышью — пауза снимается сама; бюджета нет —
-// завершение ended_reason=afk. Нет датчика (нет агента) — AFK не судим.
+// порог afk_stop_min (деф. 25 мин, 0 = выкл). Реакция на тике биллинга
+// (afkDecision): за 5 минут до порога — afk_warn (один раз, с end_in_min);
+// на пороге — завершение ended_reason=afk (ПК свободен, агент закрывает игру
+// и чистит профиль, киоск разлогинивает), а если у клуба пауза включена и
+// бюджет есть — автопауза от системы (paused_by=afk), которую снимает
+// движение мыши. Нет датчика (нет агента) — AFK не судим.
 //
 // Пересадка (Г2-и3): админ переносит живую сессию на другой свободный ПК
 // клуба без разрыва биллинга — тариф сессии зафиксирован при старте и
@@ -31,12 +37,56 @@ import (
 )
 
 const (
-	pauseLimitMinDef int64 = 15  // настройка pause_limit_min: лимит паузы на сессию
-	afkStopMinDef    int64 = 10  // настройка afk_stop_min: порог простоя
+	pauseLimitMinDef int64 = 0   // настройка pause_limit_min: лимит паузы на сессию; 0 = выключена (К4-и4)
+	afkStopMinDef    int64 = 25  // настройка afk_stop_min: порог простоя до завершения (К4-и4)
+	afkWarnBeforeSec       = 300 // предупреждение — за столько до порога (но не раньше половины)
 	afkBackIdleSec         = 15  // простой меньше — гость вернулся, afk-пауза снимается
 	activeIdleSec          = 150 // минута активна, если простой меньше (анти-фарм Г5)
 	idleFreshSec           = 150 // сигнал агента старше — считаем, что датчика нет
 )
+
+// afkAct — что делать с простаивающей сессией (чистая таблица, тест).
+type afkAct int
+
+const (
+	afkNone  afkAct = iota
+	afkWarn         // предупредить: «через N мин сессия закроется»
+	afkPause        // автопауза (только у клубов с включённой паузой и бюджетом)
+	afkEnd          // завершить, ПК свободен
+)
+
+// afkWarnSec — когда предупреждать: за afkWarnBeforeSec до порога, но не
+// раньше его половины (при пороге 3 мин — на 90-й секунде, не «сразу»).
+func afkWarnSec(stopMin int64) int {
+	stop := int(stopMin) * 60
+	warn := stop - afkWarnBeforeSec
+	if warn < stop/2 {
+		warn = stop / 2
+	}
+	return warn
+}
+
+// afkDecision — решение по простою idleSec при пороге stopMin: pauseAvail —
+// у клуба пауза включена и бюджет сессии не сожжён; warned — предупреждение
+// уже уходило. Порог 0 — AFK выключен.
+func afkDecision(idleSec int, stopMin int64, pauseAvail, warned bool) afkAct {
+	if stopMin <= 0 {
+		return afkNone
+	}
+	switch {
+	case idleSec >= int(stopMin)*60:
+		if pauseAvail {
+			return afkPause
+		}
+		return afkEnd
+	case idleSec >= afkWarnSec(stopMin):
+		if warned {
+			return afkNone
+		}
+		return afkWarn
+	}
+	return afkNone
+}
 
 // pausedDuration — сколько секунд сессия провела на паузе к моменту now.
 func pausedDuration(s *models.Session, now time.Time) int {
@@ -123,6 +173,30 @@ func lockReason(pausedBy string) string {
 		return "afk"
 	}
 	return "paused"
+}
+
+// shellStateFor — К4-и1 (KIOSK.md, №13): состояние сессии ПК в ответ на
+// session_tick агента/киоска. Команды session_start/session_end/lock/unlock —
+// best-effort по живому сокету; если WS лежал в момент завершения, агент так и
+// остаётся с открытой игрой и без очистки. State на каждом тике — способ
+// догнать: агент сверяет его со своим трекингом (reconcile в cmd/agent).
+func shellStateFor(computerID string) any {
+	var s models.Session
+	err := db.Select("id, paused_at, paused_by").
+		Where("computer_id = ? AND status = ?", computerID, models.SessionStatusActive).
+		First(&s).Error
+	if err != nil {
+		return gin.H{"session_active": false, "paused": false, "session_id": nil}
+	}
+	st := gin.H{"session_active": true, "paused": s.PausedAt != nil, "session_id": s.ID}
+	if s.PausedAt != nil {
+		by := ""
+		if s.PausedBy != nil {
+			by = *s.PausedBy
+		}
+		st["reason"] = lockReason(by)
+	}
+	return st
 }
 
 func resumePause(s *models.Session, now time.Time) error {

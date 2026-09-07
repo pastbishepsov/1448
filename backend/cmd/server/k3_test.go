@@ -127,3 +127,35 @@ func TestReverseMessages(t *testing.T) {
 	}
 	reverseMessages(nil) // пустая выборка не должна паниковать
 }
+
+// К4-и4: пауза выключена по умолчанию, AFK — предупреждение за 5 мин, на пороге конец.
+func TestAfkDecisionNoPause(t *testing.T) {
+	if pauseLimitMinDef != 0 || afkStopMinDef != 25 {
+		t.Fatalf("дефолты: пауза %d (ожидалось 0), AFK %d (ожидалось 25)", pauseLimitMinDef, afkStopMinDef)
+	}
+	if afkWarnSec(25) != 20*60 || afkWarnSec(10) != 5*60 || afkWarnSec(3) != 90 {
+		t.Errorf("afkWarnSec: 25→%d 10→%d 3→%d", afkWarnSec(25), afkWarnSec(10), afkWarnSec(3))
+	}
+	cases := []struct {
+		name       string
+		idle       int
+		stop       int64
+		pauseAvail bool
+		warned     bool
+		want       afkAct
+	}{
+		{"выключено", 9999, 0, false, false, afkNone},
+		{"19 минут тишины — рано", 19 * 60, 25, false, false, afkNone},
+		{"20 минут — предупредить", 20 * 60, 25, false, false, afkWarn},
+		{"22 минуты, уже предупреждали — молчим", 22 * 60, 25, false, true, afkNone},
+		{"25 минут, паузы нет — завершить", 25 * 60, 25, false, true, afkEnd},
+		{"25 минут без предупреждения (пропущен тик) — всё равно завершить", 25 * 60, 25, false, false, afkEnd},
+		{"25 минут, пауза включена и бюджет есть — автопауза", 25 * 60, 25, true, true, afkPause},
+		{"порог 10 у другого клуба: 5 минут — предупредить", 5 * 60, 10, false, false, afkWarn},
+	}
+	for _, tc := range cases {
+		if got := afkDecision(tc.idle, tc.stop, tc.pauseAvail, tc.warned); got != tc.want {
+			t.Errorf("%s: %d, ожидалось %d", tc.name, got, tc.want)
+		}
+	}
+}

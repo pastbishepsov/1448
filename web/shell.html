@@ -1415,6 +1415,9 @@ const SH_RU = {
   ntf_pause_over: "⏱ Лимит паузы исчерпан ({l} мин) — время снова идёт",
   ntf_afk_warn: "💤 Ты давно не за компом — сессия скоро встанет на паузу или завершится",
   ntf_afk_pause: "💤 AFK: сессия на паузе. Вернись и шевельни мышью — продолжим",
+  ntf_afk_end_in: "💤 Тебя нет за ПК — через {m} мин сессия закроется. Шевельни мышью, чтобы остаться",
+  ntf_afk_pause_in: "💤 Тебя нет за ПК — через {m} мин сессия встанет на паузу. Шевельни мышью, чтобы продолжить",
+  sess_nopause_hint: "Время идёт, пока ПК за тобой · {n} мин тишины — сессия закроется",
   ntf_moved: "🖥 Тебя пересадили за {c} — сессия продолжается",
   ntf_other_pc: "другой ПК",
   ntf_bk_soon: "⏰ Этот ПК забронирован{t} — осталось ~{m} мин",
@@ -1895,6 +1898,9 @@ const SH_EN = {
   ntf_pause_over: "⏱ Pause limit spent ({l} min) — the clock is running again",
   ntf_afk_warn: "💤 You’ve been away — the session will pause or end soon",
   ntf_afk_pause: "💤 AFK: session paused. Come back and move the mouse — we continue",
+  ntf_afk_end_in: "💤 You’ve been away — the session closes in {m} min. Move the mouse to stay",
+  ntf_afk_pause_in: "💤 You’ve been away — the session pauses in {m} min. Move the mouse to continue",
+  sess_nopause_hint: "Time runs while the PC is yours · {n} min idle closes the session",
   ntf_moved: "🖥 You were moved to {c} — the session continues",
   ntf_other_pc: "another PC",
   ntf_bk_soon: "⏰ This PC is booked{t} — ~{m} min left",
@@ -2375,6 +2381,9 @@ const SH_PL = {
   ntf_pause_over: "⏱ Limit pauzy wyczerpany ({l} min) — czas znowu leci",
   ntf_afk_warn: "💤 Długo cię nie ma — sesja zaraz stanie na pauzie albo się zakończy",
   ntf_afk_pause: "💤 AFK: sesja na pauzie. Wróć i rusz myszką — jedziemy dalej",
+  ntf_afk_end_in: "💤 Nie ma cię przy PC — sesja zamknie się za {m} min. Rusz myszką, żeby zostać",
+  ntf_afk_pause_in: "💤 Nie ma cię przy PC — sesja stanie na pauzie za {m} min. Rusz myszką, żeby grać dalej",
+  sess_nopause_hint: "Czas leci, póki PC jest twój · {n} min bezczynności zamyka sesję",
   ntf_moved: "🖥 Przesadzono cię na {c} — sesja trwa dalej",
   ntf_other_pc: "inny PC",
   ntf_bk_soon: "⏰ Ten PC jest zarezerwowany{t} — zostało ~{m} min",
@@ -3774,7 +3783,9 @@ function notifText(n){
     case 'balance_low': return T('ntf_bal_low', {m: p.minutes_left||0});
     case 'balance_zero': zeroGraceMin = p.grace_min || 2; return T('ntf_bal_zero', {g: p.grace_min||0});
     case 'pause_over': return T('ntf_pause_over', {l: p.limit_min||0});
-    case 'afk_warn': return STR.ntf_afk_warn;
+    case 'afk_warn': // К4-и4: с минутами до конца; старый сервер без end_in_min — общая фраза
+      if (p.end_in_min > 0) return T(p.pause ? 'ntf_afk_pause_in' : 'ntf_afk_end_in', {m: p.end_in_min});
+      return STR.ntf_afk_warn;
     case 'afk_pause': return STR.ntf_afk_pause;
     case 'session_moved': return T('ntf_moved', {c: p.computer || STR.ntf_other_pc});
     case 'booking_soon': return T('ntf_bk_soon', {t: p.start_time ? T('ntf_to_time', {t: chHM(p.start_time)}) : '', m: p.minutes_left||0});
@@ -3849,6 +3860,26 @@ async function buyFreeze(){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* К4-и2 (№28): критичные тосты дублируем ПОВЕРХ ИГРЫ — гость в матче не видит
+   экран киоска. Внутри C#-киоска — строка оверлея через мост
+   (nativePost {cmd:'notify'}), иначе — системный тост Windows через агент
+   (POST /notify). Полноэкранные эксклюзивные игры системные тосты прячут,
+   borderless/оконные — показывают (README агента). Текст уже локализован
+   словарями шелла, агент его не знает. Нет агента — молча. */
+const AGENT_NOTIFY_TYPES = new Set(['balance_low', 'balance_zero', 'booking_soon', 'booking_deadline',
+  'booking_reminder', 'pause_over', 'afk_warn', 'afk_pause', 'ready_auto', 'session_moved', 'waitlist_ready']);
+function notifCritical(n){
+  if (n.type === 'kitchen_status') return ['delivering', 'done'].includes((n.payload || {}).status);
+  return AGENT_NOTIFY_TYPES.has(n.type);
+}
+function agentNotify(text, kind){
+  const clean = String(text || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  if (!clean) return;
+  if (NATIVE){ nativePost({cmd:'notify', title:'14:48', text: clean, kind: kind || ''}); return; }
+  if (!agentOnline) return;
+  fetch(AGENT + '/notify', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({title:'14:48', text: clean, kind: kind || ''}), signal: AbortSignal.timeout(2000)}).catch(()=>{});
+}
 function pumpNotif(){
   if (!notifQ.length){ notifPumping = false; return; }
   notifPumping = true;
@@ -3861,7 +3892,9 @@ setInterval(async () => {
     const d = await api('/me/notifications?client=kiosk'); // К3-и2: своя отметка, телефон не «съест» тост
     const items = d.items || [];
     if (!items.length) return;
-    notifQ.push(...items.map(notifText));
+    const texts = items.map(notifText);
+    notifQ.push(...texts);
+    items.forEach((n, i) => { if (notifCritical(n)) agentNotify(texts[i], n.type); }); // К4-и2
     if (!notifPumping) pumpNotif();
     clearTimeout(notifReloadT);
     notifReloadT = setTimeout(loadAll, 500); // баланс, брони, кейсы — сами
@@ -3873,7 +3906,7 @@ setInterval(async () => {
   try{
     const d = await api('/me/chat/unread');
     const n = d.count | 0;
-    if (n > chatUnread) toast(STR.toast_admin_reply);
+    if (n > chatUnread){ toast(STR.toast_admin_reply); agentNotify(STR.toast_admin_reply, 'admin_reply'); } // К4-и2
     chatUnread = n;
     paintChatBadge();
   }catch(e){}
@@ -4014,6 +4047,9 @@ scheduleAppsPoll(APPS_POLL_IDLE);
 
 /* ═══════════════ СЕССИЯ ═══════════════ */
 function renderSession(){
+  // К4-и4 (решение основателя 07.09): паузы нет, пока владелец не включил её
+  // в админке (pause_limit_min > 0) — кнопку не показываем, время идёт.
+  const pauseOn = !!(economy && economy.pause_limit_min > 0);
   const el = document.getElementById('sessCard');
   const chip = document.getElementById('timerChip');
   el.classList.toggle('live', !!activeSession);
@@ -4035,9 +4071,10 @@ function renderSession(){
         <div>
           <div class="muted">${esc(STR.sess_running)}</div>
           <div class="sess-time" id="sessTime">00:00</div>
+          ${!pauseOn && economy && economy.afk_stop_min > 0 ? `<div class="muted" style="font-size:11.5px; margin-top:2px">${esc(T('sess_nopause_hint', {n: economy.afk_stop_min}))}</div>` : ''}
         </div>
         <div style="display:flex; flex-direction:column; gap:8px">
-          <button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>
+          ${pauseOn ? `<button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>` : ''}
           <button class="btn danger slim" onclick="endClick(this)">${esc(STR.btn_finish)}</button>
           ${DEV_TOOLS ? `<button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>` : ''}
         </div>
