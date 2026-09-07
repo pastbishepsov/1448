@@ -9,6 +9,9 @@ public sealed class ServiceConfig
     /// <summary>UUID ПК из таблицы computers. Пусто = WS не подключаем (дев-режим).</summary>
     public string ComputerId { get; set; } = "";
 
+    /// <summary>К4-и3: тот же секрет, что AGENT_TOKEN на сервере. Пусто — только пока сервер без токена.</summary>
+    public string AgentToken { get; set; } = "";
+
     /// <summary>Fail-safe: блокировка при потере связи дольше этого числа секунд (ТЗ 6.3).</summary>
     public int FailSafeSeconds { get; set; } = 120;
 

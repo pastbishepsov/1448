@@ -159,3 +159,32 @@ func TestAfkDecisionNoPause(t *testing.T) {
 		}
 	}
 }
+
+// К4-и3: токен агента и публичный каталог без путей.
+func TestAgentTokenAndCatalogStrip(t *testing.T) {
+	if !agentTokenMatches("", "anything") || !agentTokenMatches("", "") {
+		t.Error("пустой серверный токен = открыто")
+	}
+	if agentTokenMatches("abc", "") || agentTokenMatches("abc", "abd") || !agentTokenMatches("abc", "abc") {
+		t.Error("заданный токен сравнивается точно")
+	}
+	for s, want := range map[string]bool{
+		`D:\online\CS2\cs2.exe`: true, `C:/Games/x.exe`: true, `\\nas\games\a.exe`: true, `{GAMES}\CS2\cs2.exe`: true,
+		`steam://rungameid/730`: false, `https://web.telegram.org`: false, `ms-settings:mouse`: false, ``: false, `D:`: false,
+	} {
+		if got := isDiskPath(s); got != want {
+			t.Errorf("isDiskPath(%q) = %v, ожидалось %v", s, got, want)
+		}
+	}
+	disk, args, proto := `D:\online\CS2\cs2.exe`, `["-novid"]`, `steam://rungameid/730`
+	a := models.CatalogApp{Target: &disk, Args: &args, TargetRaw: `{GAMES}\CS2\cs2.exe`}
+	stripCatalogSecrets(&a)
+	if a.Target != nil || a.Args != nil || a.TargetRaw != "" {
+		t.Errorf("путь/аргументы/шаблон должны исчезнуть: %+v", a)
+	}
+	b := models.CatalogApp{Target: &proto, Args: &args}
+	stripCatalogSecrets(&b)
+	if b.Target == nil || *b.Target != proto || b.Args != nil {
+		t.Errorf("протокол остаётся, аргументы — нет: %+v", b)
+	}
+}

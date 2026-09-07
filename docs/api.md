@@ -14,6 +14,10 @@ Base URL: `http://localhost:8080/api/v1`
 | POST | `/auth/otp/verify` | Проверить OTP |
 | POST | `/auth/refresh` | Обновить токен |
 | POST | `/auth/logout` | Выход |
+| POST | `/auth/qr` | К6-и1: код для QR на экране входа киоска — `{computer_id}` → `201 {code, expires_in: 120}`; публично, не чаще 6 запросов в минуту с IP (`429 qr_rate_limited`), неизвестный ПК — `404 computer_not_found` |
+| GET | `/auth/qr/:code` | К6-и1: поллинг киоска (раз в 2 с) — `{status: "pending", expires_in}`; после подтверждения с телефона — `{status: "approved", access_token, refresh_token, token_type, expires_in, user}` РОВНО ОДИН РАЗ, дальше `404 qr_code_not_found` (сгоревший/чужой код — тоже 404) |
+| GET | `/auth/qr/:code/info` | К6-и1: что подтверждаем — `{computer {id, name}, club {id, name}, status, expires_in}` (для карточки «Войти на PC-01 в …?» в PWA) |
+| POST | `/me/auth/qr/approve` | К6-и1: телефон (JWT гостя) подтверждает вход на ПК — `{code}` → `{status: "approved", computer, club}`; временный пароль — `409 password_change_required`, бан — `409 banned`, код сгорел/уже подтверждён — 404 |
 
 ## Профиль
 

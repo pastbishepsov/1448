@@ -51,6 +51,7 @@ type AppEntry struct {
 type Config struct {
 	BackendWS  string              `json:"backend_ws"`  // ws://localhost:8080/api/v1/ws/shell
 	ComputerID string              `json:"computer_id"` // UUID ПК из таблицы computers
+	Token      string              `json:"token"`       // К4-и3: AGENT_TOKEN сервера; пусто = сервер без токена
 	Listen     string              `json:"listen"`      // 127.0.0.1:1448
 	CatalogURL string              `json:"catalog_url"` // откуда тянуть каталог (пусто = не тянуть)
 	LockAction string              `json:"lock_action"` // none | lock_windows | kiosk
@@ -63,6 +64,7 @@ type Config struct {
 	GamesRoot string        `json:"games_root"`
 	Cleanup   CleanupConfig `json:"cleanup"` // Г9-и4: очистка между гостями (cleanup.go)
 	Launch    LaunchConfig  `json:"launch"`  // жизненный цикл игры (launch.go)
+	Notify    NotifyConfig  `json:"notify"`  // К4-и2: тосты поверх игры (notify.go)
 }
 
 func defaultConfig() *Config {
@@ -133,6 +135,8 @@ type agent struct {
 	launch launchSettings // блок "launch" из конфига, с дефолтами
 	avail  *availability  // кэш доступности target'ов (launch.go)
 	track  *tracker       // что агент запустил на этом ПК (launch.go)
+	state  stateKeeper    // К4-и1: последнее известное состояние сессии (state.go)
+	notes  *notifier      // К4-и2: тосты Windows по POST /notify (notify.go)
 }
 
 // ── Каталог с сервера (Admin Panel → все гостевые ПК) ──
@@ -202,16 +206,47 @@ func remoteAllowlist(items []catalogItem, localRoot string) map[string]AppEntry 
 	return out
 }
 
+// catalogFullURL — полный каталог для агента: ?full=1 (К4-и3; пути, аргументы
+// и games_root публичная выдача больше не отдаёт).
+func catalogFullURL(base string) string {
+	if strings.Contains(base, "?") {
+		return base + "&full=1"
+	}
+	return base + "?full=1"
+}
+
+// agentHeaders — токен агента для HTTP и WS (К4-и3); без токена — пусто.
+func (a *agent) agentHeaders() http.Header {
+	h := http.Header{}
+	if a.cfg.Token != "" {
+		h.Set("X-Agent-Token", a.cfg.Token)
+	}
+	return h
+}
+
 func (a *agent) refreshCatalog() {
 	if a.cfg.CatalogURL == "" {
 		return
 	}
-	resp, err := http.Get(a.cfg.CatalogURL)
+	req, err := http.NewRequest(http.MethodGet, catalogFullURL(a.cfg.CatalogURL), nil)
+	if err != nil {
+		return
+	}
+	req.Header = a.agentHeaders()
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("Каталог: сервер недоступен (%v)", err)
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.Printf("Каталог: сервер не принял токен агента (401) — проверь \"token\" в agent.json и AGENT_TOKEN на сервере")
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Каталог: HTTP %d", resp.StatusCode)
+		return
+	}
 	var cr catalogResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
 		log.Printf("Каталог: некорректный ответ (%v)", err)
@@ -346,8 +381,13 @@ func (a *agent) runWS() {
 	}
 	url := a.cfg.BackendWS + "?computer_id=" + a.cfg.ComputerID
 	for {
-		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+		conn, resp, err := websocket.DefaultDialer.Dial(url, a.agentHeaders()) // К4-и3: токен заголовком
 		if err != nil {
+			if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+				log.Printf("WS: сервер не принял токен агента (401) — проверь \"token\" в agent.json и AGENT_TOKEN на сервере; повтор через 30с")
+				time.Sleep(30 * time.Second)
+				continue
+			}
 			log.Printf("WS: бэкенд недоступен (%v), повтор через 5с", err)
 			time.Sleep(5 * time.Second)
 			continue
@@ -376,12 +416,18 @@ func (a *agent) runWS() {
 }
 
 func (a *agent) heartbeat(stop <-chan struct{}) {
-	runHeartbeat(60*time.Second, stop, func() error {
+	send := func() error {
 		// Г2: в heartbeat едет AFK-датчик — секунды простоя ввода
 		// (GetLastInputInfo, idle_windows.go; -1 = датчика нет).
 		payload, _ := json.Marshal(map[string]int{"idle_sec": idleSeconds()})
 		return a.wsSend(wsMessage{Type: "session_tick", Payload: payload})
-	})
+	}
+	// К4-и1: первый тик — сразу после (ре)коннекта, чтобы state пришёл
+	// через секунду, а не через минуту: агент мог пропустить session_end.
+	if err := send(); err != nil {
+		return
+	}
+	runHeartbeat(60*time.Second, stop, send)
 }
 
 // runHeartbeat — таймерный цикл heartbeat'а: раз в interval зовёт send, пока
@@ -407,13 +453,22 @@ func (a *agent) handleCommand(msg wsMessage) {
 	switch msg.Type {
 	case "session_start":
 		log.Printf("Команда: session_start %s", string(msg.Payload))
-		disableAccessibilityShortcuts() // Г9-и3: 5×Shift не роняет гостя в диалог Windows
+		var p struct {
+			SessionID string `json:"session_id"`
+		}
+		_ = json.Unmarshal(msg.Payload, &p)
+		a.state.set(sessionState{Active: true, SessionID: p.SessionID}) // К4-и1
+		disableAccessibilityShortcuts()                                 // Г9-и3: 5×Shift не роняет гостя в диалог Windows
 	case "session_end":
 		log.Printf("Команда: session_end %s", string(msg.Payload))
+		a.state.set(sessionState{}) // К4-и1: state после этого не запустит очистку второй раз
 		a.applyLockAction()
 		// Фоном — экран уже заблокирован (тело в launch.go, чтобы порядок
 		// «сначала запущенное агентом, потом общая очистка» был тестируемым).
 		go a.onSessionEnd()
+	case "state":
+		// К4-и1: ответ на session_tick — истина о сессии этого ПК (state.go)
+		a.onState(msg.Payload)
 	case "lock":
 		// К0-и1 (KIOSK.md, Р1): пауза или AFK — экран запереть, игру НЕ трогать.
 		// Раньше сервер слал сюда session_end, и агент закрывал матч гостя.
@@ -423,11 +478,13 @@ func (a *agent) handleCommand(msg wsMessage) {
 		}
 		_ = json.Unmarshal(msg.Payload, &p)
 		log.Printf("Команда: lock (%s) — экран заперт, запущенное остаётся", p.Reason)
+		a.state.update(func(s *sessionState) { s.Active, s.Paused, s.Reason = true, true, p.Reason }) // К4-и1
 		a.applyLockAction()
 	case "unlock":
 		// Пауза снята: с lock_action=none/kiosk снимать нечего — гостевой экран
 		// сам показывает, что сессия идёт; lock_windows отпирает гость паролем.
 		log.Printf("Команда: unlock %s", string(msg.Payload))
+		a.state.update(func(s *sessionState) { s.Paused, s.Reason = false, "" }) // К4-и1
 	case "xp_update":
 		// Пробрасывать некуда: браузерный шелл живёт поллингом и
 		// уведомлениями (Б4); XP-оверлей — задача C#-киоска (shell/).
@@ -489,6 +546,7 @@ func main() {
 		launch: cfg.Launch.settings(),
 		avail:  newAvailability(nil),
 		track:  newTracker(nil),
+		notes:  newNotifier(cfg.Notify),
 	}
 	disableAccessibilityShortcuts() // Г9-и3: и сразу на старте — ПК клубный, «как было» не нужно
 	go a.runWS()
@@ -509,6 +567,7 @@ func main() {
 			"status": "ok", "ws_connected": a.wsConnected(),
 			"computer_id": cfg.ComputerID, "apps": ids,
 			"lock_action": cfg.LockAction,
+			"notify":      cfg.Notify.enabled(), // К4-и2: есть ли куда слать тосты
 		})
 	}))
 
@@ -536,6 +595,9 @@ func main() {
 	// Доступность игр и что сейчас запущено — это читает гостевая витрина.
 	// Отвечает из кэша, в сеть на запросе не ходит.
 	mux.HandleFunc("/apps-status", cors(a.handleAppsStatus))
+
+	// К4-и2: критичные тосты гостевого экрана — поверх игры системным тостом.
+	mux.HandleFunc("/notify", cors(a.handleNotify))
 
 	mux.HandleFunc("/admin-call", cors(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

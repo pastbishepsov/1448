@@ -48,6 +48,7 @@ func main() {
 	log.Printf("Часовой пояс клуба: %s", clubLocation)
 
 	jwtSecret = []byte(getenv("JWT_SECRET", devJWTSecret))
+	loadAgentToken() // К4-и3: AGENT_TOKEN — /ws/shell и полный /catalog только агентам
 	accessTTL = parseDuration(os.Getenv("JWT_ACCESS_TTL"), 15*time.Minute)
 	refreshTTL = parseDuration(os.Getenv("JWT_REFRESH_TTL"), 30*24*time.Hour)
 
@@ -82,6 +83,7 @@ func main() {
 	// ── WebSocket Hub (PC Shell) ────────────────────────────────────────────
 	hub = websocket.NewHub()
 	hub.OnAdminCall = agentAdminCall // Б2: admin_call агента → чат + админки
+	hub.StateFor = shellStateFor     // К4-и1: state в ответ на session_tick
 	go hub.Run()
 
 	// ── Роуты ───────────────────────────────────────────────────────────────
@@ -115,12 +117,18 @@ func main() {
 		auth.POST("/otp/verify", stub("VerifyOTP"))
 		auth.POST("/refresh", handleRefresh) // ← настоящий
 		auth.POST("/logout", handleLogout)   // ← настоящий
+		// К6-и1: вход по QR — код для экрана входа киоска (6/мин с IP), поллинг
+		// киоска (pending | approved + токены один раз), «Войти на PC-01 в …?» для телефона
+		auth.POST("/qr", handleQRCreate)
+		auth.GET("/qr/:code", handleQRPoll)
+		auth.GET("/qr/:code/info", handleQRInfo)
 
 		me := v1.Group("/me")
 		me.Use(authMiddleware())                                          // всё под /me требует JWT
 		me.GET("", handleGetMe)                                           // ← настоящий
 		me.PATCH("", handlePatchMe)                                       // ← настоящий
 		me.POST("/password", handleChangeMyPassword)                      // смена своего пароля (Е0-и2)
+		me.POST("/auth/qr/approve", handleQRApprove)                      // К6-и1: телефон подтверждает вход на ПК
 		me.GET("/cases", handleGetMyCases)                                // ← настоящий
 		me.POST("/cases/:id/open", handleOpenCase)                        // ← настоящий
 		me.GET("/talents", handleGetMyTalents)                            // ← настоящий
@@ -481,23 +489,31 @@ func writeAuth(c *gin.Context, status int, user *models.User) {
 // writeAuthAt — пара токенов с явным моментом выдачи (Е0-и2: смена пароля
 // подписывает пару моментом собственной отсечки).
 func writeAuthAt(c *gin.Context, status int, user *models.User, issued time.Time) {
-	access, err := signTokenAt(user.ID.String(), string(user.Role), tokenTypeAccess, accessTTL, issued)
+	resp, err := buildAuth(user, issued)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "token_error", "message": "Не удалось создать токен"})
 		return
+	}
+	c.JSON(status, resp)
+}
+
+// buildAuth — пара токенов гостя (вход, регистрация, смена пароля, QR-вход К6).
+func buildAuth(user *models.User, issued time.Time) (authResponse, error) {
+	access, err := signTokenAt(user.ID.String(), string(user.Role), tokenTypeAccess, accessTTL, issued)
+	if err != nil {
+		return authResponse{}, err
 	}
 	refresh, err := signTokenAt(user.ID.String(), string(user.Role), tokenTypeRefresh, refreshTTL, issued)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "token_error", "message": "Не удалось создать токен"})
-		return
+		return authResponse{}, err
 	}
-	c.JSON(status, authResponse{
+	return authResponse{
 		AccessToken:  access,
 		RefreshToken: refresh,
 		TokenType:    "Bearer",
 		ExpiresIn:    int64(accessTTL.Seconds()),
 		User:         user,
-	})
+	}, nil
 }
 
 // authMiddleware — проверяет JWT из заголовка Authorization: Bearer <token>
@@ -558,6 +574,11 @@ func handleAdminWS(c *gin.Context) {
 // handleShellWS — апгрейд соединения PC Shell до WebSocket.
 // dev: токен ПК пока не проверяем (TODO: аутентификация по MAC + токену).
 func handleShellWS(c *gin.Context) {
+	// К4-и3: без верного токена агента сокет не поднимаем (при заданном AGENT_TOKEN)
+	if !agentAuthorized(c) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "agent_token_invalid", "message": "Нужен токен агента (AGENT_TOKEN сервера в agent.json / appsettings.json)"})
+		return
+	}
 	computerID := c.Query("computer_id")
 	if computerID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "missing_computer_id", "message": "Параметр computer_id обязателен"})

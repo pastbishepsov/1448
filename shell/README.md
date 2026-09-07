@@ -51,10 +51,12 @@ CI (`.github/workflows/ci.yml`, job `shell`) собирает всё на window
 ## Установка на клубной машине (фаза 1 — киоск)
 
 1. Собери Service и App (выше).
-2. Service: впиши `computer_id` в `appsettings.json`, затем
+2. Service: впиши `computer_id` и `AgentToken` (тот же секрет, что
+   `AGENT_TOKEN` на сервере — К4-и3) в `appsettings.json`, затем
    `install-service.ps1` от администратора.
-3. App: скопируй `shell.example.json` → `shell.json`, задай `exit_password`;
-   положи рядом `web/shell.html` (или укажи `shell_url`).
+3. App: скопируй `shell.example.json` → `shell.json`, задай `exit_password` и
+   `agent_token` (без него сервер с токеном не отдаст каталог с путями — кнопки
+   игр не запустят ничего); положи рядом `web/shell.html` (или укажи `shell_url`).
 4. Автозапуск App при входе гостя — через реестр/автозагрузку (фаза 1) либо
    Shell Launcher (фаза 2).
 

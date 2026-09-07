@@ -1,6 +1,7 @@
 {
   "shell_url": "",
   "catalog_url": "http://localhost:8080/api/v1/catalog",
+  "agent_token": "",
   "kiosk_keys": true,
   "exit_password": "СМЕНИ_МЕНЯ"
 }

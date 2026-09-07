@@ -640,6 +640,20 @@
   </div>
 </div>
 
+<!-- ═══ К6-и3 (трек К, KIOSK.md): вход на клубный ПК по QR с экрана киоска —
+     «Войти на PC-01 в 14:48 Demo Club?» → approve → «Готово — смотри на экран». ═══ -->
+<div id="qrWrap" class="sheetwrap">
+  <div class="sheetback" onclick="closeQrLogin()"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <h3 data-str="qrl_title"></h3>
+    <div id="qrlBody" class="muted" style="margin:8px 0 16px; line-height:1.6"></div>
+    <div id="qrlErr" class="err"></div>
+    <button class="btn" id="qrlGo" onclick="approveQrLogin()" data-str="qrl_go" style="margin-bottom:10px"></button>
+    <button class="btn ghost" onclick="closeQrLogin()" data-str="qrl_cancel"></button>
+  </div>
+</div>
+
 <!-- Е0-и5в: обязательная смена временного пароля. Намеренно НЕ шторка:
      шторку смахивают, а этот экран закрывается только сменой или выходом —
      с временным паролем гость всё равно не начнёт сессию (сервер даёт 409). -->
@@ -901,6 +915,14 @@ const STR_RU = {
   /* М5 — установка и полировка */
   inst_btn: '📲 Приложение на экран телефона',
   inst_title: 'Установка на телефон',
+  /* К6-и3 — вход на ПК по QR */
+  qrl_title: 'Вход на клубный ПК',
+  qrl_loading: 'Проверяю код…',
+  qrl_ask: 'Войти на <b>{pc}</b> в {club}? Экран этого ПК откроется под твоим аккаунтом.',
+  qrl_go: 'Войти на ПК',
+  qrl_cancel: 'Отмена',
+  qrl_done: '✓ Готово — смотри на экран {pc}',
+  qrl_expired: 'Код устарел или уже использован — обнови QR на экране ПК и отсканируй снова',
   inst_ios: 'Открой в Safari: «Поделиться» → «На экран „Домой“». С iOS 26 сайт с иконки открывается как отдельное приложение.',
   inst_android: 'В Chrome: меню ⋮ → «Добавить на главный экран». Полная установка одним тапом появится с HTTPS.',
   inst_android_native: 'Chrome готов установить приложение — жми «Установить».',
@@ -1149,6 +1171,13 @@ const STR_EN = {
   topup_ok: 'Got it',
   inst_btn: '📲 App on your phone screen',
   inst_title: 'Install on your phone',
+  qrl_title: 'Sign in on a club PC',
+  qrl_loading: 'Checking the code…',
+  qrl_ask: 'Sign in on <b>{pc}</b> at {club}? That PC’s screen will open under your account.',
+  qrl_go: 'Sign in on the PC',
+  qrl_cancel: 'Cancel',
+  qrl_done: '✓ Done — look at the {pc} screen',
+  qrl_expired: 'The code has expired or was already used — refresh the QR on the PC screen and scan again',
   inst_ios: 'Open in Safari: “Share” → “Add to Home Screen”. Since iOS 26 the icon opens as a standalone app.',
   inst_android: 'In Chrome: menu ⋮ → “Add to Home screen”. One-tap install comes with HTTPS.',
   inst_android_native: 'Chrome is ready to install the app — tap “Install”.',
@@ -1396,6 +1425,13 @@ const STR_PL = {
   topup_ok: 'Jasne',
   inst_btn: '📲 Aplikacja na ekranie telefonu',
   inst_title: 'Instalacja na telefonie',
+  qrl_title: 'Logowanie na PC w klubie',
+  qrl_loading: 'Sprawdzam kod…',
+  qrl_ask: 'Zalogować na <b>{pc}</b> w {club}? Ekran tego PC otworzy się na twoim koncie.',
+  qrl_go: 'Zaloguj na PC',
+  qrl_cancel: 'Anuluj',
+  qrl_done: '✓ Gotowe — spójrz na ekran {pc}',
+  qrl_expired: 'Kod wygasł albo został już użyty — odśwież QR na ekranie PC i zeskanuj ponownie',
   inst_ios: 'Otwórz w Safari: „Udostępnij” → „Do ekranu początkowego”. Od iOS 26 ikona otwiera się jak osobna aplikacja.',
   inst_android: 'W Chrome: menu ⋮ → „Dodaj do ekranu głównego”. Instalacja jednym tapnięciem przyjdzie z HTTPS.',
   inst_android_native: 'Chrome może zainstalować aplikację — kliknij „Zainstaluj”.',
@@ -1569,6 +1605,56 @@ function logout(){
   if (g) g.classList.add('hidden'); // Е0-и5в: вышли — гейт не висит поверх входа
 }
 
+/* ═══ К6-и3 (трек К): вход на клубный ПК по QR. Киоск рисует QR с адресом
+   /app#qr=CODE; телефон открывает его, видит «Войти на PC-01 в …?» (GET
+   /auth/qr/:code/info) и подтверждает своим JWT (POST /me/auth/qr/approve) —
+   киоск получает токены и входит. Не залогинен — сначала вход, потом шторка.
+   Хэш снимаем сразу: перезагрузка страницы не должна спрашивать второй раз. ═══ */
+let qrlPending = null, qrlCode = null;
+function takeQrHash(){
+  const m = /[#&]qr=([A-Za-z0-9]{4,16})/.exec(location.hash || '');
+  if (!m) return null;
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+  return m[1].toUpperCase();
+}
+async function openQrLogin(code){
+  qrlCode = code;
+  const body = document.getElementById('qrlBody'), err = document.getElementById('qrlErr'), go = document.getElementById('qrlGo');
+  err.textContent = ''; go.disabled = false; go.classList.remove('hidden');
+  body.textContent = STR.qrl_loading;
+  document.getElementById('qrWrap').classList.add('open');
+  try{
+    const d = await api('/auth/qr/' + code + '/info', {}, false);
+    const pc = (d.computer && d.computer.name) || 'PC', club = (d.club && d.club.name) || '14:48';
+    if (d.status === 'approved'){ body.textContent = T('qrl_done', {pc}); go.classList.add('hidden'); return; }
+    body.innerHTML = T('qrl_ask', {pc: esc(pc), club: esc(club)});
+  }catch(e){
+    body.textContent = e.status === 404 ? STR.qrl_expired : (e.message || STR.err_generic);
+    go.classList.add('hidden');
+  }
+}
+async function approveQrLogin(){
+  const go = document.getElementById('qrlGo'), err = document.getElementById('qrlErr'), body = document.getElementById('qrlBody');
+  if (!qrlCode) return;
+  go.disabled = true; err.textContent = '';
+  try{
+    const d = await api('/me/auth/qr/approve', {method:'POST', body: JSON.stringify({code: qrlCode})});
+    body.textContent = T('qrl_done', {pc: (d.computer && d.computer.name) || 'PC'});
+    go.classList.add('hidden');
+    qrlCode = null;
+  }catch(e){
+    if (e.code === 'password_change_required'){ closeQrLogin(); loadMe(); toast(e.message); return; } // Е0: сперва свой пароль
+    err.textContent = e.status === 404 ? STR.qrl_expired : (e.message || STR.err_generic);
+    go.disabled = false;
+  }
+}
+function closeQrLogin(){ document.getElementById('qrWrap').classList.remove('open'); qrlCode = null; }
+window.addEventListener('hashchange', () => { // установленное PWA уже открыто — второй скан
+  const c = takeQrHash();
+  if (!c) return;
+  if (me) openQrLogin(c); else qrlPending = c;
+});
+
 /* ═══ ПРИЛОЖЕНИЕ ═══ */
 function enterApp(){
   document.getElementById('authView').classList.add('hidden');
@@ -1579,6 +1665,7 @@ function enterApp(){
   loadCases();     // М3: кейсы + бэйдж неоткрытых (решение №5)
   loadChatUnread(); loadNotifs();  // М4: бэйдж чата + накопившиеся уведомления
   startPolls(); startComms();
+  if (qrlPending){ const c = qrlPending; qrlPending = null; openQrLogin(c); } // К6-и3: пришли по QR с киоска
 }
 
 async function loadMe(){
@@ -2950,7 +3037,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-07.2';
+const APP_VER = '2026-09-07.3';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
@@ -3095,6 +3182,7 @@ initInstall();  // М5: кнопка установки прячется в stan
 checkVersion(); // М5: iOS-кэш sw.js — сверка версии с манифестом
 document.getElementById('srv').textContent = API;
 (async function init(){
+  qrlPending = takeQrHash(); // К6-и3: /app#qr=CODE с экрана киоска
   if (tokens().a || tokens().r){
     try{
       const m = await api('/me');

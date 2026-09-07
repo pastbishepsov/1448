@@ -45,6 +45,8 @@ public sealed class Worker(
             try
             {
                 using var ws = new ClientWebSocket();
+                if (!string.IsNullOrWhiteSpace(_cfg.AgentToken))
+                    ws.Options.SetRequestHeader("X-Agent-Token", _cfg.AgentToken.Trim()); // К4-и3
                 await ws.ConnectAsync(url, ct);
                 _ws = ws;
                 _state.OnConnected(DateTimeOffset.UtcNow);
@@ -63,7 +65,10 @@ public sealed class Worker(
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
-                log.LogWarning("WS: {Error}", ex.Message);
+                if (ex.Message.Contains("401"))
+                    log.LogWarning("WS: сервер не принял токен агента (401) — проверь Shell:AgentToken в appsettings.json и AGENT_TOKEN на сервере");
+                else
+                    log.LogWarning("WS: {Error}", ex.Message);
             }
             _ws = null;
             _state.OnDisconnected(DateTimeOffset.UtcNow);
@@ -133,10 +138,38 @@ public sealed class Worker(
             case "xp_update":
                 pipe.Broadcast(PipeMessage.Of(PipeMsg.XpUpdate, payload));
                 break;
+            // К4-и1 (KIOSK.md, №13): ответ сервера на session_tick — истина о сессии
+            // этого ПК. session_start/session_end/lock/unlock могли не дойти (WS лежал
+            // в момент завершения) — по state догоняем: сессия/её отсутствие → те же
+            // события в App, пауза → Lock с причиной, не пауза → Unlock.
+            case "state":
+                ApplyState(payload, pipe);
+                break;
             default:
                 log.LogDebug("WS: неизвестный тип {Type}", type);
                 break;
         }
+    }
+
+    private void ApplyState(JsonElement payload, PipeServer pipe)
+    {
+        if (payload.ValueKind != JsonValueKind.Object) return;
+        bool active = payload.TryGetProperty("session_active", out var sa) && sa.ValueKind == JsonValueKind.True;
+        bool paused = payload.TryGetProperty("paused", out var pp) && pp.ValueKind == JsonValueKind.True;
+        if (active && !_state.SessionActive)
+        {
+            log.LogInformation("WS: state — сессия идёт, а мы не знали: догоняю session_start");
+            _state.OnSessionStart();
+            pipe.Broadcast(PipeMessage.Of(PipeMsg.SessionStart, payload));
+        }
+        else if (!active && _state.SessionActive)
+        {
+            log.LogInformation("WS: state — сессии нет, а мы думали идёт: догоняю session_end");
+            _state.OnSessionEnd();
+            pipe.Broadcast(PipeMessage.Of(PipeMsg.SessionEnd, payload));
+        }
+        if (active)
+            pipe.Broadcast(PipeMessage.Of(paused ? PipeMsg.Lock : PipeMsg.Unlock, payload));
     }
 
     private async Task HeartbeatAsync(ClientWebSocket ws, CancellationToken ct)

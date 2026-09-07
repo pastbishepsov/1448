@@ -23,7 +23,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _launcher = new Launcher(_cfg.CatalogUrl);
+        _launcher = new Launcher(_cfg.CatalogUrl, _cfg.AgentToken);
 
         if (_cfg.KioskKeys)
         {
@@ -93,6 +93,11 @@ public partial class MainWindow : Window
                     break;
                 case "admin_call":
                     _pipe.Send(PipeMessage.Of(PipeMsg.AdminCall));
+                    break;
+                case "notify": // К4-и2: критичный тост шелла — строкой оверлея поверх игры
+                    var text = root.TryGetProperty("text", out var nt) ? nt.GetString() : null;
+                    if (!string.IsNullOrWhiteSpace(text))
+                        _overlay.Notify(text!.Length > 200 ? text[..200] + "…" : text);
                     break;
             }
         }

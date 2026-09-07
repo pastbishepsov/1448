@@ -307,7 +307,18 @@ func decorateCatalogApp(a *models.CatalogApp, root string, public bool) {
 // target отдаётся уже с подставленным корнем игр; исходный шаблон — в
 // target_raw, а сам корень — полем games_root, чтобы агент при желании мог
 // собрать путь по-своему (per-PC буква диска, пакет П2).
+//
+// К4-и3: полная выдача — только агенту: GET /catalog?full=1 с токеном. Без
+// токена (гостевой экран, кто угодно с адресом сервера) пути на диске,
+// аргументы, target_raw и games_root вырезаются; ссылки и протоколы
+// (steam://…, https://…) остаются — по ним киоск запускает без агента.
+// ?full=1 без верного токена — 401, а не «тихо урезанный» ответ.
 func handleGetCatalog(c *gin.Context) {
+	full := c.Query("full") == "1"
+	if full && !agentAuthorized(c) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "agent_token_invalid", "message": "Полный каталог — только агенту с токеном"})
+		return
+	}
 	var apps []models.CatalogApp
 	if err := db.Where("enabled = ?", true).Order("sort").Order("name").Find(&apps).Error; err != nil {
 		respondDBError(c, err)
@@ -318,6 +329,9 @@ func handleGetCatalog(c *gin.Context) {
 	for i := range apps {
 		a := apps[i]
 		decorateCatalogApp(&a, root, true)
+		if !full {
+			stripCatalogSecrets(&a)
+		}
 		switch a.Category {
 		case "game":
 			games = append(games, a)
@@ -329,8 +343,33 @@ func handleGetCatalog(c *gin.Context) {
 			platforms = append(platforms, a)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"games": games, "apps": appsList, "system": system,
-		"platforms": platforms, "games_root": root})
+	out := gin.H{"games": games, "apps": appsList, "system": system, "platforms": platforms}
+	if full {
+		out["games_root"] = root
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// stripCatalogSecrets — публичная выдача без того, что нужно только агенту
+// (К4-и3): путь на диске (C:\…, \\nas\…), аргументы, исходный шаблон.
+// Ссылки и протоколы остаются — их и так видно в адресной строке.
+func stripCatalogSecrets(a *models.CatalogApp) {
+	if a.Target != nil && isDiskPath(*a.Target) {
+		a.Target = nil
+	}
+	a.Args = nil
+	a.TargetRaw = ""
+}
+
+// isDiskPath — путь Windows (буква диска или UNC) либо шаблон {GAMES}
+// (чистая, тест). Всё остальное — протокол/ссылка/имя команды.
+func isDiskPath(t string) bool {
+	t = strings.TrimSpace(t)
+	if strings.Contains(t, gamesPlaceholder) || strings.HasPrefix(t, `\\`) {
+		return true
+	}
+	return len(t) >= 3 && t[1] == ':' && (t[2] == '\\' || t[2] == '/') &&
+		((t[0] >= 'a' && t[0] <= 'z') || (t[0] >= 'A' && t[0] <= 'Z'))
 }
 
 // GET /admin/catalog — все приложения, включая выключенные. Без подстановки:

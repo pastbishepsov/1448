@@ -291,6 +291,10 @@
                   image-rendering:pixelated}
   .qrblock .qt{font-weight:800; margin-bottom:4px}
   .qrblock .qs{color:var(--dim); font-size:12.5px; line-height:1.45}
+  /* К6-и2: вход по QR с телефона — под карточкой входа, той же ширины */
+  .qrlogin{width:400px; margin:-12px 0 0; box-sizing:border-box}
+  .qrlogin canvas{width:104px; height:104px}
+  .qrlogin .qstate{color:var(--dim); font-size:12px; margin-top:6px; min-height:14px}
 
   /* ═══ LOCK (как в клубе: без сессии ПК заблокирован) ═══ */
   .lockscreen{position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center;
@@ -710,6 +714,16 @@
     <input id="pass" class="input" type="password" data-str-ph="ph_pass" onkeydown="if(event.key==='Enter')submitAuth()">
     <div id="authErr" class="err"></div>
     <button id="authBtn" class="btn" onclick="submitAuth()" data-str="btn_login"></button>
+  </div>
+  <!-- К6-и2: вход по QR — телефон с PWA подтверждает вход на ЭТОТ ПК (Р6). Только
+       по http(s) и когда известен свой ПК; с file:// блок скрыт, как QR профиля. -->
+  <div class="qrblock qrlogin" id="qrLogin" style="display:none">
+    <canvas id="qrLoginCv" width="104" height="104"></canvas>
+    <div style="min-width:0">
+      <div class="qt" data-str="qrl_title"></div>
+      <div class="qs" data-str="qrl_sub"></div>
+      <div class="qstate" id="qrLoginState"></div>
+    </div>
   </div>
   <div class="auth-hint" data-str="auth_forgot"></div>
   <!-- К2-и3: адрес сервера — техническая строка, на клубном ПК гостю не нужна; остаётся для демо и ?api= -->
@@ -1508,6 +1522,10 @@ const SH_RU = {
   tb_sp_title: "Очки навыков — вкладывай в таланты",
   tb_agent_warn: "⚠ агент не найден — игры не запустятся, позови админа",
   auth_forgot: "Забыл пароль? Подойди к стойке — админ сбросит",
+  qrl_title: "Или войди с телефона",
+  qrl_sub: "Наведи камеру на QR — приложение 14:48 спросит «Войти на этот ПК?», пароль на экране вводить не нужно",
+  qrl_wait: "Код обновляется сам каждые 2 минуты",
+  qrl_hello: "👋 Привет, {n}! Вход с телефона",
   cat_search_ph: "Поиск игры…",
   cat_tab_all: "Все",
   cat_tab_apps: "Приложения",
@@ -1998,6 +2016,10 @@ const SH_EN = {
   tb_sp_title: "Skill points — invest them in talents",
   tb_agent_warn: "⚠ agent not found — games will not launch, call the admin",
   auth_forgot: "Forgot your password? Ask at the desk — the admin will reset it",
+  qrl_title: "Or sign in from your phone",
+  qrl_sub: "Point your camera at the QR — the 14:48 app will ask “Sign in on this PC?”, no password on this screen",
+  qrl_wait: "The code refreshes itself every 2 minutes",
+  qrl_hello: "👋 Hi, {n}! Signed in from your phone",
   cat_search_ph: "Search games…",
   cat_tab_all: "All",
   cat_tab_apps: "Apps",
@@ -2488,6 +2510,10 @@ const SH_PL = {
   tb_sp_title: "Punkty umiejętności — inwestuj w talenty",
   tb_agent_warn: "⚠ brak agenta — gry się nie uruchomią, zawołaj admina",
   auth_forgot: "Nie pamiętasz hasła? Podejdź do lady — admin je zresetuje",
+  qrl_title: "Albo zaloguj się telefonem",
+  qrl_sub: "Skieruj aparat na QR — aplikacja 14:48 zapyta „Zalogować na tym PC?”, hasła na ekranie nie wpisujesz",
+  qrl_wait: "Kod odświeża się sam co 2 minuty",
+  qrl_hello: "👋 Cześć, {n}! Logowanie z telefonu",
   cat_search_ph: "Szukaj gry…",
   cat_tab_all: "Wszystkie",
   cat_tab_apps: "Aplikacje",
@@ -2998,6 +3024,7 @@ function logout(){
   document.getElementById('lockOverlay').classList.remove('show');
   document.getElementById('shellView').classList.add('hidden');
   document.getElementById('authView').classList.remove('hidden');
+  qrLoginStart(); // К6-и2: экран входа снова на виду — новый QR для следующего гостя
   const pov = document.getElementById('pwdOverlay');
   if (pov) pov.classList.add('hidden'); // Е0-и5в: вышли — экран смены не висит
   // К1: взводы кнопок, отсчёт авто-выхода и всплывшие окна прошлого гостя
@@ -3035,6 +3062,7 @@ async function endAndLogout(){
 
 /* ═══════════════ SHELL ═══════════════ */
 function enterShell(){
+  qrLoginStop(); // К6-и2: вошли (паролем или по QR) — код больше не нужен
   document.getElementById('authView').classList.add('hidden');
   document.getElementById('shellView').classList.remove('hidden');
   paintPwdGate(); // Е0-и5в: вошёл по временному паролю — сразу просим свой
@@ -3944,6 +3972,65 @@ setInterval(async () => {
     paintChatBadge();
   }catch(e){}
 }, 15000);
+
+/* ═══════════════ К6-и2: ВХОД ПО QR С ТЕЛЕФОНА ═══════════════
+   Экран входа просит у сервера код для СВОЕГО ПК (POST /auth/qr), рисует QR с
+   адресом {origin}/app#qr=CODE и опрашивает GET /auth/qr/:code раз в 2 с.
+   Телефон с PWA подтверждает «Войти на PC-01?» — сервер отдаёт киоску пару
+   токенов ровно один раз, киоск входит как после пароля. Код живёт 2 минуты —
+   новый берём за 10 с до конца; 404 (сгорел/использован) — тоже новый.
+   Работает поверх К1: после сессии киоск сам выходит, чужого аккаунта нет. */
+let qrlCode = null, qrlPollT = null, qrlRenewT = null, qrlBusy = false;
+function qrlVisible(){ return !document.getElementById('authView').classList.contains('hidden'); }
+function qrLoginStop(){
+  clearInterval(qrlPollT); clearTimeout(qrlRenewT);
+  qrlPollT = qrlRenewT = null; qrlCode = null; qrlBusy = false;
+}
+async function qrLoginStart(){
+  const block = document.getElementById('qrLogin');
+  if (!block) return;
+  qrLoginStop();
+  if (!location.protocol.startsWith('http')){ block.style.display = 'none'; return; }
+  if (!myComputerId) await pingAgent(); // агент знает, за каким ПК стоим
+  if (!qrlVisible()){ block.style.display = 'none'; return; }
+  if (!myComputerId){ // ПК ещё неизвестен (агент не поднялся) — спросим через полминуты
+    block.style.display = 'none';
+    qrlRenewT = setTimeout(qrLoginStart, 30000);
+    return;
+  }
+  try{
+    const d = await api('/auth/qr', {method:'POST', body: JSON.stringify({computer_id: myComputerId})}, false);
+    qrlCode = d.code;
+    qrDraw(document.getElementById('qrLoginCv'), location.origin + '/app#qr=' + d.code);
+    document.getElementById('qrLoginState').textContent = STR.qrl_wait;
+    block.style.display = '';
+    qrlPollT = setInterval(qrLoginPoll, 2000);
+    qrlRenewT = setTimeout(qrLoginStart, Math.max(30, (d.expires_in || 120) - 10) * 1000);
+  }catch(e){ // 429/сеть/неизвестный ПК — без QR, попробуем позже
+    block.style.display = 'none';
+    qrlRenewT = setTimeout(qrLoginStart, 30000);
+  }
+}
+async function qrLoginPoll(){
+  if (!qrlCode || qrlBusy) return;
+  if (!qrlVisible()){ qrLoginStop(); return; }
+  qrlBusy = true;
+  const code = qrlCode;
+  try{
+    const d = await api('/auth/qr/' + code, {}, false);
+    if (d.status === 'approved' && d.access_token){
+      qrLoginStop();
+      setTokens(d.access_token, d.refresh_token);
+      me = d.user;
+      toast(T('qrl_hello', {n: me.nickname || ''}));
+      enterShell();
+      return;
+    }
+  }catch(e){
+    if (e.status === 404 && qrlCode === code){ qrlBusy = false; qrLoginStart(); return; } // сгорел — новый код
+  }
+  qrlBusy = false;
+}
 
 /* ═══════════════ НАТИВНЫЙ КИОСК (WebView2) ═══════════════ */
 // Если страница открыта внутри Shell1448.App — запуск и вызов админа идут
@@ -5582,6 +5669,7 @@ mountIcons();    // статичные [data-ic] в топбаре/оверле�
     }catch(e){ clearTokens(); }
   }
   document.getElementById('authView').classList.remove('hidden');
+  qrLoginStart(); // К6-и2
 })();
 </script>
 </body>
