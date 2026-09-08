@@ -17,4 +17,15 @@ public sealed class ServiceConfig
 
     /// <summary>Интервал heartbeat session_tick, сек.</summary>
     public int HeartbeatSeconds { get; set; } = 60;
+
+    /// <summary>К7: подставлять сенсу гостя (payload.sens в session_start) в конфиги CS2/Apex. Выкл по умолчанию.</summary>
+    public bool SensEnabled { get; set; } = false;
+    /// <summary>К7: true — только лог, файлы не трогаем (боевой режим — после сухого прогона на пилотном ПК).</summary>
+    public bool SensDryRun { get; set; } = true;
+    /// <summary>К7: корень Steam; пусто — стандартные пути.</summary>
+    public string SensSteamDir { get; set; } = "";
+    /// <summary>К7: явный путь к cs2_user_convars_0_slot0.vcfg; пусто — самый свежий в userdata.</summary>
+    public string SensCs2Cfg { get; set; } = "";
+    /// <summary>К7: явный путь к settings.cfg Apex; пусто — Saved Games текущего пользователя.</summary>
+    public string SensApexCfg { get; set; } = "";
 }

@@ -25,12 +25,15 @@ public sealed class Worker(
     };
     private ClientWebSocket? _ws;
     private bool _lockSent;
+    private readonly SensApplier _sens = new(log, options.Value); // К7: сенса гостя в конфиги игр
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         pipe.MessageReceived += OnAppMessage;
         _ = pipe.RunAsync(ct);
         _ = FailSafeLoopAsync(ct);
+        var restored = _sens.Restore(); // К7: сервис упал посреди сессии — конфиги игр как были
+        if (restored > 0) log.LogInformation("сенса: на старте возвращено конфигов из бэкапа: {N}", restored);
 
         if (string.IsNullOrWhiteSpace(_cfg.ComputerId))
         {
@@ -117,11 +120,13 @@ public sealed class Worker(
         {
             case "session_start":
                 _state.OnSessionStart();
+                _sens.ApplyFromPayload(payload); // К7: профиль сенсы гостя → CS2/Apex до первого запуска
                 pipe.Broadcast(PipeMessage.Of(PipeMsg.SessionStart, payload));
                 break;
             case "session_end":
                 _state.OnSessionEnd();
                 pipe.Broadcast(PipeMessage.Of(PipeMsg.SessionEnd, payload));
+                _sens.Restore(); // К7: конфиги игр — как были до гостя
                 break;
             case "force_unlock":
                 _state.OnForceUnlock();

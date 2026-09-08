@@ -65,6 +65,7 @@ type Config struct {
 	Cleanup   CleanupConfig `json:"cleanup"` // Г9-и4: очистка между гостями (cleanup.go)
 	Launch    LaunchConfig  `json:"launch"`  // жизненный цикл игры (launch.go)
 	Notify    NotifyConfig  `json:"notify"`  // К4-и2: тосты поверх игры (notify.go)
+	Sens      SensConfig    `json:"sens"`    // К7: сенса гостя в конфиги игр (sens.go)
 }
 
 func defaultConfig() *Config {
@@ -137,6 +138,7 @@ type agent struct {
 	track  *tracker       // что агент запустил на этом ПК (launch.go)
 	state  stateKeeper    // К4-и1: последнее известное состояние сессии (state.go)
 	notes  *notifier      // К4-и2: тосты Windows по POST /notify (notify.go)
+	sens   *sensApplier   // К7: подстановка сенсы в конфиги игр и откат (sens.go)
 }
 
 // ── Каталог с сервера (Admin Panel → все гостевые ПК) ──
@@ -459,6 +461,7 @@ func (a *agent) handleCommand(msg wsMessage) {
 		_ = json.Unmarshal(msg.Payload, &p)
 		a.state.set(sessionState{Active: true, SessionID: p.SessionID}) // К4-и1
 		disableAccessibilityShortcuts()                                 // Г9-и3: 5×Shift не роняет гостя в диалог Windows
+		a.sensOnSessionStart(msg.Payload)                               // К7: профиль сенсы гостя → конфиги игр
 	case "session_end":
 		log.Printf("Команда: session_end %s", string(msg.Payload))
 		a.state.set(sessionState{}) // К4-и1: state после этого не запустит очистку второй раз
@@ -547,8 +550,12 @@ func main() {
 		avail:  newAvailability(nil),
 		track:  newTracker(nil),
 		notes:  newNotifier(cfg.Notify),
+		sens:   newSensApplier(cfg.Sens),
 	}
-	disableAccessibilityShortcuts() // Г9-и3: и сразу на старте — ПК клубный, «как было» не нужно
+	disableAccessibilityShortcuts()   // Г9-и3: и сразу на старте — ПК клубный, «как было» не нужно
+	if n := a.sens.restore(); n > 0 { // К7: агент упал посреди сессии — вернуть конфиги игр
+		log.Printf("сенса: на старте возвращено конфигов из бэкапа: %d", n)
+	}
 	go a.runWS()
 	go a.runCatalog()
 	go a.runAvailability() // фоновая проверка путей к играм, в т.ч. сетевых
@@ -568,6 +575,8 @@ func main() {
 			"computer_id": cfg.ComputerID, "apps": ids,
 			"lock_action": cfg.LockAction,
 			"notify":      cfg.Notify.enabled(), // К4-и2: есть ли куда слать тосты
+			"sens":        cfg.Sens.Enabled,     // К7: подставляем ли сенсу в игры
+			"sens_games":  sensGamesSupported,   // К7: какие игры умеем
 		})
 	}))
 
@@ -598,6 +607,9 @@ func main() {
 
 	// К4-и2: критичные тосты гостевого экрана — поверх игры системным тостом.
 	mux.HandleFunc("/notify", cors(a.handleNotify))
+
+	// К7: «Применить в игре» из студии сенсы — профиль в конфиги игр (sens.go).
+	mux.HandleFunc("/sens-apply", cors(a.handleSensApply))
 
 	mux.HandleFunc("/admin-call", cors(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

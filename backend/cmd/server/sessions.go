@@ -321,11 +321,16 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		return http.StatusInternalServerError, gin.H{"code": "db_error", "message": dbErrorMessage}
 	}
 
-	// Команда на ПК в реальном времени (если Shell подключён).
-	notifyShell(computer.ID.String(), websocket.MsgSessionStart, gin.H{
+	// Команда на ПК в реальном времени (если Shell подключён). К7: с профилем
+	// сенсы гостя — агент подставит её в конфиги игр до первого запуска.
+	startPayload := gin.H{
 		"session_id": session.ID,
 		"started_at": session.StartedAt,
-	})
+	}
+	if sp := sensProfileFor(userID); sp != nil {
+		startPayload["sens"] = sp
+	}
+	notifyShell(computer.ID.String(), websocket.MsgSessionStart, startPayload)
 
 	// Live-событие в админку (спринт А6).
 	hub.AdminBroadcast("session_start", map[string]any{

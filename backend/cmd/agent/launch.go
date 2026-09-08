@@ -897,4 +897,7 @@ func (a *agent) onSessionEnd() {
 		a.stopTracked()
 	}
 	runCleanup(a.cfg.Cleanup)
+	if n := a.sens.restore(); n > 0 { // К7: конфиги игр — как были до гостя
+		log.Printf("сенса: после сессии возвращено конфигов: %d", n)
+	}
 }

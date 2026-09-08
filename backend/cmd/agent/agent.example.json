@@ -30,6 +30,15 @@
     "app_id": ""
   },
 
+  "_sens": "К7: сенса гостя (DPI + сенса по играм из его профиля) подставляется в конфиги игр на этом ПК на старте сессии и по кнопке «Применить в игре» в студии сенсы; после сессии файлы возвращаются из бэкапа. enabled=false по умолчанию; dry_run=true — только лог (включать боевой режим после сухого прогона на пилотном ПК). steam_dir/cs2_cfg/apex_cfg — пусто = ищем сами (Steam: userdata/*/730/local/cfg/cs2_user_convars_0_slot0.vcfg; Apex: Saved Games\\Respawn\\Apex\\local\\settings.cfg). Умеем CS2 и Apex; Valorant — настройки в облаке Riot, не умеем.",
+  "sens": {
+    "enabled": false,
+    "dry_run": true,
+    "steam_dir": "",
+    "cs2_cfg": "",
+    "apex_cfg": ""
+  },
+
   "cleanup": {
     "enabled": false,
     "dry_run": true,

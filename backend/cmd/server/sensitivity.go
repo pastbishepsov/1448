@@ -56,6 +56,22 @@ func handleGetSensitivity(c *gin.Context) {
 	})
 }
 
+// sensProfileFor — профиль сенсы гостя для агента в session_start (К7:
+// агент подставляет сенсу в конфиги игр на ПК); nil — гость ничего не сохранял.
+func sensProfileFor(userID uuid.UUID) gin.H {
+	var rows []models.SensitivityProfile
+	db.Where("user_id = ?", userID).Limit(1).Find(&rows)
+	if len(rows) == 0 {
+		return nil
+	}
+	games := map[string]float64{}
+	_ = json.Unmarshal([]byte(rows[0].Games), &games)
+	if len(games) == 0 {
+		return nil
+	}
+	return gin.H{"dpi": rows[0].DPI, "games": games}
+}
+
 type sensitivityRequest struct {
 	DPI   int                `json:"dpi" binding:"required"`
 	Games map[string]float64 `json:"games"`

@@ -343,9 +343,13 @@ func handleAdminMoveSession(c *gin.Context) {
 	var guest models.User
 	db.First(&guest, "id = ?", session.UserID)
 	notifyShell(oldID.String(), websocket.MsgSessionEnd, gin.H{"session_id": session.ID, "reason": "moved"})
-	notifyShell(target.ID.String(), websocket.MsgSessionStart, gin.H{
+	movePayload := gin.H{
 		"session_id": session.ID, "user_id": session.UserID, "nickname": guest.Nickname,
-	})
+	}
+	if sp := sensProfileFor(session.UserID); sp != nil { // К7: сенса едет за гостем и на новый ПК
+		movePayload["sens"] = sp
+	}
+	notifyShell(target.ID.String(), websocket.MsgSessionStart, movePayload)
 	notifyUser(session.UserID, "session_moved", map[string]any{"computer": target.Name})
 	targetUID := session.UserID
 	logAdminAction(c, "session_move", &targetUID, fmt.Sprintf("%s → %s", oldPC.Name, target.Name))

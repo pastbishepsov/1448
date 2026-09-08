@@ -32,6 +32,7 @@ Base URL: `http://localhost:8080/api/v1`
 | GET | `/me/achievements` | Достижения с прогрессом; идущая сессия досчитывается на лету (минуты, активные минуты, визит, часы), `progress {value, target, unit: min\|hours\|days\|count}` (К5) |
 | GET | `/me/sessions` | История сессий; 15 мин после завершения без активной сессии — ещё и `receipt` (К3-и6) |
 | POST | `/me/sessions/end` | Завершить сессию; в ответе `receipt {wallet_grosz, kitchen_unpaid_pln, streak_days}` — чек на экран «Сессия завершена» (К3-и6) |
+| GET / PUT | `/me/sensitivity` | Профиль сенсы: `{dpi, games {cs2: 2.5, …}, saved}` — DPI 100…32000, сенса > 0, до 64 игр. Едет за гостем на любой ПК: с К7 сервер кладёт его в `session_start` агенту, тот подставляет в конфиги CS2/Apex |
 | GET | `/me/economy` | Ранг, таланты и `rates` — ставки из настроек клуба, по ним считает калькулятор (К3-и1); `pause_limit_min` (0 = паузы нет, кнопку не показывать) и `afk_stop_min` — правила паузы и AFK (К4-и4) |
 | GET | `/me/notifications?client=kiosk\|app` | Непрочитанные уведомления (до 50), выдача помечает. С `client=` — своя отметка у киоска и PWA, тост доходит до обоих; без параметра — как раньше, «прочитано вообще» (К3-и2, миграция 055). Тип `achievement_earned {id, title, category, reward_xp, reward_skillpoints, reward_case_tier}` — ачивка выдана, в т.ч. прямо во время сессии (К5-и2). Тип `incident_compensation {kind, minutes, wallet_pln, note}` — админ компенсировал проблему с ПК (К8) |
 | GET | `/me/chat?after=&mark=1` | Переписка со стойкой: без `after` — ПОСЛЕДНИЕ 100, старые сверху; с `after` — доливка (К3-и5) |
@@ -81,7 +82,7 @@ comp_minutes, comp_pln, open}` — компенсации отдельной с�
 `AGENT_TOKEN` без верного токена — `401 agent_token_invalid` (К4-и3).
 
 ### События (Сервер → Shell)
-- `session_start` — начало сессии
+- `session_start` — начало сессии: `{session_id, started_at}`; если у гостя сохранён профиль сенсы с играми — ещё `sens {dpi, games {cs2: 2.5, apex: 1.4, …}}`, агент подставляет её в конфиги игр на ПК (К7; то же при пересадке на другой ПК)
 - `session_end` — завершение (закрыть игру, очистка между гостями)
 - `lock` — пауза/AFK: запереть экран, игру не трогать (`payload.reason: paused|afk`) — К0-и1
 - `unlock` — пауза снята
@@ -94,6 +95,10 @@ comp_minutes, comp_pln, open}` — компенсации отдельной с�
 - `session_tick` — heartbeat каждые 60 сек
 - `admin_call` — вызов администратора
 - `shell_ready` — Shell готов к работе
+
+### Локальный HTTP агента (`127.0.0.1:1448`, для гостевого экрана)
+
+Полный контракт — `docs/АГЕНТ-ЗАПУСК-ИГР.md`. Коротко: `GET /ping` (+ `notify`, `sens`, `sens_games`), `POST /launch`, `GET /apps-status`, `POST /notify`, `POST /sens-apply {dpi, games}` → `{applied, skipped {game: cloud|unsupported|no_config|error}, dry_run, supported}` — «Применить в игре на этом ПК» из студии сенсы (К7; 409 `sens_disabled`, если выключено в `agent.json`).
 
 ## Анкета профиля (Г8) — контракт для страницы регистрации
 

@@ -7,7 +7,8 @@ Go-агенту (`backend/cmd/agent`): нативный киоск + приви�
 
 ```
 Shell1448.Shared    протокол Named Pipe, машина состояний, allowlist (чистая логика + тесты)
-Shell1448.Service   Windows-сервис: WS к бэкенду, heartbeat, fail-safe, pipe-сервер
+Shell1448.Service   Windows-сервис: WS к бэкенду, heartbeat, fail-safe, pipe-сервер,
+                    сенса гостя в конфиги игр (SensApplier.cs, К7)
 Shell1448.App       WPF-киоск: fullscreen WebView2 (shell.html), блокировка клавиш,
                     запуск игр по каталогу, XP-оверлей поверх игр, hard-lock
 Shell1448.Tests     xunit — ShellState, PipeProtocol, CatalogAllowlist (кросс-платформенные)
@@ -97,6 +98,28 @@ Desktop/%TEMP%/корзину/буфер) делает агент по блок�
 режим включается после сухого прогона на живом ПК. Пути очистки проходят
 проверку безопасности (`safeCleanupDir`): системные каталоги и мелкие пути не
 трогаются даже при опечатке в конфиге.
+
+## Сенса гостя в конфиги игр (К7, KIOSK.md Р9)
+
+Сервер кладёт профиль сенсы гостя в `session_start` (`payload.sens {dpi,
+games}`), и `SensApplier.cs` в Service — порт `sens.go` Go-агента — пишет
+`"sensitivity"` в `cs2_user_convars_0_slot0.vcfg` (CS2) и `mouse_sensitivity`
+в `settings.cfg` (Apex); Valorant не умеем (облако Riot). Перед первой
+записью в сессии — бэкап `<файл>.1448bak`, на `session_end` и на старте
+сервиса файлы возвращаются. Ключи в `appsettings.json` (`Shell:`):
+
+| Ключ | По умолчанию | Что |
+|------|--------------|-----|
+| `SensEnabled` | `false` | подставлять ли вообще |
+| `SensDryRun` | `true` | только лог «записал бы …», файлы не трогаем — боевой режим после сухого прогона на пилотном ПК |
+| `SensSteamDir` | `""` | корень Steam; пусто — `%ProgramFiles(x86)%\Steam` и стандартные пути, vcfg — самый свежий из `userdata\*\730\local\cfg` |
+| `SensCs2Cfg` | `""` | явный путь к vcfg (главнее поиска) |
+| `SensApexCfg` | `""` | явный путь к `settings.cfg`; пусто — `Saved Games\Respawn\Apex\local` пользователя, под которым идёт сервис (под System это НЕ профиль гостя — на пилоте задать явно) |
+
+Кнопка «Применить в игре на этом ПК» из студии сенсы шелла идёт в Go-агент
+(`POST 127.0.0.1:1448/sens-apply`); внутри C#-киоска её нет — там сенса
+подставляется на `session_start`. Подробности и оговорка про Steam Cloud
+Sync — `docs/АГЕНТ-ЗАПУСК-ИГР.md`, раздел «Сенса в игру».
 
 ## ВАЖНО
 

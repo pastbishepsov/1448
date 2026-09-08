@@ -1389,6 +1389,14 @@ const SH_RU = {
   pl_sync_1: "игра",
   pl_sync_n: "игр(ы)",
   sens_not_saved: "Пока не сохранено.",
+  sens_apply_btn: "Применить в игре на этом ПК",
+  sens_apply_hint: "В игру подставим сами: {g} — при старте сессии и по кнопке. Valorant хранит настройки в облаке Riot — там введи значение руками.",
+  sens_apply_native: "Сохранённая сенса подставляется в CS2 и Apex при старте сессии, если это включено на ПК. Valorant — только руками (облако Riot).",
+  sens_apply_off: "На этом ПК подстановка сенсы в игры выключена — значения выше введи в игре руками.",
+  toast_sens_applied: "🎮 Сенса записана: {g}",
+  toast_sens_dry: " · пробный режим — агент только записал в лог",
+  toast_sens_cloud: " · {g}: облако Riot, введи руками",
+  toast_sens_none: "🎮 Подставлять нечего: конфигов CS2/Apex на этом ПК нет или сенса для них не задана",
   sens_calib: "<br><b style=\"color:var(--acc)\">Калибратор нашёл {s}</b> (CS2 · {cm} см/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">подставить</a>",
   toast_calib_applied: "Сенса калибратора подставлена: CS2 {s}",
   toast_popup_blocked: "Браузер заблокировал окно — открой web/aim.html вручную",
@@ -1887,6 +1895,14 @@ const SH_EN = {
   pl_sync_1: "game",
   pl_sync_n: "games",
   sens_not_saved: "Not saved yet.",
+  sens_apply_btn: "Apply in the game on this PC",
+  sens_apply_hint: "We set it in the game for you: {g} — at session start and with this button. Valorant keeps settings in the Riot cloud — enter it there by hand.",
+  sens_apply_native: "Your saved sens is applied to CS2 and Apex at session start when enabled on this PC. Valorant — by hand only (Riot cloud).",
+  sens_apply_off: "Applying sens to games is off on this PC — enter the values above in the game by hand.",
+  toast_sens_applied: "🎮 Sens written: {g}",
+  toast_sens_dry: " · dry run — the agent only logged it",
+  toast_sens_cloud: " · {g}: Riot cloud, enter by hand",
+  toast_sens_none: "🎮 Nothing to apply: no CS2/Apex configs on this PC or no sens set for them",
   sens_calib: "<br><b style=\"color:var(--acc)\">The calibrator found {s}</b> (CS2 · {cm} cm/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">apply</a>",
   toast_calib_applied: "Calibrator sens applied: CS2 {s}",
   toast_popup_blocked: "The browser blocked the window — open web/aim.html manually",
@@ -2385,6 +2401,14 @@ const SH_PL = {
   pl_sync_1: "gra",
   pl_sync_n: "gier",
   sens_not_saved: "Jeszcze nie zapisano.",
+  sens_apply_btn: "Zastosuj w grze na tym PC",
+  sens_apply_hint: "W grze ustawimy sami: {g} — przy starcie sesji i tym przyciskiem. Valorant trzyma ustawienia w chmurze Riot — tam wpisz wartość ręcznie.",
+  sens_apply_native: "Zapisana czułość trafia do CS2 i Apex przy starcie sesji, jeśli to włączone na PC. Valorant — tylko ręcznie (chmura Riot).",
+  sens_apply_off: "Na tym PC podstawianie czułości do gier jest wyłączone — wartości powyżej wpisz w grze ręcznie.",
+  toast_sens_applied: "🎮 Czułość zapisana: {g}",
+  toast_sens_dry: " · tryb próbny — agent tylko zapisał do logu",
+  toast_sens_cloud: " · {g}: chmura Riot, wpisz ręcznie",
+  toast_sens_none: "🎮 Nie ma czego podstawić: brak configów CS2/Apex na tym PC albo czułość dla nich nie jest ustawiona",
   sens_calib: "<br><b style=\"color:var(--acc)\">Kalibrator znalazł {s}</b> (CS2 · {cm} cm/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">zastosuj</a>",
   toast_calib_applied: "Czułość z kalibratora podstawiona: CS2 {s}",
   toast_popup_blocked: "Przeglądarka zablokowała okno — otwórz web/aim.html ręcznie",
@@ -4068,6 +4092,7 @@ if (NATIVE){
 /* ═══════════════ SHELL-AGENT (HTTP, вне киоска) ═══════════════ */
 const AGENT = 'http://127.0.0.1:1448';
 let agentOnline = false;
+let agentSens = false, agentSensGames = []; // К7: агент умеет писать сенсу в конфиги игр
 
 function renderAgentDot(){
   // К2-и3: «ПК ●» гостю ни о чём; показываем только беду — агент не найден,
@@ -4111,6 +4136,7 @@ async function pingAgent(){
     if (r.ok){
       const d = await r.json().catch(() => ({}));
       if (d.computer_id){ myComputerId = d.computer_id; lsSet('1448_pc', d.computer_id); }
+      agentSens = !!d.sens; agentSensGames = Array.isArray(d.sens_games) ? d.sens_games : []; // К7
     }
   }catch(e){ agentOnline = false; }
   renderAgentDot();
@@ -5011,6 +5037,8 @@ function renderSens(){
       ${esc(STR.sens_cloud_sub)}${sensSyncStatus()}
     </div>
     <button class="btn slim" style="width:100%" onclick="sensSave()">${UI.save} ${esc(STR.sens_save)}</button>
+    ${!NATIVE && agentOnline && agentSens ? `<button class="btn ghost slim" style="width:100%; margin-top:8px" onclick="sensApplyInGame()">${UI.rocket} ${esc(STR.sens_apply_btn)}</button>` : ''}
+    <div class="muted" style="font-size:12px; line-height:1.55; margin-top:8px">${esc(sensApplyHint())}</div>
   </div>
 
   <div class="card">
@@ -5168,6 +5196,34 @@ function aimApply(){
 function openAimCal(){
   const w = window.open('aim.html?' + new URLSearchParams({dpi: sensDPI, sens: sensVal}), '_blank');
   if (!w) toast(STR.toast_popup_blocked);
+}
+
+/* К7 (Р9): сенса из профиля — в конфиги игр на ЭТОМ ПК через агента
+   (POST /sens-apply). Умеет CS2 и Apex; Valorant держит настройки в облаке
+   Riot — говорим честно. Агент делает бэкап и возвращает файлы после сессии. */
+function sensGameNames(ids){ return (ids || []).map(id => sensGame(id).name).join(', '); }
+function sensApplyHint(){
+  if (NATIVE) return STR.sens_apply_native;
+  if (!(agentOnline && agentSens)) return STR.sens_apply_off;
+  return T('sens_apply_hint', {g: sensGameNames(agentSensGames.length ? agentSensGames : ['cs2', 'apex'])});
+}
+async function sensApplyInGame(){
+  sensUpdate();
+  const games = Object.assign({}, (sensProfile && sensProfile.games) || {});
+  games[sensFrom] = sensVal;
+  const res = sensConvert(sensGame(sensFrom), sensGame(sensTo), sensVal);
+  if (res > 0) games[sensTo] = +res.toFixed(3);
+  try{
+    const r = await fetch(AGENT + '/sens-apply', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({dpi: sensDPI, games}), signal: AbortSignal.timeout(4000)});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.message || ('HTTP ' + r.status));
+    const applied = d.applied || [], skipped = d.skipped || {};
+    const cloud = Object.keys(skipped).filter(g => skipped[g] === 'cloud');
+    let msg = applied.length ? T('toast_sens_applied', {g: sensGameNames(applied)}) + (d.dry_run ? STR.toast_sens_dry : '') : STR.toast_sens_none;
+    if (cloud.length) msg += T('toast_sens_cloud', {g: sensGameNames(cloud)});
+    toast(msg);
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 async function sensSave(){
