@@ -5,15 +5,23 @@
         Topmost="True" ShowInTaskbar="False" ShowActivated="False"
         SizeToContent="WidthAndHeight" Left="24" Top="16" IsHitTestVisible="False">
   <!-- XP-виджет поверх игр (ТЗ 6.1): уровень, XP, таймер сессии -->
-  <Border CornerRadius="12" Background="#DD10141D" BorderBrush="#7C5CFF" BorderThickness="1"
-          Padding="14,8">
-    <StackPanel Orientation="Horizontal">
-      <TextBlock x:Name="LvlText" Text="LVL 1" Foreground="#FBBF24"
-                 FontWeight="Bold" FontSize="15" Margin="0,0,12,0"/>
-      <TextBlock x:Name="XpText" Text="" Foreground="#22D3EE"
-                 FontWeight="Bold" FontSize="15" Margin="0,0,12,0"/>
-      <TextBlock x:Name="TimerText" Text="00:00" Foreground="#34D399"
-                 FontWeight="Bold" FontSize="15"/>
-    </StackPanel>
-  </Border>
+  <StackPanel>
+    <Border CornerRadius="12" Background="#DD10141D" BorderBrush="#7C5CFF" BorderThickness="1"
+            Padding="14,8">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock x:Name="LvlText" Text="LVL 1" Foreground="#FBBF24"
+                   FontWeight="Bold" FontSize="15" Margin="0,0,12,0"/>
+        <TextBlock x:Name="XpText" Text="" Foreground="#22D3EE"
+                   FontWeight="Bold" FontSize="15" Margin="0,0,12,0"/>
+        <TextBlock x:Name="TimerText" Text="00:00" Foreground="#34D399"
+                   FontWeight="Bold" FontSize="15"/>
+      </StackPanel>
+    </Border>
+    <!-- К4-и2: критичное уведомление поверх игры (деньги, бронь, кухня, ответ админа) -->
+    <Border x:Name="NoteRow" Visibility="Collapsed" CornerRadius="12" Background="#EE10141D"
+            BorderBrush="#FF2740" BorderThickness="1" Padding="14,8" Margin="0,6,0,0" MaxWidth="520">
+      <TextBlock x:Name="NoteText" Text="" Foreground="#F5F5F7" FontWeight="SemiBold" FontSize="14"
+                 TextWrapping="Wrap"/>
+    </Border>
+  </StackPanel>
 </Window>

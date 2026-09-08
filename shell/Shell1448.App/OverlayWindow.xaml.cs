@@ -7,6 +7,7 @@ using System.Windows.Threading;
 public partial class OverlayWindow : Window
 {
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _noteTimer = new() { Interval = TimeSpan.FromSeconds(8) };
     private DateTimeOffset? _sessionStart;
 
     public OverlayWindow()
@@ -20,6 +21,22 @@ public partial class OverlayWindow : Window
                 ? $"{(int)t.TotalHours}:{t.Minutes:D2}:{t.Seconds:D2}"
                 : $"{t.Minutes:D2}:{t.Seconds:D2}";
         };
+        _noteTimer.Tick += (_, _) =>
+        {
+            _noteTimer.Stop();
+            NoteRow.Visibility = Visibility.Collapsed;
+            if (_sessionStart is null) Hide(); // без сессии оверлей жил только ради строки
+        };
+    }
+
+    /// <summary>К4-и2: строка уведомления поверх игры на 8 секунд (шелл шлёт только критичное).</summary>
+    public void Notify(string text)
+    {
+        NoteText.Text = text;
+        NoteRow.Visibility = Visibility.Visible;
+        _noteTimer.Stop();
+        _noteTimer.Start();
+        Show();
     }
 
     public void SessionStarted(DateTimeOffset startedAt)
