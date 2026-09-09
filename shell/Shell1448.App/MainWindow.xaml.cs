@@ -23,7 +23,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _launcher = new Launcher(_cfg.CatalogUrl, _cfg.AgentToken);
+        _launcher = new Launcher(_cfg.CatalogUrl, _cfg.AgentToken, _cfg.SensExec); // С2-и3: +exec 1448 для CS2
 
         if (_cfg.KioskKeys)
         {

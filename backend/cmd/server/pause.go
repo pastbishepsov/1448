@@ -346,7 +346,7 @@ func handleAdminMoveSession(c *gin.Context) {
 	movePayload := gin.H{
 		"session_id": session.ID, "user_id": session.UserID, "nickname": guest.Nickname,
 	}
-	if sp := sensProfileFor(session.UserID); sp != nil { // К7: сенса едет за гостем и на новый ПК
+	if sp := sensPayloadFor(session.UserID); sp != nil { // К7: сенса едет за гостем и на новый ПК (С2: под мышь клуба)
 		movePayload["sens"] = sp
 	}
 	notifyShell(target.ID.String(), websocket.MsgSessionStart, movePayload)

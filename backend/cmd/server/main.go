@@ -82,10 +82,11 @@ func main() {
 
 	// ── WebSocket Hub (PC Shell) ────────────────────────────────────────────
 	hub = websocket.NewHub()
-	hub.OnAdminCall = agentAdminCall   // Б2: admin_call агента → чат + админки
-	hub.StateFor = shellStateFor       // К4-и1: state в ответ на session_tick
-	hub.OnShellOffline = agentLostOpen // К8-и2: обрыв агента во время сессии → автозапись в журнал проблем
-	hub.OnShellOnline = agentLostClose // К8-и2: агент вернулся → длительность обрыва
+	hub.OnAdminCall = agentAdminCall       // Б2: admin_call агента → чат + админки
+	hub.StateFor = shellStateFor           // К4-и1: state в ответ на session_tick
+	hub.OnShellOffline = agentLostOpen     // К8-и2: обрыв агента во время сессии → автозапись в журнал проблем
+	hub.OnShellOnline = agentLostClose     // К8-и2: агент вернулся → длительность обрыва
+	hub.OnSensResult = sensResultFromShell // С2-и4: агент применил сенсу → уведомление гостю
 	go hub.Run()
 
 	// ── Роуты ───────────────────────────────────────────────────────────────

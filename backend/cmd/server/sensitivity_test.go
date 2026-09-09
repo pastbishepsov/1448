@@ -39,3 +39,38 @@ func TestValidateSensitivity(t *testing.T) {
 		t.Error("DPI=32000 (граница) отклонён")
 	}
 }
+
+// С2-и1 (SENS.md, Т4): пересчёт сенсы под DPI мыши клуба — cm/360 не меняется.
+func TestRescaleSensKeepsCm360(t *testing.T) {
+	games := map[string]float64{"cs2": 2.0, "valorant": 0.629}
+	out := rescaleSens(games, 1600, 800) // профиль на 1600 → мышь клуба 800
+	if out["cs2"] != 4.0 {
+		t.Fatalf("cs2: ждал 4.0, получил %v", out["cs2"])
+	}
+	if out["valorant"] != 1.258 {
+		t.Fatalf("valorant: ждал 1.258, получил %v", out["valorant"])
+	}
+	// cm/360 = 360*2.54/(yaw*sens*dpi): одинаков до и после
+	cm := func(s float64, dpi int) float64 { return 360 * 2.54 / (0.022 * s * float64(dpi)) }
+	if a, b := cm(2.0, 1600), cm(out["cs2"], 800); a < b-1e-9 || a > b+1e-9 {
+		t.Fatalf("cm/360 поплыл: %v → %v", a, b)
+	}
+	back := rescaleSens(out, 800, 1600)
+	if back["cs2"] != 2.0 {
+		t.Fatalf("обратный пересчёт: %v", back["cs2"])
+	}
+}
+
+func TestSensPayloadRescalesOnlyWhenNeeded(t *testing.T) {
+	games := map[string]float64{"cs2": 2.0}
+	if p := sensPayload(800, games, 0); p["dpi"] != 800 || p["rescaled_from"] != nil {
+		t.Fatalf("mouse_dpi=0: ждал как есть, получил %v", p)
+	}
+	if p := sensPayload(800, games, 800); p["rescaled_from"] != nil {
+		t.Fatalf("тот же DPI: пересчёта быть не должно, %v", p)
+	}
+	p := sensPayload(800, games, 1600)
+	if p["dpi"] != 1600 || p["rescaled_from"] != 800 || p["games"].(map[string]float64)["cs2"] != 1.0 {
+		t.Fatalf("800→1600: ждал dpi 1600, cs2 1.0, rescaled_from 800; получил %v", p)
+	}
+}

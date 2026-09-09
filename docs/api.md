@@ -32,9 +32,9 @@ Base URL: `http://localhost:8080/api/v1`
 | GET | `/me/achievements` | Достижения с прогрессом; идущая сессия досчитывается на лету (минуты, активные минуты, визит, часы), `progress {value, target, unit: min\|hours\|days\|count}` (К5) |
 | GET | `/me/sessions` | История сессий; 15 мин после завершения без активной сессии — ещё и `receipt` (К3-и6) |
 | POST | `/me/sessions/end` | Завершить сессию; в ответе `receipt {wallet_grosz, kitchen_unpaid_pln, streak_days}` — чек на экран «Сессия завершена» (К3-и6) |
-| GET / PUT | `/me/sensitivity` | Профиль сенсы: `{dpi, games {cs2: 2.5, …}, saved}` — DPI 100…32000, сенса > 0, до 64 игр. Едет за гостем на любой ПК: с К7 сервер кладёт его в `session_start` агенту, тот подставляет в конфиги CS2/Apex |
-| GET | `/me/economy` | Ранг, таланты и `rates` — ставки из настроек клуба, по ним считает калькулятор (К3-и1); `pause_limit_min` (0 = паузы нет, кнопку не показывать) и `afk_stop_min` — правила паузы и AFK (К4-и4) |
-| GET | `/me/notifications?client=kiosk\|app` | Непрочитанные уведомления (до 50), выдача помечает. С `client=` — своя отметка у киоска и PWA, тост доходит до обоих; без параметра — как раньше, «прочитано вообще» (К3-и2, миграция 055). Тип `achievement_earned {id, title, category, reward_xp, reward_skillpoints, reward_case_tier}` — ачивка выдана, в т.ч. прямо во время сессии (К5-и2). Тип `incident_compensation {kind, minutes, wallet_pln, note}` — админ компенсировал проблему с ПК (К8) |
+| GET / PUT | `/me/sensitivity` | Профиль сенсы: `{dpi, games {cs2: 2.5, …}, saved}` — DPI 100…32000, сенса > 0, до 64 игр; студия шлёт ВСЕ игры из одного cm/360 (С2-и5). Едет за гостем на любой ПК: сервер кладёт его в `session_start` агенту, пересчитав под DPI мыши клуба (`mouse_dpi`, С2-и1: `sens × dpi_профиля / mouse_dpi`, в payload `rescaled_from`). PUT принимает `own_mouse: true` (гость со своей мышью — без пересчёта) и при активной сессии на ПК, который на связи, шлёт агенту `sens_apply` — в ответе `pushed: true` (С2-и4) |
+| GET | `/me/economy` | Ранг, таланты и `rates` — ставки из настроек клуба, по ним считает калькулятор (К3-и1); `pause_limit_min` (0 = паузы нет, кнопку не показывать) и `afk_stop_min` — правила паузы и AFK (К4-и4); `mouse_dpi` — DPI мыши клуба, 0 = не задан (С2-и1: студия на клубном ПК запирает поле DPI на нём) |
+| GET | `/me/notifications?client=kiosk\|app` | Непрочитанные уведомления (до 50), выдача помечает. С `client=` — своя отметка у киоска и PWA, тост доходит до обоих; без параметра — как раньше, «прочитано вообще» (К3-и2, миграция 055). Тип `achievement_earned {id, title, category, reward_xp, reward_skillpoints, reward_case_tier}` — ачивка выдана, в т.ч. прямо во время сессии (К5-и2). Тип `incident_compensation {kind, minutes, wallet_pln, note}` — админ компенсировал проблему с ПК (К8). Тип `sens_applied {applied [cs2, apex], skipped {valorant: cloud, …}, dry_run, running [cs2]}` — агент подставил сенсу по команде сервера после «Сохранить» в студии (С2-и4) |
 | GET | `/me/chat?after=&mark=1` | Переписка со стойкой: без `after` — ПОСЛЕДНИЕ 100, старые сверху; с `after` — доливка (К3-и5) |
 
 ## Ошибки (К3-и3)
@@ -82,7 +82,8 @@ comp_minutes, comp_pln, open}` — компенсации отдельной с�
 `AGENT_TOKEN` без верного токена — `401 agent_token_invalid` (К4-и3).
 
 ### События (Сервер → Shell)
-- `session_start` — начало сессии: `{session_id, started_at}`; если у гостя сохранён профиль сенсы с играми — ещё `sens {dpi, games {cs2: 2.5, apex: 1.4, …}}`, агент подставляет её в конфиги игр на ПК (К7; то же при пересадке на другой ПК)
+- `session_start` — начало сессии: `{session_id, started_at}`; если у гостя сохранён профиль сенсы с играми — ещё `sens {dpi, games {cs2: 4, apex: 2, …}, rescaled_from?}`, пересчитанный под DPI мыши клуба (`mouse_dpi`), агент подставляет её в игры на ПК (К7/С2; то же при пересадке на другой ПК)
+- `sens_apply` — `{dpi, games, rescaled_from?}`: гость сохранил профиль во время сессии — подставить сейчас; агент отвечает `sens_result` (С2-и4)
 - `session_end` — завершение (закрыть игру, очистка между гостями)
 - `lock` — пауза/AFK: запереть экран, игру не трогать (`payload.reason: paused|afk`) — К0-и1
 - `unlock` — пауза снята
@@ -94,11 +95,12 @@ comp_minutes, comp_pln, open}` — компенсации отдельной с�
 ### События (Shell → Сервер)
 - `session_tick` — heartbeat каждые 60 сек
 - `admin_call` — вызов администратора
+- `sens_result` — `{applied, skipped, dry_run, running}` в ответ на `sens_apply`; сервер кладёт гостю уведомление `sens_applied` (С2-и4)
 - `shell_ready` — Shell готов к работе
 
 ### Локальный HTTP агента (`127.0.0.1:1448`, для гостевого экрана)
 
-Полный контракт — `docs/АГЕНТ-ЗАПУСК-ИГР.md`. Коротко: `GET /ping` (+ `notify`, `sens`, `sens_games`), `POST /launch`, `GET /apps-status`, `POST /notify`, `POST /sens-apply {dpi, games}` → `{applied, skipped {game: cloud|unsupported|no_config|error}, dry_run, supported}` — «Применить в игре на этом ПК» из студии сенсы (К7; 409 `sens_disabled`, если выключено в `agent.json`).
+Полный контракт — `docs/АГЕНТ-ЗАПУСК-ИГР.md`. Коротко: `GET /ping` (+ `notify`, `sens`, `sens_games`, `sens_mode`, `sens_current {cs2 {sens, res_w, res_h, aspect}, apex {sens}}` — С2-и2), `POST /launch`, `GET /apps-status`, `POST /notify`, `POST /sens-apply {dpi, games}` → `{applied, skipped {game: cloud|unsupported|no_config|disabled|error}, dry_run, running, supported, cs2_mode}` — curl-проверка на живом ПК (студия с С2 идёт через сервер: PUT `/me/sensitivity` → WS `sens_apply`; 409 `sens_disabled`, если выключено в `agent.json`).
 
 ## Анкета профиля (Г8) — контракт для страницы регистрации
 

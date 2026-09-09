@@ -236,7 +236,7 @@ RU/EN/PL; палитра мята/янтарь вместо стандарта 1
 Порядок внутри спринта важен: и1 вводит настройку, и2 — данные с ПК, и3
 меняет способ подстановки, и4 — путь применения, и5 — студия поверх всего.
 
-- [ ] и1. **DPI мыши клуба и cm/360 (№9, Р2, Т4).** Настройка `mouse_dpi`
+- [x] и1 (2026-09-09). **DPI мыши клуба и cm/360 (№9, Р2, Т4).** Настройка `mouse_dpi`
   (миграция 058: `INSERT … ON CONFLICT DO NOTHING`, значение `0` = не
   задано; `settingBounds` {0, 32000}; `currentSettings()`; поле в админке
   «Настройки → Мышь в клубе, DPI»). `/me/economy` (ranks.go) → `mouse_dpi`.
@@ -245,7 +245,7 @@ RU/EN/PL; палитра мята/янтарь вместо стандарта 1
   `dpi: mouse_dpi, rescaled_from: profile.dpi`; иначе как есть. То же в
   `movePayload` (пересадка, `pause.go`). Юнит: 2.0 @ 1600 → 4.0 @ 800,
   cm/360 сходится.
-- [ ] и2. **Текущая сенса и разрешение с ПК (№10).** Go-агент `/ping` →
+- [x] и2 (2026-09-09). **Текущая сенса и разрешение с ПК (№10).** Go-агент `/ping` →
   `sens_current {cs2: {sens, res_w, res_h, aspect}, apex: {sens}}`: аккаунт
   Steam — из `config/loginusers.vdf` (`MostRecent "1"` → SteamID64 −
   76561197960265728 = папка `userdata/<id>`), нет файла — самый свежий, как
@@ -256,7 +256,7 @@ RU/EN/PL; палитра мята/янтарь вместо стандарта 1
   Apex — `mouse_sensitivity` из settings.cfg. C# Service не участвует (HTTP
   только у Go-агента). Юниты на парсеры `loginusers.vdf` и `cs2_video.txt`
   по образцам.
-- [ ] и3. **CS2 через `1448.cfg` + `+exec 1448` (№11 часть, Р1, Т2, Т3).**
+- [x] и3 (2026-09-09; C# — ждёт сборки на Windows). **CS2 через `1448.cfg` + `+exec 1448` (№11 часть, Р1, Т2, Т3).**
   Агент: `sens.cs2_mode: "exec"` (по умолчанию) | `"vcfg"` (путь К7);
   `sens.cs2_dir` в конфиге, пусто — `<steam>/steamapps/common/Counter-Strike
   Global Offensive` по `steamDirs()` плюс библиотеки из
@@ -280,7 +280,7 @@ RU/EN/PL; палитра мята/янтарь вместо стандарта 1
   запуска выполняется после vcfg — проверить на пилоте; если клуб держит свой
   `autoexec.cfg` с `sensitivity`, он перекроет; игра уже запущена — `exec
   1448` в консоли или перезапуск.
-- [ ] и4. **Применение через сервер (№11, Т5).** Хаб: `MsgSensApply =
+- [x] и4 (2026-09-09; C# — ждёт сборки на Windows). **Применение через сервер (№11, Т5).** Хаб: `MsgSensApply =
   "sens_apply"` (сервер → shell: `{dpi, games, rescaled_from?}`),
   `MsgSensResult = "sens_result"` (shell → сервер: `{applied, skipped,
   dry_run}`). `PUT /me/sensitivity`: после upsert, если у гостя активная
@@ -298,7 +298,7 @@ RU/EN/PL; палитра мята/янтарь вместо стандарта 1
   «Применить в игре на этом ПК» → одна «Сохранить в аккаунт» с подписью
   «…и сразу на этом ПК» при активной сессии (`pushed`). Агентский `POST
   /sens-apply` оставить для curl-проверки на живом ПК (§«Как проверить»).
-- [ ] и5. **Студия: DPI клуба, своя мышь, все игры (№9, №12, Р2).** На
+- [x] и5 (2026-09-09). **Студия: DPI клуба, своя мышь, все игры (№9, №12, Р2).** На
   клубном ПК (агент онлайн или NATIVE) при `mouse_dpi>0` поле DPI = DPI
   клуба с подписью «мышь клуба · 800 DPI», пресеты скрыты; переключатель
   «Со своей мышью» открывает поле и пресеты и ставит `own_mouse:true` в PUT;
@@ -308,18 +308,58 @@ RU/EN/PL; палитра мята/янтарь вместо стандарта 1
   есть `sens_current.cs2`, а профиль не сохранён — строка «В CS2 на этом ПК
   сейчас N» с кнопкой «взять»; калибратор получает `aspect` из
   `res_w/res_h`.
-- Критерий: юниты (пересчёт, `withSensArgs`, парсеры vdf/video, exec-файл +
-  бэкап всех vcfg + откат на образцах в `/home/claude/agentrun`, где
-  добавляются `userdata/2/730` и `steamapps/common/Counter-Strike Global
-  Offensive/game/csgo/cfg/`); e2e `e2e_s2.py` против настоящего Go-агента
-  :1449: профиль @1600 + `mouse_dpi` 800 → в `session_start` сенса ×2 и
-  `1448.cfg` с ней → бэкапы двух vcfg-образцов → PUT во время сессии →
-  `sens_apply` → файл переписан → `sens_result` → уведомление `sens_applied`
-  у гостя → `session_end` → файл пуст, vcfg как были; без `mouse_dpi` —
-  без пересчёта; `own_mouse` — без пересчёта. Смоук студии: подпись «мышь
-  клуба», «своя мышь» открывает поле, PUT несёт все игры и `own_mouse`,
-  строка «В CS2 на этом ПК сейчас» из мока `__set {sens_current}`. C# —
-  «ждёт сборки на Windows», галочка после пилотного ПК.
+- Критерий: ✅ 2026-09-09 (стенд) / C# — ждёт сборки на Windows, пилотный
+  ПК — открыт. Юниты: сервер `TestRescaleSensKeepsCm360`,
+  `TestSensPayloadRescalesOnlyWhenNeeded`; агент `TestParseLoginUsersAndAccountID`,
+  `TestVcfgGetConvarAndApexGet`, `TestParseCS2VideoAndAspect`,
+  `TestParseLibraryFolders`, `TestWithSensArgs`, `TestSensExecModeApplyAndRestore`
+  (бэкап двух vcfg, файл переписан, откат → vcfg как были и пустой 1448.cfg,
+  dry run без файла, disabled), `TestSensCurrentReadsActiveAccount` (аккаунт
+  MostRecent, не самый свежий файл); старые тесты К7 переведены на
+  `CS2Mode: "vcfg"`; go vet/test зелёные (стенд go1.24: `heartbeat_test` и
+  `bookings_synctest_test` исключены — `synctest.Test` есть только в 1.25+).
+  e2e `e2e_s2.py` 26/26 против настоящего сервера (Postgres, миграция 058)
+  и настоящего Go-агента :1449 (PC-01, WS, `sens.enabled:true, dry_run:false`,
+  образцы: `steam/userdata/{1,39734314}/730/local/cfg`, `config/loginusers.vdf`,
+  `cs2_video.txt`, `steamapps/common/…/game/csgo/cfg/`, `apex/settings.cfg`,
+  `xdg-open`-заглушка пишет запуск в лог): `mouse_dpi` 40000 → 400, 800 → в
+  `/admin/settings` и `/me/economy`; `/ping` `sens_mode exec`, `sens_current`
+  cs2 2.75 (аккаунт MostRecent) 5:4, apex 2; профиль @1600 без сессии →
+  `pushed:false`; старт сессии → `1448.cfg` `sensitivity "4"`, бэкапы обоих
+  vcfg, Apex `mouse_sensitivity "2"`; PUT во время сессии → `pushed:true` →
+  файл `"4.4"` → уведомление `sens_applied {applied [cs2], valorant cloud,
+  dry_run false, running []}`; `own_mouse` → `"2.2"` без пересчёта; `POST
+  /launch cs2` → `xdg-open steam://run/730//+exec%201448/`, следующий PUT →
+  `running [cs2]`; `session_end` → файл пустой, vcfg 1.2/2.75 как были,
+  бэкапов нет, Apex вернулся; `mouse_dpi=0` → без пересчёта. Смоук студии
+  `smoke_s2.js` 21/21 (настоящий сервер, `/shell` из `out_web`, мок-агент
+  :1448 = PC-01 с `sens_current`, настоящий агент на WS): «мышь клуба · 800
+  DPI» заперто, cs2 2.0 @1600 показана как 4 @800 (13.0 см), кнопки
+  «Применить в игре» нет, подсказка «Сохранишь — и Apex Legends, CS2 …»;
+  «В CS2 на этом ПК сейчас 2.75 — взять»; калибратор получил
+  `aspect=1.7778` (1920×1080) и выбрал 16:9; «Со своей мышью» → поле 800,
+  пресеты, подсказка; PUT → `dpi 1600`, все 7 игр из одного cm/360, тост
+  «Сенса сохранена … · и уже на этом ПК», настоящий агент записал
+  `sensitivity "2"` без пересчёта; тост «🎮 Сенса на этом ПК: Apex Legends,
+  CS2 · Valorant: облако Riot» пришёл через шину; обратно на мышь клуба.
+  Регресс `smoke_s0.js` 32/32, `smoke_s1.js` 18/18 на новом шелле.
+  Файлы: сервер `sensitivity.go` (`rescaleSens/sensPayload/sensPayloadFor/
+  pushSensToActivePC/sensResultFromShell`, `own_mouse`, `pushed`),
+  `settings.go`/`ranks.go`/`sessions.go`/`pause.go`/`main.go`, миграция
+  `058_mouse_dpi.sql`, хаб `MsgSensApply/MsgSensResult/OnSensResult`; агент
+  `sens.go` (exec-режим, `allCS2Vcfg`, `sensCurrent`, `withSensArgs`,
+  `sensOnApply`), `launch.go`, `main.go`; C# `SensApplier.cs` (exec, бэкап
+  всех vcfg, `ApplyProfile`), `Worker.cs` (`sens_apply` → `sens_result`,
+  семафор на SendAsync), `ServiceConfig.cs`/`appsettings.json`
+  (`SensCs2Mode`, `SensCs2Dir`), `Shared/SensLaunch.cs` + тест,
+  `App/AppConfig.cs` (`sens_exec`), `Launcher.cs`, `MainWindow.xaml.cs`,
+  `shell.example.json`; shell.html 424 016 → 430 310 (sha 5750ac66…, 507
+  ключей, `patch_s2.py` от базы С0 b4e72a2d…), aim.html → 69 427 (`?aspect=`,
+  sha 21ddb18e…), admin.html → 366 593 (поле «Мышь клуба: DPI», sha
+  5f35ffba…); доки `docs/АГЕНТ-ЗАПУСК-ИГР.md` §«Сенса в игру» переписан,
+  `docs/api.md`, `shell/README.md`, `agent.example.json`,
+  `docs/ПИЛОТ-2026-08-28.md`, STATUS.md, KIOSK.md (стык). PWA (app.html)
+  тост `sens_applied` пока показывает общим текстом — трек М.
 
 ### С3 «Язык и дизайн» (этап I; aim.html + shell.html точечно)
 

@@ -30,6 +30,12 @@ public sealed class AppConfig
     [JsonPropertyName("exit_password")]
     public string ExitPassword { get; set; } = "1448";
 
+    /// <summary>С2-и3 (SENS.md): запускать CS2 с +exec 1448 — сенса гостя из game/csgo/cfg/1448.cfg,
+    /// который пишет Service (SensEnabled, SensCs2Mode=exec) или Go-агент (sens.enabled, cs2_mode exec).
+    /// Выкл по умолчанию, как и вся сенса; без файла exec в консоли CS2 лишь ругнётся.</summary>
+    [JsonPropertyName("sens_exec")]
+    public bool SensExec { get; set; } = false;
+
     public static AppConfig Load()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "shell.json");

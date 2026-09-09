@@ -95,6 +95,9 @@ func handleGetEconomy(c *gin.Context) {
 		// К4-и4: правила паузы и AFK — киоск и PWA прячут «Паузу» при 0
 		"pause_limit_min": settingInt64("pause_limit_min", pauseLimitMinDef),
 		"afk_stop_min":    settingInt64("afk_stop_min", afkStopMinDef),
+		// С2-и1 (SENS.md, Р2): DPI мыши клуба — студия сенсы на клубном ПК
+		// подставляет его и пересчитывает сохранённую сенсу; 0 = не задан
+		"mouse_dpi":    settingInt64("mouse_dpi", mouseDPIDef),
 		"hours_played": hours,
 		"rank": gin.H{
 			"level": rank.Level, "name": rank.Name, "min_hours": rank.MinHours,

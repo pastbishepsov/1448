@@ -1049,6 +1049,8 @@ if(EMBED)document.body.classList.add("embed");
 (function(){
   const d=parseFloat(Q.get("dpi")), s=parseFloat(Q.get("sens"));
   if(d)$("dpi").value=d; if(s)$("sens").value=s;
+  // С2-и2: разрешение CS2 с этого ПК (шелл берёт его у агента) — выбираем то же соотношение
+  const a=Q.get("aspect"); if(a&&[...$("aspect").options].some(o=>o.value===a))$("aspect").value=a;
 })();
 
 /* ---------------- симуляция (только для проверки конвейера) ----------------

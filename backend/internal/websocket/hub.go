@@ -33,6 +33,12 @@ const (
 	// не дойти (WS лежал в момент завершения) — по state агент догоняет:
 	// закрывает игру без сессии, запирает экран на паузе.
 	MsgState MessageType = "state" // сервер → shell: состояние сессии ПК
+	// С2-и4 (SENS.md, Т5): «применить сенсу сейчас» идёт через сервер, а не
+	// браузером в 127.0.0.1 — в киоске той кнопки нет, а Chromium ограничивает
+	// запросы к локальной сети. PUT /me/sensitivity при активной сессии →
+	// sens_apply на ПК гостя; агент отвечает sens_result → уведомление гостю.
+	MsgSensApply  MessageType = "sens_apply"  // сервер → shell: {dpi, games, rescaled_from?} — подставить в конфиги игр
+	MsgSensResult MessageType = "sens_result" // shell → сервер: {applied, skipped, dry_run, running}
 	// force_unlock удалён (Б7-и3): сервер его никогда не слал — мёртвый тип.
 )
 
@@ -137,6 +143,9 @@ type Hub struct {
 	// длительностью). Вызываются в своей горутине — цикл хаба не ждёт БД.
 	OnShellOffline func(computerID string)
 	OnShellOnline  func(computerID string)
+	// OnSensResult — агент применил сенсу по sens_apply (С2-и4): payload
+	// {applied, skipped, dry_run, running} → уведомление гостю за этим ПК.
+	OnSensResult func(computerID string, payload json.RawMessage)
 }
 
 func NewHub() *Hub {
@@ -365,6 +374,10 @@ func (h *Hub) handleMessage(c *Client, msg Message) {
 		log.Printf("Вызов администратора от computer=%s", c.ComputerID)
 		if h.OnAdminCall != nil {
 			h.OnAdminCall(c.ComputerID) // Б2: вызов идёт в чат и админкам
+		}
+	case MsgSensResult: // С2-и4: ответ агента на sens_apply
+		if h.OnSensResult != nil {
+			h.OnSensResult(c.ComputerID, msg.Payload)
 		}
 	default:
 		log.Printf("Неизвестный тип сообщения: %s от computer=%s", msg.Type, c.ComputerID)

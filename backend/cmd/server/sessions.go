@@ -327,7 +327,7 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		"session_id": session.ID,
 		"started_at": session.StartedAt,
 	}
-	if sp := sensProfileFor(userID); sp != nil {
+	if sp := sensPayloadFor(userID); sp != nil { // С2-и1: пересчитано под мышь клуба (mouse_dpi)
 		startPayload["sens"] = sp
 	}
 	notifyShell(computer.ID.String(), websocket.MsgSessionStart, startPayload)

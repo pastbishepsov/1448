@@ -30,10 +30,12 @@
     "app_id": ""
   },
 
-  "_sens": "К7: сенса гостя (DPI + сенса по играм из его профиля) подставляется в конфиги игр на этом ПК на старте сессии и по кнопке «Применить в игре» в студии сенсы; после сессии файлы возвращаются из бэкапа. enabled=false по умолчанию; dry_run=true — только лог (включать боевой режим после сухого прогона на пилотном ПК). steam_dir/cs2_cfg/apex_cfg — пусто = ищем сами (Steam: userdata/*/730/local/cfg/cs2_user_convars_0_slot0.vcfg; Apex: Saved Games\\Respawn\\Apex\\local\\settings.cfg). Умеем CS2 и Apex; Valorant — настройки в облаке Riot, не умеем.",
+  "_sens": "К7/С2 (SENS.md): сенса гостя (DPI + сенса по играм из его профиля, сервер пересчитывает её под DPI мыши клуба — настройка mouse_dpi) подставляется в игры на этом ПК на старте сессии и по команде сервера sens_apply (гость нажал «Сохранить» в студии во время сессии); после сессии файлы возвращаются из бэкапа. enabled=false по умолчанию; dry_run=true — только лог (боевой режим после сухого прогона на пилотном ПК). cs2_mode=exec (по умолчанию): пишем <CS2>\\game\\csgo\\cfg\\1448.cfg, а CS2 запускается с +exec 1448 — работает под любым Steam-аккаунтом; на старте сессии все vcfg (userdata/*/730) откладываются в .1448bak и возвращаются на конце. cs2_mode=vcfg — запись в vcfg самого свежего аккаунта (К7). cs2_dir/steam_dir/cs2_cfg/apex_cfg — пусто = ищем сами (CS2: <Steam>/steamapps/common/Counter-Strike Global Offensive и библиотеки из libraryfolders.vdf; Apex: Saved Games\\Respawn\\Apex\\local\\settings.cfg). Умеем CS2 и Apex; Valorant — настройки в облаке Riot, не умеем.",
   "sens": {
     "enabled": false,
     "dry_run": true,
+    "cs2_mode": "exec",
+    "cs2_dir": "",
     "steam_dir": "",
     "cs2_cfg": "",
     "apex_cfg": ""

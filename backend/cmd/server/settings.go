@@ -88,6 +88,7 @@ var settingBounds = map[string][2]int64{
 	"streak_freeze_max_row":     {1, 7},      // сколько дней подряд можно прикрыть
 	"birthday_case_tier":        {0, 5},    // Г8-и4: ДР-кейс (0=выкл, 1=light … 5=gods)
 	"ready_wait_min":            {0, 30},   // Е1: сколько ждём [Готов!], мин; 0 = окно выключено
+	"mouse_dpi":                 {0, 32000}, // С2-и1 (SENS.md, Р2): DPI мыши клуба; 0 = не задан, сенсу не пересчитываем
 	"pack_warn_days":            {0, 30},   // Е2-и5: за сколько дней сказать, что пакет сгорает; 0 = молчать
 }
 
@@ -121,6 +122,7 @@ func currentSettings() gin.H {
 		"streak_freeze_max_row":     settingInt64("streak_freeze_max_row", streakFreezeMaxRowDef),
 		"birthday_case_tier":        settingInt64("birthday_case_tier", 1),
 		"ready_wait_min":            settingInt64("ready_wait_min", readyWaitMinDef),
+		"mouse_dpi":                 settingInt64("mouse_dpi", mouseDPIDef), // С2-и1
 	}
 }
 

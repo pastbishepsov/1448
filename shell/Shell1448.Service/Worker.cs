@@ -128,6 +128,20 @@ public sealed class Worker(
                 pipe.Broadcast(PipeMessage.Of(PipeMsg.SessionEnd, payload));
                 _sens.Restore(); // К7: конфиги игр — как были до гостя
                 break;
+            // С2-и4 (SENS.md, Т5): гость сохранил профиль во время сессии — сервер прислал
+            // sens_apply {dpi, games}; применяем и отвечаем sens_result, сервер делает из
+            // него уведомление гостю. running сервис не знает (игры запускает App) — пусто.
+            case "sens_apply":
+            {
+                var (applied, skipped) = _sens.ApplyProfile(payload);
+                var result = JsonSerializer.Serialize(new
+                {
+                    type = "sens_result",
+                    payload = new { applied, skipped, dry_run = _cfg.SensDryRun, running = Array.Empty<string>() },
+                });
+                _ = SendAsync(result);
+                break;
+            }
             case "force_unlock":
                 _state.OnForceUnlock();
                 pipe.Broadcast(PipeMessage.Of(PipeMsg.ForceUnlock));
@@ -177,13 +191,30 @@ public sealed class Worker(
             pipe.Broadcast(PipeMessage.Of(paused ? PipeMsg.Lock : PipeMsg.Unlock, payload));
     }
 
+    /// <summary>С2-и4: ответ серверу по живому WS (fire-and-forget, обрыв — в лог).
+    /// ClientWebSocket не терпит параллельных SendAsync — heartbeat и ответы идут через один семафор.</summary>
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private async Task SendAsync(string json)
+    {
+        var ws = _ws;
+        if (ws is null || ws.State != WebSocketState.Open) return;
+        try { await SendRawAsync(ws, Encoding.UTF8.GetBytes(json), CancellationToken.None); }
+        catch (Exception ex) { log.LogWarning("WS: ответ не ушёл: {Error}", ex.Message); }
+    }
+    private async Task SendRawAsync(ClientWebSocket ws, byte[] bytes, CancellationToken ct)
+    {
+        await _sendLock.WaitAsync(ct);
+        try { await ws.SendAsync(bytes, WebSocketMessageType.Text, true, ct); }
+        finally { _sendLock.Release(); }
+    }
+
     private async Task HeartbeatAsync(ClientWebSocket ws, CancellationToken ct)
     {
         var tick = Encoding.UTF8.GetBytes("""{"type":"session_tick"}""");
         while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
         {
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(10, _cfg.HeartbeatSeconds)), ct);
-            await ws.SendAsync(tick, WebSocketMessageType.Text, true, ct);
+            await SendRawAsync(ws, tick, ct);
         }
     }
 

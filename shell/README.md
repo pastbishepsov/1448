@@ -100,14 +100,27 @@ Desktop/%TEMP%/корзину/буфер) делает агент по блок�
 проверку безопасности (`safeCleanupDir`): системные каталоги и мелкие пути не
 трогаются даже при опечатке в конфиге.
 
-## Сенса гостя в конфиги игр (К7, KIOSK.md Р9)
+## Сенса гостя в конфиги игр (К7, KIOSK.md Р9 → С2, SENS.md)
 
 Сервер кладёт профиль сенсы гостя в `session_start` (`payload.sens {dpi,
-games}`), и `SensApplier.cs` в Service — порт `sens.go` Go-агента — пишет
-`"sensitivity"` в `cs2_user_convars_0_slot0.vcfg` (CS2) и `mouse_sensitivity`
-в `settings.cfg` (Apex); Valorant не умеем (облако Riot). Перед первой
-записью в сессии — бэкап `<файл>.1448bak`, на `session_end` и на старте
-сервиса файлы возвращаются. Ключи в `appsettings.json` (`Shell:`):
+games, rescaled_from?}`, уже пересчитанный под DPI мыши клуба — настройка
+`mouse_dpi` в админке) и шлёт `sens_apply {dpi, games}`, когда гость сохранил
+профиль во время сессии; `SensApplier.cs` в Service — порт `sens.go`
+Go-агента. CS2 в режиме `exec` (по умолчанию): пишем
+`<CS2>\game\csgo\cfg\1448.cfg` со строкой `sensitivity "…"`, а App запускает
+CS2 с `+exec 1448` (`shell.json` `sens_exec: true`, `Shell1448.Shared/
+SensLaunch.cs`: `steam://rungameid/730` → `steam://run/730//+exec%201448/`) —
+работает под любым Steam-аккаунтом и не зависит от момента входа в Steam.
+Файл живёт всегда: с сенсой после `session_start`/`sens_apply`, пустой после
+`session_end`. Все vcfg (`userdata\*\730`) на первой записи в сессии
+копируются в `<файл>.1448bak` и возвращаются на `session_end` и на старте
+сервиса (клубный аккаунт как был; аккаунт гостя, появившийся в сессии, не
+трогаем). Режим `vcfg` (К7) — запись `"sensitivity"` в
+`cs2_user_convars_0_slot0.vcfg` самого свежего аккаунта. Apex —
+`mouse_sensitivity` в `settings.cfg`; Valorant не умеем (облако Riot). На
+`sens_apply` сервис отвечает `sens_result {applied, skipped, dry_run,
+running: []}` (запущенные игры знает только App) — сервер делает из него тост
+гостю. Ключи в `appsettings.json` (`Shell:`):
 
 | Ключ | По умолчанию | Что |
 |------|--------------|-----|
@@ -116,11 +129,16 @@ games}`), и `SensApplier.cs` в Service — порт `sens.go` Go-агента 
 | `SensSteamDir` | `""` | корень Steam; пусто — `%ProgramFiles(x86)%\Steam` и стандартные пути, vcfg — самый свежий из `userdata\*\730\local\cfg` |
 | `SensCs2Cfg` | `""` | явный путь к vcfg (главнее поиска) |
 | `SensApexCfg` | `""` | явный путь к `settings.cfg`; пусто — `Saved Games\Respawn\Apex\local` пользователя, под которым идёт сервис (под System это НЕ профиль гостя — на пилоте задать явно) |
+| `SensCs2Mode` | `"exec"` | `exec` — 1448.cfg + запуск с `+exec 1448` (App: `sens_exec`); `vcfg` — запись в vcfg (К7) |
+| `SensCs2Dir` | `""` | корень CS2 (`…\steamapps\common\Counter-Strike Global Offensive`); пусто — по Steam и `libraryfolders.vdf` |
 
-Кнопка «Применить в игре на этом ПК» из студии сенсы шелла идёт в Go-агент
-(`POST 127.0.0.1:1448/sens-apply`); внутри C#-киоска её нет — там сенса
-подставляется на `session_start`. Подробности и оговорка про Steam Cloud
-Sync — `docs/АГЕНТ-ЗАПУСК-ИГР.md`, раздел «Сенса в игру».
+`shell.json` киоска: `"sens_exec": true` — CS2 стартует с `+exec 1448`
+(по умолчанию `false`, как и вся сенса; без файла `exec` в консоли CS2 лишь
+ругнётся). Кнопки «Применить в игре» в студии больше нет — «Сохранить в
+аккаунт» при активной сессии сам доходит до ПК через сервер (`sens_apply`).
+На пилотном ПК с Go-агентом рядом сенсу ведёт агент (`sens.enabled`), а
+`sens_exec` в `shell.json` нужен всё равно — игры запускает App. Подробности
+— `docs/АГЕНТ-ЗАПУСК-ИГР.md`, раздел «Сенса в игру».
 
 ## AI-калибратор сенсы внутри киоска (С0, SENS.md)
 

@@ -815,9 +815,12 @@ func (a *agent) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Запуск.
+	// 3. Запуск. С2-и3: CS2 в exec-режиме сенсы стартует с +exec 1448 —
+	//    игра читает game/csgo/cfg/1448.cfg (проверка пути выше шла по
+	//    исходному target, стартуем по преобразованному).
+	target, args := withSensArgs(req.AppID, app.Target, app.Args, a.cfg.Sens.Enabled && a.cfg.Sens.cs2Mode() == "exec")
 	if st.Kind == kindProtocol {
-		if err := startProtocol(app.Target, app.Args); err != nil {
+		if err := startProtocol(target, args); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{
 				"ok": false, "app_id": req.AppID, "code": "launch_failed", "message": err.Error(),
 			})
@@ -828,7 +831,7 @@ func (a *agent) handleLaunch(w http.ResponseWriter, r *http.Request) {
 			state = stateStarting
 		}
 		a.track.put(procRecord{appID: req.AppID, state: state, process: app.Process, kind: st.Kind})
-		log.Printf("▶ Запуск %s → %s (обработчик системы)", req.AppID, app.Target)
+		log.Printf("▶ Запуск %s → %s (обработчик системы)", req.AppID, target)
 		if state == stateStarting {
 			go a.attachProcess(req.AppID, app.Process, a.launch.AttachTimeout)
 		} else {
@@ -843,7 +846,7 @@ func (a *agent) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd, err := startFile(app.Target, app.Args, app.Dir)
+	cmd, err := startFile(target, args, app.Dir)
 	if err != nil {
 		log.Printf("✗ Запуск %s не удался: %v", req.AppID, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]any{

@@ -28,4 +28,9 @@ public sealed class ServiceConfig
     public string SensCs2Cfg { get; set; } = "";
     /// <summary>К7: явный путь к settings.cfg Apex; пусто — Saved Games текущего пользователя.</summary>
     public string SensApexCfg { get; set; } = "";
+    /// <summary>С2-и3 (SENS.md, Т2): "exec" (по умолчанию) — CS2 через game/csgo/cfg/1448.cfg + запуск с +exec 1448
+    /// (App: shell.json sens_exec), работает под любым Steam-аккаунтом; "vcfg" — запись в vcfg самого свежего аккаунта (К7).</summary>
+    public string SensCs2Mode { get; set; } = "exec";
+    /// <summary>С2-и3: корень CS2 (…\steamapps\common\Counter-Strike Global Offensive); пусто — ищем по Steam и libraryfolders.vdf.</summary>
+    public string SensCs2Dir { get; set; } = "";
 }

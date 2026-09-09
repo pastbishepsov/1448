@@ -10,7 +10,7 @@ using Shell1448.Shared;
 /// Нативная замена Go-агенту на клубном ПК: exe-пути, протоколы, ms-settings.
 /// Чистая логика allowlist — в Shell1448.Shared.CatalogAllowlist (тестируется).
 /// </summary>
-public sealed class Launcher(string catalogUrl, string agentToken = "")
+public sealed class Launcher(string catalogUrl, string agentToken = "", bool sensExec = false)
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
     private Dictionary<string, AllowEntry> _allow = new();
@@ -40,9 +40,11 @@ public sealed class Launcher(string catalogUrl, string agentToken = "")
         if (!_allow.TryGetValue(appId, out var app)) return false;
         try
         {
+            // С2-и3 (SENS.md): CS2 стартует с +exec 1448 — читает сенсу гостя из 1448.cfg
+            var (target, args) = SensLaunch.WithExec(appId, app.Target, app.Args, sensExec);
             // cmd start понимает и exe, и протоколы (steam://), и ms-settings:
-            var psi = new ProcessStartInfo(app.Target) { UseShellExecute = true };
-            foreach (var a in app.Args) psi.ArgumentList.Add(a);
+            var psi = new ProcessStartInfo(target) { UseShellExecute = true };
+            foreach (var a in args) psi.ArgumentList.Add(a);
             Process.Start(psi);
             return true;
         }

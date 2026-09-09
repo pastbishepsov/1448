@@ -462,6 +462,9 @@ func (a *agent) handleCommand(msg wsMessage) {
 		a.state.set(sessionState{Active: true, SessionID: p.SessionID}) // К4-и1
 		disableAccessibilityShortcuts()                                 // Г9-и3: 5×Shift не роняет гостя в диалог Windows
 		a.sensOnSessionStart(msg.Payload)                               // К7: профиль сенсы гостя → конфиги игр
+	case "sens_apply": // С2-и4 (SENS.md, Т5): гость сохранил профиль во время сессии
+		log.Printf("Команда: sens_apply %s", string(msg.Payload))
+		a.sensOnApply(msg.Payload)
 	case "session_end":
 		log.Printf("Команда: session_end %s", string(msg.Payload))
 		a.state.set(sessionState{}) // К4-и1: state после этого не запустит очистку второй раз
@@ -577,6 +580,10 @@ func main() {
 			"notify":      cfg.Notify.enabled(), // К4-и2: есть ли куда слать тосты
 			"sens":        cfg.Sens.Enabled,     // К7: подставляем ли сенсу в игры
 			"sens_games":  sensGamesSupported,   // К7: какие игры умеем
+			"sens_mode":   cfg.Sens.cs2Mode(),   // С2-и3: exec (1448.cfg + +exec) | vcfg
+			// С2-и2: что стоит в играх на этом ПК сейчас — студия показывает
+			// «в CS2 на этом ПК сейчас N» и отдаёт aspect калибратору
+			"sens_current": sensCurrent(cfg.Sens, os.Getenv),
 		})
 	}))
 
