@@ -274,6 +274,16 @@
             margin-left:5px; font-weight:800; font-variant-numeric:tabular-nums}
   .overlay{position:fixed; inset:0; background:rgba(4,4,6,.85); display:none; align-items:center; justify-content:center; z-index:50}
   .overlay.show{display:flex}
+  /* С0-и1 (SENS.md): AI-калибратор (web/aim.html) — оверлеем внутри шелла.
+     z-index 39: ниже лок-экрана (40) и тостов (60) — предупреждения о нуле и
+     AFK видны поверх калибровки, конец сессии накрывает её лок-экраном. */
+  #aimOverlay{position:fixed; inset:0; z-index:39; background:#07090b; display:none}
+  #aimOverlay.show{display:block}
+  #aimOverlay iframe{position:absolute; inset:0; width:100%; height:100%; border:0; background:#07090b}
+  #aimOverlay .aim-x{position:absolute; top:12px; right:14px; z-index:2; background:rgba(4,4,6,.75);
+    border:1px solid var(--hair); color:var(--dim); border-radius:12px; padding:8px 13px; font-size:13px;
+    font-weight:800; cursor:pointer; font-family:inherit}
+  #aimOverlay .aim-x:hover{color:#fff; border-color:var(--acc)}
   .modal{background:var(--panel); border:1px solid var(--hair); border-radius:24px; padding:30px; width:420px; max-width:92vw; text-align:center}
   .modal h2{margin-bottom:6px}
   .bignum{font-size:64px; font-weight:900; color:var(--gold); line-height:1.1}
@@ -833,6 +843,12 @@
             onclick="endAndLogout()" data-str="pwd_logout"></button>
   </div>
 </div>
+
+<!-- С0-и1 (SENS.md): AI-калибратор оверлеем. В киоске попапы запрещены
+     (MainWindow.xaml.cs: NewWindowRequested → Handled), window.open отдавал null —
+     калибратор не открывался вовсе. iframe создаётся в aimOpen() и убирается в
+     aimClose(): калибратор не живёт в памяти всю сессию. -->
+<div id="aimOverlay"><button class="aim-x" onclick="aimClose()" data-str="aim_close"></button></div>
 
 <!-- Е1-и3: экран «Готов?». Появляется, когда гостя посадили, но время ещё
      не пошло. Лаунчер под ним заперт физически — оверлей закрывает всё. -->
@@ -1398,8 +1414,10 @@ const SH_RU = {
   toast_sens_cloud: " · {g}: облако Riot, введи руками",
   toast_sens_none: "🎮 Подставлять нечего: конфигов CS2/Apex на этом ПК нет или сенса для них не задана",
   sens_calib: "<br><b style=\"color:var(--acc)\">Калибратор нашёл {s}</b> (CS2 · {cm} см/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">подставить</a>",
+  sens_calib_unverified: "<br><b style=\"color:var(--acc)\">Калибратор нашёл {s}</b> (CS2 · {cm} см/360, без слепой проверки) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">подставить</a>",
+  sens_calib_confirmed: "<br><b style=\"color:var(--green)\">Калибратор подтвердил твою сенсу {s}</b> (CS2 · {cm} см/360) — оставайся на ней.",
+  aim_close: "✕ Закрыть калибратор",
   toast_calib_applied: "Сенса калибратора подставлена: CS2 {s}",
-  toast_popup_blocked: "Браузер заблокировал окно — открой web/aim.html вручную",
   toast_sens_saved: "💾 Сенса сохранена — подставится на любом ПК клуба",
   toast_copied: "📋 Скопировано: {v}",
   toast_value: "Значение: {v}",
@@ -1904,8 +1922,10 @@ const SH_EN = {
   toast_sens_cloud: " · {g}: Riot cloud, enter by hand",
   toast_sens_none: "🎮 Nothing to apply: no CS2/Apex configs on this PC or no sens set for them",
   sens_calib: "<br><b style=\"color:var(--acc)\">The calibrator found {s}</b> (CS2 · {cm} cm/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">apply</a>",
+  sens_calib_unverified: "<br><b style=\"color:var(--acc)\">The calibrator found {s}</b> (CS2 · {cm} cm/360, no blind check) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">apply</a>",
+  sens_calib_confirmed: "<br><b style=\"color:var(--green)\">The calibrator confirmed your sens {s}</b> (CS2 · {cm} cm/360) — keep it.",
+  aim_close: "✕ Close calibrator",
   toast_calib_applied: "Calibrator sens applied: CS2 {s}",
-  toast_popup_blocked: "The browser blocked the window — open web/aim.html manually",
   toast_sens_saved: "💾 Sens saved — it will apply on any club PC",
   toast_copied: "📋 Copied: {v}",
   toast_value: "Value: {v}",
@@ -2410,8 +2430,10 @@ const SH_PL = {
   toast_sens_cloud: " · {g}: chmura Riot, wpisz ręcznie",
   toast_sens_none: "🎮 Nie ma czego podstawić: brak configów CS2/Apex na tym PC albo czułość dla nich nie jest ustawiona",
   sens_calib: "<br><b style=\"color:var(--acc)\">Kalibrator znalazł {s}</b> (CS2 · {cm} cm/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">zastosuj</a>",
+  sens_calib_unverified: "<br><b style=\"color:var(--acc)\">Kalibrator znalazł {s}</b> (CS2 · {cm} cm/360, bez ślepego testu) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">zastosuj</a>",
+  sens_calib_confirmed: "<br><b style=\"color:var(--green)\">Kalibrator potwierdził twoją czułość {s}</b> (CS2 · {cm} cm/360) — zostań przy niej.",
+  aim_close: "✕ Zamknij kalibrator",
   toast_calib_applied: "Czułość z kalibratora podstawiona: CS2 {s}",
-  toast_popup_blocked: "Przeglądarka zablokowała okno — otwórz web/aim.html ręcznie",
   toast_sens_saved: "💾 Czułość zapisana — podstawi się na każdym PC klubu",
   toast_copied: "📋 Skopiowano: {v}",
   toast_value: "Wartość: {v}",
@@ -3053,7 +3075,8 @@ function logout(){
   cases = []; sessions = []; bookings = []; achievements = null; leaderboard = null;
   economy = null; talents = null; myPacks = []; myOrders = []; myUnpaidPln = 0;
   packMinutesHere = 0; bookingDeadline = null; sessComputer = null; lastFavsKey = '';
-  lsDel('1448_aim_result'); lsDel('1448_dpi'); // результат калибратора чужой
+  aimClose(); aimLast = null;   // С0: калибратор и его результат — чужие
+  lsDel('1448_aim_result'); lsDel('1448_dpi'); // старый localStorage-мост (до С0) — чистим, если остался
   const bub = document.getElementById('casesBub');
   if (bub){ bub.classList.add('hidden'); bub.textContent = ''; }
   document.getElementById('chatPanel').classList.add('hidden');
@@ -4341,6 +4364,7 @@ async function endSession(devMinutes){
    вставая из-за ПК, видит, что ему делать у стойки. */
 let endExternal = false;
 function showEndScreen(d, reasonKey, external){
+  aimClose(); // С0: сессия кончилась — калибратор долой, экран итогов поверх
   endExternal = !!external;
   document.getElementById('eoXP').textContent = '+' + fmt(d.xp_earned) + ' XP';
   document.getElementById('eoCoins').textContent = '+' + fmt(d.coins_earned);
@@ -4450,6 +4474,7 @@ function renderLock(){
   const inShell = !document.getElementById('shellView').classList.contains('hidden');
   const lock = document.getElementById('lockOverlay');
   const show = inShell && !activeSession;
+  if (show) aimClose(); // С0: без сессии калибратора нет (лок-экран его накрыл бы, но iframe убираем)
   lock.classList.toggle('show', show);
   if (!show){ attractOff(); lockLogoutStop(); } // лок ушёл (сессия/логаут) — заставку и отсчёт долой
   if (me) document.getElementById('lockUser').textContent = T('lock_user', {n: me.nickname, l: me.level});
@@ -5175,28 +5200,75 @@ function sensSyncStatus(){
   return '<span style="color:var(--dim)">' + esc(STR.sens_not_saved) + '</span>';
 }
 
-/* — AI-калибратор (web/aim.html): подбор сенсы стрельбой, мост через localStorage — */
-function aimResult(){
-  try{
-    const r = JSON.parse(localStorage.getItem('1448_aim_result')||'null');
-    if (r && r.sens && Date.now()-r.at < 86400000) return r; // свежее суток
-  }catch(e){}
-  return null;
-}
+/* ═══ С0 (SENS.md): AI-калибратор web/aim.html — оверлеем внутри шелла ═══
+   В киоске попапы запрещены (MainWindow.xaml.cs), window.open отдавал null и
+   гость видел «открой web/aim.html вручную». Теперь iframe с allow="pointer-lock";
+   результат приходит postMessage {type:'aim_result', …} и живёт в памяти
+   (aimLast) — localStorage-мост убран, чужой результат следующему гостю не
+   достаётся. Вердикт слепого A/B решает, что показать: rec — «нашёл N —
+   подставить»; cur/tie — «подтвердил твою N» (подставлять нечего); none —
+   «нашёл N (без слепой проверки)» — раньше студия предлагала подставить и то,
+   что A/B забраковал. */
+let aimLast = null;
+function aimResult(){ return aimLast; }
 function aimResultLine(){
-  const r = aimResult();
-  return r ? T('sens_calib', {s: r.sens, cm: r.cm360}) : '';
+  const r = aimLast; if (!r) return '';
+  if (r.verdict === 'cur' || r.verdict === 'tie') return T('sens_calib_confirmed', {s: r.cur, cm: r.cur_cm});
+  return T(r.verdict === 'none' ? 'sens_calib_unverified' : 'sens_calib', {s: r.sens, cm: r.cm360});
 }
 function aimApply(){
-  const r = aimResult(); if (!r) return;
+  const r = aimLast; if (!r) return;
   if (r.dpi) sensDPI = r.dpi;
   sensFrom = 'cs2'; sensVal = r.sens;
   sideTab('sens'); toast(T('toast_calib_applied', {s: r.sens}));
 }
-function openAimCal(){
-  const w = window.open('aim.html?' + new URLSearchParams({dpi: sensDPI, sens: sensVal}), '_blank');
-  if (!w) toast(STR.toast_popup_blocked);
+/* С0-и3: калибратор меряет CS2 — «текущую» отдаём В ЕДИНИЦАХ CS2, а не той
+   игры, что выбрана «из» (Valorant 0.4 уезжал как CS2 0.4 — центр поиска и
+   контроль A/B промахивались в 3,18 раза). */
+function aimQuery(){
+  if (document.getElementById('sensDpi')) sensUpdate(); // поля студии могли измениться без blur
+  const s = sensFrom === 'cs2' ? sensVal : sensConvert(sensGame(sensFrom), sensGame('cs2'), sensVal);
+  return new URLSearchParams({embed: 1, dpi: sensDPI, sens: s > 0 ? +s.toFixed(3) : '', lang: LANG});
 }
+function aimOpen(){
+  const ov = document.getElementById('aimOverlay');
+  if (!ov) return;
+  aimClose();
+  const f = document.createElement('iframe');
+  f.id = 'aimFrame'; f.title = 'aim';
+  f.setAttribute('allow', 'pointer-lock; fullscreen');
+  f.src = 'aim.html?' + aimQuery();
+  ov.appendChild(f); ov.classList.add('show');
+}
+function aimClose(){
+  const ov = document.getElementById('aimOverlay');
+  if (!ov) return;
+  const f = document.getElementById('aimFrame'); if (f) f.remove();
+  ov.classList.remove('show');
+  try{ if (document.pointerLockElement) document.exitPointerLock(); }catch(e){}
+}
+function openAimCal(){ aimOpen(); }
+/* Сообщения из iframe калибратора: результат, «подставить и сохранить», закрыть.
+   Принимаем только от нашего iframe — чужому окну студию не открыть. */
+window.addEventListener('message', ev => {
+  const f = document.getElementById('aimFrame');
+  if (!f || ev.source !== f.contentWindow) return;
+  const d = ev.data || {};
+  if (d.type === 'aim_result' && +d.sens > 0){
+    const num = (v, k) => { const n = +(+v).toFixed(k); return isFinite(n) ? n : 0; };
+    aimLast = {sens: num(d.sens, 2), dpi: +d.dpi || sensDPI, cm360: num(d.cm360, 1),
+      cur: num(d.cur, 2), cur_cm: num(d.cur_cm, 1), conf: String(d.conf || ''),
+      verdict: ['rec','cur','tie','none'].includes(d.verdict) ? d.verdict : 'none', at: Date.now()};
+    if (curTab === 'sens') renderSide();
+  } else if (d.type === 'aim_save'){
+    if (!aimLast) return;
+    if (aimLast.verdict !== 'cur' && aimLast.verdict !== 'tie') aimApply(); // подтверждённую менять нечего
+    aimClose();
+    sensSave();
+  } else if (d.type === 'aim_close'){
+    aimClose();
+  }
+});
 
 /* К7 (Р9): сенса из профиля — в конфиги игр на ЭТОМ ПК через агента
    (POST /sens-apply). Умеет CS2 и Apex; Valorant держит настройки в облаке

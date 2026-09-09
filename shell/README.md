@@ -43,7 +43,7 @@ dotnet publish shell/Shell1448.Service -c Release -r win-x64 --self-contained -p
 ```powershell
 # киоск (WPF) — на Windows:
 dotnet publish shell\Shell1448.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
-# положи web/shell.html рядом: <вывод>\web\shell.html, либо укажи shell_url в shell.json
+# положи web/shell.html и web/aim.html рядом: <вывод>\web\, либо укажи shell_url в shell.json
 ```
 
 CI (`.github/workflows/ci.yml`, job `shell`) собирает всё на windows-runner и
@@ -57,7 +57,8 @@ CI (`.github/workflows/ci.yml`, job `shell`) собирает всё на window
    `install-service.ps1` от администратора.
 3. App: скопируй `shell.example.json` → `shell.json`, задай `exit_password` и
    `agent_token` (без него сервер с токеном не отдаст каталог с путями — кнопки
-   игр не запустят ничего); положи рядом `web/shell.html` (или укажи `shell_url`).
+   игр не запустят ничего); положи рядом `web/shell.html` и `web/aim.html`
+   (или укажи `shell_url` — тогда оба файла отдаёт сервер из `web/`).
 4. Автозапуск App при входе гостя — через реестр/автозагрузку (фаза 1) либо
    Shell Launcher (фаза 2).
 
@@ -120,6 +121,23 @@ games}`), и `SensApplier.cs` в Service — порт `sens.go` Go-агента 
 (`POST 127.0.0.1:1448/sens-apply`); внутри C#-киоска её нет — там сенса
 подставляется на `session_start`. Подробности и оговорка про Steam Cloud
 Sync — `docs/АГЕНТ-ЗАПУСК-ИГР.md`, раздел «Сенса в игру».
+
+## AI-калибратор сенсы внутри киоска (С0, SENS.md)
+
+`window.open` в киоске запрещён (`NewWindowRequested → Handled`), поэтому
+калибратор `web/aim.html` шелл открывает не окном, а оверлеем: `<iframe
+allow="pointer-lock" src="aim.html?embed=1&dpi=&sens=&lang=">` поверх
+экрана (z-index ниже лок-экрана и тостов — предупреждения о нуле/AFK видны,
+конец сессии накрывает калибровку и убирает iframe). Результат идёт
+`postMessage`'ом `{type:'aim_result', sens, dpi, cm360, verdict:
+rec|cur|tie|none, …}`, кнопки «Подставить и сохранить в аккаунт» /
+«Закрыть» — `aim_save` / `aim_close`; localStorage-моста больше нет, чужой
+результат следующему гостю не достаётся (шелл забывает его на выходе).
+Нативной части делать ничего не нужно, кроме одного: `aim.html` должен
+лежать рядом с `shell.html` (или отдаваться сервером при `shell_url` =
+https). На пилотном ПК проверить: клик по арене захватывает курсор в
+iframe (WebView2), Esc отпускает; если захват не даётся — запасной путь в
+SENS.md (С0-и5).
 
 ## ВАЖНО
 
