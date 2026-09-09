@@ -73,6 +73,13 @@
   }
   select:hover{border-color:#2a3940} select:focus{border-color:var(--cool);outline:none}
   .chk{display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:.04em;font-size:11px;color:var(--dimmer);font-family:var(--mono)}
+  /* С1-и5: быстрый / точный режим — два пресета параметров сессии */
+  .modes{display:flex;gap:10px}
+  .mode{flex:1;background:#070a0c;border:1px solid var(--line);border-radius:8px;padding:10px 12px;text-align:left;color:var(--ink);transition:border-color .15s}
+  .mode:hover{border-color:#2a3940}
+  .mode.on{border-color:var(--cool);box-shadow:inset 0 0 0 1px var(--cool)}
+  .mode b{display:block;font-size:13px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:3px}
+  .mode span{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.02em}
   .chk input{accent-color:var(--cool);width:13px;height:13px}
   details{border-top:1px solid var(--line);margin-top:6px;padding-top:14px}
   summary{font-size:11.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;list-style:none;display:flex;align-items:center;gap:8px;user-select:none}
@@ -230,10 +237,19 @@
         <div class="sub" style="margin-top:9px"><label class="chk"><input id="stretch" type="checkbox" checked> растянуто на весь экран (stretched)</label></div>
       </div>
 
+      <div class="field">
+        <label>Режим</label>
+        <div class="modes">
+          <button type="button" class="mode" data-mode="quick"><b>Быстро · ≈3 мин</b><span>8 раундов по 8 фликов · A/B 2</span></button>
+          <button type="button" class="mode" data-mode="precise"><b>Точно · ≈7 мин</b><span>14 раундов по 12 фликов · A/B 4</span></button>
+        </div>
+        <div class="sub" id="modeEst"></div>
+      </div>
+
       <details>
         <summary>Параметры сессии</summary>
         <div class="adv">
-          <div class="slider"><div class="top"><span>Раундов</span><span class="val" id="vRounds">14</span></div><input id="rounds" type="range" min="10" max="22" value="14"></div>
+          <div class="slider"><div class="top"><span>Раундов</span><span class="val" id="vRounds">14</span></div><input id="rounds" type="range" min="6" max="22" value="14"></div>
           <div class="slider"><div class="top"><span>Выстрелов в раунде</span><span class="val" id="vFlicks">12</span></div><input id="flicks" type="range" min="8" max="18" value="12"></div>
           <div class="slider"><div class="top"><span>Размер цели</span><span class="val" id="vTarget">2.2°</span></div><input id="target" type="range" min="12" max="40" value="22"></div>
           <div class="slider"><div class="top"><span>A/B-раундов в конце</span><span class="val" id="vAb">4</span></div><input id="ab" type="range" min="0" max="6" step="2" value="4"></div>
@@ -257,6 +273,7 @@
       <div class="label">Раунд</div>
       <div class="big"><span id="hRound">01</span> / <span id="hTotal">14</span></div>
       <div class="segbar" id="segbar"></div>
+      <div class="label" id="hInput" style="margin-top:9px;text-transform:none"></div>
     </div>
     <div class="corner tr">
       <div class="label">Точность · осталось</div>
@@ -389,7 +406,7 @@ const st={mode:"idle",running:false,phase:"idle",roundIndex:0,testN:1,S:0.022,
   activeAt:0,moveT:0,moveAcc:0,hits:0,misses:0,spawnTime:0,endingNormally:false,
   abMode:false,abQueue:[],abTotal:0,abData:[],
   calSum:0,lockTimer:null,missFlash:0};
-const SESSION={set:[],rtAll:[],mtAll:[]};
+const SESSION={set:[],rtAll:[],mtAll:[],miss1All:[]};
 let yaw=0,pitch=0;
 let target={az:0,el:0};
 
@@ -469,12 +486,14 @@ function spawnScored(){
   st.flickIdx=fi; st.plannedD=f.d;
   armFlick();
 }
-/* 120ms ghost: target visible but inert — hand settles from previous kill,
-   so movement onset (reaction split) is measured cleanly */
+/* 120 ms pause: target NOT drawn and inert — hand settles from previous kill,
+   then the target appears and reaction/onset are measured from that moment.
+   (С1-и3: раньше цель была видна полупрозрачной, и тот, кто стартовал в паузу,
+   получал фору — тем большую, чем выше сенса.) */
 function armFlick(){
   const now=performance.now();
   st.activeAt=now+120; st.spawnTime=st.activeAt;
-  st.moveT=0; st.moveAcc=0; st.actualD=0;
+  st.moveT=0; st.moveAcc=0; st.actualD=0; st.shots=0;
 }
 
 /* ---------------- render loop ---------------- */
@@ -496,14 +515,12 @@ function loop(){
   // target (ellipse: anamorphic projection stretches it exactly like stretched-res CS2)
   if(st.running){
     const p=project(target.az,target.el);
-    if(p.vis){
+    if(p.vis&&performance.now()>=st.activeAt){ // С1-и3: в 120-мс паузе цели нет вовсе
       const t=Math.tan(cfg.targetRad*RAD)/p.zc;
       let rx=fx*t, ry=fy*t;
       if(ry<6){const s=6/ry;rx*=s;ry=6;}
       const warm=st.phase==="warmup";
-      const ghost=performance.now()<st.activeAt;
       ctx.save();
-      if(ghost)ctx.globalAlpha=0.32;
       ctx.shadowBlur=18; ctx.shadowColor=warm?"rgba(109,128,133,.5)":"rgba(51,214,191,.55)";
       ctx.fillStyle=warm?"rgba(120,140,145,.5)":"rgba(51,214,191,.9)";
       ctx.beginPath();ctx.ellipse(p.x,p.y,rx,ry,0,0,7);ctx.fill();
@@ -560,8 +577,18 @@ document.addEventListener("mousemove",e=>{
 document.addEventListener("mousedown",e=>{
   if(st.mode!=="game"||!st.running||document.pointerLockElement!==canvas)return;
   if(e.button!==0)return;
-  const now=performance.now();
-  if(now<st.activeAt)return; // ghost period: clicks inert, no miss penalty
+  shoot(performance.now());
+});
+/* С1-и2: выстрел. Кулдаун 150 мс — очередь кликов «пока не попаду» больше не
+   выигрывает время (цель висит до попадания, промах и так удлиняет флик);
+   промах до первого попадания помечает флик miss1 — «точность первого
+   выстрела» в результате. Вынесено из обработчика, чтобы гонять без захвата. */
+const COOLDOWN=150;
+function shoot(now){
+  if(now<st.activeAt)return "ghost";           // пауза: клики инертны, без штрафа
+  if(now-st.lastShot<COOLDOWN)return "cooldown";
+  st.lastShot=now;
+  let out;
   if(angDist(target.az,target.el)<=cfg.targetRad){
     if(st.phase==="warmup"){
       st.warmupLeft--;
@@ -572,25 +599,52 @@ document.addEventListener("mousedown",e=>{
       const rt=st.moveT?st.moveT-st.spawnTime:0;
       const D=Math.max(4,st.actualD||st.plannedD);         // distance measured at movement onset
       const id=Math.log2(D/(cfg.targetRad*2)+1);           // Fitts ID, bits
-      st.flickLog.push({mt,rt,id,fi:st.flickIdx});
+      st.flickLog.push({mt,rt,id,fi:st.flickIdx,miss1:st.shots>0});
       st.hits++; st.scoredLeft--;
-      if(st.scoredLeft<=0){endRound();return;}
+      if(st.scoredLeft<=0){endRound();return "hit";}
       spawnScored();
     }
+    out="hit";
   } else {
     if(st.phase==="scored")st.misses++;
-    st.missFlash=1;
+    st.shots++; st.missFlash=1; out="miss";
   }
   updateHUD();
-});
+  return out;
+}
+/* С1-и6: частота опроса мыши — считаем сырые события за окна по 250 мс и
+   держим максимум (когда мышь стоит, событий нет — минимум не показателен).
+   pointerrawupdate — по событию на каждый отчёт мыши; нет его — coalesced. */
+function hzTick(now,n){
+  const b=Math.floor(now/250);
+  if(b!==st.hzBucket){
+    if(st.hzCount>0){const r=Math.round(st.hzCount*4/25)*25; if(r>(st.hz||0)){st.hz=r;paintInput();}}
+    st.hzBucket=b; st.hzCount=0;
+  }
+  st.hzCount+=n;
+}
+if("onpointerrawupdate" in document){
+  document.addEventListener("pointerrawupdate",e=>{ if(document.pointerLockElement&&st.running)hzTick(performance.now(),1); });
+} else {
+  document.addEventListener("pointermove",e=>{ if(document.pointerLockElement&&st.running)hzTick(performance.now(),e.getCoalescedEvents?Math.max(1,e.getCoalescedEvents().length):1); });
+}
 $("session").addEventListener("click",()=>{
   if(st.mode==="game"&&!st.running) startRound();
 });
-/* выход в настройки: кнопка в углу или Esc (когда захват уже отпущен) */
+/* выход: кнопка в углу или Esc (когда захват уже отпущен). С1-и4: если
+   раундов поиска уже ≥ 6 — результат по ним (с честной пометкой «прервано»),
+   а не пустые руки; меньше — в настройки. */
+const PARTIAL_MIN=6;
 function exitSession(){
-  st.endingNormally=true; st.running=false; st.mode="idle";
+  st.endingNormally=true; st.running=false;
   if(document.pointerLockElement)document.exitPointerLock();
   if(raf){cancelAnimationFrame(raf);raf=null;}
+  const done=Math.min(st.roundIndex,cfg.rounds);
+  if(st.mode==="game"&&opt&&done>=PARTIAL_MIN){
+    st.partial=done<cfg.rounds?done:0;
+    showResults(); return;
+  }
+  st.mode="idle";
   showScreen("setup");
 }
 $("exitBtn").addEventListener("click",e=>{e.stopPropagation();exitSession();});
@@ -599,8 +653,32 @@ document.addEventListener("keydown",e=>{
 });
 
 /* ---------------- pointer lock ---------------- */
+/* С1-и1: raw input. Обычный захват отдаёт движение ПОСЛЕ акселерации и
+   ползунка скорости Windows — cm/360 плыл, замер зависел от настроек ОС.
+   Chromium/WebView2 (с 88-й) умеют {unadjustedMovement:true} — сырые счётчики
+   мыши, 1 count = 1 px, свайп-калибровка не нужна. Не дали (старый движок,
+   Firefox) — обычный захват, и результат честно говорит «через курсор». */
+let rawTry=false, lockEl=null;
+function lockPointer(el){
+  lockEl=el; rawTry=true;
+  let p=null;
+  try{ p=el.requestPointerLock({unadjustedMovement:true}); }catch(e){ p=null; rawTry=false; }
+  if(p&&typeof p.then==="function"){
+    p.then(()=>{st.raw=true;paintInput();},()=>lockFallback());
+  } else if(!rawTry){ lockFallback(); }
+}
+function lockFallback(){
+  rawTry=false; st.raw=false; paintInput();
+  try{ (lockEl||canvas).requestPointerLock(); }catch(e){}
+}
+document.addEventListener("pointerlockerror",()=>{ if(rawTry)lockFallback(); });
+function paintInput(){
+  const t=(st.raw===true?"raw input ✓":st.raw===false?"курсор Windows":"")+(st.hz?(st.raw==null?"":" · ")+st.hz+" Гц":"");
+  const el=$("hInput"); if(el)el.textContent=t;
+}
 document.addEventListener("pointerlockchange",()=>{
   const locked=document.pointerLockElement!=null;
+  if(locked&&rawTry&&st.raw!==false){st.raw=true;paintInput();}
   if(st.mode==="calib"){
     if(!locked){ // user pressed Esc -> finalize swipe
       if(st.calSum>40){showCalStep(3);} 
@@ -633,7 +711,8 @@ function startRound(){
   yaw=0;pitch=0;
   if(st.phase==="warmup")spawnWarm(); else spawnScored();
   updateHUD(); $("prompt").style.display="none";
-  canvas.requestPointerLock();
+  st.lastShot=-1e9; st.shots=0;
+  lockPointer(canvas);
   clearTimeout(st.lockTimer);
   st.lockTimer=setTimeout(()=>{if(document.pointerLockElement!==canvas)$("lockhelp").style.display="block";},700);
 }
@@ -652,7 +731,7 @@ function endRound(){
   const per=st.flickLog.map(f=>f.mt/f.id);      // ms per bit (Fitts-normalized)
   const cost=median(per);
   const se=1.2533*1.4826*mad(per)/Math.sqrt(Math.max(1,per.length)); // SE of the median
-  for(const f of st.flickLog){if(f.rt>0)SESSION.rtAll.push(f.rt);SESSION.mtAll.push(f.mt);}
+  for(const f of st.flickLog){if(f.rt>0)SESSION.rtAll.push(f.rt);SESSION.mtAll.push(f.mt);SESSION.miss1All.push(f.miss1?1:0);}
   if(st.abMode){
     st.abData.push({sens:st.testN,per,byFi:st.flickLog.map(f=>({fi:f.fi,c:f.mt/f.id}))});
   } else {
@@ -667,7 +746,8 @@ function endRound(){
   } else if(st.roundIndex===cfg.rounds&&st.abTotal>0){
     showPrompt("ФАЗА ПРОВЕРКИ · A/B","Поиск завершён. Дальше "+st.abTotal+" контрольных раунда: рекомендация против твоей текущей сенсы — вслепую и вперемешку. Кликни, чтобы начать.",false);
   } else {
-    showPrompt("РАУНД "+pad(st.roundIndex)+" ЗАВЕРШЁН","Кликни, чтобы продолжить. Чувствительность снова скрыта.",false);
+    const hzNote=st.hz&&st.hz<250?" Мышь опрашивается на "+st.hz+" Гц — в софте мыши поставь 1000.":"";
+    showPrompt("РАУНД "+pad(st.roundIndex)+" ЗАВЕРШЁН","Кликни, чтобы продолжить. Чувствительность снова скрыта."+hzNote,false);
   }
 }
 function showPrompt(t,s,interrupt){
@@ -688,6 +768,7 @@ function updateHUD(){
   const acc=st.hits+st.misses>0?Math.round(st.hits/(st.hits+st.misses)*100)+"%":"—";
   $("hAcc").textContent=st.running?acc:"—";
   $("hLeft").textContent=st.running&&st.phase==="scored"?st.scoredLeft:(st.running?"разогрев":"—");
+  $("exitBtn").textContent=st.roundIndex>=PARTIAL_MIN&&st.roundIndex<cfg.rounds?"результат по "+st.roundIndex+" раундам · esc":"выйти · esc";
   setPhase();
   // segbar (amber-outlined segments = A/B validation block)
   const sb=$("segbar"); sb.innerHTML="";
@@ -715,7 +796,8 @@ $("startBtn").addEventListener("click",()=>{
   if(!cfg.calibrated) cfg.pxPerCm=cfg.dpi/2.54; // 1:1 assumption
   opt=new Optimizer(cfg.sens,cfg.range,cfg.rounds);
   SESSION.set=buildFlickSet(cfg.flicks);
-  SESSION.rtAll=[]; SESSION.mtAll=[];
+  SESSION.rtAll=[]; SESSION.mtAll=[]; SESSION.miss1All=[];
+  st.partial=0; st.hz=0; st.hzBucket=-1; st.hzCount=0; st.lastShot=-1e9; st.shots=0;
   st.mode="game"; st.running=false; st.phase="idle"; st.roundIndex=0;
   st.abMode=false; st.abQueue=[]; st.abTotal=0; st.abData=[]; st.abRecN=0; st.abSkipClose=false;
   showScreen("session"); resize(); updateHUD();
@@ -736,7 +818,8 @@ function showResults(){
   const dWord=Math.abs(dPct)<1.5?"практически как сейчас":(dPct>0?"выше":"ниже");
   // confidence from posterior flatness
   const rel=P.rec.sd/Math.max(1e-6,(P.yMax-P.yMin));
-  const conf=rel<0.07?"высокая":rel<0.16?"средняя":"низкая";
+  const conf=st.partial?"низкая":rel<0.07?"высокая":rel<0.16?"средняя":"низкая";
+  const acc1=SESSION.miss1All.length?Math.round(100*(1-mean(SESSION.miss1All))):null; // С1-и2
   // reaction / motor split + throughput
   const avgRT=SESSION.rtAll.length?Math.round(mean(SESSION.rtAll)):0;
   const avgMT=SESSION.mtAll.length?Math.round(mean(SESSION.mtAll)):0;
@@ -779,7 +862,7 @@ function showResults(){
   const keepCur=verdictKey==="cur"||verdictKey==="tie"; // подтверждена текущая — подставлять нечего
   $("resultsInner").innerHTML=`
     <div class="rhead"><div class="mark"><span></span></div><h1>РЕЗУЛЬТАТ КАЛИБРОВКИ</h1></div>
-    <p class="rsub">${cfg.rounds} раундов поиска · ${cfg.aspectLabel}${cfg.stretch?" stretched":""} · DPI ${cfg.dpi} · цель ${cfg.targetRad.toFixed(1)}° · уверенность: ${conf} · ${trendNote}</p>
+    <p class="rsub">${st.partial?`<span style="color:var(--danger)">прервано на ${st.partial} раундах из ${cfg.rounds}</span> · `:`${cfg.rounds} раундов поиска · `}${cfg.aspectLabel}${cfg.stretch?" stretched":""} · DPI ${cfg.dpi} · цель ${cfg.targetRad.toFixed(1)}° · ${st.raw===true?"raw input ✓":st.raw===false?"курсор Windows":"без захвата"}${st.hz?" · "+st.hz+" Гц":""} · уверенность: ${conf} · ${trendNote}</p>
     <div class="stats">
       ${abHTML}
       <div class="stat hero">
@@ -801,6 +884,7 @@ function showResults(){
         <div><div class="k">Реакция</div><div class="v" style="font-size:22px">${avgRT||"—"}<span class="u">мс</span></div></div>
         <div><div class="k">Движение</div><div class="v" style="font-size:22px">${avgMT||"—"}<span class="u">мс</span></div></div>
         <div><div class="k">Пропускная способность</div><div class="v" style="font-size:22px">${tp}<span class="u">бит/с</span></div></div>
+        <div><div class="k">Первый выстрел</div><div class="v" style="font-size:22px">${acc1==null?"—":acc1}<span class="u">%</span></div></div>
         <div class="note" style="flex:1;min-width:200px;margin-top:0">реакция вынесена из метрики — оптимизировалось чистое движение, нормированное по сложности флика (закон Фиттса)</div>
       </div>
     </div>
@@ -821,7 +905,7 @@ function showResults(){
         <p><b>Как считалось.</b> Каждая сенса сдавала один и тот же экзамен: фиксированный набор фликов, перемешан только порядок. Каждый флик нормирован по сложности (закон Фиттса), реакция отделена от движения по онсету мыши, раунды взвешены по внутреннему разбросу, тренд обучения за сессию вычтен. Финал — слепой A/B против твоей текущей сенсы.</p>
         <p><b>Адаптация.</b> Ты подстраиваешься под сенс на ходу. Оптимум — это лучшее под твою сегодняшнюю моторику; через недели тренировки на другом сенсе картина может сместиться.</p>
         <p><b>Зависит от задачи.</b> Здесь меряются именно флики. Для трекинга/спрея оптимум обычно чуть ниже. Это число — отправная точка, а не догма.</p>
-        <p><b>Калибровка cm/360.</b> ${cfg.calibrated?"Множитель измерен свайпом — перевод в физические см точный.":"Перевод сделан в предположении 1:1 между движением в браузере и счётчиками мыши (Windows 6/11, акселерация выключена). Если она включена или чувствительность Windows не по центру — абсолютный cm/360 поплывёт, но относительный сдвиг sens останется верным. Для точности прогони калибровку свайпом."}</p>
+        <p><b>Калибровка cm/360.</b> ${cfg.calibrated?"Множитель измерен свайпом — перевод в физические см точный.":st.raw===true?"Захват мыши в режиме raw input: 1 счётчик мыши = 1 px, акселерация и скорость указателя Windows на замер не влияют — перевод в физические см точный и без свайпа.":"Перевод сделан в предположении 1:1 между движением в браузере и счётчиками мыши (Windows 6/11, акселерация выключена). Если она включена или чувствительность Windows не по центру — абсолютный cm/360 поплывёт, но относительный сдвиг sens останется верным. Для точности прогони калибровку свайпом."}</p>
         <p><b>Что делать.</b> ${keepCur
           ?`Твоя текущая ${curN.toFixed(2)} и есть оптимум — менять нечего.${EMBED?" «Сохранить в аккаунт» — и она подставится на любом ПК клуба.":""}`
           :`Поставь ${recN.toFixed(2)} в CS2, поиграй пару дней, при желании прогони сессию ещё раз — оптимум сойдётся точнее.${EMBED?" «Подставить и сохранить» — студия 14:48 пересчитает во все игры и сохранит в аккаунт.":""}`}</p>
@@ -847,7 +931,8 @@ function showResults(){
   post({type:"aim_result",sens:+recN.toFixed(2),dpi:cfg.dpi,cm360:+recCm.toFixed(1),
     lo:+P.lo.toFixed(2),hi:+P.hi.toFixed(2),conf,verdict:verdictKey,gain_pct:+gainPct.toFixed(1),
     rt_ms:avgRT,mt_ms:avgMT,tp:+tp||0,cur:+curN.toFixed(2),cur_cm:+curCm.toFixed(1),
-    rounds:cfg.rounds,ab_rounds:st.abData.length,sim:SIM.on});
+    rounds:cfg.rounds,ab_rounds:st.abData.length,sim:SIM.on,
+    acc1:acc1==null?null:acc1,raw:st.raw==null?null:st.raw,hz:st.hz||0,partial:st.partial||0,mode:cfg.mode||"custom"});
 }
 
 function buildChart(P,recN,curN){
@@ -908,7 +993,7 @@ $("calCancel").addEventListener("click",()=>$("calib").classList.remove("on"));
 $("calGo").addEventListener("click",()=>{
   cfg.dpi=clamp(parseFloat($("dpi").value)||800,100,32000);
   st.mode="calib"; st.calSum=0; $("calPx").textContent="0"; showCalStep(2);
-  $("calib").requestPointerLock?$("calib").requestPointerLock():document.body.requestPointerLock();
+  lockPointer($("calib").requestPointerLock?$("calib"):document.body);
 });
 $("calRetry").addEventListener("click",()=>{st.calSum=0;showCalStep(1);});
 $("calApply").addEventListener("click",()=>{
@@ -927,6 +1012,23 @@ sl("target","vTarget",v=>(v/10).toFixed(1)+"°");
 sl("ab","vAb",v=>v==="0"||v===0?"выкл":v);
 sl("range","vRange",v=>"×"+(v/10).toFixed(1));
 if(!window.matchMedia("(pointer: fine)").matches){$("gate").style.display="block";}
+
+/* С1-и5 (Р3: время за ПК платное): два пресета. «Быстро» — по умолчанию,
+   8 раундов × 8 фликов + 2 контрольных, ≈3 мин; «Точно» — прежние 14 × 12 +
+   4, ≈7 мин. Ползунки под «Параметрами сессии» остаются; сдвинул — «свои
+   параметры». Оценка минут считается из параметров, не зашита. */
+const MODES={quick:{rounds:8,flicks:8,ab:2,range:20},precise:{rounds:14,flicks:12,ab:4,range:26}};
+function estMin(){const r=+$("rounds").value,f=+$("flicks").value,a=+$("ab").value;return Math.max(1,Math.round(((r+a)*(cfg.warmup+f)*1.35+(r+a)*3)/60));}
+function paintMode(){
+  const cur=Object.keys(MODES).find(k=>Object.entries(MODES[k]).every(([id,v])=>+$(id).value===v))||null;
+  document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("on",b.dataset.mode===cur));
+  $("modeEst").textContent=(cur?"":"свои параметры · ")+"≈ "+estMin()+" мин";
+  cfg.mode=cur||"custom";
+}
+function setMode(k){for(const [id,v] of Object.entries(MODES[k])){$(id).value=v;$(id).dispatchEvent(new Event("input"));}paintMode();}
+document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode)));
+["rounds","flicks","ab","range"].forEach(id=>$(id).addEventListener("input",paintMode));
+setMode(new URLSearchParams(location.search).get("mode")==="precise"?"precise":"quick"); // ?mode= — шелл/тест
 
 /* ═══ 14:48 мост (С0, SENS.md) ═══
    aim.html?embed=1&dpi=&sens=&lang=  — открыт iframe'ом из студии сенсы шелла:
@@ -955,7 +1057,7 @@ if(EMBED)document.body.classList.add("embed");
    обучения — то, что вычитает детренд), шум лог-нормальный. Math.random
    подменяется seeded PRNG (mulberry32), чтобы прогон был воспроизводим. */
 const SIM={on:Q.get("sim")==="1", seed:parseInt(Q.get("seed")||"1"), optK:parseFloat(Q.get("simopt")||"1.6"),
-  a:110, b0:95, k:8, sd:0.14, learn:0.12, rtm:210, rts:30, opt:1};
+  a:110, b0:95, k:8, sd:0.14, learn:0.12, rtm:210, rts:30, opt:1, stop:parseInt(Q.get("simstop")||"0")};
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 function gauss(){let u=0,v=0;while(u===0)u=Math.random();while(v===0)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
 function simFlick(N,id,progress){
@@ -964,7 +1066,8 @@ function simFlick(N,id,progress){
   const skill=1-SIM.learn*progress;
   const mt=Math.max(80,(SIM.a+b*id)*skill*Math.exp(gauss()*SIM.sd));
   const rt=Math.max(120,SIM.rtm+gauss()*SIM.rts);
-  return {mt,rt};
+  const miss1=Math.random()<0.12+0.25*Math.min(1,x*x*6); // первый выстрел чаще мимо вдали от оптимума
+  return {mt,rt,miss1};
 }
 function simRound(){
   if(st.roundIndex>=totalRounds()){showResults();return;}
@@ -977,11 +1080,12 @@ function simRound(){
   while(st.queue.length){
     const fi=st.queue.pop(), f=SESSION.set[fi];
     const id=Math.log2(f.d/(cfg.targetRad*2)+1);
-    const {mt,rt}=simFlick(st.testN,id,progress);
-    st.flickLog.push({mt,rt,id,fi}); st.hits++;
+    const {mt,rt,miss1}=simFlick(st.testN,id,progress);
+    st.flickLog.push({mt,rt,id,fi,miss1}); st.hits++;
   }
   st.running=false;
   endRound(); // запись раунда, A/B-очередь, экран результата в конце
+  if(SIM.stop&&st.roundIndex>=SIM.stop&&st.roundIndex<totalRounds()){setTimeout(exitSession,0);return;} // ?simstop=N: гость вышел посреди сессии
   if(st.roundIndex<totalRounds())setTimeout(simRound,0);
 }
 if(SIM.on){
