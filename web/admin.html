@@ -826,6 +826,8 @@
           <input id="set_afk" class="input" type="number" min="0" max="240">
           <label class="muted" for="set_mousedpi">Мышь клуба: DPI (0 — не задан; задан — сенса гостя пересчитывается под неё, cm/360 тот же)</label>
           <input id="set_mousedpi" class="input" type="number" min="0" max="32000" step="50">
+          <label class="muted" for="set_mousepad">Коврик клуба: ширина, см (0 — не задана; эталон длины для замера DPI свайпом в студии сенсы, иначе гостю предложат лист A4)</label>
+          <input id="set_mousepad" class="input" type="number" min="0" max="200">
           <label class="muted" for="set_bkbuf">Бронь: буфер посадки до чужой брони, мин</label>
           <input id="set_bkbuf" class="input" type="number" min="0" max="240">
           <label class="muted" for="set_bklock">Бронь: за сколько минут ПК придержан под гостя</label>
@@ -4107,6 +4109,12 @@ function paintGuests(d){
        ${repKpi('Пропали', lost.count, undefined,
                 {title:'не были ' + th.lost_days + ' дн и дольше на конец периода; забаненные не в счёт'})}
      </div>
+     <div class="kpis">
+       ${repKpi('Калибровок сенсы', (d.aim || {}).sessions || 0, (d.aim || {}).delta,
+                {title:'прогоны AI-калибратора за период (С4, SENS.md): ' + (((d.aim || {}).guests || 0) + ' гостей'), was:(d.aim || {}).prev_sessions})}
+       ${repKpi('Гостей калибровали', (d.aim || {}).guests || 0, undefined,
+                {title:'уникальных гостей, прошедших калибровку хотя бы раз за период'})}
+     </div>
      <div class="sect">Топ по деньгам</div>
      ${repTable(['Гость','Внесено','Сессий','Наиграно'], (d.top_money||[]).map(u =>
         `${row(u)}<td><b>${esc(u.nickname||'—')}</b></td><td>${fmtPLN(u.deposited_pln)} zł</td>
@@ -5099,6 +5107,7 @@ async function renderSettings(){
     document.getElementById('set_pause').value = d.settings.pause_limit_min;
     document.getElementById('set_afk').value = d.settings.afk_stop_min;
     document.getElementById('set_mousedpi').value = d.settings.mouse_dpi ?? 0; // С2-и1 (SENS.md)
+    document.getElementById('set_mousepad').value = d.settings.mousepad_cm ?? 0; // С4-и3 (SENS.md)
     document.getElementById('set_bkbuf').value = d.settings.booking_buffer_min;
     document.getElementById('set_bklock').value = d.settings.booking_lock_min;
     document.getElementById('set_bkminlvl').value = d.settings.booking_min_level;
@@ -5130,6 +5139,7 @@ async function saveSettings(){
     pause_limit_min: parseInt(document.getElementById('set_pause').value),
     afk_stop_min: parseInt(document.getElementById('set_afk').value),
     mouse_dpi: parseInt(document.getElementById('set_mousedpi').value) || 0, // С2-и1
+    mousepad_cm: parseInt(document.getElementById('set_mousepad').value) || 0, // С4-и3
     booking_buffer_min: parseInt(document.getElementById('set_bkbuf').value),
     booking_lock_min: parseInt(document.getElementById('set_bklock').value),
     booking_min_level: parseInt(document.getElementById('set_bkminlvl').value),

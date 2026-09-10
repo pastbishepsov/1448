@@ -153,6 +153,8 @@ func main() {
 		me.GET("/economy", handleGetEconomy)                              // ← настоящий (калькулятор + ранг)
 		me.GET("/sensitivity", handleGetSensitivity)                      // ← настоящий (профиль сенсы)
 		me.PUT("/sensitivity", handlePutSensitivity)                      // ← настоящий
+		me.GET("/aim-sessions", handleGetAimSessions)                     // история калибровок + тёплый старт (С4-и1)
+		me.POST("/aim-sessions", handlePostAimSession)                    // прогон AI-калибратора (С4-и1)
 		me.POST("/chat", handleGuestChatPost)                             // чат/вызов админа (Б2)
 		me.GET("/chat", handleGuestChatList)                              // переписка, поллинг (Б3)
 		me.GET("/chat/unread", handleGuestChatUnread)                     // бэйдж непрочитанного (Б3)
@@ -168,6 +170,7 @@ func main() {
 
 		// Лидерборд (за JWT)
 		v1.GET("/leaderboard", authMiddleware(), handleLeaderboard)
+		v1.GET("/aim-rating", authMiddleware(), handleAimRating) // аим-рейтинг клуба по throughput (С4-и4)
 
 		clubs := v1.Group("/clubs")
 		clubs.GET("", handleGetClubs)                                      // ← настоящий

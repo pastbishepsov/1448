@@ -98,6 +98,7 @@ func handleGetEconomy(c *gin.Context) {
 		// С2-и1 (SENS.md, Р2): DPI мыши клуба — студия сенсы на клубном ПК
 		// подставляет его и пересчитывает сохранённую сенсу; 0 = не задан
 		"mouse_dpi":    settingInt64("mouse_dpi", mouseDPIDef),
+		"mousepad_cm":  settingInt64("mousepad_cm", mousepadCmDef), // С4-и3: ширина коврика клуба — эталон для замера DPI свайпом; 0 = не задана
 		"hours_played": hours,
 		"rank": gin.H{
 			"level": rank.Level, "name": rank.Name, "min_hours": rank.MinHours,

@@ -708,9 +708,15 @@ func handleReportGuests(c *gin.Context) {
 		lostList = append(lostList, gin.H{"user_id": r.UserID, "nickname": nick[r.UserID], "last_visit": r.LastAt})
 	}
 
+	// С4-и1 (SENS.md): сколько раз гости калибровали сенсу — счётчик
+	// использования AI-калибратора (синтетические прогоны стенда не в счёт)
+	aimN, aimU := aimReportCounts(p.From, p.To)
+	aimPrevN, _ := aimReportCounts(prev.From, prev.To)
+
 	c.JSON(http.StatusOK, gin.H{
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
+		"aim": gin.H{"sessions": aimN, "guests": aimU, "prev_sessions": aimPrevN, "delta": pctDelta(float64(aimN), float64(aimPrevN))},
 		"delta": gin.H{
 			"unique":    pctDelta(float64(cur.Unique), float64(old.Unique)),
 			"sessions":  pctDelta(float64(cur.Sessions), float64(old.Sessions)),

@@ -1426,6 +1426,20 @@ const SH_RU = {
   sens_calib_confirmed: "<br><b style=\"color:var(--green)\">Калибратор подтвердил твою сенсу {s}</b> (CS2 · {cm} см/360) — оставайся на ней.",
   aim_close: "✕ Закрыть калибратор",
   toast_calib_applied: "Сенса калибратора подставлена: CS2 {s}",
+  sens_hist_title: "История калибровок",
+  sens_hist_empty: "Пока пусто — первая калибровка появится здесь, а следующая начнёт с её оптимума.",
+  sens_hist_stats: "Калибровок: {n} · реакция {a} → {b} мс · лучший темп {tp} бит/с",
+  sens_hist_found: "нашёл", sens_hist_confirmed: "подтвердил", sens_hist_noab: "без A/B", sens_hist_partial: "прервано",
+  sens_hist_rt: "{ms} мс", sens_coach_over: "перелёт", sens_coach_under: "недолёт",
+  sens_cm_short: "см", sens_ms_short: "мс", sens_bits_short: "бит/с",
+  sens_warm_line: "Следующая калибровка начнёт с {cm} см/360 — тёплый старт, раундов меньше.",
+  sens_rating_me: "Аим-рейтинг клуба: #{r} из {t} · {tp} бит/с",
+  sens_rating_none: "В аим-рейтинге клуба ты появишься после первой полной калибровки.",
+  sens_dpi_measure: "Измерить DPI свайпом",
+  toast_dpi_measured: "DPI измерен: ≈{r} → {d}",
+  top_aim_title: "Аим-рейтинг · бит/с",
+  top_aim_empty: "Пока никто не калибровал сенсу — будь первым.",
+  top_aim_me: "Твоё место в аим-рейтинге: {n}",
   toast_sens_saved: "💾 Сенса сохранена — подставится на любом ПК клуба",
   toast_copied: "📋 Скопировано: {v}",
   toast_value: "Значение: {v}",
@@ -1942,6 +1956,20 @@ const SH_EN = {
   sens_calib_confirmed: "<br><b style=\"color:var(--green)\">The calibrator confirmed your sens {s}</b> (CS2 · {cm} cm/360) — keep it.",
   aim_close: "✕ Close calibrator",
   toast_calib_applied: "Calibrator sens applied: CS2 {s}",
+  sens_hist_title: "Calibration history",
+  sens_hist_empty: "Empty so far — your first calibration will show up here, and the next one starts from its optimum.",
+  sens_hist_stats: "Calibrations: {n} · reaction {a} → {b} ms · best throughput {tp} bit/s",
+  sens_hist_found: "found", sens_hist_confirmed: "confirmed", sens_hist_noab: "no A/B", sens_hist_partial: "interrupted",
+  sens_hist_rt: "{ms} ms", sens_coach_over: "overshoot", sens_coach_under: "undershoot",
+  sens_cm_short: "cm", sens_ms_short: "ms", sens_bits_short: "bit/s",
+  sens_warm_line: "The next calibration starts from {cm} cm/360 — a warm start with fewer rounds.",
+  sens_rating_me: "Club aim rating: #{r} of {t} · {tp} bit/s",
+  sens_rating_none: "You will appear in the club aim rating after your first full calibration.",
+  sens_dpi_measure: "Measure DPI by swipe",
+  toast_dpi_measured: "DPI measured: ≈{r} → {d}",
+  top_aim_title: "Aim rating · bit/s",
+  top_aim_empty: "Nobody has calibrated yet — be the first.",
+  top_aim_me: "Your place in the aim rating: {n}",
   toast_sens_saved: "💾 Sens saved — it will apply on any club PC",
   toast_copied: "📋 Copied: {v}",
   toast_value: "Value: {v}",
@@ -2458,6 +2486,20 @@ const SH_PL = {
   sens_calib_confirmed: "<br><b style=\"color:var(--green)\">Kalibrator potwierdził twoją czułość {s}</b> (CS2 · {cm} cm/360) — zostań przy niej.",
   aim_close: "✕ Zamknij kalibrator",
   toast_calib_applied: "Czułość z kalibratora podstawiona: CS2 {s}",
+  sens_hist_title: "Historia kalibracji",
+  sens_hist_empty: "Na razie pusto — pierwsza kalibracja pojawi się tutaj, a następna zacznie od jej optimum.",
+  sens_hist_stats: "Kalibracji: {n} · reakcja {a} → {b} ms · najlepsze tempo {tp} bit/s",
+  sens_hist_found: "znalazł", sens_hist_confirmed: "potwierdził", sens_hist_noab: "bez A/B", sens_hist_partial: "przerwano",
+  sens_hist_rt: "{ms} ms", sens_coach_over: "przelot", sens_coach_under: "niedolot",
+  sens_cm_short: "cm", sens_ms_short: "ms", sens_bits_short: "bit/s",
+  sens_warm_line: "Następna kalibracja zacznie od {cm} cm/360 — ciepły start, mniej rund.",
+  sens_rating_me: "Aim-ranking klubu: #{r} z {t} · {tp} bit/s",
+  sens_rating_none: "W aim-rankingu klubu pojawisz się po pierwszej pełnej kalibracji.",
+  sens_dpi_measure: "Zmierz DPI swipem",
+  toast_dpi_measured: "DPI zmierzone: ≈{r} → {d}",
+  top_aim_title: "Aim-ranking · bit/s",
+  top_aim_empty: "Nikt jeszcze nie kalibrował czułości — bądź pierwszy.",
+  top_aim_me: "Twoje miejsce w aim-rankingu: {n}",
   toast_sens_saved: "💾 Czułość zapisana — podstawi się na każdym PC klubu",
   toast_copied: "📋 Skopiowano: {v}",
   toast_value: "Wartość: {v}",
@@ -3167,16 +3209,17 @@ function enterShell(){
 
 async function loadAll(){
   try{
-    const [m, cs, tl, ac, lb, ss, bk, ec, sp] = await Promise.all([
+    const [m, cs, tl, ac, lb, ss, bk, ec, sp, ar] = await Promise.all([
       api('/me'), api('/me/cases'), api('/me/talents'),
       api('/me/achievements'), api('/leaderboard'), api('/me/sessions'),
       api('/me/bookings'), api('/me/economy'), api('/me/sensitivity'),
+      api('/aim-rating').catch(() => null), // С4-и4: аим-рейтинг; старый сервер без ручки — не беда
     ]);
     const prevLvl = me ? me.level : null;
     me = m.user || m;
     paintPwdGate(); // Е0-и5в: флаг мог появиться, пока гость сидел за ПК
     if (applyProfileLang(me)) return; // Г9-и2: язык приехал из аккаунта
-    cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb;
+    cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb; aimRating = ar;
     sessions = ss.sessions || [];
     bookingDeadline = ss.booking_deadline || null; // Г3: ПК уйдёт под бронь
     packMinutesHere = ss.pack_minutes || 0;        // Е2-и5: минуты пакета ЭТОЙ зоны
@@ -4727,7 +4770,7 @@ function renderSide(){
         <div class="xp">${fmt(r.xp_total)} XP</div>
       </div>`).join('');
     const myRank = leaderboard.me && leaderboard.me.rank ? `<div class="muted" style="text-align:center; margin-top:10px">${T('top_my_place', {n: '<b class="cyan-t">#' + leaderboard.me.rank + '</b>'})}</div>` : '';
-    el.innerHTML = `<div class="card">${rows || '<div class="muted">' + esc(STR.top_empty) + '</div>'}</div>` + myRank;
+    el.innerHTML = `<div class="card">${rows || '<div class="muted">' + esc(STR.top_empty) + '</div>'}</div>` + myRank + aimRatingHtml(); // С4-и4
   }
   if (curTab === 'ach'){
     if (!achievements){ el.innerHTML = ''; return; }
@@ -4821,6 +4864,7 @@ function renderSide(){
   if (curTab === 'sens'){
     el.innerHTML = renderSens();
     loadMouseInfo();
+    aimHistoryLoad(); // С4-и1: история калибровок — при открытии студии
     return;
   }
   if (curTab === 'book'){
@@ -5064,7 +5108,8 @@ function renderSens(){
       : `<input class="input" id="sensDpi" type="number" min="100" max="32000" step="50" value="${sensDPI}" oninput="sensUpdate()" style="margin:4px 0 8px">
     <div class="presets">
       ${[400,800,1600,3200].map(d=>`<button class="${sensDPI===d?'on':''}" onclick="setDpiPreset(${d})">${d}</button>`).join('')}
-    </div>`}
+    </div>
+    <button class="btn ghost slim" style="width:100%; margin-top:8px" onclick="aimMeasureDPI()">${esc(STR.sens_dpi_measure)}</button>`}
     ${clubMouseDPI() > 0 ? `<label class="muted" style="display:flex; align-items:center; gap:8px; font-size:12px; margin-top:8px; cursor:pointer">
       <input type="checkbox" id="sensOwn" ${sensOwnMouse ? 'checked' : ''} onchange="sensOwnToggle(this.checked)"> ${esc(STR.sens_own_mouse)}</label>
     ${sensOwnMouse ? `<div class="muted" style="font-size:12px; margin-top:4px">${esc(STR.sens_own_hint)}</div>` : ''}` : ''}
@@ -5077,6 +5122,7 @@ function renderSens(){
     </div>
     <button class="btn slim" style="width:100%" onclick="openAimCal()">${esc(STR.sens_ai_btn)}</button>
   </div>
+  ${aimHistoryHtml()}
 
   <div class="card">
     <div class="muted" style="font-size:12px; margin-bottom:8px">${STR.sens_step2}</div>
@@ -5305,6 +5351,79 @@ function sensSyncStatus(){
    «нашёл N (без слепой проверки)» — раньше студия предлагала подставить и то,
    что A/B забраковал. */
 let aimLast = null;
+/* С4-и1/и4 (SENS.md): история калибровок и аим-рейтинг с сервера. История
+   грузится при открытии студии (не в loadAll — она нужна только там), рейтинг —
+   вместе с лидербордом. Старый сервер без ручек не ломает шелл: ошибки глотаем. */
+let aimHist = null, aimHistLoaded = false, aimRating = null;
+async function aimHistoryLoad(force){
+  if (aimHistLoaded && !force) return;
+  try{ aimHist = await api('/me/aim-sessions'); aimHistLoaded = true; }catch(e){ return; }
+  if (curTab === 'sens') renderSide();
+}
+// прогон калибратора — в аккаунт: история, тёплый старт, рейтинг
+async function aimPostResult(d){
+  const num = (v, k) => { const n = +(+v).toFixed(k); return isFinite(n) ? n : 0; };
+  const body = {sens: num(d.sens, 3), dpi: +d.dpi || sensDPI, cur: num(d.cur, 3), lo: num(d.lo, 3), hi: num(d.hi, 3),
+    conf: String(d.conf || 'low'), verdict: String(d.verdict || 'none'), gain_pct: num(d.gain_pct, 1),
+    acc1: d.acc1 == null ? null : Math.round(+d.acc1), rt_ms: Math.round(+d.rt_ms || 0), mt_ms: Math.round(+d.mt_ms || 0),
+    tp: num(d.tp, 2), mode: String(d.mode || 'custom'), rounds: +d.rounds || 0, ab_rounds: +d.ab_rounds || 0,
+    partial: +d.partial || 0, raw: d.raw == null ? null : !!d.raw, hz: +d.hz || 0, coach: String(d.coach || 'none'),
+    warm: !!d.warm, lang: String(d.lang || LANG), sim: !!d.sim};
+  try{ await api('/me/aim-sessions', {method:'POST', body: JSON.stringify(body)}); }catch(e){ return; }
+  aimHistoryLoad(true);
+  try{ aimRating = await api('/aim-rating'); if (curTab === 'top') renderSide(); }catch(e){}
+}
+function aimWhen(iso){
+  const d = new Date(iso);
+  return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+// карточка «История калибровок» в студии: сводка «реакция 210 → 185 мс», 5 последних, тёплый старт, место в рейтинге
+function aimHistoryHtml(){
+  if (!aimHist) return '';
+  const items = (aimHist.items || []).slice(0, 5), st = aimHist.stats || {}; // sim-прогоны стенда видны с пометкой, в сводку и warm сервер их не берёт
+  const rows = items.map(r => {
+    const tag = (r.partial > 0 ? STR.sens_hist_partial : (r.verdict === 'cur' || r.verdict === 'tie') ? STR.sens_hist_confirmed : r.verdict === 'rec' ? STR.sens_hist_found : STR.sens_hist_noab) + (r.sim ? ' · sim' : '');
+    const shown = (r.verdict === 'cur' || r.verdict === 'tie') ? [r.cur, r.cur_cm] : [r.sens, r.cm360];
+    const coach = r.coach === 'over' ? ' · ' + esc(STR.sens_coach_over) : r.coach === 'under' ? ' · ' + esc(STR.sens_coach_under) : '';
+    return `<div class="sg-row"><span class="muted" style="font-size:12px; width:78px">${aimWhen(r.at)}</span>
+      <span class="sg-name">${esc(tag)} <b class="cnum">${(+shown[0]).toFixed(2)}</b> <span class="muted" style="font-weight:400">@${r.dpi} · ${(+shown[1]).toFixed(1)} ${esc(STR.sens_cm_short)}</span></span>
+      <span class="sg-edpi">${r.rt_ms ? T('sens_hist_rt', {ms: r.rt_ms}) : ''}${coach}</span></div>`;
+  }).join('');
+  const stats = st.count ? `<div class="muted" style="font-size:12px; margin-bottom:8px">${T('sens_hist_stats', {n: st.count, a: st.first_rt || '—', b: st.last_rt || '—', tp: (+st.best_tp || 0).toFixed(1)})}</div>` : '';
+  const warm = aimHist.warm && +aimHist.warm.cm360 > 0 ? `<div class="muted" style="font-size:12px; margin-top:8px">${T('sens_warm_line', {cm: (+aimHist.warm.cm360).toFixed(1)})}</div>` : '';
+  const me_ = aimRating && aimRating.me;
+  const rating = me_ && me_.rank ? `<div class="muted" style="font-size:12px; margin-top:4px">${T('sens_rating_me', {r: me_.rank, t: me_.total, tp: (+me_.tp).toFixed(1)})}</div>` : (items.length ? '' : `<div class="muted" style="font-size:12px; margin-top:4px">${esc(STR.sens_rating_none)}</div>`);
+  return `<div class="card">
+    <div style="font-weight:800; margin-bottom:6px">${esc(STR.sens_hist_title)}</div>
+    ${stats}${rows || `<div class="muted" style="font-size:12px">${esc(STR.sens_hist_empty)}</div>`}${warm}${rating}
+  </div>`;
+}
+// вкладка «Топ»: аим-рейтинг клуба по throughput (бит/с) под лидербордом XP
+function aimRatingHtml(){
+  if (!aimRating) return '';
+  const rows = (aimRating.top || []).map(r => `
+      <div class="lb-row ${r.is_me?'me':''}">
+        <div class="rk ${r.rank<=3?'top3':''}">#${r.rank}</div>
+        <div class="av">${AVATARS[(r.avatar_id||1)-1]||'😎'}</div>
+        <div class="nk">${esc(r.nickname || '—')}</div>
+        <div class="xp">${r.acc1 != null ? r.acc1 + '% · ' : ''}${r.rt_ms ? r.rt_ms + ' ' + esc(STR.sens_ms_short) + ' · ' : ''}<b class="cnum" style="color:var(--acc)">${(+r.tp).toFixed(1)}</b> ${esc(STR.sens_bits_short)}</div>
+      </div>`).join('');
+  const my = aimRating.me && aimRating.me.rank && !(aimRating.top || []).some(r => r.is_me) ? `<div class="muted" style="text-align:center; margin-top:10px">${T('top_aim_me', {n: '<b class="cyan-t">#' + aimRating.me.rank + '</b>'})}</div>` : '';
+  return `<div class="sec-h" style="margin-top:14px"><h2 style="font-size:15px">${esc(STR.top_aim_title)}</h2></div>
+    <div class="card">${rows || '<div class="muted">' + esc(STR.top_aim_empty) + '</div>'}</div>` + my;
+}
+// С4-и3: замер DPI свайпом — калибратор в режиме measure, эталон — коврик клуба (mousepad_cm) или A4
+function aimMeasureDPI(){
+  const ov = document.getElementById('aimOverlay');
+  if (!ov) return;
+  aimClose();
+  const f = document.createElement('iframe');
+  f.id = 'aimFrame'; f.title = 'aim';
+  f.setAttribute('allow', 'pointer-lock; fullscreen');
+  const q = new URLSearchParams({embed: 1, measure: 1, lang: LANG, pad_cm: (economy && +economy.mousepad_cm > 0) ? +economy.mousepad_cm : ''});
+  f.src = 'aim.html?' + q;
+  ov.appendChild(f); ov.classList.add('show');
+}
 function aimResult(){ return aimLast; }
 function aimResultLine(){
   const r = aimLast; if (!r) return '';
@@ -5325,6 +5444,7 @@ function aimQuery(){
   const s = sensFrom === 'cs2' ? sensVal : sensConvert(sensGame(sensFrom), sensGame('cs2'), sensVal);
   const q = new URLSearchParams({embed: 1, dpi: sensDPI, sens: s > 0 ? +s.toFixed(3) : '', lang: LANG});
   const asp = sensAspectParam(); if (asp) q.set('aspect', asp); // С2-и2: разрешение CS2 с этого ПК
+  const wc = aimHist && aimHist.warm && +aimHist.warm.cm360; if (wc > 0) q.set('warm_cm', (+wc).toFixed(2)); // С4-и1: тёплый старт
   return q;
 }
 function aimOpen(){
@@ -5357,11 +5477,17 @@ window.addEventListener('message', ev => {
       cur: num(d.cur, 2), cur_cm: num(d.cur_cm, 1), conf: String(d.conf || ''),
       verdict: ['rec','cur','tie','none'].includes(d.verdict) ? d.verdict : 'none', at: Date.now()};
     if (curTab === 'sens') renderSide();
+    aimPostResult(d); // С4-и1: в историю аккаунта (и в аим-рейтинг)
   } else if (d.type === 'aim_save'){
     if (!aimLast) return;
     if (aimLast.verdict !== 'cur' && aimLast.verdict !== 'tie') aimApply(); // подтверждённую менять нечего
     aimClose();
     sensSave();
+  } else if (d.type === 'aim_dpi' && +d.dpi > 0){ // С4-и3: DPI измерен свайпом
+    sensDPI = Math.round(+d.dpi); lsSet('1448_dpi', sensDPI);
+    aimClose();
+    if (curTab === 'sens') renderSide();
+    toast(T('toast_dpi_measured', {d: sensDPI, r: Math.round(+d.dpi_raw || sensDPI)}));
   } else if (d.type === 'aim_close'){
     aimClose();
   }

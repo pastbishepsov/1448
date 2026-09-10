@@ -25,11 +25,12 @@ import (
 )
 
 const (
-	minDPI      = 100
-	maxDPI      = 32000
-	maxSensVal  = 1000.0
-	maxSensGame = 64 // ключей в профиле
-	mouseDPIDef = 0  // С2-и1: 0 = DPI мыши клуба не задан — пересчёта нет
+	minDPI        = 100
+	maxDPI        = 32000
+	maxSensVal    = 1000.0
+	maxSensGame   = 64 // ключей в профиле
+	mouseDPIDef   = 0  // С2-и1: 0 = DPI мыши клуба не задан — пересчёта нет
+	mousepadCmDef = 0  // С4-и3: 0 = ширина коврика клуба не задана — студия предложит лист A4
 )
 
 // validateSensitivity — чистая проверка профиля (тестируется отдельно).

@@ -200,6 +200,16 @@
   .rbtns .btn{flex:1; width:auto; padding:13px; font-size:14px; border-radius:12px}
   .rbtns #saveBtn{flex:1.6}
   .copied{border-color:var(--acc)!important; color:var(--acc)!important}
+  /* С4-и2: плитка коуча — перелёт/недолёт подсвечены акцентом, «поровну» нейтральна */
+  .stat.coach.over, .stat.coach.under{border-color:rgba(255,39,64,.35)}
+  /* С4-и1: строка тёплого старта под режимами */
+  .warmbox{display:none; align-items:center; gap:10px; font-size:12px; color:var(--dim); line-height:1.5; margin:-4px 0 14px; padding:10px 12px; border-radius:12px; background:rgba(255,39,64,.06); border:1px solid rgba(255,39,64,.25)}
+  .warmbox.on{display:flex}
+  .warmbox label{display:flex; align-items:center; gap:6px; white-space:nowrap; cursor:pointer; color:var(--txt); font-weight:600}
+  .warmbox input{accent-color:var(--acc); width:14px; height:14px}
+  /* С4-и3: экран замера DPI */
+  #measure .mres{font-size:30px; font-weight:900; color:var(--acc); margin:14px 0 6px; text-align:center; font-variant-numeric:tabular-nums}
+  #measure .mstep{display:none} #measure .mstep.on{display:block}
 
   /* ---------- calib overlay ---------- */
   #calib{position:fixed; inset:0; background:rgba(4,4,6,.9); display:none; z-index:20; align-items:center; justify-content:center}
@@ -272,6 +282,7 @@
         </div>
         <div class="sub" id="modeEst"></div>
       </div>
+      <div class="warmbox" id="warmbox"><span id="warmText"></span><label><input id="warmOn" type="checkbox" checked> <span data-t="warm_use"></span></label></div>
 
       <details>
         <summary data-t="adv"></summary>
@@ -320,6 +331,40 @@
 <!-- ===================== RESULTS ===================== -->
 <section id="results" class="screen">
   <div class="wrap"><div class="inner" id="resultsInner"></div></div>
+</section>
+
+<!-- ===================== MEASURE (С4-и3: DPI свайпом, ?measure=1) ===================== -->
+<section id="measure" class="screen">
+  <div class="center">
+    <div class="card">
+      <div class="head" id="mHead"><h1 data-t="m_title"></h1></div>
+      <p class="lede" data-t="m_lede"></p>
+      <div class="mstep on" id="ms1">
+        <div class="field">
+          <label data-t="m_len"></label>
+          <div class="modes" id="mLens"></div>
+          <div class="sub" style="margin-top:9px; display:flex; align-items:center; gap:8px"><input id="mCustom" type="number" min="5" max="100" step="0.5" value="21" style="max-width:120px"> <span data-t="m_custom"></span></div>
+        </div>
+        <div class="warnbox" id="mWarn1" style="display:none"></div>
+        <p class="notice" data-t="m_hint" style="margin-top:0"></p>
+        <button class="btn cta" id="mGo" data-t="m_go"></button>
+        <button class="btn ghost slim cta" id="mClose1" data-t="m_close"></button>
+      </div>
+      <div class="mstep" id="ms2">
+        <h3 data-t="m_moving" style="text-align:center; font-size:17px; margin:8px 0"></h3>
+        <div class="mres"><span id="mPx">0</span> <small style="font-size:13px; color:var(--dim); font-weight:600" data-t="m_px"></small></div>
+        <div class="sub" id="mInput" style="text-align:center"></div>
+      </div>
+      <div class="mstep" id="ms3">
+        <div class="mres" id="mRes"></div>
+        <div class="sub" id="mResSub" style="text-align:center; margin-bottom:14px"></div>
+        <div class="warnbox" id="mWarn" style="display:none"></div>
+        <button class="btn cta" id="mUse" style="margin-top:6px"></button>
+        <button class="btn ghost slim cta" id="mRetry" data-t="m_retry"></button>
+        <button class="btn ghost slim cta" id="mClose3" data-t="m_close"></button>
+      </div>
+    </div>
+  </div>
 </section>
 
 <!-- ===================== CALIB ===================== -->
@@ -416,6 +461,19 @@ const AIM_RU={
   cal_h3:"Сколько сантиметров?", cal_p3:"Введи длину свайпа, которую ты отмерил.", cal_apply:"Применить", cal_retry:"Заново",
   rounds_gen:"раунд|раунда|раундов", rounds_dat:"раунду|раундам|раундам", rounds_loc:"раунде|раундах|раундах",
   ab_rounds:"контрольный раунд|контрольных раунда|контрольных раундов",
+  warm_line:"Тёплый старт: прошлый оптимум {s} ({cm} см) — поиск вокруг него, {n}.", warm_use:"тёплый старт", r_warm:"тёплый старт от {s}",
+  coach_title:"Коуч · первый выстрел", coach_counts:"перелёт {o} · недолёт {u} · вбок {s}",
+  coach_over:"Из {n} промахов первого выстрела {k} — перелёт: рука уводит дальше цели. Так бывает, когда сенса высоковата; в игре останавливай мышь чуть раньше, чем кажется нужным.",
+  coach_under:"Из {n} промахов первого выстрела {k} — недолёт: рука не доводит до цели. Признак низковатой сенсы или осторожного флика — доводи движение до конца одним рывком.",
+  coach_none:"Перелётов и недолётов поровну — промахи первого выстрела не про сенсу, а про точность остановки. Это тренируется: цель поменьше, спокойный флик.",
+  coach_few:"Промахов первого выстрела мало ({n}) — коучу не на чем судить. Хороший знак.",
+  m_title:"Замер DPI свайпом", m_lede:"DPI — сколько отсчётов мышь даёт на дюйм. Проведи мышью вправо на известное расстояние — и DPI посчитается: отсчёты ÷ см × 2,54. Нужен raw input (появится ✓); с акселерацией Windows цифра поплывёт.",
+  m_len:"Длина свайпа", m_pad:"Коврик клуба · {n} см", m_a4:"Лист A4, короткая сторона · 21 см", m_custom:"своя длина, см",
+  m_hint:"Поставь мышь у левого края, нажми «Замер», проведи вправо на всю длину ровно и нажми Esc.",
+  m_go:"Замер", m_moving:"Веди вправо… закончишь — Esc", m_px:"px пройдено",
+  m_result:"DPI ≈ {raw} → {dpi}", m_result_sub:"{px} отсчётов на {cm} см · {input}", m_use:"Использовать {dpi}", m_retry:"Ещё раз", m_close:"Закрыть",
+  m_short:"Слишком короткий свайп — попробуй ещё раз, на всю длину.",
+  m_noraw:"Без raw input замер приблизительный: выключи «Повышенную точность установки указателя» в Windows (студия сенсы умеет это сама) и повтори.",
 };
 const AIM_EN={
   title:"14:48 · Calibrator", title_h1:"Calibrator", eyebrow:"Sens by flicks · Bayesian search",
@@ -475,6 +533,19 @@ const AIM_EN={
   cal_h3:"How many centimetres?", cal_p3:"Enter the swipe length you measured.", cal_apply:"Apply", cal_retry:"Again",
   rounds_gen:"round|rounds", rounds_dat:"round|rounds", rounds_loc:"round|rounds",
   ab_rounds:"control round|control rounds",
+  warm_line:"Warm start: previous optimum {s} ({cm} cm) — searching around it, {n}.", warm_use:"warm start", r_warm:"warm start from {s}",
+  coach_title:"Coach · first shot", coach_counts:"overshoot {o} · undershoot {u} · sideways {s}",
+  coach_over:"{k} of {n} first-shot misses overshoot: the hand carries past the target. That happens when the sens is a bit high; in game, stop the mouse a touch earlier than feels right.",
+  coach_under:"{k} of {n} first-shot misses undershoot: the hand stops short of the target. A sign of a slightly low sens or a cautious flick — carry the motion through in one move.",
+  coach_none:"Overshoots and undershoots are even — first-shot misses are about stopping precision, not the sens. That trains: smaller target, calm flick.",
+  coach_few:"Few first-shot misses ({n}) — nothing for the coach to judge. A good sign.",
+  m_title:"DPI by swipe", m_lede:"DPI is how many counts the mouse reports per inch. Move the mouse right over a known distance and DPI follows: counts ÷ cm × 2.54. Needs raw input (a ✓ will show); with Windows acceleration the number drifts.",
+  m_len:"Swipe length", m_pad:"Club mousepad · {n} cm", m_a4:"A4 sheet, short side · 21 cm", m_custom:"custom length, cm",
+  m_hint:"Put the mouse at the left edge, press “Measure”, move right over the whole length in a straight line and press Esc.",
+  m_go:"Measure", m_moving:"Move right… when done — Esc", m_px:"px travelled",
+  m_result:"DPI ≈ {raw} → {dpi}", m_result_sub:"{px} counts over {cm} cm · {input}", m_use:"Use {dpi}", m_retry:"Again", m_close:"Close",
+  m_short:"Swipe too short — try again over the whole length.",
+  m_noraw:"Without raw input the measurement is approximate: turn off “Enhance pointer precision” in Windows (the sens studio can do it for you) and repeat.",
 };
 const AIM_PL={
   title:"14:48 · Kalibrator", title_h1:"Kalibrator", eyebrow:"Czułość po flickach · szukanie bayesowskie",
@@ -534,6 +605,19 @@ const AIM_PL={
   cal_h3:"Ile centymetrów?", cal_p3:"Wpisz długość swipe’u, którą odmierzyłeś.", cal_apply:"Zastosuj", cal_retry:"Od nowa",
   rounds_gen:"runda|rundy|rund", rounds_dat:"rundzie|rundach|rundach", rounds_loc:"rundzie|rundach|rundach",
   ab_rounds:"runda kontrolna|rundy kontrolne|rund kontrolnych",
+  warm_line:"Ciepły start: poprzednie optimum {s} ({cm} cm) — szukanie wokół niego, {n}.", warm_use:"ciepły start", r_warm:"ciepły start od {s}",
+  coach_title:"Coach · pierwszy strzał", coach_counts:"przelot {o} · niedolot {u} · w bok {s}",
+  coach_over:"{k} z {n} pudeł pierwszego strzału to przelot: ręka wynosi celownik za cel. Tak bywa, gdy czułość jest odrobinę za wysoka; w grze zatrzymuj mysz odrobinę wcześniej, niż się wydaje.",
+  coach_under:"{k} z {n} pudeł pierwszego strzału to niedolot: ręka nie dociąga do celu. Znak lekko za niskiej czułości albo ostrożnego flicka — doprowadzaj ruch do końca jednym pociągnięciem.",
+  coach_none:"Przelotów i niedolotów tyle samo — pudła pierwszego strzału to nie kwestia czułości, lecz precyzji zatrzymania. To się trenuje: mniejszy cel, spokojny flick.",
+  coach_few:"Mało pudeł pierwszego strzału ({n}) — coach nie ma czego oceniać. Dobry znak.",
+  m_title:"Pomiar DPI swipem", m_lede:"DPI to liczba impulsów myszy na cal. Przesuń mysz w prawo o znaną odległość — i DPI się policzy: impulsy ÷ cm × 2,54. Potrzebny raw input (pojawi się ✓); z akceleracją Windows liczba popłynie.",
+  m_len:"Długość swipe’u", m_pad:"Podkładka klubu · {n} cm", m_a4:"Kartka A4, krótszy bok · 21 cm", m_custom:"własna długość, cm",
+  m_hint:"Ustaw mysz przy lewej krawędzi, naciśnij „Pomiar”, przesuń w prawo przez całą długość po prostej i naciśnij Esc.",
+  m_go:"Pomiar", m_moving:"Prowadź w prawo… po zakończeniu — Esc", m_px:"px przebyte",
+  m_result:"DPI ≈ {raw} → {dpi}", m_result_sub:"{px} impulsów na {cm} cm · {input}", m_use:"Użyj {dpi}", m_retry:"Jeszcze raz", m_close:"Zamknij",
+  m_short:"Za krótki swipe — spróbuj jeszcze raz, przez całą długość.",
+  m_noraw:"Bez raw input pomiar jest przybliżony: wyłącz „Zwiększ precyzję wskaźnika” w Windows (studio czułości potrafi to samo) i powtórz.",
 };
 const AIM_LANGS={ru:AIM_RU,en:AIM_EN,pl:AIM_PL};
 const LANG=(()=>{let l=Q.get("lang"); if(!l){try{l=localStorage.getItem("1448_lang");}catch(e){}} l=String(l||"ru").toLowerCase(); return AIM_LANGS[l]?l:"ru";})();
@@ -633,7 +717,7 @@ const st={mode:"idle",running:false,phase:"idle",roundIndex:0,testN:1,S:0.022,
   activeAt:0,moveT:0,moveAcc:0,hits:0,misses:0,spawnTime:0,endingNormally:false,
   abMode:false,abQueue:[],abTotal:0,abData:[],
   calSum:0,lockTimer:null,missFlash:0};
-const SESSION={set:[],rtAll:[],mtAll:[],miss1All:[]};
+const SESSION={set:[],rtAll:[],mtAll:[],miss1All:[],missDir:[]}; // missDir — С4-и2: over|under|side на первый промах флика
 let yaw=0,pitch=0;
 let target={az:0,el:0};
 
@@ -721,6 +805,15 @@ function armFlick(){
   const now=performance.now();
   st.activeAt=now+120; st.spawnTime=st.activeAt;
   st.moveT=0; st.moveAcc=0; st.actualD=0; st.shots=0;
+  st.startYaw=yaw; st.startPitch=pitch; // С4-и2: откуда начался флик — ось для коуча
+}
+/* С4-и2: куда ушёл первый промах относительно оси флика (старт → цель):
+   проекция взгляда на ось; дальше цели на радиус — «перелёт», ближе — «недолёт»,
+   иначе промах вбок. Чистая функция: гоняется в смоуке без захвата. */
+function missDirection(sy,sp,ty,tp,cy,cp,rad){
+  const ax=wrap(ty-sy), ay=tp-sp, L2=ax*ax+ay*ay; if(L2<1e-6)return "side";
+  const p=(wrap(cy-sy)*ax+(cp-sp)*ay)/L2, tol=rad/Math.sqrt(L2);
+  return p>1+tol?"over":p<1-tol?"under":"side";
 }
 
 /* ---------------- render loop ---------------- */
@@ -789,7 +882,7 @@ function loop(){
 /* ---------------- input ---------------- */
 document.addEventListener("mousemove",e=>{
   if(document.pointerLockElement==null)return;
-  if(st.mode==="calib"){st.calSum+=Math.abs(e.movementX);$("calPx").textContent=Math.round(st.calSum);return;}
+  if(st.mode==="calib"){st.calSum+=Math.abs(e.movementX);const v=Math.round(st.calSum);$("calPx").textContent=v;if(MEASURE)$("mPx").textContent=v;return;}
   if(!st.running)return;
   yaw+=e.movementX*st.S;
   pitch=clamp(pitch-e.movementY*st.S,-70,70);
@@ -834,7 +927,7 @@ function shoot(now){
     }
     out="hit";
   } else {
-    if(st.phase==="scored")st.misses++;
+    if(st.phase==="scored"){st.misses++; if(st.shots===0)SESSION.missDir.push(missDirection(st.startYaw,st.startPitch,target.az,target.el,yaw,pitch,cfg.targetRad));}
     st.shots++; st.missFlash=1; out="miss";
   }
   updateHUD();
@@ -903,13 +996,14 @@ document.addEventListener("pointerlockerror",()=>{ if(rawTry)lockFallback(); });
 function paintInput(){
   const s=(st.raw===true?t("raw_on"):st.raw===false?t("raw_off"):"")+(st.hz?(st.raw==null?"":" · ")+st.hz+" "+t("u_hz"):"");
   const el=$("hInput"); if(el)el.textContent=s;
+  const m=$("mInput"); if(m)m.textContent=s; // С4-и3: то же на экране замера
 }
 document.addEventListener("pointerlockchange",()=>{
   const locked=document.pointerLockElement!=null;
   if(locked&&rawTry&&st.raw!==false){st.raw=true;paintInput();}
   if(st.mode==="calib"){
     if(!locked){ // user pressed Esc -> finalize swipe
-      if(st.calSum>40){showCalStep(3);} 
+      if(MEASURE)measureDone(); else if(st.calSum>40){showCalStep(3);}
     }
     return;
   }
@@ -1008,7 +1102,7 @@ function updateHUD(){
 }
 
 /* ---------------- screens ---------------- */
-function showScreen(id){["setup","session","results"].forEach(s=>$(s).classList.toggle("on",s===id));
+function showScreen(id){["setup","session","results","measure"].forEach(s=>$(s).classList.toggle("on",s===id));
   document.body.classList.toggle("in-session",id==="session");} // С3-и2: aurora-фон на арене выключен
 
 $("startBtn").addEventListener("click",()=>{
@@ -1023,9 +1117,14 @@ $("startBtn").addEventListener("click",()=>{
   cfg.stretch=$("stretch").checked;
   cfg.range=parseInt($("range").value)/10;
   if(!cfg.calibrated) cfg.pxPerCm=cfg.dpi/2.54; // 1:1 assumption
-  opt=new Optimizer(cfg.sens,cfg.range,cfg.rounds);
+  // С4-и1: тёплый старт — центр и диапазон поиска вокруг прошлого оптимума
+  // (в см/360 от сервера → sens при DPI этой сессии), раундов меньше; A/B в
+  // конце по-прежнему против ТЕКУЩЕЙ сенсы гостя.
+  cfg.warm=warmOn(); cfg.warmSens=cfg.warm?warmSensAt(cfg.dpi):0;
+  if(cfg.warm){cfg.rounds=warmRounds(cfg.rounds); cfg.range=Math.min(cfg.range,WARM_RANGE);}
+  opt=new Optimizer(cfg.warm?cfg.warmSens:cfg.sens,cfg.range,cfg.rounds);
   SESSION.set=buildFlickSet(cfg.flicks);
-  SESSION.rtAll=[]; SESSION.mtAll=[]; SESSION.miss1All=[];
+  SESSION.rtAll=[]; SESSION.mtAll=[]; SESSION.miss1All=[]; SESSION.missDir=[];
   st.partial=0; st.hz=0; st.hzBucket=-1; st.hzCount=0; st.lastShot=-1e9; st.shots=0;
   st.mode="game"; st.running=false; st.phase="idle"; st.roundIndex=0;
   st.abMode=false; st.abQueue=[]; st.abTotal=0; st.abData=[]; st.abRecN=0; st.abSkipClose=false;
@@ -1050,6 +1149,15 @@ function showResults(){
   const rel=P.rec.sd/Math.max(1e-6,(P.yMax-P.yMin));
   const conf=st.partial?"low":rel<0.07?"high":rel<0.16?"mid":"low";
   const acc1=SESSION.miss1All.length?Math.round(100*(1-mean(SESSION.miss1All))):null; // С1-и2
+  // С4-и2: коуч без LLM — куда уходит первый промах вдоль оси флика.
+  // Перелёт преобладает → сенса высоковата; недолёт → низковата; поровну —
+  // дело не в сенсе. Судим, когда промахов ≥ 4 и перевес ≥ 65 % при ≥ 3.
+  const md=SESSION.missDir, over=md.filter(d=>d==="over").length, under=md.filter(d=>d==="under").length, side=md.length-over-under;
+  let coach="none", coachText;
+  if(md.length<4)coachText=t("coach_few",{n:md.length});
+  else if(over>=3&&over>=0.65*(over+under)){coach="over";coachText=t("coach_over",{n:md.length,k:over});}
+  else if(under>=3&&under>=0.65*(over+under)){coach="under";coachText=t("coach_under",{n:md.length,k:under});}
+  else coachText=t("coach_none");
   // reaction / motor split + throughput
   const avgRT=SESSION.rtAll.length?Math.round(mean(SESSION.rtAll)):0;
   const avgMT=SESSION.mtAll.length?Math.round(mean(SESSION.mtAll)):0;
@@ -1093,7 +1201,7 @@ function showResults(){
   const inputNote=st.raw===true?t("raw_on"):st.raw===false?t("raw_off"):t("raw_none");
   $("resultsInner").innerHTML=`
     <div class="rhead">${LOGO}<h1>${t("r_title")}</h1></div>
-    <p class="rsub">${st.partial?`<span style="color:var(--acc)">${t("r_partial",{n:pl(st.partial,"rounds_loc"),m:cfg.rounds})}</span> · `:`${t("r_rounds",{n:pl(cfg.rounds,"rounds_gen")})} · `}${cfg.aspectLabel}${cfg.stretch?" "+t("r_stretched"):""} · DPI ${cfg.dpi} · ${t("r_target",{d:cfg.targetRad.toFixed(1)})} · ${inputNote}${st.hz?" · "+st.hz+" "+t("u_hz"):""} · ${t("r_conf",{c:t("conf_"+conf)})} · ${trendNote}</p>
+    <p class="rsub">${st.partial?`<span style="color:var(--acc)">${t("r_partial",{n:pl(st.partial,"rounds_loc"),m:cfg.rounds})}</span> · `:`${t("r_rounds",{n:pl(cfg.rounds,"rounds_gen")})} · `}${cfg.aspectLabel}${cfg.stretch?" "+t("r_stretched"):""} · DPI ${cfg.dpi} · ${t("r_target",{d:cfg.targetRad.toFixed(1)})} · ${inputNote}${st.hz?" · "+st.hz+" "+t("u_hz"):""} · ${t("r_conf",{c:t("conf_"+conf)})}${cfg.warm?" · "+t("r_warm",{s:cfg.warmSens.toFixed(2)}):""} · ${trendNote}</p>
     <div class="stats">
       ${abHTML}
       <div class="stat hero">
@@ -1117,6 +1225,10 @@ function showResults(){
         <div><div class="k">${t("k_tp")}</div><div class="v" style="font-size:22px">${tp}<span class="u">${t("u_bits")}</span></div></div>
         <div><div class="k">${t("k_acc1")}</div><div class="v" style="font-size:22px">${acc1==null?"—":acc1}<span class="u">%</span></div></div>
         <div class="note" style="flex:1;min-width:200px;margin-top:0">${t("metric_note")}</div>
+      </div>
+      <div class="stat wide coach ${coach}">
+        <div class="k">${t("coach_title")} · ${t("coach_counts",{o:over,u:under,s:side})}</div>
+        <div class="note" style="margin-top:0;font-size:13px;color:var(--txt)">${coachText}</div>
       </div>
     </div>
     <div class="chartcard">
@@ -1163,7 +1275,60 @@ function showResults(){
     lo:+P.lo.toFixed(2),hi:+P.hi.toFixed(2),conf,verdict:verdictKey,gain_pct:+gainPct.toFixed(1),
     rt_ms:avgRT,mt_ms:avgMT,tp:+tp||0,cur:+curN.toFixed(2),cur_cm:+curCm.toFixed(1),
     rounds:cfg.rounds,ab_rounds:st.abData.length,sim:SIM.on,
-    acc1:acc1==null?null:acc1,raw:st.raw==null?null:st.raw,hz:st.hz||0,partial:st.partial||0,mode:cfg.mode||"custom",lang:LANG});
+    acc1:acc1==null?null:acc1,raw:st.raw==null?null:st.raw,hz:st.hz||0,partial:st.partial||0,mode:cfg.mode||"custom",lang:LANG,
+    coach,warm:!!cfg.warm});
+}
+
+function buildChart(P,recN,curN){
+  const w=800,h=340,m={l:54,r:18,t:18,b:42};
+  const iw=w-m.l-m.r, ih=h-m.t-m.b;
+  const lx=v=>m.l+(Math.log10(v)-opt.logMin)/(opt.logMax-opt.logMin)*iw;
+  const pad=(P.yMax-P.yMin)*0.08||10;
+  const y0=P.yMin-pad, y1=P.yMax+pad;
+  const ly=v=>m.t+(1-(v-y0)/(y1-y0))*ih;
+  // band
+  let top="",bot="";
+  P.curve.forEach((c,i)=>{const x=lx(c.sens);top+=(i?"L":"M")+x.toFixed(1)+" "+ly(c.mean+1.6*c.sd).toFixed(1)+" ";});
+  for(let i=P.curve.length-1;i>=0;i--){const c=P.curve[i];const x=lx(c.sens);bot+="L"+x.toFixed(1)+" "+ly(c.mean-1.6*c.sd).toFixed(1)+" ";}
+  const band=top+bot+"Z";
+  // mean line
+  let mean=""; P.curve.forEach((c,i)=>{mean+=(i?"L":"M")+lx(c.sens).toFixed(1)+" "+ly(c.mean).toFixed(1)+" ";});
+  // x ticks
+  // x ticks: края и текущая; значение оптимума пишет его красная подпись (С3-и2: раньше две подписи ложились друг на друга)
+  const ticks=[opt.logMin,Math.log10(curN),opt.logMax].map(v=>Math.pow(10,v));
+  let xax="";
+  [...new Set(ticks.map(tv=>tv.toFixed(2)))].forEach(ts=>{const tv=parseFloat(ts);const x=lx(tv);
+    xax+=`<line x1="${x}" y1="${m.t}" x2="${x}" y2="${m.t+ih}" stroke="rgba(255,255,255,.05)"/>
+    <text x="${x}" y="${h-16}" fill="#8d8d97" font-size="11" text-anchor="middle">${ts}</text>`;});
+  // y ticks
+  let yax="";
+  for(let i=0;i<=3;i++){const v=y0+(y1-y0)*i/3;const y=ly(v);
+    yax+=`<line x1="${m.l}" y1="${y}" x2="${m.l+iw}" y2="${y}" stroke="rgba(255,255,255,.05)"/>
+    <text x="${m.l-9}" y="${y+4}" fill="#8d8d97" font-size="11" text-anchor="end">${Math.round(v)}</text>`;}
+  // samples
+  let pts="";
+  P.samples.forEach(s=>{const x=lx(s.sens),y=ly(s.cost);
+    pts+=`<g><line x1="${x-4}" y1="${y}" x2="${x+4}" y2="${y}" stroke="#8d8d97" stroke-width="1.3"/>
+    <line x1="${x}" y1="${y-4}" x2="${x}" y2="${y+4}" stroke="#8d8d97" stroke-width="1.3"/>
+    <text x="${x+7}" y="${y-6}" fill="#5d5d66" font-size="9">${s.order}</text></g>`;});
+  // current marker
+  const xc=lx(curN);
+  // optimum marker
+  const xo=lx(recN), yo=ly(P.rec.mean);
+  // С3-и2: модель — белая, неопределённость — стекло, оптимум — акцент, текущая — приглушённая
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${t("chart_aria")}">
+    ${yax}${xax}
+    <path d="${band}" fill="rgba(255,255,255,.06)" stroke="none"/>
+    <path d="${mean}" fill="none" stroke="#f2f0f2" stroke-width="2"/>
+    <line x1="${xc}" y1="${m.t}" x2="${xc}" y2="${m.t+ih}" stroke="#8d8d97" stroke-width="1.2" stroke-dasharray="3 4"/>
+    <text x="${xc}" y="${m.t+12}" fill="#8d8d97" font-size="10" text-anchor="middle">${t("chart_now")}</text>
+    <line x1="${xo}" y1="${m.t}" x2="${xo}" y2="${m.t+ih}" stroke="#ff2740" stroke-width="1.3" stroke-dasharray="5 4"/>
+    <circle cx="${xo}" cy="${yo}" r="5.5" fill="none" stroke="#ff2740" stroke-width="2"/>
+    <line x1="${xo-9}" y1="${yo}" x2="${xo+9}" y2="${yo}" stroke="#ff2740" stroke-width="1.3"/>
+    <line x1="${xo}" y1="${yo-9}" x2="${xo}" y2="${yo+9}" stroke="#ff2740" stroke-width="1.3"/>
+    <text x="${xo}" y="${m.t+ih+30}" fill="#ff2740" font-size="11" font-weight="800" text-anchor="middle">${t("chart_opt",{s:recN.toFixed(2)})}</text>
+    ${pts}
+  </svg>`;
 }
 
 function buildChart(P,recN,curN){
@@ -1251,7 +1416,21 @@ if(!window.matchMedia("(pointer: fine)").matches){$("gate").style.display="block
    4, ≈7 мин. Ползунки под «Параметрами сессии» остаются; сдвинул — «свои
    параметры». Оценка минут считается из параметров, не зашита. */
 const MODES={quick:{rounds:8,flicks:8,ab:2,range:20},precise:{rounds:14,flicks:12,ab:4,range:26}};
-function estMin(){const r=+$("rounds").value,f=+$("flicks").value,a=+$("ab").value;return Math.max(1,Math.round(((r+a)*(cfg.warmup+f)*1.35+(r+a)*3)/60));}
+function estMin(){const r=warmOn()?warmRounds(+$("rounds").value):+$("rounds").value,f=+$("flicks").value,a=+$("ab").value;return Math.max(1,Math.round(((r+a)*(cfg.warmup+f)*1.35+(r+a)*3)/60));}
+/* С4-и1: тёплый старт. ?warm_cm= — cm/360 прошлого оптимума (шелл берёт из
+   GET /me/aim-sessions). Раундов ¾, но не меньше 6 (быстрый 8 → 6, точный 14 → 10),
+   диапазон ×1.6 вместо ×2.0–2.6: GP не тратит раунды на края. */
+const WARM_CM=parseFloat(Q.get("warm_cm"))||0, WARM_RANGE=1.6;
+function warmSensAt(dpi){return WARM_CM>0?SENS_CONST/(WARM_CM*dpi):0;}
+function warmRounds(r){return Math.max(6,Math.floor(r*0.75));}
+function warmOn(){return WARM_CM>0&&$("warmOn").checked;}
+function paintWarm(){
+  const box=$("warmbox"); box.classList.toggle("on",WARM_CM>0); if(!(WARM_CM>0))return;
+  const dpi=clamp(parseFloat($("dpi").value)||800,100,32000), s=warmSensAt(dpi);
+  $("warmText").textContent=t("warm_line",{s:s.toFixed(2),cm:WARM_CM.toFixed(1),n:pl(warmRounds(+$("rounds").value),"rounds_gen")});
+}
+$("warmOn").addEventListener("change",()=>{paintWarm();paintMode();});
+$("dpi").addEventListener("input",paintWarm);
 function paintMode(){
   const cur=Object.keys(MODES).find(k=>Object.entries(MODES[k]).every(([id,v])=>+$(id).value===v))||null;
   document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("on",b.dataset.mode===cur));
@@ -1261,7 +1440,9 @@ function paintMode(){
 function setMode(k){for(const [id,v] of Object.entries(MODES[k])){$(id).value=v;$(id).dispatchEvent(new Event("input"));}paintMode();}
 document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode)));
 ["rounds","flicks","ab","range"].forEach(id=>$(id).addEventListener("input",paintMode));
+$("rounds").addEventListener("input",paintWarm);
 setMode(Q.get("mode")==="precise"?"precise":"quick"); // ?mode= — шелл/тест
+paintWarm();
 
 /* ═══ 14:48 мост (С0, SENS.md) ═══
    aim.html?embed=1&dpi=&sens=&lang=&aspect=  — открыт iframe'ом из студии сенсы шелла
@@ -1270,9 +1451,11 @@ setMode(Q.get("mode")==="precise"?"precise":"quick"); // ?mode= — шелл/т�
    результат и кнопки уходят parent'у через postMessage:
      {type:'aim_result', sens, dpi, cm360, lo, hi, conf, verdict: rec|cur|tie|none,
       gain_pct, rt_ms, mt_ms, tp, cur, cur_cm, rounds, ab_rounds, sim, acc1, raw, hz,
-      partial, mode, lang}; conf — код high|mid|low (С3-и1), не слово
+      partial, mode, lang, coach: over|under|none, warm}; conf — код high|mid|low (С3-и1), не слово
      {type:'aim_save'}  — «подставить в студию и сохранить в аккаунт»
      {type:'aim_close'} — закрыть оверлей
+     {type:'aim_dpi', dpi, dpi_raw, counts, cm, raw} — замер DPI свайпом (С4-и3, ?measure=1)
+   ?warm_cm=N — тёплый старт от прошлого оптимума (С4-и1, из GET /me/aim-sessions)
    Без embed (файл открыт сам по себе) сообщения уходят в пустоту — безвредно.
    ?sim=1&seed=N&simopt=K&autostart=1 — синтетический стрелок (С0-и4): весь
    конвейер раунды → GP → A/B → вердикт → postMessage без pointer lock; K —
@@ -1286,6 +1469,45 @@ if(EMBED)document.body.classList.add("embed");
   // С2-и2: разрешение CS2 с этого ПК (шелл берёт его у агента) — выбираем то же соотношение
   const a=Q.get("aspect"); if(a&&[...$("aspect").options].some(o=>o.value===a))$("aspect").value=a;
 })();
+
+/* ═══ С4-и3 (SENS.md, №13): замер DPI свайпом — aim.html?measure=1&pad_cm=&lang= ═══
+   Гость со своей мышью, DPI которой не знает. С raw input 1 отсчёт = 1 px,
+   значит DPI = отсчёты / см × 2,54. Эталон длины — коврик клуба (pad_cm из
+   настройки mousepad_cm), лист A4 по короткой стороне (21 см) или своя длина.
+   Результат снапится к типовым DPI (в пределах 6 %), иначе округляется до 50.
+   Наружу: {type:'aim_dpi', dpi, dpi_raw, counts, cm, raw}. */
+const MEASURE=Q.get("measure")==="1", PAD_CM=parseFloat(Q.get("pad_cm"))||0;
+const DPI_COMMON=[400,500,600,800,1000,1200,1600,2000,2400,3200,4000,6400,8000];
+function snapDPI(v){let best=0,bd=1e9;for(const c of DPI_COMMON){const d=Math.abs(v-c)/c;if(d<bd){bd=d;best=c;}}return bd<=0.06?best:Math.max(50,Math.round(v/50)*50);}
+let mLen=PAD_CM>0?"pad":"a4", mDpi=0, mRaw=0;
+function mLenCm(){return mLen==="pad"?PAD_CM:mLen==="a4"?21:clamp(parseFloat($("mCustom").value)||21,5,100);}
+function mStep(n){["ms1","ms2","ms3"].forEach((id,i)=>$(id).classList.toggle("on",i===n-1));}
+function paintLens(){
+  const opts=[];
+  if(PAD_CM>0)opts.push(["pad",t("m_pad",{n:PAD_CM})]);
+  opts.push(["a4",t("m_a4")],["custom",t("m_custom")]);
+  $("mLens").innerHTML=opts.map(([k,l])=>`<button type="button" class="mode${mLen===k?" on":""}" data-len="${k}"><b>${l}</b></button>`).join("");
+  $("mLens").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{mLen=b.dataset.len;paintLens();}));
+}
+function measureDone(){
+  st.mode="idle";
+  const cm=mLenCm(), counts=st.calSum;
+  if(counts<200){ $("mWarn1").textContent=t("m_short"); $("mWarn1").style.display="block"; mStep(1); return; }
+  mRaw=counts/cm*2.54; mDpi=snapDPI(mRaw);
+  $("mRes").textContent=t("m_result",{raw:Math.round(mRaw),dpi:mDpi});
+  $("mResSub").textContent=t("m_result_sub",{px:Math.round(counts),cm,input:st.raw===true?t("raw_on"):t("raw_off")});
+  $("mWarn").style.display=st.raw===true?"none":"block"; $("mWarn").textContent=t("m_noraw");
+  $("mUse").textContent=t("m_use",{dpi:mDpi});
+  mStep(3);
+}
+if(MEASURE){
+  $("mHead").insertAdjacentHTML("afterbegin",LOGO);
+  paintLens(); mStep(1); showScreen("measure");
+  $("mGo").addEventListener("click",()=>{ $("mWarn1").style.display="none"; st.mode="calib"; st.calSum=0; $("mPx").textContent="0"; mStep(2); lockPointer($("measure")); });
+  $("mRetry").addEventListener("click",()=>mStep(1));
+  $("mUse").addEventListener("click",()=>post({type:"aim_dpi",dpi:mDpi,dpi_raw:Math.round(mRaw),counts:Math.round(st.calSum),cm:mLenCm(),raw:st.raw===true}));
+  [$("mClose1"),$("mClose3")].forEach(b=>b.addEventListener("click",()=>post({type:"aim_close"})));
+}
 
 /* ---------------- симуляция (только для проверки конвейера) ----------------
    Стрелок: MT = (a + b(N)·ID)·skill·шум, где b(N) — U-образная в log-сенсе с
@@ -1303,7 +1525,9 @@ function simFlick(N,id,progress){
   const mt=Math.max(80,(SIM.a+b*id)*skill*Math.exp(gauss()*SIM.sd));
   const rt=Math.max(120,SIM.rtm+gauss()*SIM.rts);
   const miss1=Math.random()<0.12+0.25*Math.min(1,x*x*6); // первый выстрел чаще мимо вдали от оптимума
-  return {mt,rt,miss1};
+  // С4-и2: сенса выше оптимума → рука перелетает (75 %), ниже → недолетает; 15 % — вбок
+  const dir=Math.random()<0.15?"side":((x>0)===(Math.random()<0.75)?"over":"under");
+  return {mt,rt,miss1,dir};
 }
 function simRound(){
   if(st.roundIndex>=totalRounds()){showResults();return;}
@@ -1316,7 +1540,8 @@ function simRound(){
   while(st.queue.length){
     const fi=st.queue.pop(), f=SESSION.set[fi];
     const id=Math.log2(f.d/(cfg.targetRad*2)+1);
-    const {mt,rt,miss1}=simFlick(st.testN,id,progress);
+    const {mt,rt,miss1,dir}=simFlick(st.testN,id,progress);
+    if(miss1)SESSION.missDir.push(dir);
     st.flickLog.push({mt,rt,id,fi,miss1}); st.hits++;
   }
   st.running=false;

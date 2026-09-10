@@ -529,6 +529,7 @@
         <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
         <div class="skel" style="width:85%; height:14px"></div>
       </div>
+      <div class="card hidden" id="aimCard"></div><!-- С4 (SENS.md): история калибровок + аим-рейтинг -->
       <div class="card" id="histCard">
         <div class="skel" style="width:50%; height:18px; margin-bottom:10px"></div>
         <div class="skel" style="width:75%; height:14px"></div>
@@ -803,6 +804,11 @@ const STR_RU = {
   lb_title: 'Топ клуба',
   lb_me: 'Твоё место: #{n}',
   lb_empty: 'Пока пусто',
+  aim_title: 'Аим-калибровки',
+  aim_stats: 'Калибровок: {n} · реакция {a} → {b} мс · лучший темп {tp} бит/с',
+  aim_found: 'нашёл', aim_confirmed: 'подтвердил', aim_partial: 'прервано', aim_ms: 'мс', aim_bits: 'бит/с',
+  aim_rating: 'Аим-рейтинг клуба · бит/с',
+  aim_hint: 'Калибровать сенсу — на клубном ПК: «⌖ Сенса» → «Подобрать стреляя».',
   hist_title: 'История',
   hist_balance: 'койнов на балансе',
   hist_empty: 'Пока пусто — сыграй первую сессию',
@@ -1066,6 +1072,11 @@ const STR_EN = {
   lb_title: 'Club top',
   lb_me: 'Your place: #{n}',
   lb_empty: 'Empty so far',
+  aim_title: 'Aim calibrations',
+  aim_stats: 'Calibrations: {n} · reaction {a} → {b} ms · best throughput {tp} bit/s',
+  aim_found: 'found', aim_confirmed: 'confirmed', aim_partial: 'interrupted', aim_ms: 'ms', aim_bits: 'bit/s',
+  aim_rating: 'Club aim rating · bit/s',
+  aim_hint: 'Calibrate your sens on a club PC: “⌖ Sens” → “Find it by shooting”.',
   hist_title: 'History',
   hist_balance: 'coins in balance',
   hist_empty: 'Nothing yet — play your first session',
@@ -1324,6 +1335,11 @@ const STR_PL = {
   lb_title: 'Top klubu',
   lb_me: 'Twoje miejsce: #{n}',
   lb_empty: 'Na razie pusto',
+  aim_title: 'Kalibracje celownika',
+  aim_stats: 'Kalibracji: {n} · reakcja {a} → {b} ms · najlepsze tempo {tp} bit/s',
+  aim_found: 'znalazł', aim_confirmed: 'potwierdził', aim_partial: 'przerwano', aim_ms: 'ms', aim_bits: 'bit/s',
+  aim_rating: 'Aim-ranking klubu · bit/s',
+  aim_hint: 'Kalibrację czułości robi się na PC klubu: „⌖ Czułość” → „Dobierz strzelając”.',
   hist_title: 'Historia',
   hist_balance: 'monet na koncie',
   hist_empty: 'Na razie pusto — zagraj pierwszą sesję',
@@ -2145,6 +2161,7 @@ async function submitBooking(){
    ачивки → топ клуба → история сессий и пополнений. Без поллинга:
    свежие данные на входе во вкладку и по возврату в приложение. */
 let talents = null, achievements = null, leaderboard = null, deposits = null, walletTx = [];
+let aimHist = null, aimRating = null; // С4 (SENS.md): история калибровок и аим-рейтинг клуба
 let armTalent = null, armTimer = null;
 
 async function loadProgress(){
@@ -2159,9 +2176,44 @@ async function loadProgress(){
     await loadPacks(); // Е2-и5в: пакеты — часть денег, грузим вместе с ними
   }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
   await loadSessions(); // журнал для истории (заодно live-карточка честная)
+  loadAim(true); // С4: аим-данные — отдельно и не ждём: вкладка рисуется сразу
   renderProgress();
 }
-function renderProgress(){ renderRank(); renderTalents(); renderAch(); renderLb(); renderHist(); renderProfileCard(); }
+function renderProgress(){ renderRank(); renderTalents(); renderAch(); renderLb(); renderAim(); renderHist(); renderProfileCard(); }
+
+/* ── С4 (SENS.md): «Аим» — история калибровок и аим-рейтинг клуба (М: только чтение) ──
+   Грузим после остального (лимитер ~10 req/s на IP): не попали в burst — одна
+   повторная попытка через 2 с; ручек нет (старый сервер) — карточки просто нет. */
+async function loadAim(retry){
+  try{ [aimHist, aimRating] = await Promise.all([api('/me/aim-sessions'), api('/aim-rating')]); renderAim(); }
+  catch(e){ if (retry && e.message !== 'unauthorized') setTimeout(() => loadAim(false), 2000); }
+}
+function renderAim(){
+  const el = document.getElementById('aimCard');
+  if (!el || (!aimHist && !aimRating)) return;
+  const items = ((aimHist && aimHist.items) || []).slice(0, 3), st = (aimHist && aimHist.stats) || {};
+  const top = ((aimRating && aimRating.top) || []).slice(0, 5), me_ = aimRating && aimRating.me;
+  if (!items.length && !top.length){ el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const stats = st.count ? `<div class="muted cnum" style="font-size:12.5px; margin:2px 0 6px">${T('aim_stats', {n: st.count, a: st.first_rt || '—', b: st.last_rt || '—', tp: (+st.best_tp || 0).toFixed(1)})}</div>` : '';
+  const rows = items.map(r => {
+    const conf = r.verdict === 'cur' || r.verdict === 'tie', shown = conf ? [r.cur, r.cur_cm] : [r.sens, r.cm360];
+    const tag = (r.partial > 0 ? STR.aim_partial : conf ? STR.aim_confirmed : STR.aim_found) + (r.sim ? ' · sim' : '');
+    return `<div class="hrow"><span class="h-when">${esc(fmtWhen(r.at))}</span>
+      <span class="h-l">${esc(tag)} <b class="cnum">${(+shown[0]).toFixed(2)}</b> <span class="muted">· ${(+shown[1]).toFixed(1)} cm</span></span>
+      <span class="h-v cnum">${r.rt_ms ? r.rt_ms + ' ' + esc(STR.aim_ms) : ''}</span></div>`;
+  }).join('');
+  const lb = top.map(r => `<div class="lbrow ${r.is_me ? 'me' : ''}">
+      <span class="lb-rk cnum ${r.rank <= 3 ? 'top3' : ''}">#${r.rank}</span>
+      <span class="lb-av">${AVATARS[(r.avatar_id || 1) - 1] || '😎'}</span>
+      <span class="lb-nk">${esc(r.nickname || '—')}</span>
+      <span class="lb-xp cnum"><b style="color:var(--acc)">${(+r.tp).toFixed(1)}</b> ${esc(STR.aim_bits)}</span>
+    </div>`).join('');
+  const meRow = me_ && me_.rank && !top.some(r => r.is_me) ? `<div class="muted cnum" style="text-align:center; margin-top:8px">${T('lb_me', {n: me_.rank})}</div>` : '';
+  el.innerHTML = `<h3>${esc(STR.aim_title)}</h3>${stats}${rows}` +
+    (top.length ? `<div class="sect" style="margin-top:10px">${esc(STR.aim_rating)}</div>${lb}${meRow}` : '') +
+    `<div class="muted" style="font-size:12px; margin-top:8px">${esc(STR.aim_hint)}</div>`;
+}
 
 /* ── ранг с лаврами и шкалой часов (М2-и1) ── */
 function renderRank(){

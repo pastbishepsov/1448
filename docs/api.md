@@ -33,7 +33,10 @@ Base URL: `http://localhost:8080/api/v1`
 | GET | `/me/sessions` | История сессий; 15 мин после завершения без активной сессии — ещё и `receipt` (К3-и6) |
 | POST | `/me/sessions/end` | Завершить сессию; в ответе `receipt {wallet_grosz, kitchen_unpaid_pln, streak_days}` — чек на экран «Сессия завершена» (К3-и6) |
 | GET / PUT | `/me/sensitivity` | Профиль сенсы: `{dpi, games {cs2: 2.5, …}, saved}` — DPI 100…32000, сенса > 0, до 64 игр; студия шлёт ВСЕ игры из одного cm/360 (С2-и5). Едет за гостем на любой ПК: сервер кладёт его в `session_start` агенту, пересчитав под DPI мыши клуба (`mouse_dpi`, С2-и1: `sens × dpi_профиля / mouse_dpi`, в payload `rescaled_from`). PUT принимает `own_mouse: true` (гость со своей мышью — без пересчёта) и при активной сессии на ПК, который на связи, шлёт агенту `sens_apply` — в ответе `pushed: true` (С2-и4) |
-| GET | `/me/economy` | Ранг, таланты и `rates` — ставки из настроек клуба, по ним считает калькулятор (К3-и1); `pause_limit_min` (0 = паузы нет, кнопку не показывать) и `afk_stop_min` — правила паузы и AFK (К4-и4); `mouse_dpi` — DPI мыши клуба, 0 = не задан (С2-и1: студия на клубном ПК запирает поле DPI на нём) |
+| GET | `/me/economy` | Ранг, таланты и `rates` — ставки из настроек клуба, по ним считает калькулятор (К3-и1); `pause_limit_min` (0 = паузы нет, кнопку не показывать) и `afk_stop_min` — правила паузы и AFK (К4-и4); `mouse_dpi` — DPI мыши клуба, 0 = не задан (С2-и1: студия на клубном ПК запирает поле DPI на нём); `mousepad_cm` — ширина коврика клуба, эталон для замера DPI свайпом, 0 = не задана (С4-и3) |
+| POST | `/me/aim-sessions` | Прогон AI-калибратора (С4-и1): тело = `aim_result` калибратора `{sens, dpi, cur, lo, hi, conf: high\|mid\|low, verdict: rec\|cur\|tie\|none, gain_pct, acc1?, rt_ms, mt_ms, tp, mode: quick\|precise\|custom, rounds, ab_rounds, partial, raw?, hz, coach: over\|under\|none, warm, lang, sim}` → `{saved, id, at, cm360}`; cm/360 сервер считает сам из sens×dpi; ошибки `400 bad_sens\|bad_dpi\|bad_range\|bad_conf\|bad_verdict\|bad_gain\|bad_acc1\|bad_ms\|bad_tp\|bad_mode\|bad_rounds\|bad_hz\|bad_coach`; хранится 200 последних на гостя |
+| GET | `/me/aim-sessions?limit=10` | История калибровок (новые первыми, до 50) + `warm {cm360, sens, dpi, verdict, at}` — от последнего настоящего полного прогона (A/B подтвердил текущую → её cm/360; sim и частичные мимо; `null` — истории нет) + `stats {count, first_rt, last_rt, best_tp, best_acc1?}` по настоящим полным прогонам |
+| GET | `/aim-rating` | Аим-рейтинг клуба (С4-и4): `top` (до 10: `rank, user_id, nickname, avatar_id, level, tp, acc1, rt_ms, at, is_me`) — лучший настоящий полный прогон (`sim=false, partial=0, rounds ≥ 6`) каждого активного игрока по throughput (бит/с), при равенстве — точнее первый выстрел; `me {rank, tp, total}`, `rank 0` — нет полной калибровки |
 | GET | `/me/notifications?client=kiosk\|app` | Непрочитанные уведомления (до 50), выдача помечает. С `client=` — своя отметка у киоска и PWA, тост доходит до обоих; без параметра — как раньше, «прочитано вообще» (К3-и2, миграция 055). Тип `achievement_earned {id, title, category, reward_xp, reward_skillpoints, reward_case_tier}` — ачивка выдана, в т.ч. прямо во время сессии (К5-и2). Тип `incident_compensation {kind, minutes, wallet_pln, note}` — админ компенсировал проблему с ПК (К8). Тип `sens_applied {applied [cs2, apex], skipped {valorant: cloud, …}, dry_run, running [cs2]}` — агент подставил сенсу по команде сервера после «Сохранить» в студии (С2-и4) |
 | GET | `/me/chat?after=&mark=1` | Переписка со стойкой: без `after` — ПОСЛЕДНИЕ 100, старые сверху; с `after` — доливка (К3-и5) |
 
@@ -75,6 +78,11 @@ comp_minutes, comp_pln, open}` — компенсации отдельной с�
 обязательства клуба, не выручка. Аудит: `incident_create`,
 `incident_compensate`, `incident_resolve`.
 
+Отчёт `/admin/reports/guests` (С4-и1) отдаёт блок `aim {sessions, guests,
+prev_sessions, delta}` — прогоны AI-калибратора за период и уникальные гости
+(синтетические прогоны стенда `sim` не считаются). Настройка `mousepad_cm`
+(0…200, `PUT /admin/settings`) — ширина коврика клуба для замера DPI свайпом.
+
 ## WebSocket
 
 `WS /api/v1/ws/shell?computer_id=UUID` — с заголовком `X-Agent-Token: <AGENT_TOKEN>`
@@ -109,8 +117,13 @@ comp_minutes, comp_pln, open}` — компенсации отдельной с�
 дефолт `ru`; `aspect` — соотношение сторон CS2 с этого ПК из `sens_current`).
 Наружу: `{type:'aim_result', sens, dpi, cm360, lo, hi, conf: high|mid|low,
 verdict: rec|cur|tie|none, gain_pct, rt_ms, mt_ms, tp, cur, cur_cm, rounds,
-ab_rounds, sim, acc1, raw, hz, partial, mode, lang}`, `{type:'aim_save'}`,
-`{type:'aim_close'}`. `conf` — код, не слово (С3-и1). Игры студии
+ab_rounds, sim, acc1, raw, hz, partial, mode, lang, coach: over|under|none,
+warm}`, `{type:'aim_save'}`, `{type:'aim_close'}`, `{type:'aim_dpi', dpi,
+dpi_raw, counts, cm, raw}` (замер DPI свайпом, С4-и3: открывается как
+`aim.html?embed=1&measure=1&pad_cm=&lang=`). `?warm_cm=N` — тёплый старт от
+прошлого оптимума (С4-и1: шелл берёт `warm.cm360` из `GET /me/aim-sessions`;
+поиск вокруг него, диапазон ×1.6, раундов ¾ но ≥ 6). `conf` — код, не слово
+(С3-и1). Игры студии
 (`SENS_GAMES` в shell.html): cs2, valorant, apex, ow2, cod, quake (Quake
 Champions), deadlock, cs16, quake3, l4d2, half_life — все с `catalog_ids` для
 сопоставления с `GET /catalog`; профиль `PUT /me/sensitivity` несёт их все из
