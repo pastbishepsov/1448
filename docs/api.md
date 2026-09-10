@@ -102,6 +102,20 @@ comp_minutes, comp_pln, open}` — компенсации отдельной с�
 
 Полный контракт — `docs/АГЕНТ-ЗАПУСК-ИГР.md`. Коротко: `GET /ping` (+ `notify`, `sens`, `sens_games`, `sens_mode`, `sens_current {cs2 {sens, res_w, res_h, aspect}, apex {sens}}` — С2-и2), `POST /launch`, `GET /apps-status`, `POST /notify`, `POST /sens-apply {dpi, games}` → `{applied, skipped {game: cloud|unsupported|no_config|disabled|error}, dry_run, running, supported, cs2_mode}` — curl-проверка на живом ПК (студия с С2 идёт через сервер: PUT `/me/sensitivity` → WS `sens_apply`; 409 `sens_disabled`, если выключено в `agent.json`).
 
+**AI-калибратор `web/aim.html`** (не API сервера, мост со студией шелла через
+`postMessage`, С0/С3 SENS.md): открывается iframe'ом
+`aim.html?embed=1&dpi=&sens=&lang=ru|en|pl&aspect=` (`sens` — в единицах CS2;
+`lang` — язык словарей `AIM_RU/EN/PL`, без него — `1448_lang` из localStorage,
+дефолт `ru`; `aspect` — соотношение сторон CS2 с этого ПК из `sens_current`).
+Наружу: `{type:'aim_result', sens, dpi, cm360, lo, hi, conf: high|mid|low,
+verdict: rec|cur|tie|none, gain_pct, rt_ms, mt_ms, tp, cur, cur_cm, rounds,
+ab_rounds, sim, acc1, raw, hz, partial, mode, lang}`, `{type:'aim_save'}`,
+`{type:'aim_close'}`. `conf` — код, не слово (С3-и1). Игры студии
+(`SENS_GAMES` в shell.html): cs2, valorant, apex, ow2, cod, quake (Quake
+Champions), deadlock, cs16, quake3, l4d2, half_life — все с `catalog_ids` для
+сопоставления с `GET /catalog`; профиль `PUT /me/sensitivity` несёт их все из
+одного cm/360, агент незнакомые ему отдаёт как `skipped: unsupported`.
+
 ## Анкета профиля (Г8) — контракт для страницы регистрации
 
 Страница регистрации (Р9) — `web/register.html`, раздаётся на `GET /register`

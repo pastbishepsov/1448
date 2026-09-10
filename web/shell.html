@@ -277,9 +277,9 @@
   /* С0-и1 (SENS.md): AI-калибратор (web/aim.html) — оверлеем внутри шелла.
      z-index 39: ниже лок-экрана (40) и тостов (60) — предупреждения о нуле и
      AFK видны поверх калибровки, конец сессии накрывает её лок-экраном. */
-  #aimOverlay{position:fixed; inset:0; z-index:39; background:#07090b; display:none}
+  #aimOverlay{position:fixed; inset:0; z-index:39; background:#070708; display:none}
   #aimOverlay.show{display:block}
-  #aimOverlay iframe{position:absolute; inset:0; width:100%; height:100%; border:0; background:#07090b}
+  #aimOverlay iframe{position:absolute; inset:0; width:100%; height:100%; border:0; background:#070708}
   #aimOverlay .aim-x{position:absolute; top:12px; right:14px; z-index:2; background:rgba(4,4,6,.75);
     border:1px solid var(--hair); color:var(--dim); border-radius:12px; padding:8px 13px; font-size:13px;
     font-weight:800; cursor:pointer; font-family:inherit}
@@ -1380,7 +1380,7 @@ const SH_RU = {
   sens_sub: "Перенеси свою сенсу из одной игры в другую — прицел останется тем же",
   sens_step1: "<b style=\"color:var(--acc)\">Шаг 1.</b> DPI мыши (посмотри в софте мыши)",
   sens_ai_title: "🎯 AI-калибратор",
-  sens_ai_sub: "Не знаешь свою идеальную сенсу? Постреляй по мишеням — байесовский поиск найдёт оптимум и проверит его слепым A/B. ~7 минут.",
+  sens_ai_sub: "Не знаешь свою идеальную сенсу? Постреляй по мишеням — байесовский поиск найдёт оптимум и проверит его слепым A/B. ≈3 минуты (режим «Точно» — ≈7).",
   sens_ai_btn: "Подобрать стреляя",
   sens_step2: "<b style=\"color:var(--acc)\">Шаг 2.</b> Из какой игры переносим и куда",
   sens_from: "Из игры",
@@ -1398,7 +1398,9 @@ const SH_RU = {
   sens_explain: "<b style=\"color:var(--txt)\">см / 360°</b> — сколько сантиметров провести мышью для полного разворота. Это и есть «мышечная память»: сохраняем её — прицел не сбивается.<br><b style=\"color:var(--txt)\">eDPI</b> = DPI × сенса — эффективная чувствительность для сравнения внутри игры.",
   sens_all_title: "Твоя сенса во всех играх",
   sens_all_sub: "Одинаковый прицел (см/360) — готовые значения для каждой игры",
-  sens_games_note: "Значения точны для CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. Другие игры добавим по запросу.",
+  sens_games_note: "Значения точны для {g}. Другие игры добавим по запросу.",
+  sens_grp_club: "В клубе",
+  sens_grp_other: "Другие игры",
   sens_source: "· исходная",
   sens_synced: "✓ Синхронизировано{n}.",
   sens_synced_n: " · {n} {w}",
@@ -1894,7 +1896,7 @@ const SH_EN = {
   sens_sub: "Carry your sens from one game to another — the aim stays the same",
   sens_step1: "<b style=\"color:var(--acc)\">Step 1.</b> Mouse DPI (check your mouse software)",
   sens_ai_title: "🎯 AI calibrator",
-  sens_ai_sub: "Don’t know your perfect sens? Shoot some targets — a Bayesian search finds the optimum and verifies it with a blind A/B. ~7 minutes.",
+  sens_ai_sub: "Don’t know your perfect sens? Shoot some targets — a Bayesian search finds the optimum and verifies it with a blind A/B. ≈3 minutes (“Precise” mode — ≈7).",
   sens_ai_btn: "Find it by shooting",
   sens_step2: "<b style=\"color:var(--acc)\">Step 2.</b> Which game we convert from and to",
   sens_from: "From game",
@@ -1912,7 +1914,9 @@ const SH_EN = {
   sens_explain: "<b style=\"color:var(--txt)\">cm / 360°</b> — how many centimeters of mouse travel make a full turn. That is muscle memory: keep it and your aim never breaks.<br><b style=\"color:var(--txt)\">eDPI</b> = DPI × sens — effective sensitivity for comparing inside one game.",
   sens_all_title: "Your sens in every game",
   sens_all_sub: "The same aim (cm/360) — ready values for each game",
-  sens_games_note: "Values are exact for CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. More games on request.",
+  sens_games_note: "Values are exact for {g}. More games on request.",
+  sens_grp_club: "In the club",
+  sens_grp_other: "Other games",
   sens_source: "· source",
   sens_synced: "✓ Synced{n}.",
   sens_synced_n: " · {n} {w}",
@@ -2408,7 +2412,7 @@ const SH_PL = {
   sens_sub: "Przenieś czułość z jednej gry do drugiej — celownik zostanie ten sam",
   sens_step1: "<b style=\"color:var(--acc)\">Krok 1.</b> DPI myszy (sprawdź w sofcie myszy)",
   sens_ai_title: "🎯 AI-kalibrator",
-  sens_ai_sub: "Nie znasz swojej idealnej czułości? Postrzelaj do tarcz — bayesowskie szukanie znajdzie optimum i sprawdzi je ślepym A/B. ~7 minut.",
+  sens_ai_sub: "Nie znasz swojej idealnej czułości? Postrzelaj do tarcz — bayesowskie szukanie znajdzie optimum i sprawdzi je ślepym A/B. ≈3 minuty (tryb „Dokładnie” — ≈7).",
   sens_ai_btn: "Dobierz strzelając",
   sens_step2: "<b style=\"color:var(--acc)\">Krok 2.</b> Z której gry przenosimy i dokąd",
   sens_from: "Z gry",
@@ -2426,7 +2430,9 @@ const SH_PL = {
   sens_explain: "<b style=\"color:var(--txt)\">cm / 360°</b> — ile centymetrów myszy trzeba na pełny obrót. To właśnie pamięć mięśniowa: zachowujemy ją — celownik się nie psuje.<br><b style=\"color:var(--txt)\">eDPI</b> = DPI × czułość — efektywna czułość do porównań w jednej grze.",
   sens_all_title: "Twoja czułość we wszystkich grach",
   sens_all_sub: "Ten sam celownik (cm/360) — gotowe wartości dla każdej gry",
-  sens_games_note: "Wartości są dokładne dla CS2, Valorant, Apex, Overwatch 2, Call of Duty, Quake. Inne gry dodamy na życzenie.",
+  sens_games_note: "Wartości są dokładne dla {g}. Inne gry dodamy na życzenie.",
+  sens_grp_club: "W klubie",
+  sens_grp_other: "Inne gry",
   sens_source: "· źródłowa",
   sens_synced: "✓ Zsynchronizowano{n}.",
   sens_synced_n: " · {n} {w}",
@@ -2912,14 +2918,22 @@ const coverStyle = it => { const u = coverUrl(it);
 let me = null, cases = [], talents = null, achievements = null, leaderboard = null, sessions = [];
 let bookings = [], clubs = [], economy = null, calcMinutes = 60;
 // Студия сенсы (S1): yaw = градусов на «отсчёт» мыши при сенсе 1 (проверено на CS2↔Valorant).
+// С3-и3 (SENS.md, №18): catalog_ids — id этой игры в каталоге клуба (GET /catalog): игры,
+// которые в клубе есть, идут в селектах первыми. Counter-Strike 1.6, Quake III Arena,
+// Left 4 Dead 2, Half-Life — GoldSrc/Source/id Tech 3, m_yaw 0.022, все стоят на пилотных ПК.
+// Marvel Rivals, Battlefield 6, PUBG, ARC Raiders, Rust НЕ добавлять без выверенной формулы.
 const SENS_GAMES = [
-  {id:'cs2',      name:'CS2',           yaw:0.022},
-  {id:'valorant', name:'Valorant',      yaw:0.07},
-  {id:'apex',     name:'Apex Legends',  yaw:0.022},
-  {id:'ow2',      name:'Overwatch 2',   yaw:0.0066},
-  {id:'cod',      name:'Call of Duty',  yaw:0.0066},
-  {id:'quake',    name:'Quake',         yaw:0.022},
-  {id:'deadlock', name:'Deadlock',      yaw:0.022},
+  {id:'cs2',       name:'CS2',                yaw:0.022,  catalog_ids:['cs2']},
+  {id:'valorant',  name:'Valorant',           yaw:0.07,   catalog_ids:['valorant']},
+  {id:'apex',      name:'Apex Legends',       yaw:0.022,  catalog_ids:['apex']},
+  {id:'ow2',       name:'Overwatch 2',        yaw:0.0066, catalog_ids:['ow2']},
+  {id:'cod',       name:'Call of Duty',       yaw:0.0066, catalog_ids:['cod']},
+  {id:'quake',     name:'Quake Champions',    yaw:0.022,  catalog_ids:['quake_champions']},
+  {id:'deadlock',  name:'Deadlock',           yaw:0.022,  catalog_ids:['deadlock']},
+  {id:'cs16',      name:'Counter-Strike 1.6', yaw:0.022,  catalog_ids:['cs16_steam', 'cs16_local']},
+  {id:'quake3',    name:'Quake III Arena',    yaw:0.022,  catalog_ids:['quake3']},
+  {id:'l4d2',      name:'Left 4 Dead 2',      yaw:0.022,  catalog_ids:['l4d2']},
+  {id:'half_life', name:'Half-Life',          yaw:0.022,  catalog_ids:['half_life']},
 ];
 let sensDPI = +(lsGet('1448_dpi') || 800); // К1-и6: обёртка — политика хранилища не должна ронять скрипт
 let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
@@ -5023,13 +5037,23 @@ function openRanks(){
 
 /* ═══════════════ СТУДИЯ СЕНСЫ (S1: конвертер) ═══════════════ */
 function sensGame(id){ return SENS_GAMES.find(g => g.id === id) || SENS_GAMES[0]; }
+/* С3-и3: игра «в клубе», если хоть один её catalog_id есть в каталоге (демо-каталог без
+   сервера — тоже каталог: cs2/apex/valorant; каталог недоступен — порядок как в списке) */
+function sensInCatalog(g){ const ids = new Set((CATALOG.games || []).map(x => x.id)); return (g.catalog_ids || []).some(id => ids.has(id)); }
+function sensGamesOrdered(){ return SENS_GAMES.map((g, i) => ({g, i, k: sensInCatalog(g) ? 0 : 1})).sort((a, b) => a.k - b.k || a.i - b.i).map(x => x.g); }
+function sensGameOptions(sel){
+  const o = g => `<option value="${g.id}" ${g.id===sel?'selected':''}>${esc(g.name)}</option>`;
+  const ord = sensGamesOrdered(), club = ord.filter(sensInCatalog), rest = ord.filter(g => !sensInCatalog(g));
+  if (!club.length || !rest.length) return ord.map(o).join('');
+  return `<optgroup label="${esc(STR.sens_grp_club)}">${club.map(o).join('')}</optgroup><optgroup label="${esc(STR.sens_grp_other)}">${rest.map(o).join('')}</optgroup>`;
+}
 function sensCm360(g, sens, dpi){ return (sens>0&&dpi>0) ? (360/(g.yaw*sens))/dpi*2.54 : 0; }
 function sensConvert(fr, to, sens){ return to.yaw>0 ? sens*fr.yaw/to.yaw : 0; }
 
 function renderSens(){
   const gf = sensGame(sensFrom), gt = sensGame(sensTo);
   const res = sensConvert(gf, gt, sensVal);
-  const opt = (sel) => SENS_GAMES.map(g => `<option value="${g.id}" ${g.id===sel?'selected':''}>${esc(g.name)}</option>`).join('');
+  const opt = sensGameOptions; // С3-и3: игры каталога первыми, группами
   return `
   <div class="card">
     <div style="font-weight:800; margin-bottom:2px">${UI.cross} ${esc(STR.sens_title)}</div>
@@ -5115,7 +5139,7 @@ function renderSens(){
 
   <div class="card">
     <div class="muted" style="font-size:12px; line-height:1.6">
-      ${esc(STR.sens_games_note)}
+      ${esc(T('sens_games_note', {g: sensGameNames(SENS_GAMES.map(g => g.id))}))}
     </div>
   </div>`;
 }
@@ -5167,7 +5191,7 @@ async function mouseAccelOff(){
 // «Твоя сенса во всех играх» — cm/360 одинаковый, показываем sens+eDPI для каждой.
 function sensAllGamesHtml(){
   const gf = sensGame(sensFrom);
-  return SENS_GAMES.map(g => {
+  return sensGamesOrdered().map(g => { // С3-и3: игры каталога первыми
     const s = sensConvert(gf, g, sensVal);
     const isFrom = g.id === sensFrom;
     return `<div class="sg-row ${isFrom?'from':''}">

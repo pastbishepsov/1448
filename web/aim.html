@@ -3,264 +3,291 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>14:48 · АИМ-КАЛИБРАТОР</title>
+<title>14:48 · Калибратор</title>
 <style>
+  /* ═══ С3-и2 (SENS.md, DESIGN.md): язык 14:48 Noir — чёрная база, красный
+     #ff2740 как единственный акцент, стекло, системные шрифты шелла. Токены
+     скопированы из web/shell.html, чтобы калибратор в оверлее читался как
+     часть киоска, а не как отдельный «лабораторный» инструмент. Мяты и янтаря
+     прежней палитры не осталось: данные — белый/нейтральный, ответ — красный. */
   :root{
-    --bg:#07090b; --panel:#0b1014; --panel2:#10171c; --line:#1b262c;
-    --ink:#e8f1f0; --dim:#6d8085; --dimmer:#465458;
-    --cool:#33d6bf;        /* measurement / data ink */
-    --cool-soft:rgba(51,214,191,.12);
-    --warm:#ffb454;        /* the answer / optimum */
-    --warm-soft:rgba(255,180,84,.14);
-    --danger:#ff5f6e;
-    --grid:rgba(120,170,170,.045);
-    --mono:'JetBrains Mono','Cascadia Mono',Consolas,ui-monospace,monospace;
-    --disp:'Chakra Petch','Bahnschrift','Segoe UI',system-ui,sans-serif;
+    --bg:#070708; --panel:#0f0f12; --card:#141417; --card2:#1c1c21;
+    --txt:#f2f0f2; --dim:#8d8d97; --dimmer:#5d5d66;
+    --acc:#ff2740; --acc2:#c9ccd6; --acc3:#ff5563;
+    --glass:rgba(20,20,24,.55); --glass-2:rgba(28,28,33,.5);
+    --glass-brd:rgba(255,255,255,.08); --glass-hi:rgba(255,60,80,.28); --blur:14px;
+    --aurora:linear-gradient(120deg,#ff2740 0%,#ff5563 50%,#7a0f1c 100%);
+    --sh-1:0 8px 30px rgba(0,0,0,.45); --sh-2:0 18px 50px rgba(0,0,0,.6);
+    --glow:0 0 24px rgba(255,39,64,.45); --glow-2:0 0 30px rgba(255,39,64,.35);
+    --hair:rgba(255,255,255,.055);
+    --spring:cubic-bezier(.22,1,.36,1); --smooth:cubic-bezier(.4,0,.2,1);
+    --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   }
-  *{box-sizing:border-box}
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{height:100%}
-  body{
-    margin:0; background:var(--bg); color:var(--ink);
-    font-family:var(--disp); -webkit-font-smoothing:antialiased;
-    overflow:hidden;
-    background-image:
-      linear-gradient(var(--grid) 1px,transparent 1px),
-      linear-gradient(90deg,var(--grid) 1px,transparent 1px);
-    background-size:34px 34px;
-  }
-  button{font-family:var(--disp); cursor:pointer}
-  button:focus-visible, input:focus-visible, summary:focus-visible{outline:2px solid var(--cool); outline-offset:2px}
-  .screen{position:fixed; inset:0; display:none}
+  body{margin:0; background:var(--bg); color:var(--txt); font-family:var(--font); -webkit-font-smoothing:antialiased; overflow:hidden}
+  button{font-family:inherit; cursor:pointer}
+  button:focus-visible, input:focus-visible, summary:focus-visible{outline:2px solid var(--acc); outline-offset:2px}
+  .num{font-variant-numeric:tabular-nums}
+  /* aurora-фон шелла — статичный: во время замера ничего не плывёт и не грузит GPU,
+     на арене (#session) он выключен вовсе */
+  .aurora-bg{position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; background:var(--bg)}
+  .aurora-bg .blob{position:absolute; border-radius:50%; filter:blur(80px); opacity:.3; mix-blend-mode:screen}
+  .aurora-bg .b1{width:46vw; height:46vw; left:-8vw; top:-12vw; background:radial-gradient(circle,#ff2740,transparent 65%)}
+  .aurora-bg .b2{width:42vw; height:42vw; right:-10vw; top:-6vw; background:radial-gradient(circle,#8a0f1c,transparent 65%)}
+  .aurora-bg .b3{width:50vw; height:50vw; left:18vw; bottom:-24vw; background:radial-gradient(circle,#4a0a12,transparent 65%)}
+  body.in-session .aurora-bg{display:none}
+  .screen{position:fixed; inset:0; display:none; z-index:1}
   #setup{overflow-y:auto}
   .screen.on{display:block}
   .center{min-height:100%; display:flex; padding:24px}
 
-  /* ---------- shared reticle mark ---------- */
-  .mark{width:30px;height:30px;flex:none;position:relative}
-  .mark::before,.mark::after{content:"";position:absolute;background:var(--cool)}
-  .mark::before{left:50%;top:0;bottom:0;width:1.5px;transform:translateX(-50%)}
-  .mark::after{top:50%;left:0;right:0;height:1.5px;transform:translateY(-50%)}
-  .mark span{position:absolute;inset:9px;border:1.5px solid var(--warm);border-radius:50%}
+  /* ---------- фирменный знак (web/shell.html, docs/ТЗ-логотип-14-48.md) ---------- */
+  @keyframes logo1448Pulse{0%{opacity:1}12%{opacity:.22}42%{opacity:1}100%{opacity:1}}
+  .logo1448{display:block; flex:none; overflow:visible}
+  .logo1448 .l-colon{animation:logo1448Pulse 1s ease-out infinite}
 
   /* ---------- setup ---------- */
   .card{
-    margin:auto; width:min(520px,100%); background:linear-gradient(180deg,var(--panel),#090d10);
-    border:1px solid var(--line); border-radius:14px; padding:30px 30px 26px;
-    box-shadow:0 24px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.02);
+    margin:auto; width:min(540px,100%); position:relative;
+    background:var(--glass); border:1px solid var(--glass-brd); border-radius:24px; padding:32px 32px 28px;
+    box-shadow:var(--sh-2); backdrop-filter:blur(var(--blur)); -webkit-backdrop-filter:blur(var(--blur));
   }
-  .head{display:flex;align-items:center;gap:14px;margin-bottom:4px}
-  .head h1{font-size:23px;font-weight:700;letter-spacing:.14em;margin:0}
-  .eyebrow{font-family:var(--mono);font-size:11px;color:var(--cool);letter-spacing:.32em;margin:0 0 18px 44px}
-  .lede{color:var(--dim);font-size:13.5px;line-height:1.55;margin:0 0 22px;max-width:46ch}
-  .field{margin-bottom:16px}
-  .field label{display:block;font-size:12px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-bottom:7px}
-  .field .sub{font-family:var(--mono);font-size:10.5px;color:var(--dimmer);letter-spacing:.04em;margin-top:5px;text-transform:none}
-  .row{display:flex;gap:14px}
+  .card::before{content:""; position:absolute; inset:0 0 auto 0; height:1px; border-radius:24px 24px 0 0;
+    background:linear-gradient(90deg,transparent,var(--glass-hi),transparent)}
+  .head{display:flex; align-items:center; gap:12px; margin-bottom:6px}
+  .head h1{font-size:22px; font-weight:900; margin:0; letter-spacing:.01em}
+  .eyebrow{font-size:12px; font-weight:700; color:var(--dim); margin:0 0 14px}
+  .lede{color:var(--dim); font-size:13.5px; line-height:1.55; margin:0 0 20px; max-width:50ch}
+  .field{margin-bottom:14px}
+  .field label{display:block; font-size:12px; font-weight:700; color:var(--dim); margin-bottom:6px}
+  .field .sub{font-size:11.5px; color:var(--dimmer); margin-top:5px}
+  .row{display:flex; gap:12px}
   .row .field{flex:1}
-  input[type=number]{
-    width:100%;background:#070a0c;border:1px solid var(--line);border-radius:8px;
-    color:var(--ink);font-family:var(--mono);font-size:18px;font-weight:500;
-    padding:11px 13px;transition:border-color .15s;
+  input[type=number], select{
+    width:100%; background:rgba(8,8,11,.7); border:1px solid var(--glass-brd); border-radius:12px;
+    color:var(--txt); font-family:inherit; font-size:16px; font-weight:700; padding:12px 13px;
+    font-variant-numeric:tabular-nums; transition:border-color .2s, box-shadow .2s;
   }
-  input[type=number]:hover{border-color:#2a3940}
-  input[type=number]:focus{border-color:var(--cool)}
+  input[type=number]:hover, select:hover{border-color:rgba(255,255,255,.16)}
+  input[type=number]:focus, select:focus{outline:none; border-color:var(--acc); box-shadow:0 0 0 3px rgba(255,39,64,.18)}
   select{
-    width:100%;background:#070a0c;border:1px solid var(--line);border-radius:8px;
-    color:var(--ink);font-family:var(--mono);font-size:13px;padding:12px 13px;
-    appearance:none;-webkit-appearance:none;cursor:pointer;
+    font-size:14px; appearance:none; -webkit-appearance:none; cursor:pointer;
     background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
-    background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px;background-repeat:no-repeat;
+    background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%; background-size:5px 5px; background-repeat:no-repeat;
   }
-  select:hover{border-color:#2a3940} select:focus{border-color:var(--cool);outline:none}
-  .chk{display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:.04em;font-size:11px;color:var(--dimmer);font-family:var(--mono)}
+  select option{background:var(--panel); color:var(--txt)}
+  .chk{display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; font-weight:600; color:var(--dim)}
+  .chk input{accent-color:var(--acc); width:14px; height:14px}
   /* С1-и5: быстрый / точный режим — два пресета параметров сессии */
-  .modes{display:flex;gap:10px}
-  .mode{flex:1;background:#070a0c;border:1px solid var(--line);border-radius:8px;padding:10px 12px;text-align:left;color:var(--ink);transition:border-color .15s}
-  .mode:hover{border-color:#2a3940}
-  .mode.on{border-color:var(--cool);box-shadow:inset 0 0 0 1px var(--cool)}
-  .mode b{display:block;font-size:13px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:3px}
-  .mode span{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.02em}
-  .chk input{accent-color:var(--cool);width:13px;height:13px}
-  details{border-top:1px solid var(--line);margin-top:6px;padding-top:14px}
-  summary{font-size:11.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;list-style:none;display:flex;align-items:center;gap:8px;user-select:none}
+  .modes{display:flex; gap:10px}
+  .mode{flex:1; background:var(--glass-2); border:1px solid var(--glass-brd); border-radius:12px; padding:10px 12px; text-align:left; color:var(--txt);
+    transition:border-color .2s, box-shadow .2s, transform .2s var(--spring)}
+  .mode:hover{border-color:rgba(255,255,255,.16); transform:translateY(-1px)}
+  .mode.on{border-color:var(--acc); box-shadow:var(--glow)}
+  .mode b{display:block; font-size:13.5px; font-weight:800; margin-bottom:3px}
+  .mode span{font-size:11.5px; color:var(--dim)}
+  details{border-top:1px solid var(--hair); margin-top:4px; padding-top:12px}
+  summary{font-size:12px; font-weight:700; color:var(--dim); list-style:none; display:flex; align-items:center; gap:8px; user-select:none; cursor:pointer}
   summary::-webkit-details-marker{display:none}
-  summary::before{content:"+";font-family:var(--mono);color:var(--cool);width:12px}
+  summary::before{content:"+"; color:var(--acc); width:12px; font-weight:800}
   details[open] summary::before{content:"–"}
-  .adv{padding-top:18px}
-  .slider{margin-bottom:15px}
-  .slider .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
-  .slider .top span:first-child{font-size:11.5px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
-  .slider .val{font-family:var(--mono);font-size:14px;color:var(--cool);font-weight:500}
-  input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:var(--line);border-radius:3px;outline:none}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--cool);cursor:pointer;border:3px solid var(--bg);box-shadow:0 0 0 1px var(--cool)}
-  input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--cool);cursor:pointer;border:3px solid var(--bg)}
-  .cta{
-    width:100%;margin-top:22px;padding:15px;border:none;border-radius:9px;
-    background:var(--cool);color:#04110e;font-size:14px;font-weight:700;letter-spacing:.2em;
-    transition:filter .15s,transform .05s;
-  }
-  .cta:hover{filter:brightness(1.08)}
-  .cta:active{transform:translateY(1px)}
-  .cta.ghost{background:transparent;border:1px solid var(--line);color:var(--dim);letter-spacing:.16em;font-weight:600;margin-top:12px;padding:12px}
-  .cta.ghost:hover{border-color:var(--cool);color:var(--cool)}
-  .notice{font-family:var(--mono);font-size:11px;color:var(--dimmer);line-height:1.6;margin-top:18px;border-left:2px solid var(--line);padding-left:12px}
-  .warnbox{background:rgba(255,95,110,.07);border:1px solid rgba(255,95,110,.25);border-radius:9px;padding:14px 16px;margin-bottom:18px;font-size:12.5px;color:#ffb3ba;line-height:1.5}
+  .adv{padding-top:16px}
+  .slider{margin-bottom:14px}
+  .slider .top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
+  .slider .top span:first-child{font-size:12px; font-weight:700; color:var(--dim)}
+  .slider .val{font-size:14px; font-weight:800; color:var(--txt); font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:3px; background:rgba(255,255,255,.12); border-radius:3px; outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--acc); cursor:pointer; border:3px solid var(--bg); box-shadow:0 0 0 1px var(--acc)}
+  input[type=range]::-moz-range-thumb{width:13px; height:13px; border-radius:50%; background:var(--acc); cursor:pointer; border:3px solid var(--bg)}
+  /* premium-кнопки шелла: aurora + shimmer + glow; ghost — стекло */
+  .btn{position:relative; overflow:hidden; width:100%; border:0; border-radius:14px; padding:15px; font-size:16px; font-weight:700; color:#fff;
+    background:var(--aurora); background-size:200% 100%; box-shadow:var(--glow); z-index:0;
+    transition:transform .2s var(--spring), box-shadow .25s var(--smooth), background-position .6s var(--smooth)}
+  .btn::after{content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; z-index:1;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent); transform:skewX(-18deg)}
+  .btn:hover{transform:translateY(-2px) scale(1.015); box-shadow:0 10px 30px rgba(255,39,64,.5), var(--glow-2); background-position:100% 0}
+  .btn:hover::after{animation:shimmer .9s var(--smooth)}
+  @keyframes shimmer{0%{left:-60%}100%{left:130%}}
+  .btn:active{transform:scale(.98)}
+  .btn.ghost{background:var(--glass-2); box-shadow:none; border:1px solid var(--glass-brd); color:var(--txt)}
+  .btn.ghost:hover{border-color:var(--acc); box-shadow:var(--glow)}
+  .btn.slim{padding:11px 14px; font-size:14px; border-radius:11px}
+  .cta{margin-top:20px}
+  .cta.ghost{margin-top:10px}
+  .notice{font-size:12px; color:var(--dimmer); line-height:1.6; margin-top:16px; border-left:2px solid var(--hair); padding-left:12px}
+  .warnbox{background:rgba(255,39,64,.08); border:1px solid rgba(255,39,64,.3); border-radius:12px; padding:13px 15px; margin-bottom:16px; font-size:12.5px; color:var(--txt); line-height:1.5}
 
   /* ---------- session ---------- */
-  #arena{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:none}
+  #arena{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:none}
   #session.on #arena{cursor:none}
-  .hud{position:absolute;inset:0;pointer-events:none;font-family:var(--mono)}
-  .hud .corner{position:absolute;padding:22px 26px}
-  .hud .tl{top:0;left:0}
-  .hud .tr{top:0;right:0;text-align:right}
-  .hud .label{font-size:10px;letter-spacing:.24em;color:var(--dimmer);text-transform:uppercase;margin-bottom:5px}
-  .hud .big{font-size:17px;color:var(--ink);letter-spacing:.08em}
-  .hud .phase{position:absolute;top:24px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--cool)}
-  .hud .phase.warm{color:var(--warm)}
-  .segbar{display:flex;gap:3px;margin-top:9px}
-  .seg{width:13px;height:4px;background:var(--line);border-radius:1px}
-  .seg.done{background:var(--cool)}
-  .seg.cur{background:var(--warm)}
-  .seg.ab{outline:1px solid rgba(255,180,84,.45);outline-offset:-1px}
-  .seg.ab.done{background:var(--warm)}
-  .prompt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
-  .prompt .pulse{width:54px;height:54px;margin-bottom:26px;position:relative}
-  .prompt .pulse::before,.prompt .pulse::after{content:"";position:absolute;background:var(--ink);opacity:.55}
-  .prompt .pulse::before{left:50%;top:14px;bottom:14px;width:1.5px;transform:translateX(-50%)}
-  .prompt .pulse::after{top:50%;left:14px;right:14px;height:1.5px;transform:translateY(-50%)}
-  .prompt .ring{position:absolute;inset:0;border:1.5px solid var(--cool);border-radius:50%;animation:ping 2s ease-out infinite}
+  .hud{position:absolute; inset:0; pointer-events:none}
+  .hud .corner{position:absolute; padding:20px 24px}
+  .hud .tl{top:0; left:0}
+  .hud .tr{top:0; right:0; text-align:right}
+  .hud .label{font-size:10.5px; letter-spacing:.14em; font-weight:700; color:var(--dim); text-transform:uppercase; margin-bottom:5px}
+  .hud .big{font-size:18px; font-weight:800; color:var(--txt); font-variant-numeric:tabular-nums}
+  .hud .phase{position:absolute; top:22px; left:50%; transform:translateX(-50%); font-size:11px; letter-spacing:.24em; font-weight:800; text-transform:uppercase; color:var(--acc2)}
+  .hud .phase.warm{color:var(--acc)}
+  .segbar{display:flex; gap:3px; margin-top:9px}
+  .seg{width:13px; height:4px; background:rgba(255,255,255,.12); border-radius:2px}
+  .seg.done{background:var(--acc2)}
+  .seg.cur{background:var(--acc); box-shadow:0 0 8px rgba(255,39,64,.6)}
+  .seg.ab{outline:1px solid rgba(255,39,64,.5); outline-offset:-1px}
+  .seg.ab.done{background:var(--acc)}
+  .prompt{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; pointer-events:none}
+  .prompt .pulse{width:54px; height:54px; margin-bottom:26px; position:relative}
+  .prompt .pulse::before,.prompt .pulse::after{content:""; position:absolute; background:var(--txt); opacity:.55}
+  .prompt .pulse::before{left:50%; top:14px; bottom:14px; width:1.5px; transform:translateX(-50%)}
+  .prompt .pulse::after{top:50%; left:14px; right:14px; height:1.5px; transform:translateY(-50%)}
+  .prompt .ring{position:absolute; inset:0; border:1.5px solid var(--acc); border-radius:50%; animation:ping 2s ease-out infinite}
   @keyframes ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.15);opacity:0}}
-  .prompt h2{font-size:24px;font-weight:600;letter-spacing:.16em;margin:0 0 12px}
-  .prompt p{font-family:var(--mono);font-size:12.5px;color:var(--dim);letter-spacing:.08em;margin:0;max-width:42ch;line-height:1.6}
-  .prompt.interrupt h2{color:var(--danger)}
-  .lockhelp{position:absolute;bottom:34px;left:50%;transform:translateX(-50%);background:rgba(255,95,110,.1);border:1px solid rgba(255,95,110,.3);border-radius:9px;padding:13px 18px;font-family:var(--mono);font-size:11.5px;color:#ffb3ba;max-width:440px;text-align:center;line-height:1.6;display:none}
-  @media (prefers-reduced-motion:reduce){.prompt .ring{animation:none;opacity:.4}}
+  .prompt h2{font-size:24px; font-weight:900; letter-spacing:.06em; margin:0 0 12px}
+  .prompt p{font-size:13px; color:var(--dim); margin:0; max-width:46ch; line-height:1.6}
+  .prompt.interrupt h2{color:var(--acc)}
+  .lockhelp{position:absolute; bottom:34px; left:50%; transform:translateX(-50%); background:rgba(255,39,64,.1); border:1px solid rgba(255,39,64,.35); border-radius:12px; padding:12px 16px; font-size:12px; color:var(--txt); max-width:460px; text-align:center; line-height:1.6; display:none}
+  @media (prefers-reduced-motion:reduce){
+    .prompt .ring{animation:none; opacity:.4}
+    .logo1448 .l-colon{animation:none}
+    .btn:hover::after{animation:none}
+  }
   /* С0 (SENS.md): внутри шелла (iframe) правый верхний угол занят кнопкой
      «✕ Закрыть калибратор» шелла — HUD-угол опускаем под неё */
   body.embed .hud .tr{top:34px}
-  .simbadge{display:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--warm);
-    border:1px solid rgba(255,180,84,.4);border-radius:6px;padding:3px 8px;margin-left:10px;vertical-align:middle}
+  .simbadge{display:none; font-size:10.5px; letter-spacing:.16em; font-weight:800; color:var(--acc);
+    border:1px solid rgba(255,39,64,.45); border-radius:8px; padding:3px 8px; margin-left:8px; vertical-align:middle}
   body.sim .simbadge{display:inline-block}
 
   .exit{position:absolute; right:22px; bottom:20px; pointer-events:auto;
-    background:rgba(7,9,11,.6); border:1px solid var(--line); color:var(--dim); border-radius:8px;
-    padding:9px 15px; font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
-    transition:color .15s, border-color .15s}
-  .exit:hover{color:var(--cool); border-color:var(--cool)}
+    background:rgba(4,4,6,.75); border:1px solid var(--hair); color:var(--dim); border-radius:12px;
+    padding:8px 13px; font-size:12.5px; font-weight:800; transition:color .15s, border-color .15s}
+  .exit:hover{color:#fff; border-color:var(--acc)}
 
   /* ---------- results ---------- */
-  #results .wrap{height:100%;overflow-y:auto;padding:40px 24px 60px}
-  #results .inner{max-width:840px;margin:0 auto}
-  .rhead{display:flex;align-items:center;gap:14px;margin-bottom:8px}
-  .rhead h1{font-size:20px;letter-spacing:.14em;margin:0}
-  .rsub{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.04em;margin:0 0 30px 44px}
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:30px}
-  .stat{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px}
-  .stat.hero{border-color:rgba(255,180,84,.4);background:linear-gradient(180deg,rgba(255,180,84,.05),var(--panel))}
-  .stat .k{font-size:10.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin-bottom:12px}
-  .stat .v{font-family:var(--mono);font-size:33px;font-weight:700;line-height:1;color:var(--ink)}
-  .stat.hero .v{color:var(--warm)}
-  .stat .u{font-family:var(--mono);font-size:13px;color:var(--dim);margin-left:6px;font-weight:400}
-  .stat .note{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px;line-height:1.5}
-  .stat .up{color:var(--cool)} .stat .dn{color:var(--warm)}
+  #results .wrap{height:100%; overflow-y:auto; padding:40px 24px 60px}
+  #results .inner{max-width:840px; margin:0 auto}
+  .rhead{display:flex; align-items:center; gap:12px; margin-bottom:8px}
+  .rhead h1{font-size:20px; font-weight:900; margin:0}
+  .rsub{font-size:12px; color:var(--dim); line-height:1.6; margin:0 0 26px}
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:24px}
+  .stat{background:var(--glass); border:1px solid var(--glass-brd); border-radius:14px; padding:18px; box-shadow:var(--sh-1);
+    backdrop-filter:blur(var(--blur)); -webkit-backdrop-filter:blur(var(--blur))}
+  .stat.hero{border-color:rgba(255,39,64,.45); background:linear-gradient(180deg,rgba(255,39,64,.08),var(--glass))}
+  .stat .k{font-size:11px; letter-spacing:.08em; font-weight:700; color:var(--dim); text-transform:uppercase; margin-bottom:10px}
+  .stat .v{font-size:32px; font-weight:900; line-height:1; color:var(--txt); font-variant-numeric:tabular-nums}
+  .stat.hero .v{color:var(--acc)}
+  .stat .u{font-size:13px; font-weight:600; color:var(--dim); margin-left:6px}
+  .stat .note{font-size:12px; color:var(--dim); margin-top:10px; line-height:1.5}
   .stat.wide{grid-column:1/-1}
-  .stat.verdict{border-color:rgba(51,214,191,.35);background:linear-gradient(180deg,rgba(51,214,191,.05),var(--panel))}
-  .stat.verdict.tie{border-color:var(--line);background:var(--panel)}
-  .stat.verdict .v{font-size:22px;line-height:1.35}
-  .vsbar{display:flex;height:7px;border-radius:4px;overflow:hidden;margin-top:14px;border:1px solid var(--line)}
-  .vsbar i{display:block;height:100%}
-  .vsrow{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:7px}
-  .chartcard{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:22px 20px 14px;margin-bottom:24px}
-  .chartcard .ct{font-size:11.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
-  .chartcard .cd{font-family:var(--mono);font-size:11px;color:var(--dimmer);margin-bottom:14px}
-  .legend{display:flex;gap:20px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px}
-  .legend i{display:inline-block;width:18px;height:0;border-top-width:2px;border-top-style:solid;vertical-align:middle;margin-right:7px}
-  svg{display:block;width:100%;height:auto}
-  .caveats summary{padding:16px 0}
-  .caveats .body{font-size:13px;color:var(--dim);line-height:1.65;padding-bottom:8px}
-  .caveats .body b{color:var(--ink);font-weight:600}
+  .stat.verdict{border-color:rgba(255,39,64,.35); background:linear-gradient(180deg,rgba(255,39,64,.06),var(--glass))}
+  .stat.verdict.tie{border-color:var(--glass-brd); background:var(--glass)}
+  .stat.verdict .v{font-size:21px; line-height:1.35; font-weight:800}
+  .vsbar{display:flex; height:7px; border-radius:4px; overflow:hidden; margin-top:14px; background:rgba(255,255,255,.08)}
+  .vsbar i{display:block; height:100%; background:var(--acc); box-shadow:0 0 10px rgba(255,39,64,.5)}
+  .vsrow{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; font-size:11.5px; color:var(--dim); margin-top:7px; font-variant-numeric:tabular-nums}
+  .chartcard{background:var(--glass); border:1px solid var(--glass-brd); border-radius:14px; padding:20px 18px 12px; margin-bottom:20px; box-shadow:var(--sh-1);
+    backdrop-filter:blur(var(--blur)); -webkit-backdrop-filter:blur(var(--blur))}
+  .chartcard .ct{font-size:12px; letter-spacing:.06em; font-weight:800; color:var(--dim); text-transform:uppercase; margin-bottom:4px}
+  .chartcard .cd{font-size:11.5px; color:var(--dimmer); margin-bottom:12px}
+  .legend{display:flex; gap:18px; flex-wrap:wrap; font-size:11.5px; color:var(--dim); margin-top:6px}
+  .legend i{display:inline-block; width:18px; height:0; border-top-width:2px; border-top-style:solid; vertical-align:middle; margin-right:7px}
+  .chartcard svg{display:block; width:100%; height:auto} /* только график: знак .logo1448 держит свою ширину */
+  .caveats summary{padding:14px 0}
+  .caveats .body{font-size:13px; color:var(--dim); line-height:1.65; padding-bottom:8px}
+  .caveats .body b{color:var(--txt); font-weight:700}
   .caveats .body p{margin:0 0 12px}
-  .rbtns{display:flex;gap:12px;margin-top:8px}
-  .rbtns button{flex:1;padding:13px;border-radius:9px;font-size:12.5px;letter-spacing:.16em;font-weight:600}
-  .rbtns .copy{background:var(--cool);color:#04110e;border:none}
-  .rbtns .redo{background:transparent;border:1px solid var(--line);color:var(--dim)}
-  .rbtns .redo:hover{border-color:var(--cool);color:var(--cool)}
-  .rbtns .save{background:var(--warm);color:#1a1000;border:none;flex:1.6}
-  .rbtns .save:hover{filter:brightness(1.08)}
-  .copied{color:var(--cool)!important}
+  .rbtns{display:flex; gap:10px; margin-top:8px; flex-wrap:wrap}
+  .rbtns .btn{flex:1; width:auto; padding:13px; font-size:14px; border-radius:12px}
+  .rbtns #saveBtn{flex:1.6}
+  .copied{border-color:var(--acc)!important; color:var(--acc)!important}
 
   /* ---------- calib overlay ---------- */
-  #calib{position:fixed;inset:0;background:rgba(5,7,9,.94);display:none;z-index:20;align-items:center;justify-content:center}
+  #calib{position:fixed; inset:0; background:rgba(4,4,6,.9); display:none; z-index:20; align-items:center; justify-content:center}
   #calib.on{display:flex}
-  .calbox{width:min(460px,92%);background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:28px;text-align:center}
-  .calbox h3{font-size:16px;letter-spacing:.1em;margin:0 0 6px}
-  .calbox p{font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.65;margin:0 0 18px}
-  .calreadout{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--cool);margin:14px 0}
-  .calreadout small{font-size:13px;color:var(--dim);font-weight:400}
+  .calbox{width:min(460px,92%); background:var(--panel); border:1px solid var(--hair); border-radius:24px; padding:28px; text-align:center}
+  .calbox h3{font-size:17px; font-weight:800; margin:0 0 6px}
+  .calbox p{font-size:12.5px; color:var(--dim); line-height:1.65; margin:0 0 16px}
+  .calreadout{font-size:30px; font-weight:900; color:var(--acc); margin:14px 0; font-variant-numeric:tabular-nums}
+  .calreadout small{font-size:13px; font-weight:600; color:var(--dim)}
   .calstep{display:none}.calstep.on{display:block}
-  .calbox input[type=number]{max-width:160px;margin:0 auto;text-align:center}
+  .calbox input[type=number]{max-width:160px; margin:0 auto; text-align:center}
+  .calbox .btn{margin-top:10px}
 </style>
 </head>
 <body>
+<!-- С3-и2: aurora-фон шелла (статичный); С3-и1: все надписи — data-t / data-th из AIM_RU/EN/PL -->
+<div class="aurora-bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
 
 <!-- ===================== SETUP ===================== -->
 <section id="setup" class="screen on">
   <div class="center">
     <div class="card">
-      <div class="head"><div class="mark"><span></span></div><h1>АИМ-КАЛИБРАТОР</h1><span class="simbadge">SIM</span></div>
-      <p class="eyebrow"><b style="color:#ff2740">14:48 LAB</b> · BAYESIAN SENS SEARCH · V2</p>
-      <p class="lede">Тренажёр вслепую проведёт тебя по чувствительностям на одном и том же наборе фликов, нормирует каждый флик по сложности (закон Фиттса), отделит реакцию от движения и байесовской моделью найдёт минимум. В конце — слепая A/B-проверка рекомендации против твоей текущей сенсы.</p>
+      <div class="head">
+        <svg class="logo1448" viewBox="-6 -6 328 112" style="height:22px" role="img" aria-label="14:48" focusable="false">
+          <g class="l-sand" fill="#ff2740"><path d="M263,83 Q281,62 299,83 Q294,89.5 281,90 Q268,89.5 263,83 Z"/></g>
+          <g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12,26 L34,9 L34,92"/>
+            <path d="M104,10 L60,62 L114,62 M104,10 L104,92"/>
+            <path d="M218,10 L174,62 L228,62 M218,10 L218,92"/>
+            <path d="M281,50 C258,40 255,10 281,10 C307,10 304,40 281,50 C258,60 255,90 281,90 C307,90 304,60 281,50 Z"/>
+          </g>
+          <g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="12"/><circle cx="143" cy="72" r="12"/></g>
+        </svg>
+        <h1 data-t="title_h1"></h1><span class="simbadge">SIM</span>
+      </div>
+      <p class="eyebrow" data-t="eyebrow"></p>
+      <p class="lede" data-t="lede"></p>
 
-      <div id="gate" class="warnbox" style="display:none">Нужна мышь и десктоп-браузер. На тач-устройстве захват курсора и замер сенсы не работают.</div>
+      <div id="gate" class="warnbox" style="display:none" data-t="gate"></div>
 
       <div class="row">
         <div class="field">
-          <label>DPI мыши</label>
+          <label data-t="f_dpi"></label>
           <input id="dpi" type="number" value="800" min="100" max="32000" step="50">
-          <div class="sub">смотри в софте мыши</div>
+          <div class="sub" data-t="f_dpi_sub"></div>
         </div>
         <div class="field">
-          <label>Текущий sens в CS2</label>
+          <label data-t="f_sens"></label>
           <input id="sens" type="number" value="1.00" min="0.05" max="20" step="0.05">
-          <div class="sub">из настроек игры</div>
+          <div class="sub" data-t="f_sens_sub"></div>
         </div>
       </div>
 
       <div class="field">
-        <label>Разрешение в CS2</label>
+        <label data-t="f_res"></label>
         <select id="aspect">
           <option value="1.25" selected>1280×1024 · 5:4</option>
           <option value="1.3333">4:3 · 1280×960 / 1024×768</option>
           <option value="1.6">16:10</option>
-          <option value="1.7778">16:9 · нативное</option>
+          <option value="1.7778" data-t="opt_169"></option>
         </select>
-        <div class="sub" style="margin-top:9px"><label class="chk"><input id="stretch" type="checkbox" checked> растянуто на весь экран (stretched)</label></div>
+        <div class="sub" style="margin-top:9px"><label class="chk"><input id="stretch" type="checkbox" checked> <span data-t="f_stretch"></span></label></div>
       </div>
 
       <div class="field">
-        <label>Режим</label>
+        <label data-t="f_mode"></label>
         <div class="modes">
-          <button type="button" class="mode" data-mode="quick"><b>Быстро · ≈3 мин</b><span>8 раундов по 8 фликов · A/B 2</span></button>
-          <button type="button" class="mode" data-mode="precise"><b>Точно · ≈7 мин</b><span>14 раундов по 12 фликов · A/B 4</span></button>
+          <button type="button" class="mode" data-mode="quick"><b data-t="mode_quick"></b><span data-t="mode_quick_sub"></span></button>
+          <button type="button" class="mode" data-mode="precise"><b data-t="mode_precise"></b><span data-t="mode_precise_sub"></span></button>
         </div>
         <div class="sub" id="modeEst"></div>
       </div>
 
       <details>
-        <summary>Параметры сессии</summary>
+        <summary data-t="adv"></summary>
         <div class="adv">
-          <div class="slider"><div class="top"><span>Раундов</span><span class="val" id="vRounds">14</span></div><input id="rounds" type="range" min="6" max="22" value="14"></div>
-          <div class="slider"><div class="top"><span>Выстрелов в раунде</span><span class="val" id="vFlicks">12</span></div><input id="flicks" type="range" min="8" max="18" value="12"></div>
-          <div class="slider"><div class="top"><span>Размер цели</span><span class="val" id="vTarget">2.2°</span></div><input id="target" type="range" min="12" max="40" value="22"></div>
-          <div class="slider"><div class="top"><span>A/B-раундов в конце</span><span class="val" id="vAb">4</span></div><input id="ab" type="range" min="0" max="6" step="2" value="4"></div>
-          <div class="slider"><div class="top"><span>Диапазон поиска</span><span class="val" id="vRange">×2.6</span></div><input id="range" type="range" min="18" max="30" value="26"></div>
-          <button class="cta ghost" id="calBtn">Точная калибровка свайпом · по желанию</button>
-          <div id="calStatus" class="sub" style="text-align:center;margin-top:8px">множитель не откалиброван — принят 1:1</div>
+          <div class="slider"><div class="top"><span data-t="s_rounds"></span><span class="val" id="vRounds">14</span></div><input id="rounds" type="range" min="6" max="22" value="14"></div>
+          <div class="slider"><div class="top"><span data-t="s_flicks"></span><span class="val" id="vFlicks">12</span></div><input id="flicks" type="range" min="8" max="18" value="12"></div>
+          <div class="slider"><div class="top"><span data-t="s_target"></span><span class="val" id="vTarget">2.2°</span></div><input id="target" type="range" min="12" max="40" value="22"></div>
+          <div class="slider"><div class="top"><span data-t="s_ab"></span><span class="val" id="vAb">4</span></div><input id="ab" type="range" min="0" max="6" step="2" value="4"></div>
+          <div class="slider"><div class="top"><span data-t="s_range"></span><span class="val" id="vRange">×2.6</span></div><input id="range" type="range" min="18" max="30" value="26"></div>
+          <button class="btn ghost slim cta" id="calBtn" data-t="cal_btn"></button>
+          <div id="calStatus" class="sub" style="text-align:center;margin-top:8px" data-t="cal_status0"></div>
         </div>
       </details>
 
-      <button class="cta" id="startBtn">Начать сессию</button>
-      <p class="notice">Перед сессией отключи акселерацию мыши (Windows → «Повышенная точность установки указателя» снять галку). Студия сенсы 14:48 (кнопка «⌖ Сенса» на экране) умеет проверить и выключить её автоматически.</p>
+      <button class="btn cta" id="startBtn" data-t="start"></button>
+      <p class="notice" data-t="notice"></p>
     </div>
   </div>
 </section>
@@ -270,24 +297,24 @@
   <canvas id="arena"></canvas>
   <div class="hud">
     <div class="corner tl">
-      <div class="label">Раунд</div>
+      <div class="label" data-t="hud_round"></div>
       <div class="big"><span id="hRound">01</span> / <span id="hTotal">14</span></div>
       <div class="segbar" id="segbar"></div>
-      <div class="label" id="hInput" style="margin-top:9px;text-transform:none"></div>
+      <div class="label" id="hInput" style="margin-top:9px;text-transform:none;letter-spacing:0"></div>
     </div>
     <div class="corner tr">
-      <div class="label">Точность · осталось</div>
+      <div class="label" data-t="hud_acc"></div>
       <div class="big"><span id="hAcc">—</span> · <span id="hLeft">—</span></div>
     </div>
     <div class="phase" id="hPhase"></div>
-    <button id="exitBtn" class="exit">выйти · esc</button>
+    <button id="exitBtn" class="exit"></button>
   </div>
   <div class="prompt" id="prompt">
     <div class="pulse"><div class="ring"></div></div>
-    <h2 id="pTitle">РАУНД 01</h2>
-    <p id="pSub">Кликни, чтобы начать. Чувствительность скрыта — целься по ощущению.</p>
+    <h2 id="pTitle"></h2>
+    <p id="pSub"></p>
   </div>
-  <div class="lockhelp" id="lockhelp">Браузер не отдал захват курсора. Кликни по арене ещё раз; если не помогает — открой калибратор отдельным окном браузера.</div>
+  <div class="lockhelp" id="lockhelp"></div>
 </section>
 
 <!-- ===================== RESULTS ===================== -->
@@ -299,23 +326,23 @@
 <div id="calib">
   <div class="calbox">
     <div class="calstep on" id="cs1">
-      <h3>Калибровка свайпом</h3>
-      <p>Поставь мышь к левому краю коврика. Нажми «Замер», одним движением проведи вправо на измеренное линейкой расстояние и нажми <b>Esc</b>.</p>
-      <button class="cta" id="calGo">Замер</button>
-      <button class="cta ghost" id="calCancel">Отмена</button>
+      <h3 data-t="cal_h1"></h3>
+      <p data-th="cal_p1"></p>
+      <button class="btn" id="calGo" data-t="cal_go"></button>
+      <button class="btn ghost" id="calCancel" data-t="cal_cancel"></button>
     </div>
     <div class="calstep" id="cs2">
-      <h3>Веди вправо…</h3>
-      <p>Один ровный свайп. Закончишь — жми Esc.</p>
-      <div class="calreadout"><span id="calPx">0</span> <small>px пройдено</small></div>
+      <h3 data-t="cal_h2"></h3>
+      <p data-t="cal_p2"></p>
+      <div class="calreadout"><span id="calPx">0</span> <small data-t="cal_px"></small></div>
     </div>
     <div class="calstep" id="cs3">
-      <h3>Сколько сантиметров?</h3>
-      <p>Введи длину свайпа, которую ты отмерил.</p>
+      <h3 data-t="cal_h3"></h3>
+      <p data-t="cal_p3"></p>
       <input id="calCm" type="number" value="20" min="3" max="80" step="0.5">
       <div class="calreadout" style="font-size:15px;margin:16px 0 18px"><span id="calK">—</span></div>
-      <button class="cta" id="calApply">Применить</button>
-      <button class="cta ghost" id="calRetry">Заново</button>
+      <button class="btn" id="calApply" data-t="cal_apply"></button>
+      <button class="btn ghost" id="calRetry" data-t="cal_retry"></button>
     </div>
   </div>
 </div>
@@ -323,6 +350,206 @@
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
+/* ═══ С3-и1 (SENS.md, №16): три языка. Язык — из ?lang= (шелл передаёт свой LANG),
+   запасной — 1448_lang из localStorage (общий с шеллом на том же origin), дефолт ru.
+   Все надписи страницы — из AIM_RU/AIM_EN/AIM_PL: статичные через data-t (текст) и
+   data-th (разметка), динамические через t(key, vars) и pl(n, key) — формы множественного
+   числа «один|несколько|много» (ru/pl) и «один|много» (en). Паритет ключей проверяет
+   патчер и смоук. Единицы («см», «мс», «бит/с», «Гц») — тоже из словаря. */
+const Q=new URLSearchParams(location.search);
+const EMBED=Q.get("embed")==="1";
+const AIM_RU={
+  title:"14:48 · Калибратор", title_h1:"Калибратор", eyebrow:"Сенса по фликам · байесовский поиск",
+  lede:"Тренажёр вслепую проведёт тебя по чувствительностям на одном и том же наборе фликов, нормирует каждый флик по сложности (закон Фиттса), отделит реакцию от движения и байесовской моделью найдёт минимум. В конце — слепая A/B-проверка рекомендации против твоей текущей сенсы.",
+  gate:"Нужна мышь и десктоп-браузер. На тач-устройстве захват курсора и замер сенсы не работают.",
+  f_dpi:"DPI мыши", f_dpi_sub:"смотри в софте мыши", f_sens:"Текущий sens в CS2", f_sens_sub:"из настроек игры",
+  f_res:"Разрешение в CS2", opt_169:"16:9 · нативное", f_stretch:"растянуто на весь экран (stretched)",
+  f_mode:"Режим", mode_quick:"Быстро · ≈3 мин", mode_quick_sub:"8 раундов по 8 фликов · A/B 2",
+  mode_precise:"Точно · ≈7 мин", mode_precise_sub:"14 раундов по 12 фликов · A/B 4",
+  mode_custom:"свои параметры · ", mode_est:"≈ {n} мин",
+  adv:"Параметры сессии", s_rounds:"Раундов", s_flicks:"Выстрелов в раунде", s_target:"Размер цели", s_ab:"A/B-раундов в конце", s_range:"Диапазон поиска", off:"выкл",
+  cal_btn:"Точная калибровка свайпом · по желанию", cal_status0:"множитель не откалиброван — принят 1:1",
+  cal_status1:"откалибровано · множитель {k}", cal_k:"множитель ≈ {k} · {px} px / {cm} см",
+  start:"Начать сессию",
+  notice:"Перед сессией отключи акселерацию мыши (Windows → «Повышенная точность установки указателя» снять галку). Студия сенсы 14:48 (кнопка «⌖ Сенса» на экране) умеет проверить и выключить её автоматически.",
+  hud_round:"Раунд", hud_acc:"Точность · осталось", warmup:"разогрев", scored:"● замер",
+  exit:"выйти · esc", exit_partial:"результат по {n} · esc",
+  round_n:"РАУНД {n}", round_start:"Кликни, чтобы начать. Чувствительность скрыта — целься по ощущению.",
+  round_done:"РАУНД {n} ЗАВЕРШЁН", round_next:"Кликни, чтобы продолжить. Чувствительность снова скрыта.",
+  hz_note:" Мышь опрашивается на {hz} Гц — в софте мыши поставь 1000.",
+  session_done:"СЕССИЯ ЗАВЕРШЕНА", computing:"Считаю кривую отклика…",
+  ab_phase:"ФАЗА ПРОВЕРКИ · A/B", ab_intro:"Поиск завершён. Дальше {n}: рекомендация против твоей текущей сенсы — вслепую и вперемешку. Кликни, чтобы начать.",
+  interrupted:"ЗАХВАТ ПРЕРВАН", interrupted_sub:"Кликни — начать раунд заново (прогресс раунда сброшен). Ещё раз Esc — выйти в настройки.",
+  lockhelp:"Браузер не отдал захват курсора. Кликни по арене ещё раз; если не помогает — открой калибратор отдельным окном браузера.",
+  lockhelp_embed:"Браузер не отдал захват курсора. Кликни по арене ещё раз; если не помогает — закрой калибратор и открой его из студии снова.",
+  raw_on:"raw input ✓", raw_off:"курсор Windows", raw_none:"без захвата", u_hz:"Гц",
+  r_title:"Результат калибровки", r_partial:"прервано на {n} из {m}", r_rounds:"{n} поиска", r_stretched:"stretched",
+  r_target:"цель {d}°", r_conf:"уверенность: {c}", conf_high:"высокая", conf_mid:"средняя", conf_low:"низкая",
+  trend_note:"поправка на обучение: {s} мс/бит за сессию — учтена", trend_none:"эффект обучения за сессию незначим",
+  v_faster:"Рекомендация быстрее на <b>{g}%</b>", v_slightly:"Рекомендация немного быстрее · +{g}%",
+  v_current:"Твоя текущая сенса оказалась быстрее на <b>{g}%</b> — честный результат, оставайся на ней",
+  v_tie:"Значимой разницы не обнаружено — обе сенсы работают одинаково",
+  ab_title:"Слепая проверка A/B · {n}", ab_rec:"рекомендация {s} · {c} мс/бит · выиграла {w} из {p} парных фликов", ab_cur:"текущая {s} · {c} мс/бит",
+  k_rec:"Рекомендуемый sens · CS2", rec_range:"диапазон оптимума {lo}–{hi}",
+  k_cm:"cm / 360°", u_cm:"см", now_cm:"сейчас у тебя {cm} см",
+  k_change:"Изменение", ch_same:"чувствительность практически как сейчас", ch_up:"чувствительность выше", ch_dn:"чувствительность ниже",
+  k_rt:"Реакция", k_mt:"Движение", k_tp:"Пропускная способность", k_acc1:"Первый выстрел", u_ms:"мс", u_bits:"бит/с",
+  metric_note:"реакция вынесена из метрики — оптимизировалось чистое движение, нормированное по сложности флика (закон Фиттса)",
+  chart_t:"Кривая отклика", chart_d:"мс на бит сложности (Фиттс) против чувствительности · ниже = лучше · точки скорректированы на тренд обучения",
+  lg_model:"модель (среднее)", lg_band:"неопределённость", lg_opt:"оптимум", lg_cur:"текущая",
+  chart_now:"сейчас", chart_opt:"оптимум {s}", chart_aria:"кривая отклика",
+  cav_title:"Честно о точности этого числа",
+  cav_how:"<b>Как считалось.</b> Каждая сенса сдавала один и тот же экзамен: фиксированный набор фликов, перемешан только порядок. Каждый флик нормирован по сложности (закон Фиттса), реакция отделена от движения по онсету мыши, раунды взвешены по внутреннему разбросу, тренд обучения за сессию вычтен. Финал — слепой A/B против твоей текущей сенсы.",
+  cav_adapt:"<b>Адаптация.</b> Ты подстраиваешься под сенс на ходу. Оптимум — это лучшее под твою сегодняшнюю моторику; через недели тренировки на другом сенсе картина может сместиться.",
+  cav_task:"<b>Зависит от задачи.</b> Здесь меряются именно флики. Для трекинга/спрея оптимум обычно чуть ниже. Это число — отправная точка, а не догма.",
+  cav_cal:"<b>Калибровка cm/360.</b> ",
+  cav_cal_swipe:"Множитель измерен свайпом — перевод в физические см точный.",
+  cav_cal_raw:"Захват мыши в режиме raw input: 1 счётчик мыши = 1 px, акселерация и скорость указателя Windows на замер не влияют — перевод в физические см точный и без свайпа.",
+  cav_cal_11:"Перевод сделан в предположении 1:1 между движением в браузере и счётчиками мыши (Windows 6/11, акселерация выключена). Если она включена или чувствительность Windows не по центру — абсолютный cm/360 поплывёт, но относительный сдвиг sens останется верным. Для точности прогони калибровку свайпом.",
+  cav_do:"<b>Что делать.</b> ",
+  cav_do_keep:"Твоя текущая {s} и есть оптимум — менять нечего.", cav_do_keep_embed:" «Сохранить в аккаунт» — и она подставится на любом ПК клуба.",
+  cav_do_set:"Поставь {s} в CS2, поиграй пару дней, при желании прогони сессию ещё раз — оптимум сойдётся точнее.", cav_do_set_embed:" «Подставить и сохранить» — студия 14:48 пересчитает во все игры и сохранит в аккаунт.",
+  btn_keep:"Оставить текущую и сохранить в аккаунт", btn_apply:"Подставить в студию и сохранить в аккаунт",
+  btn_copy:"Скопировать sens {s}", btn_copied:"Скопировано ✓", btn_redo:"Новая сессия", btn_close:"Закрыть",
+  cal_h1:"Калибровка свайпом", cal_p1:"Поставь мышь к левому краю коврика. Нажми «Замер», одним движением проведи вправо на измеренное линейкой расстояние и нажми <b>Esc</b>.",
+  cal_go:"Замер", cal_cancel:"Отмена", cal_h2:"Веди вправо…", cal_p2:"Один ровный свайп. Закончишь — жми Esc.", cal_px:"px пройдено",
+  cal_h3:"Сколько сантиметров?", cal_p3:"Введи длину свайпа, которую ты отмерил.", cal_apply:"Применить", cal_retry:"Заново",
+  rounds_gen:"раунд|раунда|раундов", rounds_dat:"раунду|раундам|раундам", rounds_loc:"раунде|раундах|раундах",
+  ab_rounds:"контрольный раунд|контрольных раунда|контрольных раундов",
+};
+const AIM_EN={
+  title:"14:48 · Calibrator", title_h1:"Calibrator", eyebrow:"Sens by flicks · Bayesian search",
+  lede:"The trainer walks you blind through sensitivities on one and the same set of flicks, normalises each flick by difficulty (Fitts’ law), separates reaction from movement and finds the minimum with a Bayesian model. At the end — a blind A/B check of the recommendation against your current sens.",
+  gate:"A mouse and a desktop browser are required. Pointer capture and the sens measurement don’t work on touch devices.",
+  f_dpi:"Mouse DPI", f_dpi_sub:"see your mouse software", f_sens:"Current sens in CS2", f_sens_sub:"from the game settings",
+  f_res:"Resolution in CS2", opt_169:"16:9 · native", f_stretch:"stretched to full screen",
+  f_mode:"Mode", mode_quick:"Quick · ≈3 min", mode_quick_sub:"8 rounds of 8 flicks · A/B 2",
+  mode_precise:"Precise · ≈7 min", mode_precise_sub:"14 rounds of 12 flicks · A/B 4",
+  mode_custom:"custom settings · ", mode_est:"≈ {n} min",
+  adv:"Session settings", s_rounds:"Rounds", s_flicks:"Shots per round", s_target:"Target size", s_ab:"A/B rounds at the end", s_range:"Search range", off:"off",
+  cal_btn:"Precise swipe calibration · optional", cal_status0:"multiplier not calibrated — assumed 1:1",
+  cal_status1:"calibrated · multiplier {k}", cal_k:"multiplier ≈ {k} · {px} px / {cm} cm",
+  start:"Start session",
+  notice:"Before the session turn off mouse acceleration (Windows → untick “Enhance pointer precision”). The 14:48 sens studio (the “⌖ Sens” button on screen) can check and disable it for you.",
+  hud_round:"Round", hud_acc:"Accuracy · left", warmup:"warm-up", scored:"● measuring",
+  exit:"exit · esc", exit_partial:"result after {n} · esc",
+  round_n:"ROUND {n}", round_start:"Click to start. The sensitivity is hidden — aim by feel.",
+  round_done:"ROUND {n} DONE", round_next:"Click to continue. The sensitivity is hidden again.",
+  hz_note:" Your mouse polls at {hz} Hz — set 1000 in the mouse software.",
+  session_done:"SESSION COMPLETE", computing:"Computing the response curve…",
+  ab_phase:"VERIFICATION · A/B", ab_intro:"Search finished. Next: {n} — the recommendation against your current sens, blind and shuffled. Click to start.",
+  interrupted:"CAPTURE LOST", interrupted_sub:"Click to restart the round (its progress is reset). Esc again — back to settings.",
+  lockhelp:"The browser didn’t grant pointer capture. Click the arena again; if that doesn’t help, open the calibrator in a separate browser window.",
+  lockhelp_embed:"The browser didn’t grant pointer capture. Click the arena again; if that doesn’t help, close the calibrator and open it from the studio again.",
+  raw_on:"raw input ✓", raw_off:"Windows cursor", raw_none:"no capture", u_hz:"Hz",
+  r_title:"Calibration result", r_partial:"interrupted after {n} of {m}", r_rounds:"{n} of search", r_stretched:"stretched",
+  r_target:"target {d}°", r_conf:"confidence: {c}", conf_high:"high", conf_mid:"medium", conf_low:"low",
+  trend_note:"learning correction: {s} ms/bit over the session — applied", trend_none:"learning effect over the session is negligible",
+  v_faster:"The recommendation is faster by <b>{g}%</b>", v_slightly:"The recommendation is slightly faster · +{g}%",
+  v_current:"Your current sens turned out faster by <b>{g}%</b> — an honest result, stay on it",
+  v_tie:"No significant difference — both sensitivities work the same",
+  ab_title:"Blind A/B check · {n}", ab_rec:"recommended {s} · {c} ms/bit · won {w} of {p} paired flicks", ab_cur:"current {s} · {c} ms/bit",
+  k_rec:"Recommended sens · CS2", rec_range:"optimum range {lo}–{hi}",
+  k_cm:"cm / 360°", u_cm:"cm", now_cm:"you have {cm} cm now",
+  k_change:"Change", ch_same:"sensitivity practically as now", ch_up:"sensitivity higher", ch_dn:"sensitivity lower",
+  k_rt:"Reaction", k_mt:"Movement", k_tp:"Throughput", k_acc1:"First shot", u_ms:"ms", u_bits:"bit/s",
+  metric_note:"reaction is excluded from the metric — pure movement was optimised, normalised by flick difficulty (Fitts’ law)",
+  chart_t:"Response curve", chart_d:"ms per bit of difficulty (Fitts) vs sensitivity · lower = better · points corrected for the learning trend",
+  lg_model:"model (mean)", lg_band:"uncertainty", lg_opt:"optimum", lg_cur:"current",
+  chart_now:"now", chart_opt:"optimum {s}", chart_aria:"response curve",
+  cav_title:"Honestly about the precision of this number",
+  cav_how:"<b>How it was computed.</b> Every sensitivity sat the same exam: a fixed set of flicks, only the order shuffled. Each flick is normalised by difficulty (Fitts’ law), reaction is separated from movement by mouse onset, rounds are weighted by their internal spread, the learning trend over the session is subtracted. The final is a blind A/B against your current sens.",
+  cav_adapt:"<b>Adaptation.</b> You adjust to a sens on the fly. The optimum is the best for your motor skills today; after weeks of practice on another sens the picture may shift.",
+  cav_task:"<b>Task-dependent.</b> Flicks are what is measured here. For tracking/spray the optimum is usually a bit lower. This number is a starting point, not a dogma.",
+  cav_cal:"<b>cm/360 calibration.</b> ",
+  cav_cal_swipe:"The multiplier was measured with a swipe — the conversion to physical cm is exact.",
+  cav_cal_raw:"Mouse capture in raw input mode: 1 mouse count = 1 px, Windows acceleration and pointer speed don’t affect the measurement — the conversion to physical cm is exact without a swipe.",
+  cav_cal_11:"The conversion assumes 1:1 between browser movement and mouse counts (Windows 6/11, acceleration off). If it’s on or the Windows sensitivity isn’t centred, the absolute cm/360 will drift, but the relative sens shift stays correct. For precision run the swipe calibration.",
+  cav_do:"<b>What to do.</b> ",
+  cav_do_keep:"Your current {s} is the optimum — nothing to change.", cav_do_keep_embed:" “Save to account” — and it will be applied on any club PC.",
+  cav_do_set:"Set {s} in CS2, play a couple of days, run a session again if you like — the optimum will converge more precisely.", cav_do_set_embed:" “Apply and save” — the 14:48 studio converts it to all games and saves it to your account.",
+  btn_keep:"Keep current and save to account", btn_apply:"Apply to studio and save to account",
+  btn_copy:"Copy sens {s}", btn_copied:"Copied ✓", btn_redo:"New session", btn_close:"Close",
+  cal_h1:"Swipe calibration", cal_p1:"Put the mouse at the left edge of the pad. Press “Measure”, in one motion move right by a distance measured with a ruler and press <b>Esc</b>.",
+  cal_go:"Measure", cal_cancel:"Cancel", cal_h2:"Move right…", cal_p2:"One smooth swipe. When done — press Esc.", cal_px:"px travelled",
+  cal_h3:"How many centimetres?", cal_p3:"Enter the swipe length you measured.", cal_apply:"Apply", cal_retry:"Again",
+  rounds_gen:"round|rounds", rounds_dat:"round|rounds", rounds_loc:"round|rounds",
+  ab_rounds:"control round|control rounds",
+};
+const AIM_PL={
+  title:"14:48 · Kalibrator", title_h1:"Kalibrator", eyebrow:"Czułość po flickach · szukanie bayesowskie",
+  lede:"Trener na ślepo przeprowadzi cię przez czułości na tym samym zestawie flicków, znormalizuje każdy flick według trudności (prawo Fittsa), oddzieli reakcję od ruchu i modelem bayesowskim znajdzie minimum. Na koniec — ślepy test A/B rekomendacji przeciwko twojej obecnej czułości.",
+  gate:"Potrzebna jest mysz i przeglądarka na komputerze. Na urządzeniu dotykowym przechwycenie kursora i pomiar czułości nie działają.",
+  f_dpi:"DPI myszy", f_dpi_sub:"sprawdź w oprogramowaniu myszy", f_sens:"Obecny sens w CS2", f_sens_sub:"z ustawień gry",
+  f_res:"Rozdzielczość w CS2", opt_169:"16:9 · natywna", f_stretch:"rozciągnięte na cały ekran (stretched)",
+  f_mode:"Tryb", mode_quick:"Szybko · ≈3 min", mode_quick_sub:"8 rund po 8 flicków · A/B 2",
+  mode_precise:"Dokładnie · ≈7 min", mode_precise_sub:"14 rund po 12 flicków · A/B 4",
+  mode_custom:"własne parametry · ", mode_est:"≈ {n} min",
+  adv:"Parametry sesji", s_rounds:"Rund", s_flicks:"Strzałów w rundzie", s_target:"Rozmiar celu", s_ab:"Rund A/B na końcu", s_range:"Zakres szukania", off:"wył.",
+  cal_btn:"Dokładna kalibracja swipem · opcjonalnie", cal_status0:"mnożnik nieskalibrowany — przyjęto 1:1",
+  cal_status1:"skalibrowano · mnożnik {k}", cal_k:"mnożnik ≈ {k} · {px} px / {cm} cm",
+  start:"Rozpocznij sesję",
+  notice:"Przed sesją wyłącz akcelerację myszy (Windows → odznacz „Zwiększ precyzję wskaźnika”). Studio czułości 14:48 (przycisk „⌖ Czułość” na ekranie) potrafi to sprawdzić i wyłączyć automatycznie.",
+  hud_round:"Runda", hud_acc:"Celność · zostało", warmup:"rozgrzewka", scored:"● pomiar",
+  exit:"wyjdź · esc", exit_partial:"wynik po {n} · esc",
+  round_n:"RUNDA {n}", round_start:"Kliknij, aby zacząć. Czułość jest ukryta — celuj na wyczucie.",
+  round_done:"RUNDA {n} ZAKOŃCZONA", round_next:"Kliknij, aby kontynuować. Czułość znów jest ukryta.",
+  hz_note:" Mysz raportuje z częstotliwością {hz} Hz — w oprogramowaniu myszy ustaw 1000.",
+  session_done:"SESJA ZAKOŃCZONA", computing:"Liczę krzywą odpowiedzi…",
+  ab_phase:"FAZA SPRAWDZENIA · A/B", ab_intro:"Szukanie zakończone. Dalej {n}: rekomendacja przeciwko twojej obecnej czułości — na ślepo i w losowej kolejności. Kliknij, aby zacząć.",
+  interrupted:"PRZECHWYCENIE PRZERWANE", interrupted_sub:"Kliknij — zacznij rundę od nowa (postęp rundy wyzerowany). Jeszcze raz Esc — wyjście do ustawień.",
+  lockhelp:"Przeglądarka nie oddała przechwycenia kursora. Kliknij arenę jeszcze raz; jeśli to nie pomoże — otwórz kalibrator w osobnym oknie przeglądarki.",
+  lockhelp_embed:"Przeglądarka nie oddała przechwycenia kursora. Kliknij arenę jeszcze raz; jeśli to nie pomoże — zamknij kalibrator i otwórz go ponownie ze studia.",
+  raw_on:"raw input ✓", raw_off:"kursor Windows", raw_none:"bez przechwycenia", u_hz:"Hz",
+  r_title:"Wynik kalibracji", r_partial:"przerwano po {n} z {m}", r_rounds:"{n} szukania", r_stretched:"stretched",
+  r_target:"cel {d}°", r_conf:"pewność: {c}", conf_high:"wysoka", conf_mid:"średnia", conf_low:"niska",
+  trend_note:"poprawka na uczenie: {s} ms/bit w sesji — uwzględniona", trend_none:"efekt uczenia w sesji nieistotny",
+  v_faster:"Rekomendacja szybsza o <b>{g}%</b>", v_slightly:"Rekomendacja nieco szybsza · +{g}%",
+  v_current:"Twoja obecna czułość okazała się szybsza o <b>{g}%</b> — uczciwy wynik, zostań przy niej",
+  v_tie:"Nie wykryto istotnej różnicy — obie czułości działają tak samo",
+  ab_title:"Ślepy test A/B · {n}", ab_rec:"rekomendacja {s} · {c} ms/bit · wygrała {w} z {p} sparowanych flicków", ab_cur:"obecna {s} · {c} ms/bit",
+  k_rec:"Zalecany sens · CS2", rec_range:"zakres optimum {lo}–{hi}",
+  k_cm:"cm / 360°", u_cm:"cm", now_cm:"teraz masz {cm} cm",
+  k_change:"Zmiana", ch_same:"czułość praktycznie jak teraz", ch_up:"czułość wyższa", ch_dn:"czułość niższa",
+  k_rt:"Reakcja", k_mt:"Ruch", k_tp:"Przepustowość", k_acc1:"Pierwszy strzał", u_ms:"ms", u_bits:"bit/s",
+  metric_note:"reakcja wyłączona z metryki — optymalizowany był czysty ruch, znormalizowany według trudności flicka (prawo Fittsa)",
+  chart_t:"Krzywa odpowiedzi", chart_d:"ms na bit trudności (Fitts) względem czułości · niżej = lepiej · punkty skorygowane o trend uczenia",
+  lg_model:"model (średnia)", lg_band:"niepewność", lg_opt:"optimum", lg_cur:"obecna",
+  chart_now:"teraz", chart_opt:"optimum {s}", chart_aria:"krzywa odpowiedzi",
+  cav_title:"Szczerze o dokładności tej liczby",
+  cav_how:"<b>Jak to policzono.</b> Każda czułość zdawała ten sam egzamin: stały zestaw flicków, losowa tylko kolejność. Każdy flick znormalizowany według trudności (prawo Fittsa), reakcja oddzielona od ruchu po pierwszym drgnięciu myszy, rundy ważone według wewnętrznego rozrzutu, trend uczenia w sesji odjęty. Finał — ślepy test A/B przeciwko twojej obecnej czułości.",
+  cav_adapt:"<b>Adaptacja.</b> Dostosowujesz się do czułości w locie. Optimum to najlepsze pod twoją dzisiejszą motorykę; po tygodniach treningu na innej czułości obraz może się przesunąć.",
+  cav_task:"<b>Zależy od zadania.</b> Tu mierzone są właśnie flicki. Dla trackingu/spreju optimum jest zwykle nieco niższe. Ta liczba to punkt wyjścia, nie dogmat.",
+  cav_cal:"<b>Kalibracja cm/360.</b> ",
+  cav_cal_swipe:"Mnożnik zmierzono swipem — przeliczenie na fizyczne cm jest dokładne.",
+  cav_cal_raw:"Przechwycenie myszy w trybie raw input: 1 impuls myszy = 1 px, akceleracja i szybkość wskaźnika Windows nie wpływają na pomiar — przeliczenie na fizyczne cm jest dokładne i bez swipe’u.",
+  cav_cal_11:"Przeliczenie zakłada 1:1 między ruchem w przeglądarce a impulsami myszy (Windows 6/11, akceleracja wyłączona). Jeśli jest włączona albo czułość Windows nie stoi na środku — bezwzględne cm/360 się rozjedzie, ale względne przesunięcie sens pozostanie prawidłowe. Dla dokładności przeprowadź kalibrację swipem.",
+  cav_do:"<b>Co robić.</b> ",
+  cav_do_keep:"Twoja obecna {s} to optimum — nie ma czego zmieniać.", cav_do_keep_embed:" „Zapisz na koncie” — i zostanie podstawiona na każdym PC klubu.",
+  cav_do_set:"Ustaw {s} w CS2, pograj parę dni, w razie chęci przejdź sesję jeszcze raz — optimum zbiegnie się dokładniej.", cav_do_set_embed:" „Podstaw i zapisz” — studio 14:48 przeliczy na wszystkie gry i zapisze na koncie.",
+  btn_keep:"Zostaw obecną i zapisz na koncie", btn_apply:"Podstaw do studia i zapisz na koncie",
+  btn_copy:"Skopiuj sens {s}", btn_copied:"Skopiowano ✓", btn_redo:"Nowa sesja", btn_close:"Zamknij",
+  cal_h1:"Kalibracja swipem", cal_p1:"Ustaw mysz przy lewej krawędzi podkładki. Naciśnij „Pomiar”, jednym ruchem przesuń w prawo o odległość zmierzoną linijką i naciśnij <b>Esc</b>.",
+  cal_go:"Pomiar", cal_cancel:"Anuluj", cal_h2:"Prowadź w prawo…", cal_p2:"Jeden równy swipe. Po zakończeniu — wciśnij Esc.", cal_px:"px przebyte",
+  cal_h3:"Ile centymetrów?", cal_p3:"Wpisz długość swipe’u, którą odmierzyłeś.", cal_apply:"Zastosuj", cal_retry:"Od nowa",
+  rounds_gen:"runda|rundy|rund", rounds_dat:"rundzie|rundach|rundach", rounds_loc:"rundzie|rundach|rundach",
+  ab_rounds:"runda kontrolna|rundy kontrolne|rund kontrolnych",
+};
+const AIM_LANGS={ru:AIM_RU,en:AIM_EN,pl:AIM_PL};
+const LANG=(()=>{let l=Q.get("lang"); if(!l){try{l=localStorage.getItem("1448_lang");}catch(e){}} l=String(l||"ru").toLowerCase(); return AIM_LANGS[l]?l:"ru";})();
+const AIM=AIM_LANGS[LANG];
+function t(k,v){let s=AIM[k]; if(s==null)s=AIM_RU[k]; if(s==null)return k; if(v)for(const n in v)s=s.split("{"+n+"}").join(v[n]); return s;}
+/* формы числа: ru — 1/2–4/5+ (21 → «раунд»), pl — только 1 (21 → «rund»), en — 1/остальные */
+function plIdx(n){n=Math.abs(n); if(LANG==="en")return n===1?0:1; const m10=n%10,m100=n%100; const few=m10>=2&&m10<=4&&(m100<12||m100>14);
+  if(LANG==="pl")return n===1?0:few?1:2; return (m10===1&&m100!==11)?0:few?1:2;}
+function pl(n,k){const f=t(k).split("|"); return n+" "+f[Math.min(plIdx(n),f.length-1)];}
+const LOGO=`<svg class="logo1448" viewBox="-6 -6 328 112" style="height:22px" role="img" aria-label="14:48" focusable="false"><g class="l-sand" fill="#ff2740"><path d="M263,83 Q281,62 299,83 Q294,89.5 281,90 Q268,89.5 263,83 Z"/></g><g class="l-digits" fill="none" stroke="#f2f0f2" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"><path d="M12,26 L34,9 L34,92"/><path d="M104,10 L60,62 L114,62 M104,10 L104,92"/><path d="M218,10 L174,62 L228,62 M218,10 L218,92"/><path d="M281,50 C258,40 255,10 281,10 C307,10 304,40 281,50 C258,60 255,90 281,90 C307,90 304,60 281,50 Z"/></g><g class="l-colon" fill="#ff2740"><circle cx="143" cy="30" r="12"/><circle cx="143" cy="72" r="12"/></g></svg>`;
+(function applyLang(){
+  document.documentElement.lang=LANG; document.title=t("title");
+  document.querySelectorAll("[data-t]").forEach(el=>{el.textContent=t(el.dataset.t);});
+  document.querySelectorAll("[data-th]").forEach(el=>{el.innerHTML=t(el.dataset.th);});
+  $("lockhelp").textContent=t(EMBED?"lockhelp_embed":"lockhelp");
+})();
 const RAD=Math.PI/180, DEG=180/Math.PI;
 const SENS_CONST=360*2.54/0.022; // 41563.64 ; cm/360 = SENS_CONST/(sens*dpi)
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -499,18 +726,18 @@ function armFlick(){
 /* ---------------- render loop ---------------- */
 let raf=null;
 function loop(){
-  ctx.fillStyle="#07090b"; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#070708"; ctx.fillRect(0,0,W,H);
   // world grid (motion cues)
   ctx.lineWidth=1;
   const yb=Math.round(yaw/10)*10;
   for(let g=yb-80;g<=yb+80;g+=10){
     const p1=project(g,pitch-46),p2=project(g,pitch+46);
-    if(p1.vis||p2.vis){ctx.strokeStyle="rgba(90,140,140,.10)";ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
+    if(p1.vis||p2.vis){ctx.strokeStyle="rgba(201,204,214,.09)";ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
   }
   const pb=Math.round(pitch/10)*10;
   for(let g=pb-50;g<=pb+50;g+=10){
     const p1=project(yaw-70,g),p2=project(yaw+70,g);
-    if(p1.vis||p2.vis){ctx.strokeStyle=g===0?"rgba(90,140,140,.20)":"rgba(90,140,140,.07)";ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
+    if(p1.vis||p2.vis){ctx.strokeStyle=g===0?"rgba(201,204,214,.18)":"rgba(201,204,214,.06)";ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
   }
   // target (ellipse: anamorphic projection stretches it exactly like stretched-res CS2)
   if(st.running){
@@ -521,40 +748,41 @@ function loop(){
       if(ry<6){const s=6/ry;rx*=s;ry=6;}
       const warm=st.phase==="warmup";
       ctx.save();
-      ctx.shadowBlur=18; ctx.shadowColor=warm?"rgba(109,128,133,.5)":"rgba(51,214,191,.55)";
-      ctx.fillStyle=warm?"rgba(120,140,145,.5)":"rgba(51,214,191,.9)";
+      // С3-и2: цель — белая с красным свечением и красным кольцом (разогрев — серая)
+      ctx.shadowBlur=18; ctx.shadowColor=warm?"rgba(141,141,151,.45)":"rgba(255,39,64,.6)";
+      ctx.fillStyle=warm?"rgba(141,141,151,.5)":"rgba(242,240,242,.92)";
       ctx.beginPath();ctx.ellipse(p.x,p.y,rx,ry,0,0,7);ctx.fill();
       ctx.shadowBlur=0;
-      ctx.lineWidth=1.5;ctx.strokeStyle=warm?"rgba(150,170,175,.7)":"rgba(180,255,245,.9)";
+      ctx.lineWidth=1.5;ctx.strokeStyle=warm?"rgba(201,204,214,.6)":"rgba(255,39,64,.9)";
       ctx.beginPath();ctx.ellipse(p.x,p.y,rx+3,ry+3,0,0,7);ctx.stroke();
-      ctx.fillStyle="rgba(7,9,11,.85)";ctx.beginPath();ctx.ellipse(p.x,p.y,Math.max(2,rx*0.18),Math.max(2,ry*0.18),0,0,7);ctx.fill();
+      ctx.fillStyle="rgba(7,7,8,.85)";ctx.beginPath();ctx.ellipse(p.x,p.y,Math.max(2,rx*0.18),Math.max(2,ry*0.18),0,0,7);ctx.fill();
       ctx.restore();
     }
   }
   // pillarbox bars when not stretched
   if(vp.w<W-1||vp.h<H-1){
-    ctx.fillStyle="#040607";
+    ctx.fillStyle="#030304";
     if(vp.x>0){ctx.fillRect(0,0,vp.x,H);ctx.fillRect(vp.x+vp.w,0,W-vp.x-vp.w,H);}
     if(vp.y>0){ctx.fillRect(0,0,W,vp.y);ctx.fillRect(0,vp.y+vp.h,W,H-vp.y-vp.h);}
-    ctx.strokeStyle="rgba(120,170,170,.14)";ctx.lineWidth=1;
+    ctx.strokeStyle="rgba(255,255,255,.08)";ctx.lineWidth=1;
     ctx.strokeRect(vp.x+.5,vp.y+.5,vp.w-1,vp.h-1);
   }
   // miss flash
   if(st.missFlash>0){
     const a=st.missFlash*0.25;
     const grd=ctx.createRadialGradient(cx,cy,Math.min(W,H)*0.3,cx,cy,Math.max(W,H)*0.7);
-    grd.addColorStop(0,"rgba(255,95,110,0)");grd.addColorStop(1,"rgba(255,95,110,"+a+")");
+    grd.addColorStop(0,"rgba(255,39,64,0)");grd.addColorStop(1,"rgba(255,39,64,"+a+")");
     ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
     st.missFlash-=0.08;
   }
   // crosshair
   const g=5,l=11;
-  ctx.lineWidth=1.5;ctx.strokeStyle="rgba(220,232,231,.85)";
+  ctx.lineWidth=1.5;ctx.strokeStyle="rgba(242,240,242,.85)";
   ctx.beginPath();
   ctx.moveTo(cx-g-l,cy);ctx.lineTo(cx-g,cy);ctx.moveTo(cx+g,cy);ctx.lineTo(cx+g+l,cy);
   ctx.moveTo(cx,cy-g-l);ctx.lineTo(cx,cy-g);ctx.moveTo(cx,cy+g);ctx.lineTo(cx,cy+g+l);
   ctx.stroke();
-  ctx.fillStyle="#ffb454";ctx.beginPath();ctx.arc(cx,cy,1.6,0,7);ctx.fill();
+  ctx.fillStyle="#ff2740";ctx.beginPath();ctx.arc(cx,cy,1.6,0,7);ctx.fill();
   raf=requestAnimationFrame(loop);
 }
 
@@ -673,8 +901,8 @@ function lockFallback(){
 }
 document.addEventListener("pointerlockerror",()=>{ if(rawTry)lockFallback(); });
 function paintInput(){
-  const t=(st.raw===true?"raw input ✓":st.raw===false?"курсор Windows":"")+(st.hz?(st.raw==null?"":" · ")+st.hz+" Гц":"");
-  const el=$("hInput"); if(el)el.textContent=t;
+  const s=(st.raw===true?t("raw_on"):st.raw===false?t("raw_off"):"")+(st.hz?(st.raw==null?"":" · ")+st.hz+" "+t("u_hz"):"");
+  const el=$("hInput"); if(el)el.textContent=s;
 }
 document.addEventListener("pointerlockchange",()=>{
   const locked=document.pointerLockElement!=null;
@@ -692,7 +920,7 @@ document.addEventListener("pointerlockchange",()=>{
   } else {
     if(st.running && !st.endingNormally){ // interrupted mid-round
       st.running=false; st.phase="interrupted";
-      showPrompt("ЗАХВАТ ПРЕРВАН","Кликни — начать раунд заново (прогресс раунда сброшен). Ещё раз Esc — выйти в настройки.",true);
+      showPrompt(t("interrupted"),t("interrupted_sub"),true);
       updateHUD();
     }
   }
@@ -741,13 +969,13 @@ function endRound(){
   if(st.roundIndex===cfg.rounds)prepareAB();
   updateHUD();
   if(st.roundIndex>=totalRounds()){
-    showPrompt("СЕССИЯ ЗАВЕРШЕНА","Считаю кривую отклика…",false);
+    showPrompt(t("session_done"),t("computing"),false);
     setTimeout(showResults,450);
   } else if(st.roundIndex===cfg.rounds&&st.abTotal>0){
-    showPrompt("ФАЗА ПРОВЕРКИ · A/B","Поиск завершён. Дальше "+st.abTotal+" контрольных раунда: рекомендация против твоей текущей сенсы — вслепую и вперемешку. Кликни, чтобы начать.",false);
+    showPrompt(t("ab_phase"),t("ab_intro",{n:pl(st.abTotal,"ab_rounds")}),false);
   } else {
-    const hzNote=st.hz&&st.hz<250?" Мышь опрашивается на "+st.hz+" Гц — в софте мыши поставь 1000.":"";
-    showPrompt("РАУНД "+pad(st.roundIndex)+" ЗАВЕРШЁН","Кликни, чтобы продолжить. Чувствительность снова скрыта."+hzNote,false);
+    const hzNote=st.hz&&st.hz<250?t("hz_note",{hz:st.hz}):"";
+    showPrompt(t("round_done",{n:pad(st.roundIndex)}),t("round_next")+hzNote,false);
   }
 }
 function showPrompt(t,s,interrupt){
@@ -757,8 +985,8 @@ function showPrompt(t,s,interrupt){
 }
 function setPhase(){
   const el=$("hPhase");
-  if(st.phase==="warmup"){el.textContent="разогрев";el.classList.remove("warm");}
-  else if(st.phase==="scored"){el.textContent="● замер";el.classList.add("warm");}
+  if(st.phase==="warmup"){el.textContent=t("warmup");el.classList.remove("warm");}
+  else if(st.phase==="scored"){el.textContent=t("scored");el.classList.add("warm");}
   else el.textContent="";
 }
 function updateHUD(){
@@ -767,8 +995,8 @@ function updateHUD(){
   $("hTotal").textContent=pad(total);
   const acc=st.hits+st.misses>0?Math.round(st.hits/(st.hits+st.misses)*100)+"%":"—";
   $("hAcc").textContent=st.running?acc:"—";
-  $("hLeft").textContent=st.running&&st.phase==="scored"?st.scoredLeft:(st.running?"разогрев":"—");
-  $("exitBtn").textContent=st.roundIndex>=PARTIAL_MIN&&st.roundIndex<cfg.rounds?"результат по "+st.roundIndex+" раундам · esc":"выйти · esc";
+  $("hLeft").textContent=st.running&&st.phase==="scored"?st.scoredLeft:(st.running?t("warmup"):"—");
+  $("exitBtn").textContent=st.roundIndex>=PARTIAL_MIN&&st.roundIndex<cfg.rounds?t("exit_partial",{n:pl(st.roundIndex,"rounds_dat")}):t("exit");
   setPhase();
   // segbar (amber-outlined segments = A/B validation block)
   const sb=$("segbar"); sb.innerHTML="";
@@ -780,7 +1008,8 @@ function updateHUD(){
 }
 
 /* ---------------- screens ---------------- */
-function showScreen(id){["setup","session","results"].forEach(s=>$(s).classList.toggle("on",s===id));}
+function showScreen(id){["setup","session","results"].forEach(s=>$(s).classList.toggle("on",s===id));
+  document.body.classList.toggle("in-session",id==="session");} // С3-и2: aurora-фон на арене выключен
 
 $("startBtn").addEventListener("click",()=>{
   cfg.dpi=clamp(parseFloat($("dpi").value)||800,100,32000);
@@ -802,7 +1031,7 @@ $("startBtn").addEventListener("click",()=>{
   st.abMode=false; st.abQueue=[]; st.abTotal=0; st.abData=[]; st.abRecN=0; st.abSkipClose=false;
   showScreen("session"); resize(); updateHUD();
   if(SIM.on){ simRound(); return; } // С0-и4: синтетический стрелок, без pointer lock
-  showPrompt("РАУНД 01","Кликни, чтобы начать. Чувствительность скрыта — целься по ощущению.",false);
+  showPrompt(t("round_n",{n:"01"}),t("round_start"),false);
   if(raf)cancelAnimationFrame(raf); loop();
 });
 
@@ -815,17 +1044,18 @@ function showResults(){
   const recN=st.abRecN||P.rec.sens, recCm=cm360(recN), curN=cfg.sens, curCm=cm360(curN);
   const dPct=(recN-curN)/curN*100;
   const dir2=dPct>=0?"up":"dn";
-  const dWord=Math.abs(dPct)<1.5?"практически как сейчас":(dPct>0?"выше":"ниже");
-  // confidence from posterior flatness
+  const dWord=Math.abs(dPct)<1.5?t("ch_same"):(dPct>0?t("ch_up"):t("ch_dn"));
+  // confidence from posterior flatness. С3-и1: наружу (aim_result.conf) уходит
+  // код high|mid|low, а не слово на языке экрана — шелл/сервер хранят код.
   const rel=P.rec.sd/Math.max(1e-6,(P.yMax-P.yMin));
-  const conf=st.partial?"низкая":rel<0.07?"высокая":rel<0.16?"средняя":"низкая";
+  const conf=st.partial?"low":rel<0.07?"high":rel<0.16?"mid":"low";
   const acc1=SESSION.miss1All.length?Math.round(100*(1-mean(SESSION.miss1All))):null; // С1-и2
   // reaction / motor split + throughput
   const avgRT=SESSION.rtAll.length?Math.round(mean(SESSION.rtAll)):0;
   const avgMT=SESSION.mtAll.length?Math.round(mean(SESSION.mtAll)):0;
   const tp=P.rec.mean>0?(1000/P.rec.mean).toFixed(2):"—";
   // learning trend note
-  const trendNote=Math.abs(P.trend)>3?`<span style="color:var(--cool)">поправка на обучение: ${P.trend<0?"−":"+"}${Math.abs(P.trend).toFixed(0)} мс/бит за сессию — учтена</span>`:"эффект обучения за сессию незначим";
+  const trendNote=Math.abs(P.trend)>3?`<span style="color:var(--acc2)">${t("trend_note",{s:(P.trend<0?"−":"+")+Math.abs(P.trend).toFixed(0)})}</span>`:t("trend_none");
   // A/B verdict (paired across the fixed flick set); verdictKey — для шелла:
   // rec — рекомендация выиграла, cur — текущая, tie — разницы нет (или
   // рекомендация совпала с текущей и A/B не понадобился), none — не проверяли
@@ -845,81 +1075,82 @@ function showResults(){
       const gain=(medC-medR)/medC*100;
       const share=pairs?wins/pairs:0.5;
       let verdict,tie=false; gainPct=gain;
-      if(share>=0.7&&gain>2){verdict=`Рекомендация быстрее на <b>${gain.toFixed(1)}%</b>`;verdictKey="rec";}
-      else if(share>=0.58&&gain>0){verdict=`Рекомендация немного быстрее · +${gain.toFixed(1)}%`;verdictKey="rec";}
-      else if(share<=0.3&&gain<-2){verdict=`Твоя текущая сенса оказалась быстрее на <b>${(-gain).toFixed(1)}%</b> — честный результат, оставайся на ней`;verdictKey="cur";}
-      else {verdict="Значимой разницы не обнаружено — обе сенсы работают одинаково";tie=true;verdictKey="tie";}
+      if(share>=0.7&&gain>2){verdict=t("v_faster",{g:gain.toFixed(1)});verdictKey="rec";}
+      else if(share>=0.58&&gain>0){verdict=t("v_slightly",{g:gain.toFixed(1)});verdictKey="rec";}
+      else if(share<=0.3&&gain<-2){verdict=t("v_current",{g:(-gain).toFixed(1)});verdictKey="cur";}
+      else {verdict=t("v_tie");tie=true;verdictKey="tie";}
       const pR=Math.round(share*100);
       abHTML=`<div class="stat wide verdict${tie?" tie":""}">
-        <div class="k">Слепая проверка A/B · ${st.abData.length} раунда</div>
+        <div class="k">${t("ab_title",{n:pl(st.abData.length,"rounds_gen")})}</div>
         <div class="v">${verdict}</div>
-        <div class="vsbar"><i style="width:${pR}%;background:var(--warm)"></i><i style="flex:1;background:var(--line)"></i></div>
-        <div class="vsrow"><span>рекомендация ${recN.toFixed(2)} · ${medR.toFixed(0)} мс/бит · выиграла ${wins} из ${pairs} парных фликов</span><span>текущая ${curN.toFixed(2)} · ${medC.toFixed(0)} мс/бит</span></div>
+        <div class="vsbar"><i style="width:${pR}%"></i></div>
+        <div class="vsrow"><span>${t("ab_rec",{s:recN.toFixed(2),c:medR.toFixed(0),w:wins,p:pairs})}</span><span>${t("ab_cur",{s:curN.toFixed(2),c:medC.toFixed(0)})}</span></div>
       </div>`;
     }
   }
 
   const keepCur=verdictKey==="cur"||verdictKey==="tie"; // подтверждена текущая — подставлять нечего
+  const inputNote=st.raw===true?t("raw_on"):st.raw===false?t("raw_off"):t("raw_none");
   $("resultsInner").innerHTML=`
-    <div class="rhead"><div class="mark"><span></span></div><h1>РЕЗУЛЬТАТ КАЛИБРОВКИ</h1></div>
-    <p class="rsub">${st.partial?`<span style="color:var(--danger)">прервано на ${st.partial} раундах из ${cfg.rounds}</span> · `:`${cfg.rounds} раундов поиска · `}${cfg.aspectLabel}${cfg.stretch?" stretched":""} · DPI ${cfg.dpi} · цель ${cfg.targetRad.toFixed(1)}° · ${st.raw===true?"raw input ✓":st.raw===false?"курсор Windows":"без захвата"}${st.hz?" · "+st.hz+" Гц":""} · уверенность: ${conf} · ${trendNote}</p>
+    <div class="rhead">${LOGO}<h1>${t("r_title")}</h1></div>
+    <p class="rsub">${st.partial?`<span style="color:var(--acc)">${t("r_partial",{n:pl(st.partial,"rounds_loc"),m:cfg.rounds})}</span> · `:`${t("r_rounds",{n:pl(cfg.rounds,"rounds_gen")})} · `}${cfg.aspectLabel}${cfg.stretch?" "+t("r_stretched"):""} · DPI ${cfg.dpi} · ${t("r_target",{d:cfg.targetRad.toFixed(1)})} · ${inputNote}${st.hz?" · "+st.hz+" "+t("u_hz"):""} · ${t("r_conf",{c:t("conf_"+conf)})} · ${trendNote}</p>
     <div class="stats">
       ${abHTML}
       <div class="stat hero">
-        <div class="k">Рекомендуемый sens · CS2</div>
+        <div class="k">${t("k_rec")}</div>
         <div class="v">${recN.toFixed(2)}</div>
-        <div class="note">диапазон оптимума ${P.lo.toFixed(2)}–${P.hi.toFixed(2)}</div>
+        <div class="note">${t("rec_range",{lo:P.lo.toFixed(2),hi:P.hi.toFixed(2)})}</div>
       </div>
       <div class="stat">
-        <div class="k">cm / 360°</div>
-        <div class="v">${recCm.toFixed(1)}<span class="u">см</span></div>
-        <div class="note">сейчас у тебя ${curCm.toFixed(1)} см</div>
+        <div class="k">${t("k_cm")}</div>
+        <div class="v">${recCm.toFixed(1)}<span class="u">${t("u_cm")}</span></div>
+        <div class="note">${t("now_cm",{cm:curCm.toFixed(1)})}</div>
       </div>
       <div class="stat">
-        <div class="k">Изменение</div>
+        <div class="k">${t("k_change")}</div>
         <div class="v ${dir2}">${dPct>=0?"+":""}${dPct.toFixed(0)}<span class="u">%</span></div>
-        <div class="note">чувствительность ${dWord}</div>
+        <div class="note">${dWord}</div>
       </div>
       <div class="stat wide" style="display:flex;gap:34px;flex-wrap:wrap;align-items:baseline">
-        <div><div class="k">Реакция</div><div class="v" style="font-size:22px">${avgRT||"—"}<span class="u">мс</span></div></div>
-        <div><div class="k">Движение</div><div class="v" style="font-size:22px">${avgMT||"—"}<span class="u">мс</span></div></div>
-        <div><div class="k">Пропускная способность</div><div class="v" style="font-size:22px">${tp}<span class="u">бит/с</span></div></div>
-        <div><div class="k">Первый выстрел</div><div class="v" style="font-size:22px">${acc1==null?"—":acc1}<span class="u">%</span></div></div>
-        <div class="note" style="flex:1;min-width:200px;margin-top:0">реакция вынесена из метрики — оптимизировалось чистое движение, нормированное по сложности флика (закон Фиттса)</div>
+        <div><div class="k">${t("k_rt")}</div><div class="v" style="font-size:22px">${avgRT||"—"}<span class="u">${t("u_ms")}</span></div></div>
+        <div><div class="k">${t("k_mt")}</div><div class="v" style="font-size:22px">${avgMT||"—"}<span class="u">${t("u_ms")}</span></div></div>
+        <div><div class="k">${t("k_tp")}</div><div class="v" style="font-size:22px">${tp}<span class="u">${t("u_bits")}</span></div></div>
+        <div><div class="k">${t("k_acc1")}</div><div class="v" style="font-size:22px">${acc1==null?"—":acc1}<span class="u">%</span></div></div>
+        <div class="note" style="flex:1;min-width:200px;margin-top:0">${t("metric_note")}</div>
       </div>
     </div>
     <div class="chartcard">
-      <div class="ct">Кривая отклика</div>
-      <div class="cd">мс на бит сложности (Фиттс) против чувствительности · ниже = лучше · точки скорректированы на тренд обучения</div>
+      <div class="ct">${t("chart_t")}</div>
+      <div class="cd">${t("chart_d")}</div>
       ${buildChart(P,recN,curN)}
       <div class="legend">
-        <span><i style="border-color:var(--cool)"></i>модель (среднее)</span>
-        <span><i style="border-color:var(--cool);border-top-style:dotted;opacity:.6"></i>неопределённость</span>
-        <span><i style="border-color:var(--warm);border-top-style:dashed"></i>оптимум</span>
-        <span><i style="border-color:var(--dim);border-top-style:dashed"></i>текущая</span>
+        <span><i style="border-color:var(--txt)"></i>${t("lg_model")}</span>
+        <span><i style="border-color:rgba(255,255,255,.35);border-top-style:dotted"></i>${t("lg_band")}</span>
+        <span><i style="border-color:var(--acc);border-top-style:dashed"></i>${t("lg_opt")}</span>
+        <span><i style="border-color:var(--dim);border-top-style:dashed"></i>${t("lg_cur")}</span>
       </div>
     </div>
     <details class="caveats">
-      <summary>Честно о точности этого числа</summary>
+      <summary>${t("cav_title")}</summary>
       <div class="body">
-        <p><b>Как считалось.</b> Каждая сенса сдавала один и тот же экзамен: фиксированный набор фликов, перемешан только порядок. Каждый флик нормирован по сложности (закон Фиттса), реакция отделена от движения по онсету мыши, раунды взвешены по внутреннему разбросу, тренд обучения за сессию вычтен. Финал — слепой A/B против твоей текущей сенсы.</p>
-        <p><b>Адаптация.</b> Ты подстраиваешься под сенс на ходу. Оптимум — это лучшее под твою сегодняшнюю моторику; через недели тренировки на другом сенсе картина может сместиться.</p>
-        <p><b>Зависит от задачи.</b> Здесь меряются именно флики. Для трекинга/спрея оптимум обычно чуть ниже. Это число — отправная точка, а не догма.</p>
-        <p><b>Калибровка cm/360.</b> ${cfg.calibrated?"Множитель измерен свайпом — перевод в физические см точный.":st.raw===true?"Захват мыши в режиме raw input: 1 счётчик мыши = 1 px, акселерация и скорость указателя Windows на замер не влияют — перевод в физические см точный и без свайпа.":"Перевод сделан в предположении 1:1 между движением в браузере и счётчиками мыши (Windows 6/11, акселерация выключена). Если она включена или чувствительность Windows не по центру — абсолютный cm/360 поплывёт, но относительный сдвиг sens останется верным. Для точности прогони калибровку свайпом."}</p>
-        <p><b>Что делать.</b> ${keepCur
-          ?`Твоя текущая ${curN.toFixed(2)} и есть оптимум — менять нечего.${EMBED?" «Сохранить в аккаунт» — и она подставится на любом ПК клуба.":""}`
-          :`Поставь ${recN.toFixed(2)} в CS2, поиграй пару дней, при желании прогони сессию ещё раз — оптимум сойдётся точнее.${EMBED?" «Подставить и сохранить» — студия 14:48 пересчитает во все игры и сохранит в аккаунт.":""}`}</p>
+        <p>${t("cav_how")}</p>
+        <p>${t("cav_adapt")}</p>
+        <p>${t("cav_task")}</p>
+        <p>${t("cav_cal")}${cfg.calibrated?t("cav_cal_swipe"):st.raw===true?t("cav_cal_raw"):t("cav_cal_11")}</p>
+        <p>${t("cav_do")}${keepCur
+          ?t("cav_do_keep",{s:curN.toFixed(2)})+(EMBED?t("cav_do_keep_embed"):"")
+          :t("cav_do_set",{s:recN.toFixed(2)})+(EMBED?t("cav_do_set_embed"):"")}</p>
       </div>
     </details>
     <div class="rbtns">
-      ${EMBED?`<button class="save" id="saveBtn">${keepCur?"Оставить текущую и сохранить в аккаунт":"Подставить в студию и сохранить в аккаунт"}</button>`:""}
-      <button class="copy" id="copyBtn">Скопировать sens ${(keepCur?curN:recN).toFixed(2)}</button>
-      <button class="redo" id="redoBtn">Новая сессия</button>
-      ${EMBED?`<button class="redo" id="closeBtn">Закрыть</button>`:""}
+      ${EMBED?`<button class="btn" id="saveBtn">${keepCur?t("btn_keep"):t("btn_apply")}</button>`:""}
+      <button class="btn ghost" id="copyBtn">${t("btn_copy",{s:(keepCur?curN:recN).toFixed(2)})}</button>
+      <button class="btn ghost" id="redoBtn">${t("btn_redo")}</button>
+      ${EMBED?`<button class="btn ghost" id="closeBtn">${t("btn_close")}</button>`:""}
     </div>`;
   $("copyBtn").addEventListener("click",e=>{
     navigator.clipboard&&navigator.clipboard.writeText((keepCur?curN:recN).toFixed(2));
-    e.target.textContent="Скопировано ✓"; e.target.classList.add("copied");
+    e.target.textContent=t("btn_copied"); e.target.classList.add("copied");
   });
   $("redoBtn").addEventListener("click",()=>showScreen("setup"));
   if(EMBED){
@@ -932,7 +1163,7 @@ function showResults(){
     lo:+P.lo.toFixed(2),hi:+P.hi.toFixed(2),conf,verdict:verdictKey,gain_pct:+gainPct.toFixed(1),
     rt_ms:avgRT,mt_ms:avgMT,tp:+tp||0,cur:+curN.toFixed(2),cur_cm:+curCm.toFixed(1),
     rounds:cfg.rounds,ab_rounds:st.abData.length,sim:SIM.on,
-    acc1:acc1==null?null:acc1,raw:st.raw==null?null:st.raw,hz:st.hz||0,partial:st.partial||0,mode:cfg.mode||"custom"});
+    acc1:acc1==null?null:acc1,raw:st.raw==null?null:st.raw,hz:st.hz||0,partial:st.partial||0,mode:cfg.mode||"custom",lang:LANG});
 }
 
 function buildChart(P,recN,curN){
@@ -950,44 +1181,46 @@ function buildChart(P,recN,curN){
   // mean line
   let mean=""; P.curve.forEach((c,i)=>{mean+=(i?"L":"M")+lx(c.sens).toFixed(1)+" "+ly(c.mean).toFixed(1)+" ";});
   // x ticks
-  const ticks=[opt.logMin,Math.log10(curN),Math.log10(recN),opt.logMax].map(v=>Math.pow(10,v));
+  // x ticks: края и текущая; значение оптимума пишет его красная подпись (С3-и2: раньше две подписи ложились друг на друга)
+  const ticks=[opt.logMin,Math.log10(curN),opt.logMax].map(v=>Math.pow(10,v));
   let xax="";
-  [...new Set(ticks.map(t=>t.toFixed(2)))].forEach(ts=>{const t=parseFloat(ts);const x=lx(t);
-    xax+=`<line x1="${x}" y1="${m.t}" x2="${x}" y2="${m.t+ih}" stroke="rgba(120,170,170,.05)"/>
-    <text x="${x}" y="${h-16}" fill="#6d8085" font-size="11" font-family="var(--mono)" text-anchor="middle">${ts}</text>`;});
+  [...new Set(ticks.map(tv=>tv.toFixed(2)))].forEach(ts=>{const tv=parseFloat(ts);const x=lx(tv);
+    xax+=`<line x1="${x}" y1="${m.t}" x2="${x}" y2="${m.t+ih}" stroke="rgba(255,255,255,.05)"/>
+    <text x="${x}" y="${h-16}" fill="#8d8d97" font-size="11" text-anchor="middle">${ts}</text>`;});
   // y ticks
   let yax="";
   for(let i=0;i<=3;i++){const v=y0+(y1-y0)*i/3;const y=ly(v);
-    yax+=`<line x1="${m.l}" y1="${y}" x2="${m.l+iw}" y2="${y}" stroke="rgba(120,170,170,.05)"/>
-    <text x="${m.l-9}" y="${y+4}" fill="#6d8085" font-size="11" font-family="var(--mono)" text-anchor="end">${Math.round(v)}</text>`;}
+    yax+=`<line x1="${m.l}" y1="${y}" x2="${m.l+iw}" y2="${y}" stroke="rgba(255,255,255,.05)"/>
+    <text x="${m.l-9}" y="${y+4}" fill="#8d8d97" font-size="11" text-anchor="end">${Math.round(v)}</text>`;}
   // samples
   let pts="";
   P.samples.forEach(s=>{const x=lx(s.sens),y=ly(s.cost);
-    pts+=`<g><line x1="${x-4}" y1="${y}" x2="${x+4}" y2="${y}" stroke="#8aa0a3" stroke-width="1.3"/>
-    <line x1="${x}" y1="${y-4}" x2="${x}" y2="${y+4}" stroke="#8aa0a3" stroke-width="1.3"/>
-    <text x="${x+7}" y="${y-6}" fill="#465458" font-size="9" font-family="var(--mono)">${s.order}</text></g>`;});
+    pts+=`<g><line x1="${x-4}" y1="${y}" x2="${x+4}" y2="${y}" stroke="#8d8d97" stroke-width="1.3"/>
+    <line x1="${x}" y1="${y-4}" x2="${x}" y2="${y+4}" stroke="#8d8d97" stroke-width="1.3"/>
+    <text x="${x+7}" y="${y-6}" fill="#5d5d66" font-size="9">${s.order}</text></g>`;});
   // current marker
   const xc=lx(curN);
   // optimum marker
   const xo=lx(recN), yo=ly(P.rec.mean);
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="кривая отклика">
+  // С3-и2: модель — белая, неопределённость — стекло, оптимум — акцент, текущая — приглушённая
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${t("chart_aria")}">
     ${yax}${xax}
-    <path d="${band}" fill="rgba(51,214,191,.10)" stroke="none"/>
-    <path d="${mean}" fill="none" stroke="#33d6bf" stroke-width="2"/>
-    <line x1="${xc}" y1="${m.t}" x2="${xc}" y2="${m.t+ih}" stroke="#6d8085" stroke-width="1.2" stroke-dasharray="3 4"/>
-    <text x="${xc}" y="${m.t+12}" fill="#6d8085" font-size="10" font-family="var(--mono)" text-anchor="middle">сейчас</text>
-    <line x1="${xo}" y1="${m.t}" x2="${xo}" y2="${m.t+ih}" stroke="#ffb454" stroke-width="1.3" stroke-dasharray="5 4"/>
-    <circle cx="${xo}" cy="${yo}" r="5.5" fill="none" stroke="#ffb454" stroke-width="2"/>
-    <line x1="${xo-9}" y1="${yo}" x2="${xo+9}" y2="${yo}" stroke="#ffb454" stroke-width="1.3"/>
-    <line x1="${xo}" y1="${yo-9}" x2="${xo}" y2="${yo+9}" stroke="#ffb454" stroke-width="1.3"/>
-    <text x="${xo}" y="${m.t+ih+30}" fill="#ffb454" font-size="11" font-family="var(--mono)" font-weight="700" text-anchor="middle">оптимум ${recN.toFixed(2)}</text>
+    <path d="${band}" fill="rgba(255,255,255,.06)" stroke="none"/>
+    <path d="${mean}" fill="none" stroke="#f2f0f2" stroke-width="2"/>
+    <line x1="${xc}" y1="${m.t}" x2="${xc}" y2="${m.t+ih}" stroke="#8d8d97" stroke-width="1.2" stroke-dasharray="3 4"/>
+    <text x="${xc}" y="${m.t+12}" fill="#8d8d97" font-size="10" text-anchor="middle">${t("chart_now")}</text>
+    <line x1="${xo}" y1="${m.t}" x2="${xo}" y2="${m.t+ih}" stroke="#ff2740" stroke-width="1.3" stroke-dasharray="5 4"/>
+    <circle cx="${xo}" cy="${yo}" r="5.5" fill="none" stroke="#ff2740" stroke-width="2"/>
+    <line x1="${xo-9}" y1="${yo}" x2="${xo+9}" y2="${yo}" stroke="#ff2740" stroke-width="1.3"/>
+    <line x1="${xo}" y1="${yo-9}" x2="${xo}" y2="${yo+9}" stroke="#ff2740" stroke-width="1.3"/>
+    <text x="${xo}" y="${m.t+ih+30}" fill="#ff2740" font-size="11" font-weight="800" text-anchor="middle">${t("chart_opt",{s:recN.toFixed(2)})}</text>
     ${pts}
   </svg>`;
 }
 
 /* ---------------- calibration ---------------- */
 function showCalStep(n){["cs1","cs2","cs3"].forEach((id,i)=>$(id).classList.toggle("on",i===n-1));
-  if(n===3){const cm=parseFloat($("calCm").value)||20;const k=(st.calSum/cm)/(cfg.dpi/2.54);$("calK").textContent="множитель ≈ "+k.toFixed(2)+" · "+Math.round(st.calSum)+" px / "+cm+" см";}}
+  if(n===3){const cm=parseFloat($("calCm").value)||20;const k=(st.calSum/cm)/(cfg.dpi/2.54);$("calK").textContent=t("cal_k",{k:k.toFixed(2),px:Math.round(st.calSum),cm});}}
 $("calBtn").addEventListener("click",e=>{e.preventDefault();$("calib").classList.add("on");showCalStep(1);});
 $("calCancel").addEventListener("click",()=>$("calib").classList.remove("on"));
 $("calGo").addEventListener("click",()=>{
@@ -1000,7 +1233,7 @@ $("calApply").addEventListener("click",()=>{
   const cm=parseFloat($("calCm").value)||20;
   cfg.pxPerCm=st.calSum/cm; cfg.calibrated=true;
   const k=cfg.pxPerCm/(cfg.dpi/2.54);
-  $("calStatus").textContent="откалибровано · множитель "+k.toFixed(2);
+  $("calStatus").textContent=t("cal_status1",{k:k.toFixed(2)});
   st.mode="idle"; $("calib").classList.remove("on");
 });
 
@@ -1009,7 +1242,7 @@ const sl=(id,vid,fmt)=>{const i=$(id),o=$(vid);const u=()=>o.textContent=fmt(i.v
 sl("rounds","vRounds",v=>v);
 sl("flicks","vFlicks",v=>v);
 sl("target","vTarget",v=>(v/10).toFixed(1)+"°");
-sl("ab","vAb",v=>v==="0"||v===0?"выкл":v);
+sl("ab","vAb",v=>v==="0"||v===0?t("off"):v);
 sl("range","vRange",v=>"×"+(v/10).toFixed(1));
 if(!window.matchMedia("(pointer: fine)").matches){$("gate").style.display="block";}
 
@@ -1022,28 +1255,29 @@ function estMin(){const r=+$("rounds").value,f=+$("flicks").value,a=+$("ab").val
 function paintMode(){
   const cur=Object.keys(MODES).find(k=>Object.entries(MODES[k]).every(([id,v])=>+$(id).value===v))||null;
   document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("on",b.dataset.mode===cur));
-  $("modeEst").textContent=(cur?"":"свои параметры · ")+"≈ "+estMin()+" мин";
+  $("modeEst").textContent=(cur?"":t("mode_custom"))+t("mode_est",{n:estMin()});
   cfg.mode=cur||"custom";
 }
 function setMode(k){for(const [id,v] of Object.entries(MODES[k])){$(id).value=v;$(id).dispatchEvent(new Event("input"));}paintMode();}
 document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode)));
 ["rounds","flicks","ab","range"].forEach(id=>$(id).addEventListener("input",paintMode));
-setMode(new URLSearchParams(location.search).get("mode")==="precise"?"precise":"quick"); // ?mode= — шелл/тест
+setMode(Q.get("mode")==="precise"?"precise":"quick"); // ?mode= — шелл/тест
 
 /* ═══ 14:48 мост (С0, SENS.md) ═══
-   aim.html?embed=1&dpi=&sens=&lang=  — открыт iframe'ом из студии сенсы шелла:
+   aim.html?embed=1&dpi=&sens=&lang=&aspect=  — открыт iframe'ом из студии сенсы шелла
+   (lang — язык словарей AIM_RU/EN/PL, С3-и1; aspect — соотношение сторон CS2 с ПК, С2-и2):
    префилл DPI и текущей сенсы (уже в единицах CS2 — шелл конвертирует сам),
    результат и кнопки уходят parent'у через postMessage:
      {type:'aim_result', sens, dpi, cm360, lo, hi, conf, verdict: rec|cur|tie|none,
-      gain_pct, rt_ms, mt_ms, tp, cur, cur_cm, rounds, ab_rounds, sim}
+      gain_pct, rt_ms, mt_ms, tp, cur, cur_cm, rounds, ab_rounds, sim, acc1, raw, hz,
+      partial, mode, lang}; conf — код high|mid|low (С3-и1), не слово
      {type:'aim_save'}  — «подставить в студию и сохранить в аккаунт»
      {type:'aim_close'} — закрыть оверлей
    Без embed (файл открыт сам по себе) сообщения уходят в пустоту — безвредно.
    ?sim=1&seed=N&simopt=K&autostart=1 — синтетический стрелок (С0-и4): весь
    конвейер раунды → GP → A/B → вердикт → postMessage без pointer lock; K —
    истинный оптимум в долях от текущей сенсы (1.0 = «текущая и есть оптимум»). */
-const Q=new URLSearchParams(location.search);
-const EMBED=Q.get("embed")==="1";
+// Q и EMBED объявлены в начале скрипта (С3-и1: нужны applyLang до остального)
 function post(msg){ if(!EMBED)return; try{parent.postMessage(msg,"*");}catch(e){} }
 if(EMBED)document.body.classList.add("embed");
 (function(){
