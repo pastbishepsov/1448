@@ -90,7 +90,11 @@ func main() {
 	go hub.Run()
 
 	// ── Роуты ───────────────────────────────────────────────────────────────
-	r := gin.Default()
+	// Ж0-и5: логгер не пишет строки /ws/* — там в query живут тикет админки и
+	// (у старых агентов) AGENT_TOKEN; gin.Default() писал их в лог целиком.
+	r := gin.New()
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/api/v1/ws/admin", "/api/v1/ws/shell"}}))
+	r.Use(gin.Recovery())
 	// К0-и5: кому верить про адрес клиента. gin по умолчанию доверяет ЛЮБОМУ
 	// прокси, и X-Forwarded-For от самого клиента обходил лимитер по IP. Пусто
 	// (клуб: ПК ходят напрямую) — не верить никому; список CIDR/IP через
@@ -242,6 +246,7 @@ func main() {
 		adm.GET("/staff-chat", handleStaffChatList) // Е6: канал админ ↔ владелец (Р7)
 		adm.POST("/staff-chat", handleStaffChatPost)
 		adm.POST("/staff-chat/read", handleStaffChatRead)
+		adm.POST("/ws-ticket", handleAdminWSTicket)      // Ж0-и5: одноразовый тикет для /ws/admin
 		adm.GET("/onboarding", handleOnboardingState)    // Е5: нужен ли тур (Р9)
 		adm.POST("/onboarding", handleOnboardingDone)    // тур показан
 		adm.DELETE("/onboarding", handleOnboardingReset) // пройти заново
@@ -568,12 +573,13 @@ func authMiddleware() gin.HandlerFunc {
 }
 
 // handleAdminWS — live-канал админки (спринт А6). Браузерный WebSocket не
-// умеет заголовки, поэтому access-токен приходит query-параметром и
-// проверяется здесь вручную (typ=access + роль персонала).
+// умеет заголовков, поэтому в URL приходит одноразовый тикет (Ж0-и5,
+// wsticket.go), взятый секундой раньше обычным запросом с Authorization.
+// Access-токен в query больше не принимается — он оседал в логах.
 func handleAdminWS(c *gin.Context) {
-	claims, err := parseToken(c.Query("token"))
-	if err != nil || tokenType(claims) != "access" || !roleIsStaff(claimString(claims, "role")) {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": "unauthorized", "message": "Нужен access-токен персонала"})
+	tk, ok := wsTickets.redeem(c.Query("ticket"), time.Now())
+	if !ok || !roleIsStaff(tk.Role) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "unauthorized", "message": "Нужен свежий тикет персонала (POST /admin/ws-ticket)"})
 		return
 	}
 	if err := hub.ServeAdmin(c.Writer, c.Request); err != nil {

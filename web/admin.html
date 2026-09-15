@@ -977,6 +977,30 @@ function tokens(){ return {a: localStorage.getItem('1448a_access'), r: localStor
 function setTokens(a, r){ localStorage.setItem('1448a_access', a); localStorage.setItem('1448a_refresh', r); }
 function clearTokens(){ localStorage.removeItem('1448a_access'); localStorage.removeItem('1448a_refresh'); }
 
+/* Ж0-и6: единый in-flight refresh (как tryRefresh в shell.html, ревью 26.08).
+   Access живёт 15 минут; в момент его протухания админка шлёт несколько
+   запросов сразу (минутный тик, renderHall — четыре в Promise.all), и каждый
+   ходил за refresh сам. Сервер ротирует refresh и отзывает старый, поэтому
+   второй получал token_revoked и выкидывал админа на экран входа посреди
+   смены (воспроизведено при рассинхроне 6 мс, ревью 14.09). Теперь все ждут
+   один запрос; сеть/5xx — не повод разлогинивать, только 401/403. */
+let refreshInFlight = null;
+function tryRefresh(){
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try{
+      const r = await fetch(API + '/auth/refresh', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({refresh_token: tokens().r})});
+      if (!r.ok) return (r.status === 401 || r.status === 403) ? 'dead' : 'retry';
+      const d = await r.json();
+      setTokens(d.access_token, d.refresh_token);
+      return 'ok';
+    }catch(e){ return 'retry'; }
+    finally{ setTimeout(() => { refreshInFlight = null; }, 0); }
+  })();
+  return refreshInFlight;
+}
+
 async function api(path, opts = {}, retry = true){
   const {a} = tokens();
   const res = await fetch(API + path, {
@@ -984,10 +1008,10 @@ async function api(path, opts = {}, retry = true){
     headers: {'Content-Type':'application/json', ...(a ? {Authorization:'Bearer '+a} : {}), ...(opts.headers||{})},
   });
   if (res.status === 401 && retry && tokens().r){
-    const r = await fetch(API + '/auth/refresh', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({refresh_token: tokens().r})});
-    if (r.ok){ const d = await r.json(); setTokens(d.access_token, d.refresh_token); return api(path, opts, false); }
-    logout(); throw new Error('unauthorized');
+    const outcome = await tryRefresh();
+    if (outcome === 'ok') return api(path, opts, false);
+    if (outcome === 'dead'){ logout(); throw new Error('unauthorized'); }
+    throw new Error('Нет связи с сервером — повтори через минуту');
   }
   const data = await res.json().catch(()=>({}));
   if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code, data});
@@ -1284,9 +1308,15 @@ function setPolling(ms){
   if (refreshIv) clearInterval(refreshIv);
   refreshIv = setInterval(refresh, ms);
 }
-function connectWS(){
+async function connectWS(){
   if (!me) return;
-  try{ ws = new WebSocket(API.replace(/^http/, 'ws') + '/ws/admin?token=' + encodeURIComponent(tokens().a || '')); }
+  // Ж0-и5: в URL сокета — одноразовый тикет на 30 с, а не access-токен:
+  // query-строка оседает в логах сервера, тикет там бесполезен.
+  let ticket = '';
+  try{ ticket = (await api('/admin/ws-ticket', {method:'POST', body:'{}'})).ticket || ''; }
+  catch(e){ if (me) scheduleWSRetry(); return; }
+  if (!me) return;
+  try{ ws = new WebSocket(API.replace(/^http/, 'ws') + '/ws/admin?ticket=' + encodeURIComponent(ticket)); }
   catch(e){ scheduleWSRetry(); return; }
   ws.onopen = () => { wsOpen = true; setPolling(30000); refresh(); };
   ws.onclose = () => {

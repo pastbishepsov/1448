@@ -99,6 +99,14 @@ func handleAdminDeposit(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "too_much", "message": "Слишком большая сумма за раз"})
 		return
 	}
+	// Ж0-и7: сумма — в грошах, до транзакции. 0,001 zł проходило binding
+	// (gt=0), numeric(8,2) округлял до 0,00, и CHECK amount_pln > 0 отвечал
+	// гостю 500 «db_error» вместо человеческого 400.
+	if models.GroszFromPLN(req.AmountPLN) < 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_amount", "message": "Сумма — от 0,01 zł"})
+		return
+	}
+	req.AmountPLN = models.PLNFromGrosz(models.GroszFromPLN(req.AmountPLN)) // ровно два знака: запись и кошелёк не разойдутся
 	method := req.Method
 	if method == "" {
 		method = "cash"
