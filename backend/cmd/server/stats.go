@@ -57,7 +57,7 @@ func handleAdminStatsShift(c *gin.Context) {
 	}
 	db.Model(&models.Deposit{}).
 		Select("method, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ?", from, to).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", from, to). // Ж1: отменённый — не выручка
 		Group("method").Scan(&depRows)
 	byMethod := gin.H{"cash": 0.0, "card": 0.0, "blik": 0.0}
 	var depPLN float64

@@ -68,7 +68,7 @@ func effectiveRate(basePLN, discountPct float64) float64 {
 
 func userDepositCount(userID string) int {
 	var n int64
-	db.Model(&models.Deposit{}).Where("user_id = ?", userID).Count(&n)
+	db.Model(&models.Deposit{}).Where("user_id = ? AND voided_at IS NULL", userID).Count(&n) // Ж1: отменённый не считается
 	return int(n)
 }
 
@@ -121,7 +121,7 @@ func handleAdminDeposit(c *gin.Context) {
 		if cap := settingInt64("admin_day_deposit_cap_pln", 0); cap > 0 {
 			var used float64
 			db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
-				Where("created_by = ? AND created_at >= ?", c.GetString("user_id"), startOfToday()).
+				Where("created_by = ? AND created_at >= ? AND voided_at IS NULL", c.GetString("user_id"), startOfToday()). // Ж1: отменённая опечатка лимит не съедает
 				Scan(&used)
 			if adminDayCapExceeded(used, req.AmountPLN, float64(cap)) {
 				c.JSON(http.StatusForbidden, gin.H{"code": "day_cap",

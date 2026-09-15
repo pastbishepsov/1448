@@ -1348,7 +1348,10 @@ function feedLine(m){
     case 'incident': return d.auto && d.open && !d.minutes ? '⚠ агент пропал на ' + pcName(d.computer_id) + ' во время сессии — запись в «Проблемах»'
       : d.compensation ? 'проблема: компенсация ' + d.compensation
       : d.open ? 'проблема: запись в журнале' + (d.minutes ? ' — ' + d.minutes + ' мин' : '') : 'проблема: закрыта';
-    case 'deposit': return (d.nickname||'гость') + ' внёс ' + (+d.amount_pln||0) + ' zł (+' + (d.coins||0) + ' монет)';
+    case 'deposit': return d.kind === 'void'
+      ? 'отмена депозита: ' + (d.nickname||'гость') + ' · ' + (+d.amount_pln||0) + ' zł'
+        + (+d.refund_pln < +d.amount_pln ? ' (снято ' + fmtPLN(d.refund_pln||0) + ', отыграно ' + fmtPLN(d.unrecovered_pln||0) + ')' : '')
+      : (d.nickname||'гость') + ' внёс ' + (+d.amount_pln||0) + ' zł (+' + (d.coins||0) + ' монет)';
     case 'sale': return d.kind === 'void'
       ? 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł'
       : 'продано: ' + (d.name||'товар') + (d.qty > 1 ? ' ×' + d.qty : '')
@@ -2642,12 +2645,19 @@ function uHistHtml(){
   if (uTab === 'deposits'){
     const rows = uData.deposits || [];
     if (!rows.length) return '<div class="empty">' + (uData.money_scope === 'today' ? 'Сегодня депозитов не было' : 'Депозитов не было') + '</div>';
-    return `<table class="hist">${rows.map(x => `<tr>
-      <td class="muted">${fmtTime(x.created_at)}</td>
-      <td><b>${(+x.amount_pln).toLocaleString('ru-RU')} zł</b></td>
-      <td>+${x.coins_granted}${x.bonus_coins > 0 ? ' (+' + x.bonus_coins + ')' : ''}</td>
-      <td class="muted">${esc(x.method)}</td>
-    </tr>`).join('')}</table>`;
+    // Ж1: отменённый остаётся в истории с пометкой, сколько удалось вернуть;
+    // кнопку показываем тому, кому сервер её разрешит (владельцу — все, админу — свои)
+    const nb = ' style="border-bottom:0"'; // у отменённого пометка — второй строкой, без разделителя между ними
+    return `<table class="hist">${rows.map(x => `<tr${x.voided_at ? ' style="opacity:.5"' : ''}>
+      <td class="muted"${x.voided_at ? nb : ''}>${fmtTime(x.created_at)}</td>
+      <td${x.voided_at ? nb : ''}><b>${(+x.amount_pln).toLocaleString('ru-RU')} zł</b></td>
+      <td${x.voided_at ? nb : ''}>+${x.coins_granted}${x.bonus_coins > 0 ? ' (+' + x.bonus_coins + ')' : ''}</td>
+      <td class="muted"${x.voided_at ? nb : ''}>${esc(x.method)}</td>
+      <td${x.voided_at ? nb : ''}>${x.voided_at || !(isOwner() || (me && x.created_by === me.id)) ? ''
+        : `<button class="btn ghost mini" onclick="armDepositVoid(this,'${x.id}')">Отменить</button>`}</td>
+    </tr>${x.voided_at ? `<tr style="opacity:.5"><td colspan="5" class="muted" style="padding-top:0">отменён · возвращено `
+        + ((x.refund_grosz || 0) / 100).toLocaleString('ru-RU') + ' из ' + (+x.amount_pln).toLocaleString('ru-RU')
+        + (x.coins_taken > 0 ? ' · забрано ' + x.coins_taken + ' монет' : '') + '</td></tr>' : ''}`).join('')}</table>`;
   }
   const rows = uData.grants || [];
   if (!rows.length) return '<div class="empty">Начислений не было</div>';
@@ -2667,13 +2677,43 @@ async function submitDeposit(){
     try{
       const d = await api('/admin/users/'+drawerUserId+'/deposit', {method:'POST',
         body:JSON.stringify({amount_pln: amount, method: depMethod})});
-      toast('💰 +' + d.coins_granted + ' монет'
-        + (d.bonus_coins > 0 ? ' (+' + d.bonus_coins + ' бонус таланта)' : ''));
+      // Ж1: «Вернуть» 6 секунд — опечатку «500 вместо 50» откатывают тут же,
+      // не идя во вкладку «Депозиты»; сервер снимет ровно то, что ещё в кошельке
+      toast('💰 ' + fmtPLN(d.amount_pln) + ' zł · +' + d.coins_granted + ' монет'
+        + (d.bonus_coins > 0 ? ' (+' + d.bonus_coins + ' бонус таланта)' : ''),
+        () => voidDeposit(d.deposit_id));
       uForm = null;
       await loadUserDrawer();
       renderUsersTable();
     }catch(e){ toast('⚠ ' + e.message); }
   });
+}
+
+/* Ж1 (Ж-Р4): отмена ошибочного депозита по правилам продаж — свою и в текущих
+   клубных сутках отменяет админ, чужую и вчерашнюю — владелец. С кошелька
+   снимается остаток, но не больше суммы; отыгранное долгом не становится —
+   сервер отвечает, сколько вернулось, а сколько гость уже потратил. */
+async function voidDeposit(id){
+  return once('depvoid:' + id, async () => {
+    try{
+      const d = await api('/admin/deposits/' + id + '/void', {method:'POST'});
+      let msg = '✓ Депозит ' + fmtPLN(d.amount_pln) + ' zł отменён — с кошелька снято ' + fmtPLN(d.refund_pln) + ' zł';
+      if (d.unrecovered_pln > 0) msg += ', уже отыграно ' + fmtPLN(d.unrecovered_pln) + ' zł';
+      if (d.coins_taken > 0) msg += ', забрано ' + d.coins_taken + ' монет';
+      toast(msg);
+      if (drawerUserId && !drawerBusy()) await loadUserDrawer();
+      renderUsersTable();
+      refresh(); // выручка в шапке
+      if (curTab === 'stats') renderReports();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+function armDepositVoid(btn, id){
+  if (btn.dataset.armed){ delete btn.dataset.armed; btn.disabled = true; voidDeposit(id); return; } // взведённая кнопка держит шторку «занятой» — снимаем перед перерисовкой
+  btn.dataset.armed = '1';
+  btn.textContent = 'Точно отменить?';
+  btn.classList.add('danger');
+  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; btn.classList.remove('danger'); } }, 4000);
 }
 async function submitXP(){
   return once('xp:' + drawerUserId, async () => { // одно начисление на клик (ревью 26.08)
@@ -3173,7 +3213,7 @@ async function impApply(){
 /* ── Журнал-аудит (А4): единая лента — начисления, депозиты, действия ── */
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
-  money: ['deposit','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn','incident_compensate', // К8: компенсация — обязательство
+  money: ['deposit','deposit_void','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn','incident_compensate', // К8: компенсация — обязательство
           'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
           'kitchen_done','kitchen_pay','kitchen_cancel'], // кухню считают у той же стойки (ревью 26.08)
   grant: ['grant'],
@@ -3188,7 +3228,7 @@ const AUD_GROUPS = {
   staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding'], // ревью 26.08
 };
 const AUD_LABEL = {
-  deposit:'депозит', grant:'начисление', ban:'бан', unban:'разбан',
+  deposit:'депозит', deposit_void:'отмена депозита', grant:'начисление', ban:'бан', unban:'разбан',
   session_end:'стоп сессии', session_start:'старт сессии', pc_power:'питание ПК',
   waitlist_add:'в очередь', waitlist_remove:'снят из очереди', waitlist_seat:'посадка из очереди',
   pc_maintenance:'ПК в ремонт', pc_available:'ПК в строй',
@@ -3226,7 +3266,7 @@ const AUD_LABEL = {
   incident_create:'проблема: запись', incident_compensate:'проблема: компенсация', incident_resolve:'проблема: закрыта', // К8
 };
 const AUD_ICON = {
-  deposit:'coins', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
+  deposit:'coins', deposit_void:'cross', grant:'xp', ban:'ban', unban:'unban', session_end:'power',
   session_start:'clock', pc_power:'power',
   waitlist_add:'clock', waitlist_remove:'cross', waitlist_seat:'check',
   pc_maintenance:'wrench', pc_available:'check', booking_create:'cal',
@@ -4054,6 +4094,7 @@ async function renderReports(){
 function paintMoney(d){
   const t = d.totals, k = d.delta, w = d.prev || {}, days = d.days || [];
   const loss = d.losses || {units:0, pln:0, moves:0};
+  const lostDep = +loss.unrecovered_pln || 0; // Ж1: отыграно по ошибочным депозитам
   const wal = d.wallet || {liability_pln:0, guests_with_balance:0, period_spent_pln:0, period_spends:0};
   const pk = d.packages || {liability_pln:0, minutes_left:0, guests:0, period_pln:0, period_count:0, period_minutes:0}; // Е2-и6
   const ic = d.incidents || {period_count:0, compensated:0, comp_minutes:0, comp_pln:0, open:0}; // К8
@@ -4074,8 +4115,12 @@ function paintMoney(d){
        ${repKpi('Депозитов', t.deposits, k.deposits, {was:w.deposits})}
        ${repKpi('Платили гостей', t.guests, k.guests, {was:w.guests})}
        ${repKpi('Продано штук', t.goods_items, undefined, {title:t.goods_sales + ' продаж за период'})}
-       ${repKpi('Потери', fmtPLN(loss.pln) + ' zł', undefined,
-                {title:'списано корректировкой, а не через кассу: ' + loss.units + ' шт за ' + loss.moves + ' движений'})}
+       ${repKpi('Потери', fmtPLN(loss.pln + lostDep) + ' zł', undefined,
+                {title:'склад: списано корректировкой, а не через кассу — ' + loss.units + ' шт за ' + loss.moves + ' движений, ' + fmtPLN(loss.pln) + ' zł'
+                       + ' · отыграно по ошибочным депозитам — ' + fmtPLN(lostDep) + ' zł'})}
+       ${lostDep > 0 || loss.deposit_voids > 0 ? repKpi('— по ошибочным депозитам', fmtPLN(lostDep) + ' zł', undefined,
+                {title:'гость успел потратить до отмены депозита — долгом не стало (Ж-Р4), с кошелька снят только остаток · '
+                       + (loss.deposit_voids || 0) + ' отмен на ' + fmtPLN(loss.deposit_void_pln || 0) + ' zł за период'}) : ''}
      </div>
      <div class="kpis">
        <div class="kpi">Наличные <b>${fmtPLN(t.cash_pln)} zł</b></div>

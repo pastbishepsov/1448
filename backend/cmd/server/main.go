@@ -200,6 +200,7 @@ func main() {
 		adm.POST("/users/:id/ban", handleAdminBan)
 		adm.POST("/users/:id/unban", handleAdminUnban)
 		adm.POST("/users/:id/deposit", handleAdminDeposit)
+		adm.POST("/deposits/:id/void", handleAdminDepositVoid) // Ж1: отмена ошибочного депозита по правилам продаж
 		adm.POST("/users/:id/grant", handleAdminGrant)
 		adm.GET("/grants", handleAdminGrants)
 		adm.GET("/audit", handleAdminAudit)         // единая лента действий (спринт А4)

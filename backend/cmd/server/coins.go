@@ -284,7 +284,7 @@ type coinsAgg struct {
 
 func aggCoins(p period) coinsAgg {
 	var a coinsAgg
-	db.Model(&models.Deposit{}).Select("COALESCE(SUM(coins_granted + bonus_coins),0)").
+	db.Model(&models.Deposit{}).Select("COALESCE(SUM(coins_granted + bonus_coins - coins_taken),0)"). // Ж1: минус забранные при отмене
 		Where("created_at >= ? AND created_at < ?", p.From, p.To).Scan(&a.Deposits)
 	db.Model(&models.Session{}).Select("COALESCE(SUM(coins_earned),0)").
 		Where("started_at >= ? AND started_at < ?", p.From, p.To).Scan(&a.Play)

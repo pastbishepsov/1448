@@ -240,7 +240,7 @@ func aggMoney(p period) moneyAgg {
 	}
 	db.Model(&models.Deposit{}).
 		Select("COALESCE(SUM(amount_pln),0) AS revenue, COUNT(*) AS deposits, COUNT(DISTINCT user_id) AS guests").
-		Where("created_at >= ? AND created_at < ?", p.From, p.To).Scan(&head)
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Scan(&head) // Ж1: отменённый — не выручка
 	a.DepositsPLN, a.Deposits, a.Guests = head.Revenue, head.Deposits, head.Guests
 	if a.Deposits > 0 {
 		a.AvgCheck = math.Round(a.DepositsPLN/float64(a.Deposits)*100) / 100
@@ -288,7 +288,7 @@ func aggMoney(p period) moneyAgg {
 		Pln    float64
 	}
 	db.Model(&models.Deposit{}).Select("method, COALESCE(SUM(amount_pln),0) AS pln").
-		Where("created_at >= ? AND created_at < ?", p.From, p.To).Group("method").Scan(&rows)
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Group("method").Scan(&rows)
 	for _, r := range rows {
 		add(r.Method, r.Pln)
 	}
@@ -337,7 +337,7 @@ func handleReportMoney(c *gin.Context) {
 	}
 	db.Model(&models.Deposit{}).
 		Select(dayExpr("created_at", reportHour)+" AS d, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ?", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
 		Group("d").Order("d").Scan(&rows)
 	for _, r := range rows {
 		v := get(r.D.Format("2006-01-02"))
@@ -370,7 +370,7 @@ func handleReportMoney(c *gin.Context) {
 	}
 	db.Model(&models.Deposit{}).
 		Select("created_by AS admin_id, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND created_by IS NOT NULL", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND created_by IS NOT NULL AND voided_at IS NULL", p.From, p.To).
 		Group("created_by").Scan(&admRows)
 	type byAdminRow struct {
 		deposits float64
@@ -441,6 +441,21 @@ func handleReportMoney(c *gin.Context) {
 		Joins("JOIN goods ON goods.id = stock_moves.good_id").
 		Where("stock_moves.created_at >= ? AND stock_moves.created_at < ? AND stock_moves.reason = ? AND stock_moves.delta < 0",
 			p.From, p.To, "adjust").Scan(&loss)
+
+	// Ж1-и2 (Ж-Р4): отменённые депозиты. Сам депозит из выручки ушёл целиком
+	// (voided_at IS NULL во всех выручечных запросах выше), но если гость
+	// успел отыграть часть денег до отмены, с кошелька снялся только остаток:
+	// разница долгом не стала (Р8 трека Г) и в кассе её нет — это потеря
+	// клуба, отдельной строкой рядом со складскими. Считается по моменту
+	// отмены: потеря случилась, когда её признали.
+	var depVoid struct {
+		Cnt         int64
+		Pln         float64
+		Unrecovered float64
+	}
+	db.Model(&models.Deposit{}).
+		Select("COUNT(*) AS cnt, COALESCE(SUM(amount_pln),0) AS pln, COALESCE(SUM(amount_pln - refund_grosz / 100.0),0) AS unrecovered").
+		Where("voided_at >= ? AND voided_at < ?", p.From, p.To).Scan(&depVoid)
 
 	// Г0-и4 (Р7 GUEST.md): кошельки гостей — ОБЯЗАТЕЛЬСТВО клуба, не выручка.
 	// Выручка признана в момент пополнения (принцип В1 не меняется); остатки
@@ -527,7 +542,10 @@ func handleReportMoney(c *gin.Context) {
 			"avg_check_pln": pctDelta(cur.AvgCheck, old.AvgCheck),
 		},
 		"days": days, "by_admin": byAdmin, "top_goods": topGoods,
-		"losses": gin.H{"units": loss.Units, "pln": math.Round(loss.Pln*100) / 100, "moves": loss.Moves},
+		"losses": gin.H{"units": loss.Units, "pln": math.Round(loss.Pln*100) / 100, "moves": loss.Moves,
+			// Ж1: отменённые депозиты за период и «отыграно по ошибочному депозиту»
+			"deposit_voids": depVoid.Cnt, "deposit_void_pln": math.Round(depVoid.Pln*100) / 100,
+			"unrecovered_pln": math.Round(depVoid.Unrecovered*100) / 100},
 		// К8 (Р4/Р7): компенсации за проблемы с ПК — рост обязательства клуба,
 		// не выручка и не выручка со знаком минус; отдельной строкой.
 		"incidents": incidentsReport(p.From, p.To),
@@ -663,7 +681,7 @@ func handleReportGuests(c *gin.Context) {
 		Pln    float64
 	}
 	db.Model(&models.Deposit{}).Select("user_id, COALESCE(SUM(amount_pln),0) AS pln").
-		Where("created_at >= ? AND created_at < ?", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
 		Group("user_id").Order("pln DESC").Limit(10).Scan(&moneyRows)
 	moneyIDs := make([]string, 0, len(moneyRows))
 	for _, r := range moneyRows {
@@ -971,7 +989,7 @@ func handleReportStaff(c *gin.Context) {
 	}
 
 	var deps []models.Deposit
-	db.Where("created_at >= ? AND created_at < ?", p.From, p.To).Find(&deps)
+	db.Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Find(&deps)
 	for _, d := range deps {
 		b := get(shiftOf(d.CreatedAt))
 		b.revenue += d.AmountPLN
@@ -1061,7 +1079,7 @@ func handleReportStaff(c *gin.Context) {
 	}
 	db.Model(&models.Deposit{}).
 		Select("created_by AS admin_id, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND created_by IS NOT NULL", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND created_by IS NOT NULL AND voided_at IS NULL", p.From, p.To).
 		Group("created_by").Scan(&depRows)
 	for _, r := range depRows {
 		w := who(r.AdminID)

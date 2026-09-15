@@ -1469,6 +1469,7 @@ const SH_RU = {
   ntf_bk_cancel: "📅 Админ отменил твою бронь",
   ntf_bk_restore: "📅 Твоя бронь возвращена",
   ntf_deposit: "💰 +{c} монет — депозит {a} zł",
+  ntf_deposit_void: "↩ Депозит {a} zł отменён у стойки — с кошелька снято {r} zł, в кошельке {w} zł",
   ntf_grant_xp: "⚡ Тебе начислено +{n} XP",
   ntf_lvl: " → LVL {l} 🎉",
   ntf_grant_case: "🎁 Тебе выдан кейс {t}",
@@ -1999,6 +2000,7 @@ const SH_EN = {
   ntf_bk_cancel: "📅 The admin cancelled your booking",
   ntf_bk_restore: "📅 Your booking is restored",
   ntf_deposit: "💰 +{c} coins — top-up {a} zł",
+  ntf_deposit_void: "↩ Top-up {a} zł voided at the desk — {r} zł taken from your wallet, {w} zł left",
   ntf_grant_xp: "⚡ You were granted +{n} XP",
   ntf_lvl: " → LVL {l} 🎉",
   ntf_grant_case: "🎁 You got a {t} case",
@@ -2529,6 +2531,7 @@ const SH_PL = {
   ntf_bk_cancel: "📅 Admin anulował twoją rezerwację",
   ntf_bk_restore: "📅 Twoja rezerwacja wróciła",
   ntf_deposit: "💰 +{c} monet — wpłata {a} zł",
+  ntf_deposit_void: "↩ Wpłata {a} zł anulowana przy ladzie — z portfela zdjęto {r} zł, w portfelu {w} zł",
   ntf_grant_xp: "⚡ Przyznano ci +{n} XP",
   ntf_lvl: " → LVL {l} 🎉",
   ntf_grant_case: "🎁 Dostałeś skrzynkę {t}",
@@ -3960,6 +3963,7 @@ function notifText(n){
       + (p.computer ? T('ntf_paren_pc', {c: p.computer}) : '');
     case 'booking_restore': return STR.ntf_bk_restore + (p.start_time ? T('ntf_dash_time', {t: chHM(p.start_time)}) : '');
     case 'deposit': return T('ntf_deposit', {c: p.coins||0, a: p.amount_pln||0});
+    case 'deposit_void': return T('ntf_deposit_void', {a: p.amount_pln||0, r: p.refund_pln||0, w: p.wallet_pln||0}); // Ж1
     case 'grant_xp': return T('ntf_grant_xp', {n: p.amount||0}) + (p.levels_gained > 0 ? T('ntf_lvl', {l: p.level}) : '');
     case 'grant_case': return T('ntf_grant_case', {t: p.tier||''});
     case 'balance_low': return T('ntf_bal_low', {m: p.minutes_left||0});

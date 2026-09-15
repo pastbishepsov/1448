@@ -88,8 +88,24 @@ func handleAdminAudit(c *gin.Context) {
 			adminID = *d.CreatedBy
 		}
 		uid := d.UserID
-		items = append(items, item{d.CreatedAt, "deposit", adminID, &uid,
-			fmt.Sprintf("%.0f zł → +%d монет (%s)", d.AmountPLN, d.CoinsGranted+d.BonusCoins, d.Method)})
+		text := fmt.Sprintf("%.0f zł → +%d монет (%s)", d.AmountPLN, d.CoinsGranted+d.BonusCoins, d.Method)
+		items = append(items, item{d.CreatedAt, "deposit", adminID, &uid, text})
+		// Ж1: отменённый депозит — второй строкой в момент отмены, как у продаж:
+		// сколько удалось вернуть, а сколько гость уже отыграл.
+		if d.VoidedAt != nil && (ownerView || !d.VoidedAt.Before(startOfToday())) {
+			by := adminID
+			if d.VoidedBy != nil {
+				by = *d.VoidedBy
+			}
+			vt := fmt.Sprintf("отмена: %.0f zł (%s) · снято с кошелька %.2f zł", d.AmountPLN, d.Method, models.PLNFromGrosz(d.RefundGrosz))
+			if lost := models.GroszFromPLN(d.AmountPLN) - d.RefundGrosz; lost > 0 {
+				vt += fmt.Sprintf(", уже отыграно %.2f zł", models.PLNFromGrosz(lost))
+			}
+			if d.CoinsTaken > 0 {
+				vt += fmt.Sprintf(" · забрано %d монет", d.CoinsTaken)
+			}
+			items = append(items, item{*d.VoidedAt, "deposit_void", by, &uid, vt})
+		}
 	}
 
 	// Продажи товаров (В2) — четвёртый источник: своя таблица, как у депозитов.

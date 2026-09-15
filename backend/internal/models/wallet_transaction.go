@@ -18,6 +18,7 @@ const (
 	WalletTxRefund       WalletTxKind = "refund"        // возврат (отмена заказа и т.п.)
 	WalletTxAdjust       WalletTxKind = "adjust"        // ручная корректировка владельцем
 	WalletTxPackageSpend WalletTxKind = "package_spend" // покупка пакета времени с кошелька (Е2)
+	WalletTxDepositVoid  WalletTxKind = "deposit_void"  // отмена ошибочного депозита: снят остаток, не больше суммы (Ж1)
 )
 
 // WalletTransaction — строка журнала денежного кошелька (трек Г, Г0-и1).

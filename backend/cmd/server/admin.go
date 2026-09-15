@@ -105,7 +105,7 @@ func handleAdminOverview(c *gin.Context) {
 		Count(&bookingsToday)
 	var revenueToday float64
 	db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
-		Where("created_at >= ?", today).Scan(&revenueToday)
+		Where("created_at >= ? AND voided_at IS NULL", today).Scan(&revenueToday) // Ж1: отменённый — не выручка
 
 	c.JSON(http.StatusOK, gin.H{
 		"users":             users,
@@ -231,7 +231,7 @@ func handleAdminUserCard(c *gin.Context) {
 	var depSum float64
 	if ownerView {
 		db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
-			Where("user_id = ?", user.ID).Scan(&depSum)
+			Where("user_id = ? AND voided_at IS NULL", user.ID).Scan(&depSum) // Ж1
 	}
 
 	// ники админов для журнала начислений
