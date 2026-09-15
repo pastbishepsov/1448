@@ -81,13 +81,6 @@ func handleCreateBooking(c *gin.Context) {
 			"Бронь откроется на уровне %d — сейчас LVL %d. XP капает за каждую минуту игры", minLvl, guest.Level)})
 		return
 	}
-	// Г4-и2: лимит живых броней (0 = без лимита) — нельзя обвешать весь зал.
-	if maxB := settingInt64("max_active_bookings", maxActiveBookingsDef); maxB > 0 &&
-		activeBookingsCount(userID, time.Now()) >= maxB {
-		c.JSON(http.StatusConflict, gin.H{"code": "booking_limit", "message": fmt.Sprintf(
-			"У тебя уже %d живых брони — лимит. Отмени лишнюю или дождись её времени", maxB)})
-		return
-	}
 
 	var req createBookingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -112,6 +105,12 @@ func handleCreateBooking(c *gin.Context) {
 		return
 	}
 	dur := time.Duration(req.DurationMin) * time.Minute
+	// Ж0-и4 (Ж-Р5): лимит живых броней (Г4-и2) и «одна бронь на одно время» —
+	// те же проверки, что у walk-in брони от стойки.
+	if code, msg := bookingGuestChecks(&guest, start, req.DurationMin, time.Now()); code != "" {
+		c.JSON(http.StatusConflict, gin.H{"code": code, "message": msg})
+		return
+	}
 
 	// Кандидаты: конкретный ПК или все ПК клуба (кроме обслуживания).
 	var candidates []models.Computer
@@ -165,6 +164,10 @@ func handleCreateBooking(c *gin.Context) {
 		Notes:       req.Notes,
 	}
 	if err := db.Create(&booking).Error; err != nil {
+		if isBookingOverlapErr(err) { // Ж0-и3: гонку выиграл другой запрос (миграция 061)
+			c.JSON(http.StatusConflict, gin.H{"code": "slot_busy", "message": slotBusyRaceMessage})
+			return
+		}
 		respondDBError(c, err)
 		return
 	}

@@ -17,6 +17,8 @@ package main
 // в 17:45 — посадка (75−15=60≥60).
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -186,3 +188,67 @@ func claimBookingOnSeat(computerID, userID uuid.UUID, now time.Time) *models.Boo
 	})
 	return nb
 }
+
+// ── Ж0-и3/и4 (ADMIN.md, трек Ж, решение Ж-Р5): одна бронь = один ПК ──────
+//
+// До ревью 14.09 walk-in бронь от стойки обходила и бан, и лимит живых броней
+// (max_active_bookings, Г4-и2), а пересечение броней ОДНОГО гостя не проверял
+// никто: Guest15 получал две живые брони на одно время на разных ПК. Проверки
+// собраны в одну функцию — у гостя из PWA и у админа за стойкой правила одни.
+
+// guestBookingConflict — чистое правило (тест): какая из живых броней гостя
+// пересекается с [start, start+dur). Касание краями не пересечение.
+func guestBookingConflict(existing []models.Booking, start time.Time, dur time.Duration) *models.Booking {
+	for i := range existing {
+		b := &existing[i]
+		if b.Status != models.BookingStatusPending && b.Status != models.BookingStatusConfirmed {
+			continue
+		}
+		if bookingOverlaps(start, dur, b.StartTime, time.Duration(b.DurationMin)*time.Minute) {
+			return b
+		}
+	}
+	return nil
+}
+
+// bookingGuestChecks — бан, лимит живых броней и пересечение с собственной
+// бронью. Вернул код — обработчик отвечает 409 с message.
+func bookingGuestChecks(user *models.User, start time.Time, durationMin int, now time.Time) (code, message string) {
+	if user.Status == models.UserStatusBanned {
+		return "banned", "Аккаунт заблокирован — бронь не оформляется"
+	}
+	if maxB := settingInt64("max_active_bookings", maxActiveBookingsDef); maxB > 0 &&
+		activeBookingsCount(user.ID, now) >= maxB {
+		return "booking_limit", fmt.Sprintf(
+			"У гостя уже %d живых брони — лимит. Отмени лишнюю или дождись её времени", maxB)
+	}
+	dur := time.Duration(durationMin) * time.Minute
+	var own []models.Booking
+	db.Preload("Computer").
+		Where("user_id = ? AND status IN ? AND start_time BETWEEN ? AND ?",
+			user.ID, liveBookingStatuses, start.Add(-24*time.Hour), start.Add(24*time.Hour)).
+		Find(&own)
+	if b := guestBookingConflict(own, start, dur); b != nil {
+		pc := "другой ПК"
+		if b.Computer != nil {
+			pc = b.Computer.Name
+		}
+		end := b.StartTime.Add(time.Duration(b.DurationMin) * time.Minute)
+		return "guest_busy", fmt.Sprintf("У гостя уже есть бронь на %s–%s (%s) — одна бронь на одно время",
+			b.StartTime.Local().Format("15:04"), end.Local().Format("15:04"), pc)
+	}
+	return "", ""
+}
+
+// isBookingOverlapErr — ограничение bookings_no_overlap (миграция 061,
+// SQLSTATE 23P01): два запроса успели пройти проверку в коде, победил один.
+func isBookingOverlapErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "bookings_no_overlap") || strings.Contains(msg, "23P01") ||
+		strings.Contains(msg, "exclusion constraint")
+}
+
+const slotBusyRaceMessage = "Этот ПК только что забронировали на это время — выбери другой ПК или время"

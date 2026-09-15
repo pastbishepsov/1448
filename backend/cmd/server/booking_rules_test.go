@@ -4,8 +4,11 @@ package main
 // контрольный пример основателя, буквально из его решения 2026-08-23.
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
 func TestSeatWindowFounderExample(t *testing.T) {
@@ -54,5 +57,46 @@ func TestBookingLock(t *testing.T) {
 	}
 	if !isBookingLocked(booking, time.Date(2026, 8, 23, 19, 5, 0, 0, time.UTC), lock) {
 		t.Error("19:05: бронь идёт — ПК придержан")
+	}
+}
+
+// Ж0-и4 (Ж-Р5): пересечение с собственной бронью — только живые статусы,
+// касание краями не пересечение.
+func TestGuestBookingConflict(t *testing.T) {
+	at := func(h, m int) time.Time { return time.Date(2026, 9, 15, h, m, 0, 0, time.UTC) }
+	live := models.Booking{Status: models.BookingStatusConfirmed, StartTime: at(18, 0), DurationMin: 60}
+	dead := models.Booking{Status: models.BookingStatusCancelled, StartTime: at(18, 0), DurationMin: 60}
+	seated := models.Booking{Status: models.BookingStatusSeated, StartTime: at(18, 0), DurationMin: 60}
+	cases := []struct {
+		name  string
+		list  []models.Booking
+		start time.Time
+		dur   time.Duration
+		want  bool
+	}{
+		{"пересекается с живой", []models.Booking{live}, at(18, 30), time.Hour, true},
+		{"внутри живой", []models.Booking{live}, at(18, 10), 20 * time.Minute, true},
+		{"касание концом — можно", []models.Booking{live}, at(19, 0), time.Hour, false},
+		{"касание началом — можно", []models.Booking{live}, at(17, 0), time.Hour, false},
+		{"отменённая не держит", []models.Booking{dead}, at(18, 30), time.Hour, false},
+		{"погашенная посадкой не держит", []models.Booking{seated}, at(18, 30), time.Hour, false},
+		{"пусто", nil, at(18, 0), time.Hour, false},
+	}
+	for _, tc := range cases {
+		if got := guestBookingConflict(tc.list, tc.start, tc.dur) != nil; got != tc.want {
+			t.Errorf("%s: получили %v, ожидали %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestIsBookingOverlapErr(t *testing.T) {
+	if isBookingOverlapErr(nil) {
+		t.Error("nil — не ошибка пересечения")
+	}
+	if !isBookingOverlapErr(errors.New(`ERROR: conflicting key value violates exclusion constraint "bookings_no_overlap" (SQLSTATE 23P01)`)) {
+		t.Error("EXCLUDE-ошибка не распознана")
+	}
+	if isBookingOverlapErr(errors.New("duplicate key value violates unique constraint (SQLSTATE 23505)")) {
+		t.Error("UNIQUE спутан с EXCLUDE")
 	}
 }

@@ -677,6 +677,12 @@ func handleAdminCreateBooking(c *gin.Context) {
 	if user == nil {
 		return
 	}
+	// Ж0-и4 (Ж-Р5): бан, лимит живых броней и «одна бронь на одно время» —
+	// walk-in от стойки больше не обходит правила гостевой брони.
+	if code, msg := bookingGuestChecks(user, start, req.DurationMin, time.Now()); code != "" {
+		c.JSON(http.StatusConflict, gin.H{"code": code, "message": msg})
+		return
+	}
 
 	dur := time.Duration(req.DurationMin) * time.Minute
 	var candidates []models.Computer
@@ -717,6 +723,10 @@ func handleAdminCreateBooking(c *gin.Context) {
 		DurationMin: req.DurationMin, Prepaid: false,
 	}
 	if err := db.Create(&booking).Error; err != nil {
+		if isBookingOverlapErr(err) { // Ж0-и3: ограничение bookings_no_overlap (миграция 061)
+			c.JSON(http.StatusConflict, gin.H{"code": "slot_busy", "message": slotBusyRaceMessage})
+			return
+		}
 		respondDBError(c, err)
 		return
 	}
@@ -744,6 +754,15 @@ func handleAdminRestoreBooking(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"code": "not_restorable", "message": "Вернуть можно только отменённую бронь"})
 		return
 	}
+	// Ж0-и4: пока бронь лежала отменённой, гостя могли забанить или он мог
+	// забронировать другое время — возвращаем по тем же правилам, что создаём.
+	var guest models.User
+	if err := db.First(&guest, "id = ?", booking.UserID).Error; err == nil {
+		if code, msg := bookingGuestChecks(&guest, booking.StartTime, booking.DurationMin, time.Now()); code != "" {
+			c.JSON(http.StatusConflict, gin.H{"code": code, "message": msg})
+			return
+		}
+	}
 	dur := time.Duration(booking.DurationMin) * time.Minute
 	var existing []models.Booking
 	db.Where("computer_id = ? AND status IN ? AND start_time BETWEEN ? AND ?",
@@ -757,6 +776,10 @@ func handleAdminRestoreBooking(c *gin.Context) {
 		}
 	}
 	if err := db.Model(&booking).Update("status", models.BookingStatusConfirmed).Error; err != nil {
+		if isBookingOverlapErr(err) { // Ж0-и3
+			c.JSON(http.StatusConflict, gin.H{"code": "slot_busy", "message": "Время уже занято другой бронью"})
+			return
+		}
 		respondDBError(c, err)
 		return
 	}
