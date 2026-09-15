@@ -43,3 +43,28 @@ func TestIncidentKindName(t *testing.T) {
 		t.Error("incidentNote")
 	}
 }
+
+// Ж0-и2 (Ж-Р2): потолок компенсаций — деньги и минуты независимо, 0 = без лимита.
+func TestCompCapVerdict(t *testing.T) {
+	cases := []struct {
+		name            string
+		usedPLN, addPLN float64
+		capPLN          int64
+		usedMin, addMin int
+		capMin          int64
+		want            string
+	}{
+		{"оба лимита выключены", 999, 5000, 0, 999, 500, 0, ""},
+		{"деньги в пределах", 30, 20, 50, 0, 0, 0, ""},
+		{"деньги ровно в потолок — можно", 30, 20, 50, 0, 0, 0, ""},
+		{"деньги перебор", 40, 20, 50, 0, 0, 0, "cap_pln"},
+		{"минуты перебор, деньги без лимита", 0, 0, 0, 50, 20, 60, "cap_min"},
+		{"деньги первыми, даже если и минуты перебор", 40, 20, 50, 50, 20, 60, "cap_pln"},
+		{"первая же компенсация больше лимита", 0, 5000, 50, 0, 0, 0, "cap_pln"},
+	}
+	for _, tc := range cases {
+		if got := compCapVerdict(tc.usedPLN, tc.addPLN, tc.capPLN, tc.usedMin, tc.addMin, tc.capMin); got != tc.want {
+			t.Errorf("%s: получили %q, ожидали %q", tc.name, got, tc.want)
+		}
+	}
+}

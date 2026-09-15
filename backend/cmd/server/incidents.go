@@ -208,6 +208,95 @@ func incidentNote(note string) string {
 	return " — " + strings.TrimSpace(note)
 }
 
+// ── Ж0-и1: инвариант цели (Ж-Р1) ─────────────────────────────────────────
+//
+// Решение №4 трека Б — «цель действия персонала — только гость и не сам
+// исполнитель» — до ревью 14.09 на инциденты не распространялось: user_id
+// принимался любой, и админ мог записать компенсацию себе или владельцу
+// (проверено на стенде: 100 zł + 120 мин себе, 9999 zł владельцу). Теперь
+// гость записи проходит ту же проверку, что депозит и грант.
+
+// incidentTargetOK — гость записи по правилу canTargetUser; пишет 403 сам.
+// Вернул nil — обработчику выходить.
+func incidentTargetOK(c *gin.Context, uid uuid.UUID) *models.User {
+	var u models.User
+	if err := db.Select("id, role, nickname").First(&u, "id = ?", uid).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость не найден"})
+		return nil
+	}
+	if ok, code := canTargetUser(u.Role, u.ID.String(), c.GetString("user_id")); !ok {
+		msg := map[string]string{
+			"cannot_touch_self":  "Нельзя записать компенсацию самому себе",
+			"cannot_touch_staff": "Компенсация — только гостю, персоналу нельзя",
+		}[code]
+		c.JSON(http.StatusForbidden, gin.H{"code": code, "message": msg})
+		return nil
+	}
+	return &u
+}
+
+// sessionGuestForIncident — гость и сессия с ПК, если там идёт сессия ГОСТЯ.
+// Персонал за ПК гостем записи не становится (иначе компенсация «по ПК» стала
+// бы обходом инварианта) — запись создаётся без гостя.
+func sessionGuestForIncident(pcID uuid.UUID) (userID, sessionID *uuid.UUID) {
+	var rows []models.Session
+	db.Preload("User").Where("computer_id = ? AND status = ?", pcID, models.SessionStatusActive).Limit(1).Find(&rows)
+	if len(rows) == 0 || rows[0].User == nil || rows[0].User.Role != models.UserRolePlayer {
+		return nil, nil
+	}
+	return &rows[0].UserID, &rows[0].ID
+}
+
+// ── Ж0-и2: дневной потолок компенсаций админа (Ж-Р2) ──────────────────────
+//
+// Потолок депозитов (Б0-и4) существует, чтобы админ не раздавал деньги; без
+// потолка у компенсаций он обходился одной кнопкой (5000 zł при лимите
+// депозитов 50). Две настройки владельца — деньги и минуты, 0 = без лимита,
+// владелец не ограничен. Окно — сутки от полуночи, как у остальных потолков;
+// Ж3 переведёт всё разом на клубные сутки.
+
+// compCapVerdict — чистое правило (тест): что именно упёрлось в потолок.
+func compCapVerdict(usedPLN, addPLN float64, capPLN int64, usedMin, addMin int, capMin int64) string {
+	if adminDayCapExceeded(usedPLN, addPLN, float64(capPLN)) {
+		return "cap_pln"
+	}
+	if adminDayCapExceeded(float64(usedMin), float64(addMin), float64(capMin)) {
+		return "cap_min"
+	}
+	return ""
+}
+
+// compCapOK — проверка потолка для роли admin; пишет 403 day_cap сам.
+func compCapOK(c *gin.Context, adminID uuid.UUID, cp compensation) bool {
+	if cp.empty() || c.GetString("user_role") != string(models.UserRoleAdmin) {
+		return true
+	}
+	capPLN := settingInt64("admin_day_comp_cap_pln", 0)
+	capMin := settingInt64("admin_day_comp_cap_min", 0)
+	if capPLN <= 0 && capMin <= 0 {
+		return true
+	}
+	var used struct {
+		Grosz   int64
+		Minutes int64
+	}
+	db.Model(&models.Incident{}).
+		Select("COALESCE(SUM(comp_grosz),0) AS grosz, COALESCE(SUM(comp_minutes),0) AS minutes").
+		Where("resolved_by = ? AND compensated_at >= ?", adminID, startOfToday()).Scan(&used)
+	usedPLN := models.PLNFromGrosz(used.Grosz)
+	switch compCapVerdict(usedPLN, models.PLNFromGrosz(cp.Grosz), capPLN, int(used.Minutes), cp.Minutes, capMin) {
+	case "cap_pln":
+		c.JSON(http.StatusForbidden, gin.H{"code": "day_cap", "message": fmt.Sprintf(
+			"Дневной лимит компенсаций админа: %d zł (уже выдано %.0f zł) — больше может только владелец", capPLN, usedPLN)})
+		return false
+	case "cap_min":
+		c.JSON(http.StatusForbidden, gin.H{"code": "day_cap", "message": fmt.Sprintf(
+			"Дневной лимит компенсаций админа: %d мин (уже выдано %d мин) — больше может только владелец", capMin, used.Minutes)})
+		return false
+	}
+	return true
+}
+
 // ── выдача списка ──
 
 type incidentRow struct {
@@ -308,13 +397,10 @@ func handleAdminIncidentCreate(c *gin.Context) {
 			return
 		}
 		inc.ComputerID, inc.ClubID = &pc.ID, pc.ClubID
-		// гость и сессия — с ПК, если там кто-то сидит и их не указали
+		// гость и сессия — с ПК, если там сидит ГОСТЬ и их не указали (Ж0-и1:
+		// персонал за ПК гостем записи не становится)
 		if req.UserID == "" {
-			var rows []models.Session
-			db.Where("computer_id = ? AND status = ?", pcID, models.SessionStatusActive).Limit(1).Find(&rows)
-			if len(rows) > 0 {
-				inc.UserID, inc.SessionID = &rows[0].UserID, &rows[0].ID
-			}
+			inc.UserID, inc.SessionID = sessionGuestForIncident(pcID)
 		}
 	}
 	if req.UserID != "" {
@@ -323,9 +409,8 @@ func handleAdminIncidentCreate(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": "user_id_invalid", "message": "Некорректный идентификатор гостя"})
 			return
 		}
-		var u models.User
-		if err := db.Select("id").First(&u, "id = ?", uid).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость не найден"})
+		u := incidentTargetOK(c, uid) // Ж-Р1: только гость и не себе — 403 пишет сам
+		if u == nil {
 			return
 		}
 		inc.UserID = &u.ID
@@ -348,6 +433,9 @@ func handleAdminIncidentCreate(c *gin.Context) {
 	cp := compensation{Minutes: req.CompMinutes, Grosz: models.GroszFromPLN(req.CompPLN)}
 	if !cp.empty() && inc.UserID == nil {
 		c.JSON(http.StatusConflict, gin.H{"code": "incident_no_guest", "message": "Компенсировать некому: за ПК никто не сидит — укажи гостя"})
+		return
+	}
+	if !compCapOK(c, adminID, cp) { // Ж-Р2: потолок — ДО записи, иначе останется открытая запись без компенсации
 		return
 	}
 	if err := db.Create(&inc).Error; err != nil {
@@ -416,6 +504,12 @@ func handleAdminIncidentCompensate(c *gin.Context) {
 	}
 	if inc.UserID == nil {
 		c.JSON(http.StatusConflict, gin.H{"code": "incident_no_guest", "message": "У записи нет гостя — компенсировать некому"})
+		return
+	}
+	if incidentTargetOK(c, *inc.UserID) == nil { // Ж-Р1: гость записи — не персонал и не сам исполнитель
+		return
+	}
+	if !compCapOK(c, adminID, cp) { // Ж-Р2
 		return
 	}
 	if n := strings.TrimSpace(req.Note); n != "" {
