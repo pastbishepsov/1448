@@ -290,6 +290,26 @@
   .dropbox{width:110px; height:110px; margin:18px auto; border-radius:26px; display:flex; align-items:center;
            justify-content:center; font-size:52px; animation:pulse 1s infinite}
   @keyframes pulse{0%,100%{transform:scale(1)} 50%{transform:scale(1.07)}}
+  /* ── открытие кейса: реел под фиксированным маркером (канон RESEARCH §1, перенос из app.html М3):
+     разгон → долгое торможение → микро-докат, редкость = цвет рамки/свечения, только transform/opacity ── */
+  #caseOverlay .modal{width:760px}
+  .co-stage{position:relative; margin:6px -30px 0; overflow:hidden; padding:26px 0 22px;
+            -webkit-mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent);
+            mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent)}
+  .co-reel{display:flex; gap:10px; will-change:transform}
+  .co-cell{flex:none; width:100px; height:120px; border-radius:16px; background:var(--card);
+           border:1.5px solid var(--line); display:flex; flex-direction:column; align-items:center;
+           justify-content:center; gap:8px}
+  .co-cell svg{width:24px; height:24px; display:block}
+  .co-cell .v{font-weight:900; font-size:15px; font-variant-numeric:tabular-nums}
+  .co-marker{position:absolute; left:50%; top:8px; bottom:8px; width:2px; margin-left:-1px; z-index:2;
+             background:linear-gradient(180deg,transparent,var(--acc) 25%,var(--acc) 75%,transparent);
+             box-shadow:0 0 14px var(--acc)}
+  .co-marker.tick{animation:markTick .12s var(--smooth)}
+  @keyframes markTick{50%{transform:scaleX(2.4)}}
+  #coResult{animation:tabSwap .4s var(--spring)}
+  #coAmount.plus::before{content:"+"}
+  #coResult .btn{display:block; max-width:320px; margin-left:auto; margin-right:auto}
   .avapick{display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin:14px 0}
   .avapick button{font-size:26px; padding:8px 0; background:var(--card); border:1px solid var(--hair); border-radius:12px; cursor:pointer; transition:border-color .15s, transform .15s}
   .avapick button:hover{border-color:var(--acc); transform:translateY(-1px)}
@@ -884,11 +904,15 @@
 <div id="caseOverlay" class="overlay">
   <div class="modal">
     <h2 id="coTitle"></h2>
-    <div class="dropbox" id="coBox" data-ic="chest"></div>
+    <div class="co-stage hidden" id="coStage">
+      <div class="co-reel" id="coReel"></div>
+      <div class="co-marker" id="coMarker"></div>
+    </div>
+    <div class="dropbox hidden" id="coBox" data-ic="chest"></div>
     <div id="coResult" class="hidden">
       <div class="bignum" id="coAmount"></div>
       <div class="muted" id="coType"></div>
-      <button class="btn" style="margin-top:20px" onclick="closeOverlay('caseOverlay'); loadAll()" data-str="co_take"></button>
+      <button class="btn" style="margin-top:20px" onclick="closeCase()" data-str="co_take"></button>
     </div>
   </div>
 </div>
@@ -1211,6 +1235,9 @@ const SH_RU = {
   co_coins: "монет · кейс {t}",
   co_buster: "бустер кэшбека · кейс {t}",
   co_take: "Забрать",
+  co_title: "Кейс {t}",
+  co_jackpot: "ДЖЕКПОТ",
+  tier_light: "Light", tier_medium: "Medium", tier_heavy: "Heavy", tier_titan: "Titan", tier_gods: "God's",
   lvl_new: "НОВЫЙ УРОВЕНЬ",
   lvl_bonus: "+1 очко навыка",
   end_title: "Сессия завершена",
@@ -1742,6 +1769,9 @@ const SH_EN = {
   co_coins: "coins · {t} case",
   co_buster: "cashback booster · {t} case",
   co_take: "Claim",
+  co_title: "{t} case",
+  co_jackpot: "JACKPOT",
+  tier_light: "Light", tier_medium: "Medium", tier_heavy: "Heavy", tier_titan: "Titan", tier_gods: "God's",
   lvl_new: "NEW LEVEL",
   lvl_bonus: "+1 skill point",
   end_title: "Session finished",
@@ -2273,6 +2303,9 @@ const SH_PL = {
   co_coins: "monet · skrzynka {t}",
   co_buster: "booster cashbacku · skrzynka {t}",
   co_take: "Odbierz",
+  co_title: "Skrzynka {t}",
+  co_jackpot: "JACKPOT",
+  tier_light: "Light", tier_medium: "Medium", tier_heavy: "Heavy", tier_titan: "Titan", tier_gods: "God's",
   lvl_new: "NOWY POZIOM",
   lvl_bonus: "+1 punkt umiejętności",
   end_title: "Sesja zakończona",
@@ -3168,6 +3201,7 @@ function logout(){
   foreignSession = null; lockLogoutStop();
   if (logoutArmT){ clearTimeout(logoutArmT); logoutArmT = null; }
   if (endArmT){ clearTimeout(endArmT); endArmT = null; }
+  cancelAnimationFrame(reelRaf); caseOpening = null;   // реел кейса гаснет вместе с оверлеем
   ['caseOverlay','lvlOverlay','rankOverlay','endOverlay','oddsOverlay','infoOverlay','profOverlay','confirmOverlay']
     .forEach(id => { const o = document.getElementById(id); if (o) o.classList.remove('show'); });
   if (confirmResolve){ const r = confirmResolve; confirmResolve = null; r(false); }
@@ -4728,7 +4762,7 @@ function renderSide(){
       const daysLeft = c.expires_at ? Math.ceil((new Date(c.expires_at) - Date.now()) / 86400000) : null;
       let sub;
       if (opened) sub = c.drop_type==='coins' ? T('case_opened_coins', {n: fmt(c.drop_amount), ic: UI.coins})
-                                                : T('case_opened_buster', {n: c.drop_amount});
+                                                : T('case_opened_buster', {n: (c.drop_amount || 0) / 100}); // ×100 на сервере
       else if (expired) sub = UI.fire + ' ' + esc(STR.case_expired);
       else sub = T('case_source', {s: esc(caseSourceName(c.source))}) + (daysLeft !== null
         ? ` · <span style="color:${daysLeft <= 3 ? 'var(--red)' : 'var(--dim)'}">${T('case_expires_in', {n: daysLeft})}</span>` : '');
@@ -5582,35 +5616,151 @@ function oddsHtml(d, cur){
 }
 function openInfo(){ document.getElementById('infoOverlay').classList.add('show'); }
 
+/* ── Открытие кейса: реел по канону (RESEARCH §1), перенос из app.html (М3), 2026-09-15.
+   Сервер решает дроп ДО анимации; лента — филлер вокруг серверного значения, стоп всегда
+   на нём (near-miss-подкруток нет). Редкость = цвет рамки, джекпот — красный top-tier.
+   Реел и конфетти пропускаются ТОЛЬКО при системном «уменьшить движение» (FX.reduced):
+   FPS-проба и слабое железо (perf-lite) их больше не глушат — гость видел «кейс без
+   анимации» на холодном старте WebView2. Филлер берёт диапазон из таблицы шансов клуба
+   (если гость её открывал), иначе константы = dropConfigs сервера. ── */
+const CASE_CFG = {light: [50, 200], medium: [200, 600], heavy: [500, 2000], titan: [1000, 5000], gods: [5000, 20000]};
+const JACKPOT = 50000;
+const CONF_N = {light: 24, medium: 36, heavy: 54, titan: 80, gods: 120};   // конфетти гуще с тиром
+const REEL_N = 46, REEL_TARGET = 40, REEL_CELL = 110, REEL_HALF = 50;      // ячейка 100 + gap 10
+let caseOpening = null, reelRaf = 0;
+function tierName(t){ return STR['tier_' + t] || t; }
+function caseRange(tier, clubId){
+  const od = oddsCache[clubId || ''] || oddsCache[''];
+  const t = od && (od.tiers || []).find(x => x.tier === tier);
+  if (t && t.coins_max > t.coins_min) return [t.coins_min, t.coins_max, t.jackpot_amount || JACKPOT];
+  const c = CASE_CFG[tier] || CASE_CFG.light;
+  return [c[0], c[1], JACKPOT];
+}
+/* ячейка реела: редкость = цвет рамки/свечения; красный — top-tier (канон) */
+function reelCell(range, val, buster){
+  if (buster) return {c: 'var(--acc2)', label: '+' + val + '%', ic: UI.xp};
+  let c;
+  if (val >= range[2]) c = 'var(--t-gods)';
+  else {
+    const rel = (val - range[0]) / Math.max(1, range[1] - range[0]);
+    c = rel < .25 ? 'var(--t-light)' : rel < .6 ? 'var(--t-medium)' : rel < .9 ? 'var(--t-heavy)' : 'var(--t-titan)';
+  }
+  return {c, label: fmt(val), ic: UI.coins};
+}
+function reelFiller(range){
+  const r = Math.random();
+  if (r < .05) return reelCell(range, range[2]);
+  if (r < .13) return reelCell(range, 1 + Math.floor(Math.random() * 3), true);
+  return reelCell(range, Math.round((range[0] + Math.random() * (range[1] - range[0])) / 5) * 5);
+}
+function reelHtml(cells){
+  return cells.map(x => `<div class="co-cell" style="border-color:${x.c}; box-shadow:0 0 14px color-mix(in srgb, ${x.c} 28%, transparent)">
+    <span style="color:${x.c}; display:flex">${x.ic}</span><div class="v" style="color:${x.c}">${x.label}</div></div>`).join('');
+}
+
 async function openCase(id, tier){
+  if (caseOpening) return;                                   // двойной клик — один запрос
+  const c = cases.find(x => x.id === id);
+  if (c && c.opened_at) return;
+  caseOpening = id;
   const t = TIER[tier] || TIER.light;
   const ov = document.getElementById('caseOverlay');
-  document.getElementById('coTitle').textContent = STR.co_opening;
+  const title = document.getElementById('coTitle');
+  title.textContent = T('co_title', {t: tierName(tier)}); title.style.color = t.c;
   const box = document.getElementById('coBox');
-  box.style.background = 'transparent'; box.style.border = '2px solid '+t.c; box.innerHTML = UI.chest;
-  box.style.animation = 'pulse .5s infinite';
+  box.style.background = 'transparent'; box.style.border = '2px solid ' + t.c; box.style.animation = 'none';
+  box.classList.add('hidden');
   document.getElementById('coResult').classList.add('hidden');
+  const stage = document.getElementById('coStage'), reel = document.getElementById('coReel');
+  const range = caseRange(tier, c && c.club_id);
+  const cells = [];
+  for (let i = 0; i < REEL_N; i++) cells.push(reelFiller(range));
+  reel.style.transform = 'translateX(0)'; reel.innerHTML = reelHtml(cells);   // лента видна сразу, пока ждём сервер
+  stage.classList.remove('hidden');
   ov.classList.add('show');
-  try{
-    const d = await api('/me/cases/'+id+'/open', {method:'POST', body:'{}'});
-    setTimeout(() => {
-      box.style.animation = 'none';
-      document.getElementById('coTitle').textContent = STR.co_drop;
-      if (d.drop_type === 'coins'){
-        box.innerHTML = UI.coins;
-        document.getElementById('coAmount').textContent = '+' + fmt(d.drop_amount);
-        document.getElementById('coType').textContent = T('co_coins', {t: d.tier});
-      } else {
-        box.innerHTML = UI.xp;
-        document.getElementById('coAmount').textContent = '+' + d.drop_amount + '%';
-        document.getElementById('coType').textContent = T('co_buster', {t: d.tier});
-      }
-      document.getElementById('coResult').classList.remove('hidden');
-      // «сочный» момент: конфетти тем гуще, чем выше тир
-      const density = {light:24, medium:36, heavy:54, titan:80, gods:120}[d.tier] || 30;
-      FX.confetti(density);
-    }, 1200);
-  }catch(e){ ov.classList.remove('show'); toast('⚠ ' + e.message); }
+  let d;
+  try{ d = await api('/me/cases/' + id + '/open', {method: 'POST', body: '{}'}); }
+  catch(e){
+    caseOpening = null;
+    ov.classList.remove('show');
+    toast('⚠ ' + e.message);
+    if (e.code === 'already_opened' || e.code === 'expired') loadAll();
+    return;
+  }
+  if (!ov.classList.contains('show')){ caseOpening = null; loadAll(); return; }   // вышли/лок, пока ждали сервер
+  cells[REEL_TARGET] = d.drop_type === 'buster'
+    ? reelCell(range, (d.drop_amount || 0) / 100, true)                          // ×100 на сервере
+    : reelCell(range, d.drop_amount);
+  reel.innerHTML = reelHtml(cells);                          // видимые ячейки те же — старт без рывка
+  if (FX.reduced){ showPrize(d, range); return; }            // «уменьшить движение» в ОС: сразу приз
+  requestAnimationFrame(() => runReel(d, range));
+}
+
+function runReel(d, range){
+  const ov = document.getElementById('caseOverlay');
+  const stage = document.getElementById('coStage'), reel = document.getElementById('coReel');
+  const marker = document.getElementById('coMarker');
+  const stageW = stage.getBoundingClientRect().width || 700;
+  const F = REEL_TARGET * REEL_CELL + REEL_HALF - stageW / 2;   // цель ровно под маркером
+  const OVER = 16;                                             // перелёт для микро-доката
+  const DUR = 5100, t0 = performance.now();
+  let lastIdx = -1;
+  cancelAnimationFrame(reelRaf);
+  function frame(now){
+    if (!ov.classList.contains('show')){ caseOpening = null; return; }   // оверлей погасили на ходу
+    const p = Math.min(1, (now - t0) / DUR);
+    const e = 1 - Math.pow(1 - p, 4);          // мгновенный разгон, долгое торможение
+    const off = (F + OVER) * e;
+    reel.style.transform = 'translateX(' + (-off) + 'px)';
+    const idx = Math.round((off + stageW / 2 - REEL_HALF) / REEL_CELL);
+    if (idx !== lastIdx && p > .02){           // тик: вспышка маркера
+      lastIdx = idx;
+      if (marker){ marker.classList.remove('tick'); void marker.offsetWidth; marker.classList.add('tick'); }
+    }
+    if (p < 1){ reelRaf = requestAnimationFrame(frame); return; }
+    const t1 = performance.now();              // микро-докат назад
+    function settle(n2){
+      if (!ov.classList.contains('show')){ caseOpening = null; return; }
+      const p2 = Math.min(1, (n2 - t1) / 240);
+      const e2 = 1 - Math.pow(1 - p2, 3);
+      reel.style.transform = 'translateX(' + (-(F + OVER * (1 - e2))) + 'px)';
+      if (p2 < 1){ reelRaf = requestAnimationFrame(settle); return; }
+      showPrize(d, range);
+    }
+    reelRaf = requestAnimationFrame(settle);
+  }
+  reelRaf = requestAnimationFrame(frame);
+}
+
+function showPrize(d, range){
+  const t = TIER[d.tier] || TIER.light;
+  document.getElementById('coStage').classList.add('hidden');
+  const title = document.getElementById('coTitle');
+  title.textContent = STR.co_drop; title.style.color = '';
+  const box = document.getElementById('coBox');
+  box.classList.remove('hidden');
+  const amt = document.getElementById('coAmount');
+  amt.classList.add('plus'); amt.style.color = t.c;
+  if (d.drop_type === 'coins'){
+    box.innerHTML = UI.coins;
+    amt.dataset.v = '0'; amt.textContent = '0';
+    document.getElementById('coType').textContent =
+      (d.drop_amount >= (range ? range[2] : JACKPOT) ? STR.co_jackpot + ' · ' : '') + T('co_coins', {t: tierName(d.tier)});
+    FX.countUp(amt, d.drop_amount);
+  } else {
+    box.innerHTML = UI.xp;
+    amt.dataset.v = ''; amt.textContent = ((d.drop_amount || 0) / 100) + '%';
+    document.getElementById('coType').textContent = T('co_buster', {t: tierName(d.tier)});
+  }
+  document.getElementById('coResult').classList.remove('hidden');
+  FX.confetti(CONF_N[d.tier] || 30);           // «сочный» момент: конфетти тем гуще, чем выше тир
+}
+
+function closeCase(){
+  cancelAnimationFrame(reelRaf);
+  caseOpening = null;
+  closeOverlay('caseOverlay');
+  loadAll();
 }
 
 /* ═══ Мини-QR (byte mode, ECC M, версии 1–5, маски 0–7 по penalty) ═══
@@ -5922,9 +6072,11 @@ setInterval(() => {
 
 /* ═══════════════ FX: ДВИЖОК АНИМАЦИЙ (14:48 Aurora) ═══════════════ */
 const FX = (() => {
-  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  const reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches);
   let lite = reduced || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2);
   if (lite) document.body.classList.add('perf-lite');
+  // perf-lite (слабое железо, FPS<32 в первые 2 с) режет blur/tilt/spark — но не реел кейса и
+  // не конфетти: их пропускаем только при системном «уменьшить движение» (2026-09-15)
 
   // авто-упрощение при низком FPS (замер первые ~2с после старта shell)
   function watchFPS(){
@@ -6000,7 +6152,7 @@ const FX = (() => {
 
   // конфетти (открытие кейса / левел-ап)
   function confetti(n){
-    if (lite){ return; }
+    if (reduced){ return; }
     const colors = ['#ff2740', '#ff5563', '#ffffff', '#e5133a', '#c9ccd6'];
     for (let i = 0; i < n; i++){
       const c = document.createElement('div');
@@ -6022,7 +6174,7 @@ const FX = (() => {
     el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
   }
 
-  return { countUp, bindTilt, reveal, spark, confetti, swap, watchFPS, get lite(){ return lite; } };
+  return { countUp, bindTilt, reveal, spark, confetti, swap, watchFPS, get lite(){ return lite; }, get reduced(){ return reduced; } };
 })();
 
 // глобальный click-spark на интерактивных элементах

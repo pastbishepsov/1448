@@ -39,7 +39,10 @@
 6. **FX на таче — облегчённый набор.** Без 3D-tilt/spotlight/magnet (нет
    ховера). Остаются: конфетти дропа/левел-апа, count-up чисел, пульс
    двоеточия, press-scale, ripple вместо click-spark. Перф-гарды как в
-   shell (`prefers-reduced-motion`, слабое железо → perf-lite).
+   shell (`prefers-reduced-motion`, слабое железо → perf-lite). Уточнение
+   2026-09-15: реел кейса и конфетти perf-lite не пропускает — только
+   `prefers-reduced-motion` (или ручка `1448_fx=1`); FPS-проба первых 2 с
+   идёт во время загрузки и ложно срабатывала. Реел теперь есть и в киоске.
 7. **Тач-гигиена:** цели касания ≥44px, `font-size` инпутов ≥16px (иначе
    iOS зумит), `safe-area-inset-*` (вырезы), один столбец, tabular-nums
    в числах. Никаких `prompt()`/`confirm()` — шторки и arm-confirm.

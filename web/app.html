@@ -2641,7 +2641,7 @@ async function openCase(id){
   c.drop_amount = d.drop_amount;
   if (d.user && me) me.coins_balance = d.user.coins_balance;
   renderCases(); updateCasesBub();
-  if (FX.lite){ showPrize(d); return; }  // слабое железо / reduced-motion: сразу приз
+  if (FX.reduced){ showPrize(d); return; }  // только «уменьшить движение» в ОС: сразу приз (perf-lite реел не глушит)
   requestAnimationFrame(() => runReel(d));
 }
 
@@ -3122,7 +3122,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-07.4';
+const APP_VER = '2026-09-15.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
@@ -3178,6 +3178,9 @@ const FX = (() => {
   let lite = fxOverride === '1' || (fxOverride !== '0' &&
     (reduced || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)));
   if (lite) document.body.classList.add('perf-lite');
+  /* реел кейса и конфетти пропускаем ТОЛЬКО при системном «уменьшить движение» (или ручке '1'):
+     FPS-проба первых 2 с (идёт во время загрузки) и число ядер их больше не глушат (2026-09-15) */
+  const noMotion = fxOverride === '1' || (fxOverride !== '0' && reduced);
 
   // авто-упрощение при низком FPS (замер первые ~2с после входа)
   function watchFPS(){
@@ -3219,7 +3222,7 @@ const FX = (() => {
 
   // конфетти дропа/левел-апа — красно-белые (перенос из shell, М3-и3)
   function confetti(n){
-    if (lite) return;
+    if (noMotion) return;
     const colors = ['#ff2740', '#ff5563', '#ffffff', '#e5133a', '#c9ccd6'];
     for (let i = 0; i < n; i++){
       const c = document.createElement('div');
@@ -3245,7 +3248,7 @@ const FX = (() => {
     setTimeout(() => r.remove(), 500);
   }
 
-  return { countUp, swap, watchFPS, ripple, confetti, get lite(){ return lite; } };
+  return { countUp, swap, watchFPS, ripple, confetti, get lite(){ return lite; }, get reduced(){ return noMotion; } };
 })();
 
 // глобальный ripple на интерактивных элементах
