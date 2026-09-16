@@ -301,7 +301,7 @@ func compCapOK(c *gin.Context, adminID uuid.UUID, cp compensation) bool {
 	}
 	db.Model(&models.Incident{}).
 		Select("COALESCE(SUM(comp_grosz),0) AS grosz, COALESCE(SUM(comp_minutes),0) AS minutes").
-		Where("resolved_by = ? AND compensated_at >= ?", adminID, startOfToday()).Scan(&used)
+		Where("resolved_by = ? AND compensated_at >= ?", adminID, clubDayStart(time.Now())).Scan(&used) // Ж3: клубные сутки
 	usedPLN := models.PLNFromGrosz(used.Grosz)
 	switch compCapVerdict(usedPLN, models.PLNFromGrosz(cp.Grosz), capPLN, int(used.Minutes), cp.Minutes, capMin) {
 	case "cap_pln":
@@ -352,7 +352,7 @@ func handleAdminIncidents(c *gin.Context) {
 	if c.Query("open") == "1" {
 		q = q.Where("i.resolved_at IS NULL")
 	} else if !ownerView {
-		q = q.Where("i.resolved_at IS NULL OR i.created_at >= ?", startOfToday())
+		q = q.Where("i.resolved_at IS NULL OR i.created_at >= ?", clubDayStart(time.Now())) // Ж3: клубные сутки
 	}
 	var rows []incidentRow
 	if err := q.Scan(&rows).Error; err != nil {

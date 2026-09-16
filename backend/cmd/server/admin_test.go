@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -84,5 +85,33 @@ func TestRoleIsStaff(t *testing.T) {
 		if got := roleIsStaff(role); got != want {
 			t.Errorf("roleIsStaff(%q) = %v, ожидалось %v", role, got, want)
 		}
+	}
+}
+
+// Ж3-и1: одно «сегодня» — клубные сутки от report_hour: 07:59 — ещё вчера,
+// 08:00 — уже сегодня; ночная смена не рвётся полуночью.
+func TestClubDayStartAt(t *testing.T) {
+	loc := time.FixedZone("CEST", 2*3600)
+	at := func(h, m int) time.Time { return time.Date(2026, 9, 16, h, m, 0, 0, loc) }
+	yesterday8 := time.Date(2026, 9, 15, 8, 0, 0, 0, loc)
+	today8 := time.Date(2026, 9, 16, 8, 0, 0, 0, loc)
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{"00:30 — ещё вчерашние сутки", at(0, 30), yesterday8},
+		{"07:59 — ещё вчера", at(7, 59), yesterday8},
+		{"08:00 — уже сегодня", at(8, 0), today8},
+		{"23:50 — сегодня", at(23, 50), today8},
+	}
+	for _, tc := range cases {
+		if got := clubDayStartAt(8, tc.now); !got.Equal(tc.want) {
+			t.Errorf("%s: %v, ожидалось %v", tc.name, got, tc.want)
+		}
+	}
+	// report_hour 0 — клубные сутки совпадают с календарными
+	if got := clubDayStartAt(0, at(0, 30)); !got.Equal(time.Date(2026, 9, 16, 0, 0, 0, 0, loc)) {
+		t.Errorf("report_hour 0: %v", got)
 	}
 }

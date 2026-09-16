@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,17 +42,79 @@ func logAdminActionAs(adminID uuid.UUID, action string, targetUserID *uuid.UUID,
 	}
 }
 
-// GET /admin/audit — лента событий: три источника сливаются по времени,
-// в ответ уходит максимум 100 свежих. Ники резолвятся одним запросом.
-// Роли (Б1-и4, решение №3): owner видит всё; admin — операции текущего дня
-// и без owner-событий (settings_update, staff_*).
+// GET /admin/audit — лента событий: источники (начисления, депозиты и их
+// отмены, продажи и их отмены, admin_actions) сливаются по времени.
+// Роли (Б1-и4, решение №3): owner видит всё; admin — текущие клубные сутки и
+// без owner-событий (settings_update, staff_*).
+//
+// Ж3-и3 (№14, №22): параметры и слияние.
+//
+//	?day=YYYY-MM-DD — клубные сутки (только owner; admin всегда получает
+//	                  текущие), без day у owner — всё время;
+//	?before=RFC3339 — курсор: события строго раньше момента («ещё 100»);
+//	?limit=1..200   — размер страницы (по умолчанию 100);
+//	?kind=a,b,c     — виды событий (ключи как в журнале: deposit,
+//	                  deposit_void, sale, sale_void, grant, ban, …).
+//
+// Раньше бралось «по 100 свежих с каждого источника» и резалось до 100:
+// в бойкий день депозит со 150-й позиции пропадал, хотя формально был
+// «сегодня». Теперь каждый источник режется в ОДНОМ окне [from, before) тем
+// же лимитом, что и итог: любой элемент из настоящего топ-limit объединения
+// входит и в топ-limit своего источника, так что страница точная, а
+// следующая начинается с next_before. Отмены (deposit_void, sale_void)
+// живут в окне по моменту отмены, а не создания — иначе вчерашний депозит,
+// отменённый сегодня, не попадал бы в сегодняшний журнал.
 func handleAdminAudit(c *gin.Context) {
 	ownerView := c.GetString("user_role") == string(models.UserRoleOwner)
-	scope := func(q *gorm.DB) *gorm.DB {
-		if ownerView {
-			return q
+	now := time.Now()
+	reportHour := int(settingInt64("report_hour", 8))
+
+	limit := 100
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil {
+		limit = max(1, min(v, 200))
+	}
+	var from, to time.Time
+	windowed := true
+	dayKey := ""
+	if ownerView {
+		if d := c.Query("day"); d != "" {
+			f, t, key, ok := shiftWindow(d, reportHour, now)
+			if !ok {
+				c.JSON(http.StatusBadRequest, gin.H{"code": "bad_day", "message": "day — в формате YYYY-MM-DD"})
+				return
+			}
+			from, to, dayKey = f, t, key
+		} else {
+			windowed = false
 		}
-		return q.Where("created_at >= ?", startOfToday())
+	} else {
+		from, to, dayKey, _ = shiftWindow("", reportHour, now)
+	}
+	var before time.Time
+	if b := c.Query("before"); b != "" {
+		t, err := time.Parse(time.RFC3339Nano, b)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_before", "message": "before — момент в формате RFC3339"})
+			return
+		}
+		before = t
+	}
+	kinds := map[string]bool{}
+	for _, k := range strings.Split(c.Query("kind"), ",") {
+		if k = strings.TrimSpace(k); k != "" {
+			kinds[k] = true
+		}
+	}
+	want := func(k string) bool { return len(kinds) == 0 || kinds[k] }
+	// scope — одно окно для всех источников по нужной колонке времени
+	scope := func(q *gorm.DB, col string) *gorm.DB {
+		if windowed {
+			q = q.Where(col+" >= ? AND "+col+" < ?", from, to)
+		}
+		if !before.IsZero() {
+			q = q.Where(col+" < ?", before)
+		}
+		return q.Order(col + " DESC").Limit(limit)
 	}
 	hiddenFromAdmin := func(action string) bool {
 		return !ownerView &&
@@ -59,6 +122,7 @@ func handleAdminAudit(c *gin.Context) {
 	}
 
 	type item struct {
+		ID        string
 		CreatedAt time.Time
 		Kind      string
 		AdminID   uuid.UUID
@@ -67,33 +131,47 @@ func handleAdminAudit(c *gin.Context) {
 	}
 	items := []item{}
 
-	var grants []models.AdminGrant
-	scope(db.Order("created_at DESC").Limit(100)).Find(&grants)
-	for _, g := range grants {
-		text := g.Reason
-		if g.GrantType == "xp" && g.Amount != nil {
-			text = fmt.Sprintf("+%d XP — %s", *g.Amount, g.Reason)
-		} else if g.CaseTier != nil {
-			text = fmt.Sprintf("кейс %s — %s", *g.CaseTier, g.Reason)
+	if want("grant") {
+		var grants []models.AdminGrant
+		scope(db.Model(&models.AdminGrant{}), "created_at").Find(&grants)
+		for _, g := range grants {
+			text := g.Reason
+			if g.GrantType == "xp" && g.Amount != nil {
+				text = fmt.Sprintf("+%d XP — %s", *g.Amount, g.Reason)
+			} else if g.CaseTier != nil {
+				text = fmt.Sprintf("кейс %s — %s", *g.CaseTier, g.Reason)
+			}
+			uid := g.UserID
+			items = append(items, item{"grant:" + g.ID.String(), g.CreatedAt, "grant", g.AdminID, &uid, text})
 		}
-		uid := g.UserID
-		items = append(items, item{g.CreatedAt, "grant", g.AdminID, &uid, text})
 	}
 
-	var deposits []models.Deposit
-	scope(db.Order("created_at DESC").Limit(100)).Find(&deposits)
-	for _, d := range deposits {
-		adminID := uuid.Nil
+	depositText := func(d *models.Deposit) string {
+		return fmt.Sprintf("%.0f zł → +%d монет (%s)", d.AmountPLN, d.CoinsGranted+d.BonusCoins, d.Method)
+	}
+	depositAdmin := func(d *models.Deposit) uuid.UUID {
 		if d.CreatedBy != nil {
-			adminID = *d.CreatedBy
+			return *d.CreatedBy
 		}
-		uid := d.UserID
-		text := fmt.Sprintf("%.0f zł → +%d монет (%s)", d.AmountPLN, d.CoinsGranted+d.BonusCoins, d.Method)
-		items = append(items, item{d.CreatedAt, "deposit", adminID, &uid, text})
+		return uuid.Nil
+	}
+	if want("deposit") {
+		var deposits []models.Deposit
+		scope(db.Model(&models.Deposit{}), "created_at").Find(&deposits)
+		for i := range deposits {
+			d := &deposits[i]
+			uid := d.UserID
+			items = append(items, item{"deposit:" + d.ID.String(), d.CreatedAt, "deposit", depositAdmin(d), &uid, depositText(d)})
+		}
+	}
+	if want("deposit_void") {
 		// Ж1: отменённый депозит — второй строкой в момент отмены, как у продаж:
 		// сколько удалось вернуть, а сколько гость уже отыграл.
-		if d.VoidedAt != nil && (ownerView || !d.VoidedAt.Before(startOfToday())) {
-			by := adminID
+		var voided []models.Deposit
+		scope(db.Model(&models.Deposit{}).Where("voided_at IS NOT NULL"), "voided_at").Find(&voided)
+		for i := range voided {
+			d := &voided[i]
+			by := depositAdmin(d)
 			if d.VoidedBy != nil {
 				by = *d.VoidedBy
 			}
@@ -104,39 +182,60 @@ func handleAdminAudit(c *gin.Context) {
 			if d.CoinsTaken > 0 {
 				vt += fmt.Sprintf(" · забрано %d монет", d.CoinsTaken)
 			}
-			items = append(items, item{*d.VoidedAt, "deposit_void", by, &uid, vt})
+			uid := d.UserID
+			items = append(items, item{"deposit_void:" + d.ID.String(), *d.VoidedAt, "deposit_void", by, &uid, vt})
 		}
 	}
 
-	// Продажи товаров (В2) — четвёртый источник: своя таблица, как у депозитов.
-	// Отменённая продажа даёт вторую строку в момент отмены: в хронологии важно
-	// не только что продали, но и когда это отыграли назад.
-	var sales []models.Sale
-	scope(db.Order("created_at DESC").Limit(100)).Find(&sales)
-	for _, s := range sales {
-		text := fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)
-		items = append(items, item{s.CreatedAt, "sale", s.CreatedBy, s.UserID, text})
-		if s.VoidedAt != nil && (ownerView || !s.VoidedAt.Before(startOfToday())) {
+	// Продажи товаров (В2) — свой источник, как у депозитов; отменённая
+	// продажа даёт вторую строку в момент отмены.
+	saleText := func(s *models.Sale) string {
+		return fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)
+	}
+	if want("sale") {
+		var sales []models.Sale
+		scope(db.Model(&models.Sale{}), "created_at").Find(&sales)
+		for i := range sales {
+			s := &sales[i]
+			items = append(items, item{"sale:" + s.ID.String(), s.CreatedAt, "sale", s.CreatedBy, s.UserID, saleText(s)})
+		}
+	}
+	if want("sale_void") {
+		var voided []models.Sale
+		scope(db.Model(&models.Sale{}).Where("voided_at IS NOT NULL"), "voided_at").Find(&voided)
+		for i := range voided {
+			s := &voided[i]
 			by := s.CreatedBy
 			if s.VoidedBy != nil {
 				by = *s.VoidedBy
 			}
-			items = append(items, item{*s.VoidedAt, "sale_void", by, s.UserID, "отмена: " + text})
+			items = append(items, item{"sale_void:" + s.ID.String(), *s.VoidedAt, "sale_void", by, s.UserID, "отмена: " + saleText(s)})
 		}
 	}
 
+	// admin_actions — всё остальное; при фильтре по видам — только они
+	// (виды, которых в admin_actions нет, просто не дадут строк).
+	actQ := db.Model(&models.AdminAction{})
+	if len(kinds) > 0 {
+		list := make([]string, 0, len(kinds))
+		for k := range kinds {
+			list = append(list, k)
+		}
+		actQ = actQ.Where("action IN ?", list)
+	}
 	var actions []models.AdminAction
-	scope(db.Order("created_at DESC").Limit(100)).Find(&actions)
+	scope(actQ, "created_at").Find(&actions)
 	for _, a := range actions {
 		if hiddenFromAdmin(a.Action) {
 			continue
 		}
-		items = append(items, item{a.CreatedAt, a.Action, a.AdminID, a.TargetUserID, a.Details})
+		items = append(items, item{"action:" + a.ID.String(), a.CreatedAt, a.Action, a.AdminID, a.TargetUserID, a.Details})
 	}
 
 	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
-	if len(items) > 100 {
-		items = items[:100]
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
 	}
 
 	idSet := map[string]bool{}
@@ -163,7 +262,7 @@ func handleAdminAudit(c *gin.Context) {
 
 	out := make([]gin.H, 0, len(items))
 	for _, it := range items {
-		row := gin.H{"created_at": it.CreatedAt, "kind": it.Kind, "text": it.Text}
+		row := gin.H{"id": it.ID, "created_at": it.CreatedAt, "kind": it.Kind, "text": it.Text}
 		if it.AdminID != uuid.Nil {
 			row["admin"] = nick[it.AdminID.String()]
 		}
@@ -172,5 +271,12 @@ func handleAdminAudit(c *gin.Context) {
 		}
 		out = append(out, row)
 	}
-	c.JSON(http.StatusOK, gin.H{"count": len(out), "items": out})
+	resp := gin.H{"count": len(out), "items": out, "has_more": hasMore, "limit": limit}
+	if hasMore && len(items) > 0 {
+		resp["next_before"] = items[len(items)-1].CreatedAt.Format(time.RFC3339Nano)
+	}
+	if windowed {
+		resp["day"], resp["from"], resp["to"] = dayKey, from, to
+	}
+	c.JSON(http.StatusOK, resp)
 }

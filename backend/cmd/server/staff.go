@@ -53,7 +53,7 @@ func handleAdminStaffList(c *gin.Context) {
 		Order("role DESC").Order("nickname").Find(&staff)
 
 	// действий сегодня: admin_actions + ручные начисления + депозиты
-	today := startOfToday()
+	today := clubDayStart(time.Now()) // Ж3: клубные сутки
 	acts := map[string]int64{}
 	type cnt struct {
 		AdminID string

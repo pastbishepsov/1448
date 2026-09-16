@@ -67,10 +67,20 @@ func targetPlayer(c *gin.Context) *models.User {
 	return &user
 }
 
-// startOfToday — полночь текущего дня (для дневных лимитов, Б0-и4).
-func startOfToday() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+// clubDayStart — начало клубных суток, в которые попадает now: report_hour
+// сегодня, а до report_hour — вчера. Ж3-и1 (ревью 14.09, №12): у админки
+// было ТРИ «сегодня» — полночь у дневных лимитов, журнала и карточки
+// (startOfToday), report_hour у отчётов и сводки смены, календарный день у
+// KPI. Депозит в 23:50 пропадал из журнала админа в 00:00, а дневной потолок
+// обнулялся посреди ночной смены. Теперь «сегодня» одно — клубные сутки.
+func clubDayStart(now time.Time) time.Time {
+	return clubDayStartAt(int(settingInt64("report_hour", 8)), now)
+}
+
+// clubDayStartAt — чистая часть (тест на границу 07:59/08:00).
+func clubDayStartAt(reportHour int, now time.Time) time.Time {
+	from, _, _, _ := shiftWindow("", reportHour, now)
+	return from
 }
 
 // adminDayCapExceeded — превышен ли дневной потолок админа
@@ -84,7 +94,11 @@ func adminDayCapExceeded(used, add, cap float64) bool {
 
 // GET /admin/overview — сводка для шапки админки.
 // Б1: + сегодняшний срез — брони сегодня (бэйдж и KPI) и выручка за день
-// (депозиты с полуночи; операции дня видны и роли admin — решение №3).
+// (операции дня видны и роли admin — решение №3). Ж3-и2 (№13): «сегодня» —
+// клубные сутки, а выручка считается ТОЙ ЖЕ функцией, что разрез «Деньги»
+// отчёта (aggMoney: пополнения + товары + пакеты, без отменённых и без
+// оплат кошельком) — раньше KPI показывал только депозиты с полуночи и не
+// сходился с отчётом владельца ни по составу, ни по границе дня.
 func handleAdminOverview(c *gin.Context) {
 	var users, activeSessions, computersTotal, computersFree, upcomingBookings int64
 	db.Model(&models.User{}).Count(&users)
@@ -96,16 +110,16 @@ func handleAdminOverview(c *gin.Context) {
 			[]models.BookingStatus{models.BookingStatusPending, models.BookingStatusConfirmed}, time.Now()).
 		Count(&upcomingBookings)
 
-	today := startOfToday()
+	reportHour := int(settingInt64("report_hour", 8))
+	today := clubDayOf(time.Now(), reportHour)
+	day := makePeriod(today, today, reportHour, "today")
 	var bookingsToday int64
 	db.Model(&models.Booking{}).
 		Where("status IN ? AND start_time >= ? AND start_time < ?",
 			[]models.BookingStatus{models.BookingStatusPending, models.BookingStatusConfirmed},
-			today, today.Add(24*time.Hour)).
+			day.From, day.To).
 		Count(&bookingsToday)
-	var revenueToday float64
-	db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
-		Where("created_at >= ? AND voided_at IS NULL", today).Scan(&revenueToday) // Ж1: отменённый — не выручка
+	money := aggMoney(day)
 
 	c.JSON(http.StatusOK, gin.H{
 		"users":             users,
@@ -114,7 +128,11 @@ func handleAdminOverview(c *gin.Context) {
 		"computers_free":    computersFree,
 		"upcoming_bookings": upcomingBookings,
 		"bookings_today":    bookingsToday,
-		"revenue_today_pln": revenueToday,
+		"revenue_today_pln": money.Revenue,
+		// Ж3-и2: из чего сложилась выручка и с какого часа считаются сутки
+		"revenue_today": gin.H{"deposits_pln": money.DepositsPLN, "goods_pln": money.GoodsPLN,
+			"packs_pln": money.PacksPLN, "deposits": money.Deposits, "sales": money.GoodsSales},
+		"day_from": day.From, "day_to": day.To, "report_hour": reportHour,
 	})
 }
 
@@ -213,7 +231,7 @@ func handleAdminUserCard(c *gin.Context) {
 	var deposits []models.Deposit
 	depQ := db.Where("user_id = ?", user.ID)
 	if !ownerView {
-		depQ = depQ.Where("created_at >= ?", startOfToday())
+		depQ = depQ.Where("created_at >= ?", clubDayStart(time.Now())) // Ж3: клубные сутки
 	}
 	depQ.Order("created_at DESC").Limit(20).Find(&deposits)
 

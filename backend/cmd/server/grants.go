@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -87,7 +88,7 @@ func handleAdminGrant(c *gin.Context) {
 		if cap := settingInt64("admin_day_xp_cap", 0); cap > 0 {
 			var used int64
 			db.Model(&models.AdminGrant{}).Select("COALESCE(SUM(amount),0)").
-				Where("admin_id = ? AND grant_type = 'xp' AND created_at >= ?", adminID, startOfToday()).
+				Where("admin_id = ? AND grant_type = 'xp' AND created_at >= ?", adminID, clubDayStart(time.Now())). // Ж3: клубные сутки
 				Scan(&used)
 			if adminDayCapExceeded(float64(used), float64(req.Amount), float64(cap)) {
 				c.JSON(http.StatusForbidden, gin.H{"code": "day_cap",

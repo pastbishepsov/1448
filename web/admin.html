@@ -576,7 +576,7 @@
     <main class="content">
       <section id="s-hall">
         <div class="kpis" id="kpis">
-          <div class="kpi" onclick="navRev()">Выручка сегодня <b id="kRev">—</b></div>
+          <div class="kpi" id="kRevBox" onclick="navRev()" title="пополнения + товары + пакеты за клубные сутки — те же цифры, что в отчёте «Деньги»">Выручка сегодня <b id="kRev">—</b></div>
           <div class="kpi" onclick="nav('hall')">В зале <b id="kSessions">—</b></div>
           <div class="kpi" onclick="nav('hall')">Свободно <b id="kPCs">—</b></div>
           <div class="kpi" onclick="nav('bookings')">Броней сегодня <b id="kBookings">—</b></div>
@@ -673,18 +673,23 @@
       <section id="s-grants" class="hidden">
         <div class="toolrow">
           <div class="segs">
-            <button class="on" onclick="audKindSet('all',this)">Все</button>
-            <button onclick="audKindSet('money',this)">Деньги</button>
-            <button onclick="audKindSet('grant',this)">Начисления</button>
-            <button onclick="audKindSet('users',this)">Баны</button>
-            <button onclick="audKindSet('sessions',this)">Сессии</button>
-            <button onclick="audKindSet('bookings',this)">Брони</button>
-            <button onclick="audKindSet('pc',this)">ПК</button>
-            <button onclick="audKindSet('incidents',this)">Проблемы<span id="incSegN"></span></button>
-            <button onclick="audKindSet('catalog',this)">Каталог</button>
-            <button class="ownerOnly hidden" onclick="audKindSet('staff',this)">Персонал</button>
+            <button class="on" data-k="all" onclick="audKindSet('all',this)">Все</button>
+            <button data-k="money" onclick="audKindSet('money',this)">Деньги</button>
+            <button data-k="grant" onclick="audKindSet('grant',this)">Начисления</button>
+            <button data-k="users" onclick="audKindSet('users',this)">Баны</button>
+            <button data-k="sessions" onclick="audKindSet('sessions',this)">Сессии</button>
+            <button data-k="bookings" onclick="audKindSet('bookings',this)">Брони</button>
+            <button data-k="pc" onclick="audKindSet('pc',this)">ПК</button>
+            <button data-k="incidents" onclick="audKindSet('incidents',this)">Проблемы<span id="incSegN"></span></button>
+            <button data-k="catalog" onclick="audKindSet('catalog',this)">Каталог</button>
+            <button class="ownerOnly hidden" data-k="staff" onclick="audKindSet('staff',this)">Персонал</button>
           </div>
           <input id="audQ" class="input" placeholder="Ник гостя или админа…" autocomplete="off" style="min-width:200px">
+          <!-- Ж3-и3: владелец смотрит любой день клубных суток; админ — только текущие -->
+          <div class="segs ownerOnly hidden" title="Клубные сутки — от часа отчёта">
+            <input id="audDay" class="input" type="date" style="min-width:150px" onchange="audDaySet(this.value)">
+            <button id="audAllDays" class="on" onclick="audDaySet('')">Все дни</button>
+          </div>
           <div class="segs" title="Плотность таблиц">
             <button class="densBtn" data-v="comfortable" onclick="densSet('comfortable')">Просторно</button>
             <button class="densBtn" data-v="compact" onclick="densSet('compact')">Плотно</button>
@@ -1044,6 +1049,7 @@ function logout(){
   clearTimeout(wsRetry);
   if (ws){ try{ ws.close(); }catch(e){} ws = null; }
   wsOpen = false; feed = []; wlData = []; palClose();
+  audData = []; audKey = ''; audBefore = null; audHasMore = false; audDay = ''; // Ж3: журнал одного входа не переезжает в другой
   hallEdit = false; selPCId = null;
   bellItems = []; callPCs = new Set();
   document.getElementById('bellDrop').classList.add('hidden');
@@ -1065,6 +1071,7 @@ function enter(){
   if (curTab === 'catalog' || OWNER_SECTIONS.includes(curTab)) refresh(); // KPI в шапке
   setPolling(7000);
   connectWS();
+  loadFeedBackfill(); // Ж3-и4: лента зала не пустая после перезагрузки
   loadMyShift(); // Е3-и2: состояние смены — с первого экрана, а не по заходу в «Персонал»
   loadStaffChat(false); // Е6-и2: непрочитанное в канале персонала — сразу
   setTimeout(tourMaybeStart, 900); // Е5-и1: даём интерфейсу отрисоваться, потом учим
@@ -1218,7 +1225,14 @@ async function faqReplayTour(){
 }
 
 /* ── навигация ── */
-function navRev(){ nav(isOwner() ? 'stats' : 'grants'); } // выручка: owner — Отчёты, admin — журнал дня
+/* выручка: owner — Отчёты, admin — журнал дня сразу с фильтром «Деньги» (Ж3-и2) */
+function navRev(){
+  if (isOwner()){ nav('stats'); return; }
+  audKind = 'money';
+  const chip = document.querySelector('#s-grants .segs button[data-k="money"]');
+  if (chip) segOn(chip);
+  nav('grants');
+}
 
 function nav(t){
   if (OWNER_SECTIONS.includes(t) && !isOwner()) return;
@@ -1243,6 +1257,11 @@ async function refresh(){
   try{
     const ov = await api('/admin/overview');
     setText('kRev', (+ov.revenue_today_pln || 0).toLocaleString('ru-RU') + ' zł');
+    if (ov.revenue_today){ // Ж3-и2: из чего сложилось и с какого часа сутки
+      const r = ov.revenue_today, box = document.getElementById('kRevBox');
+      if (box) box.title = 'за клубные сутки с ' + String(ov.report_hour ?? 8).padStart(2, '0') + ':00 — те же цифры, что в отчёте «Деньги»: пополнения '
+        + fmtPLN(r.deposits_pln) + ' zł (' + (r.deposits || 0) + ') · товары ' + fmtPLN(r.goods_pln) + ' zł (' + (r.sales || 0) + ') · пакеты ' + fmtPLN(r.packs_pln) + ' zł · без отменённых и без оплат кошельком';
+    }
     setText('kSessions', ov.active_sessions);
     setText('kPCs', ov.computers_free + '/' + ov.computers_total);
     setText('kBookings', ov.bookings_today ?? ov.upcoming_bookings);
@@ -1318,7 +1337,7 @@ async function connectWS(){
   if (!me) return;
   try{ ws = new WebSocket(API.replace(/^http/, 'ws') + '/ws/admin?ticket=' + encodeURIComponent(ticket)); }
   catch(e){ scheduleWSRetry(); return; }
-  ws.onopen = () => { wsOpen = true; setPolling(30000); refresh(); };
+  ws.onopen = () => { wsOpen = true; setPolling(30000); refresh(); loadFeedBackfill(); }; // Ж3-и4: что было, пока сокет молчал
   ws.onclose = () => {
     wsOpen = false; ws = null;
     if (!me) return;
@@ -1348,6 +1367,7 @@ function feedLine(m){
     case 'incident': return d.auto && d.open && !d.minutes ? '⚠ агент пропал на ' + pcName(d.computer_id) + ' во время сессии — запись в «Проблемах»'
       : d.compensation ? 'проблема: компенсация ' + d.compensation
       : d.open ? 'проблема: запись в журнале' + (d.minutes ? ' — ' + d.minutes + ' мин' : '') : 'проблема: закрыта';
+    case 'audit': return (AUD_LABEL[d.kind] || d.kind || '') + (d.nickname ? ': ' + d.nickname : '') + (d.text ? ' — ' + d.text : ''); // Ж3-и4: строка журнала
     case 'deposit': return d.kind === 'void'
       ? 'отмена депозита: ' + (d.nickname||'гость') + ' · ' + (+d.amount_pln||0) + ' zł'
         + (+d.refund_pln < +d.amount_pln ? ' (снято ' + fmtPLN(d.refund_pln||0) + ', отыграно ' + fmtPLN(d.unrecovered_pln||0) + ')' : '')
@@ -1415,8 +1435,21 @@ function paintFeed(){
   if (!el) return;
   el.innerHTML = feed.length === 0
     ? 'События появятся здесь'
-    : feed.map(m => `<div class="fi"><span class="ft">${hhmm(m.at)}</span><span data-ic="${FEED_ICON[m.type]||'scroll'}"></span> ${esc(feedLine(m))}</div>`).join('');
+    : feed.map(m => `<div class="fi"><span class="ft">${hhmm(m.at)}</span><span data-ic="${m.type === 'audit' ? (AUD_ICON[(m.data||{}).kind]||'scroll') : (FEED_ICON[m.type]||'scroll')}"></span> ${esc(feedLine(m))}</div>`).join('');
   mountIcons(el);
+}
+/* Ж3-и4 (№22): лента после перезагрузки была пуста до первого живого события —
+   поднимаем последние строки журнала при входе и при каждом реконнекте
+   сокета. Дедуп по id строки журнала; живые события ложатся поверх как раньше. */
+async function loadFeedBackfill(){
+  try{
+    const d = await api('/admin/audit?limit=30');
+    const seen = new Set(feed.filter(m => m.id).map(m => m.id));
+    const add = (d.items || []).filter(x => !seen.has(x.id)).map(x => ({type:'audit', id:x.id, at:x.created_at, data:x}));
+    if (!add.length) return;
+    feed = feed.concat(add).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 30);
+    paintFeed();
+  }catch(e){ /* тихо: лента наполнится живыми событиями */ }
 }
 function liveRefresh(){
   clearTimeout(refDeb);
@@ -3308,7 +3341,43 @@ const AUD_ICON = {
   package_warn:'bell', onboarding:'scroll',
   incident_create:'wrench', incident_compensate:'coins', incident_resolve:'check', // К8
 };
-function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(true); }
+function audKindSet(v, btn){ audKind = v; segOn(btn); renderAudit(); } // Ж3-и3: фильтр — на сервере, кэш не годится
+/* Ж3-и3: журнал страницами. Сервер режет все источники одним окном и отдаёт
+   has_more/next_before; «ещё 100» дотягивает хвост, а рефреш раз в 7 с
+   подмешивает свежее сверху по id, не роняя уже долистанное. */
+let audBefore = null, audHasMore = false, audDay = '', audLoading = false;
+function audQuery(before){
+  const p = new URLSearchParams();
+  if (audKind !== 'all' && AUD_GROUPS[audKind]) p.set('kind', AUD_GROUPS[audKind].join(','));
+  if (audDay && isOwner()) p.set('day', audDay);
+  if (before) p.set('before', before);
+  return '/admin/audit' + (p.toString() ? '?' + p.toString() : '');
+}
+function audDaySet(v){
+  audDay = v || '';
+  const all = document.getElementById('audAllDays'), inp = document.getElementById('audDay');
+  if (all) all.classList.toggle('on', !audDay);
+  if (inp && !audDay) inp.value = '';
+  renderAudit();
+}
+function audMerge(items, append){
+  const seen = new Set(audData.map(x => x.id));
+  const fresh = (items || []).filter(x => !seen.has(x.id));
+  audData = append ? audData.concat(fresh) : fresh.concat(audData);
+  audData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+async function audMore(btn){
+  if (audLoading || !audHasMore) return;
+  audLoading = true;
+  if (btn) btn.disabled = true;
+  try{
+    const d = await api(audQuery(audBefore));
+    audMerge(d.items, true);
+    audHasMore = !!d.has_more; audBefore = d.next_before || null;
+    paintAudit();
+  }catch(e){ toast('⚠ ' + e.message); }
+  finally{ audLoading = false; }
+}
 function relTime(iso){
   const s = Math.floor((Date.now() - new Date(iso))/1000);
   if (s < 60) return 'только что';
@@ -3316,30 +3385,39 @@ function relTime(iso){
   if (s < 86400) return Math.floor(s/3600) + ' ч назад';
   return fmtTime(iso);
 }
+let audKey = ''; // фильтр+день, для которых загружен audData
 async function renderAudit(useCache){
   if (audKind === 'incidents') return renderIncidents(); // К8-и3: свой раздел
-  if (!useCache){
-    const d = await api('/admin/audit');
-    audData = d.items || [];
+  const key = audKind + '|' + audDay;
+  if (!useCache || key !== audKey){
+    const d = await api(audQuery(null));
+    if (key !== audKey){ // другой фильтр или день — с чистого листа
+      audData = d.items || []; audKey = key;
+      audHasMore = !!d.has_more; audBefore = d.next_before || null;
+    } else { // тот же — свежее сверху, долистанный хвост на месте
+      audMerge(d.items, false);
+      if (audData.length <= (d.limit || 100)){ audHasMore = !!d.has_more; audBefore = d.next_before || null; }
+    }
   }
+  paintAudit();
+}
+function paintAudit(){
   const q = audQ.toLowerCase();
-  const rows = audData.filter(x => {
-    if (audKind !== 'all' && !(AUD_GROUPS[audKind] || []).includes(x.kind)) return false;
-    if (q && !((x.nickname||'').toLowerCase().includes(q) || (x.admin||'').toLowerCase().includes(q))) return false;
-    return true;
-  });
+  const rows = audData.filter(x => !q || (x.nickname||'').toLowerCase().includes(q) || (x.admin||'').toLowerCase().includes(q));
+  const dayNote = audDay && isOwner() ? `<div class="muted" style="margin-bottom:8px">Клубные сутки ${esc(audDay)} — от часа отчёта до следующего</div>` : '';
   setHTML('auditTable', rows.length === 0
-    ? (audData.length === 0
+    ? dayNote + (audData.length === 0
       ? '<div class="empty"><span data-ic="scroll"></span>Журнал пуст — действия персонала будут записываться сюда</div>'
       : '<div class="empty"><span data-ic="scroll"></span>Событий по этому фильтру нет</div>')
-    : `<table><tr><th>Когда</th><th>Событие</th><th>Гость</th><th>Детали</th><th>Админ</th></tr>
+    : dayNote + `<table><tr><th>Когда</th><th>Событие</th><th>Гость</th><th>Детали</th><th>Админ</th></tr>
   ${rows.map(x => `<tr>
     <td class="muted" title="${fmtTime(x.created_at)}">${relTime(x.created_at)}</td>
     <td style="white-space:nowrap"><span data-ic="${AUD_ICON[x.kind]||'scroll'}"></span> ${AUD_LABEL[x.kind]||esc(x.kind)}</td>
     <td>${x.nickname ? '<b>'+esc(x.nickname)+'</b>' : '<span class="muted">—</span>'}</td>
     <td style="white-space:normal">${esc(x.text||'')}</td>
     <td class="muted">${esc(x.admin||'—')}</td>
-  </tr>`).join('')}</table>`);
+  </tr>`).join('')}</table>`
+    + (audHasMore ? `<div style="text-align:center; margin:12px 0"><button class="btn ghost" id="audMoreBtn" onclick="audMore(this)">Ещё 100</button></div>` : ''));
 }
 
 /* ── К8-и3: журнал проблем (Р4). Факт пишет админ или хаб (обрыв агента во
