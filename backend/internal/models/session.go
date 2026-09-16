@@ -64,6 +64,11 @@ type Session struct {
 	// время не оплачивается. Ожидание = ReadyDeadline задан, ReadyAt пуст.
 	ReadyAt       *time.Time `json:"ready_at,omitempty"`       // нажал [Готов!] (или авто-старт по дедлайну)
 	ReadyDeadline *time.Time `json:"ready_deadline,omitempty"` // до какого момента ждём нажатия
+	// Ж4 (Ж-Р6, миграция 064): посадка на ПК без связи ждёт шелл до этого
+	// момента; агент подключился — открывается окно [Готов!], не подключился —
+	// посадка снимается без списания. Ожидание шелла = ShellWaitUntil задан,
+	// ReadyAt пуст.
+	ShellWaitUntil *time.Time `json:"shell_wait_until,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 

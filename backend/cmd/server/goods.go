@@ -408,7 +408,9 @@ type saleRequest struct {
 	GoodID   string `json:"good_id" binding:"required"`
 	Qty      int    `json:"qty"`
 	Method   string `json:"method"`
-	Nickname string `json:"nickname"`
+	Nickname string `json:"nickname"` // строгий ник (как понимала админка до Ж5)
+	Guest    string `json:"guest"`    // Ж5-и4: ник, телефон ИЛИ имя — через общий резолвер
+	GuestID  string `json:"guest_id"` // Ж5-и4: выбран из списка кандидатов (409 guest_ambiguous)
 }
 
 func saleOut(s *models.Sale, nick map[string]string) gin.H {
@@ -419,6 +421,7 @@ func saleOut(s *models.Sale, nick map[string]string) gin.H {
 	}
 	if s.UserID != nil {
 		row["nickname"] = nick[s.UserID.String()]
+		row["user_id"] = s.UserID // Ж5-и4: следующие продажи тому же гостю — по id, без второго поиска
 	}
 	if s.VoidedAt != nil {
 		row["voided_at"] = s.VoidedAt
@@ -464,19 +467,17 @@ func handleAdminSaleCreate(c *gin.Context) {
 	}
 
 	// привязка к гостю — необязательная метка «кому продали»; цель, как и у
-	// прочих операций персонала, только player (решение №4 трека Б)
+	// прочих операций персонала, только player (решение №4 трека Б).
+	// Ж5-и4 (№15): опознание — общим резолвером посадки и очереди: ник,
+	// телефон или имя, при неоднозначности 409 с кандидатами; строгий nickname
+	// понимается как раньше. Резолвер ищет только среди гостей, поэтому ник
+	// персонала здесь — «не найден», а не отдельный код.
 	var guest *models.User
-	if nickname := strings.TrimSpace(req.Nickname); nickname != "" {
-		var u models.User
-		if err := db.First(&u, "nickname = ?", nickname).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость с таким ником не найден"})
+	if strings.TrimSpace(req.Nickname) != "" || strings.TrimSpace(req.Guest) != "" || strings.TrimSpace(req.GuestID) != "" {
+		guest = lookupGuestForAction(c, req.GuestID, req.Guest, req.Nickname) // 404 и 409 пишет сам
+		if guest == nil {
 			return
 		}
-		if u.Role != models.UserRolePlayer {
-			c.JSON(http.StatusConflict, gin.H{"code": "not_player", "message": "Продажу можно записать только на гостя"})
-			return
-		}
-		guest = &u
 	}
 
 	adminID, _ := uuid.Parse(c.GetString("user_id"))

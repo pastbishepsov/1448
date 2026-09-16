@@ -211,21 +211,29 @@ func handleAdminWaitlist(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "items": out})
 }
 
-// POST /admin/waitlist {nickname} — поставить гостя в очередь у стойки.
-// Инвариант цели тот же, что у депозита/гранта (canTargetUser).
+// POST /admin/waitlist {guest|guest_id|nickname} — поставить гостя в очередь
+// у стойки. Инвариант цели тот же, что у депозита/гранта (canTargetUser).
+//
+// Ж5-и4 (№15): гостя опознаёт тот же резолвер, что посадка и бронь
+// (lookupGuestForAction): ник, телефон или имя, при неоднозначности — 409 со
+// списком кандидатов. Раньше очередь принимала только строгий ник — телефон,
+// который гость назвал у стойки, приходилось сначала искать в «Гостях».
+// Поле nickname остаётся строгим, как и было.
 func handleAdminWaitlistAdd(c *gin.Context) {
 	var req struct {
-		Nickname string `json:"nickname" binding:"required"`
+		Nickname string `json:"nickname"` // строгий ник (как понимала админка до Ж5)
+		Guest    string `json:"guest"`    // ник, телефон ИЛИ имя
+		GuestID  string `json:"guest_id"` // выбран из списка кандидатов
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужен ник гостя"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужен ник, телефон или имя гостя"})
 		return
 	}
-	var user models.User
-	if err := db.First(&user, "nickname = ?", req.Nickname).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Гость с таким ником не найден"})
+	found := lookupGuestForAction(c, req.GuestID, req.Guest, req.Nickname) // 400/404/409 пишет сам
+	if found == nil {
 		return
 	}
+	user := *found
 	if ok, code := canTargetUser(user.Role, user.ID.String(), c.GetString("user_id")); !ok {
 		msg := map[string]string{
 			"cannot_touch_self":  "Нельзя применить действие к самому себе",

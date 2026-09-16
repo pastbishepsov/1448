@@ -382,6 +382,19 @@
   .hpc.maint{border-color:rgba(251,146,60,.45)}
   .hpc.maint .inf{color:var(--orange)}
   .hpc.off{border-style:dashed; opacity:.8}
+  /* Ж4-и6: отсчёт — отдельной строкой, чтобы ник не обрезал время */
+  .hpc .inf2{font-size:9.5px; color:var(--dim); font-weight:700; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums}
+  .hpc.busy .inf2{color:var(--acc3)}
+  .hpc.wake{background:rgba(96,165,250,.12); border-color:rgba(96,165,250,.4)}
+  .hpc.wake .inf,.hpc.wake .inf2,.pc.wake .info{color:#93c5fd}
+  .hpc.stuck,.pc.stuck{border-color:rgba(251,146,60,.6); background:rgba(251,146,60,.08)}
+  .hpc.stuck .inf,.pc.stuck .info{color:var(--orange)}
+  .hpc.low .inf2{color:var(--orange); font-weight:700} /* Ж5-и1: деньги на исходе */
+  .lnk{color:var(--dim); text-decoration:underline dotted; text-underline-offset:3px} .lnk:hover{color:var(--txt)}
+  th.sortable{cursor:pointer; user-select:none} th.sortable:hover,th.sortable.on{color:var(--txt)} /* Ж5-и3: сортировка гостей */
+  /* Ж4-и6: открытая шторка не наезжает на правые колонки схемы */
+  body.drawer-open .content{padding-right:424px; transition:padding-right .25s var(--smooth)}
+  @media (max-width:1000px){ body.drawer-open .content{padding-right:24px} }
   .hpc.sel,.pc.sel{outline:2px solid var(--acc); outline-offset:2px}
   .editbar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px}
 
@@ -592,8 +605,9 @@
             <div class="wl" id="wlBox">
               <div class="dsub" style="margin-top:0">Очередь <span id="wlN" class="muted"></span></div>
               <div id="wlList" class="muted" style="font-size:12px">Пока никто не ждёт</div>
-              <input id="wlNick" class="winp" placeholder="Ник гостя — Enter, в очередь"
-                     autocomplete="off" onkeydown="if(event.key==='Enter')wlAdd()">
+              <input id="wlNick" class="winp" placeholder="Ник, телефон или имя — Enter, в очередь"
+                     autocomplete="off" onkeydown="if(event.key==='Enter')wlAdd()" oninput="wlCandsClear()">
+              <div id="wlCands"></div><!-- Ж5-и4 (№15): выбор из кандидатов при 409, как в посадке -->
             </div>
             <div class="dsub" style="margin-top:0">Лента</div>
             <div id="feedList" class="muted" style="font-size:12px">События появятся здесь</div>
@@ -605,6 +619,10 @@
           <span><span class="pcdot" style="background:var(--orange); margin-right:5px"></span>ремонт</span>
           <span style="letter-spacing:1px">◌ shell offline</span>
           <span style="display:inline-flex; align-items:center; gap:5px"><span data-ic="clock"></span>скоро бронь</span>
+          <span title="гость посажен, идёт к машине — деньги не идут">⏳ ждёт [Готов!]</span>
+          <span title="ПК не был на связи при посадке — ждём шелл, деньги не идут">⏻ просыпается</span>
+          <span title="ПК придержан под регистрацию нового гостя">📝 регистрация</span>
+          <span title="статус «занят», а сессии нет — освободи из шторки" style="color:var(--orange)">⚠ без сессии</span>
           <span id="onShift" class="hidden" style="display:inline-flex; align-items:center; gap:5px; color:var(--txt)"><span data-ic="users"></span><span id="onShiftTxt"></span></span>
         </div>
       </section>
@@ -612,6 +630,14 @@
       <section id="s-users" class="hidden">
         <div class="toolrow">
           <input id="uq" class="input" placeholder="Ник, телефон или имя…" autocomplete="off" style="min-width:230px">
+          <!-- Ж5-и3 (№43): фильтры считает сервер (/admin/users?filter=), не браузер по первой сотне -->
+          <div class="segs" id="uFilters" title="Фильтры — на сервере, по всем гостям">
+            <button class="on" data-f="" onclick="uFilterSet('',this)">Все</button>
+            <button data-f="at_pc" onclick="uFilterSet('at_pc',this)">Сейчас за ПК</button>
+            <button data-f="money" onclick="uFilterSet('money',this)">С деньгами</button>
+            <button data-f="new" onclick="uFilterSet('new',this)">Новые за неделю</button>
+          </div>
+          <span class="muted" id="uCount"></span>
         </div>
         <div class="tablewrap" id="usersTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
@@ -659,9 +685,11 @@
             <button data-m="card" onclick="saleMethod('card',this)">Карта</button>
             <button data-m="blik" onclick="saleMethod('blik',this)">BLIK</button>
           </div>
-          <input id="saleNick" class="input" placeholder="Ник гостя — необязательно" autocomplete="off" style="min-width:210px">
+          <input id="saleNick" class="input" placeholder="Кому: ник, телефон или имя — необязательно" autocomplete="off" style="min-width:250px" oninput="saleGuestTyped()">
+          <span id="saleGuestChip" class="mchip hidden" title="продажи запишутся на этого гостя; ✕ — снять"></span>
           <button class="btn mini ownerOnly hidden" onclick="editGood('')"><span data-ic="plus"></span>Позиция</button>
         </div>
+        <div id="saleCands"></div><!-- Ж5-и4 (№15): выбор из кандидатов при 409, как в посадке -->
         <div class="toolrow"><div class="segs" id="goodsCats"></div></div>
         <div id="goodsTiles"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
         <div class="sect">Продажи смены · <span id="salesTotal" style="text-transform:none; letter-spacing:0">—</span></div>
@@ -1256,6 +1284,7 @@ function nav(t){
 async function refresh(){
   try{
     const ov = await api('/admin/overview');
+    ovCache = ov;
     setText('kRev', (+ov.revenue_today_pln || 0).toLocaleString('ru-RU') + ' zł');
     if (ov.revenue_today){ // Ж3-и2: из чего сложилось и с какого часа сутки
       const r = ov.revenue_today, box = document.getElementById('kRevBox');
@@ -1275,6 +1304,9 @@ async function refresh(){
     if (curTab === 'bookings') await renderBookings();
     if (curTab === 'grants'){ await renderAudit(); if (audKind !== 'incidents') loadIncidentsBadge(); }
     if (curTab === 'staff') await renderStaff();
+    // Ж5-и2: карточка гостя с идущей сессией живёт вместе с залом — «хватит до»
+    // не должно застывать; под руками у оператора (форма, взвод) не трогаем
+    if (drawerUserId && !drawerPCId && uData && uData.active_session && uData.active_session.id && !drawerBusy()) await loadUserDrawer();
     // каталог не обновляем по таймеру — там форма редактирования
     lastSync = Date.now();
   }catch(e){
@@ -1421,8 +1453,11 @@ function feedLine(m){
     case 'session': {
       if (d.kind === 'ready') return 'гость подтвердил посадку — сессия пошла';
       if (d.kind === 'ready_auto') return 'посадка подтверждена сама — время пошло';
+      if (d.kind === 'shell_arrived') return pcName(d.computer_id) + ' вышел на связь — окно [Готов!] пошло'; // Ж4
+      if (d.kind === 'shell_timeout') return pcName(d.computer_id) + ' не вышел на связь — посадка ' + (d.nickname || 'гостя') + ' снята, ничего не списано';
       return 'сессия обновлена';
     }
+    case 'pc_release': return (d.computer || pcName(d.computer_id)) + ' освобождён — был занят без сессии'; // Ж4-и3
     case 'package': {
       if (d.kind === 'issue') return 'выдан пакет минут';
       return 'пакеты обновлены';
@@ -1463,6 +1498,9 @@ function handleLiveEvent(m){
   // открытая карточка гостя; занятую шторку не трогаем (ревью 26.08)
   if (m.type === 'deposit' && drawerUserId && !drawerBusy()) loadUserDrawer();
   if (m.type === 'kitchen') kitBadgeLoad(); // Г7: очередь и бейдж
+  if (m.type === 'session' && m.data && m.data.kind === 'shell_timeout'){ // Ж4-и1: стойке — сигнал, что посадка не состоялась
+    toast('⚠ ' + (m.data.computer || pcName(m.data.computer_id)) + ' не вышел на связь — посадка ' + (m.data.nickname || 'гостя') + ' снята, ничего не списано');
+  }
   if (m.type === 'incident'){ // К8-и3: бейдж «Проблемы» и открытый раздел
     const d = m.data || {};
     if (d.auto && d.open && !d.minutes) toast('⚠ Агент пропал на ' + pcName(d.computer_id) + ' — запись в «Журнал → Проблемы»');
@@ -1571,7 +1609,8 @@ async function loadBell(){
   }catch(e){}
 }
 function paintBell(){
-  callPCs = new Set(bellItems.filter(m => m.kind === 'call' && m.computer_id).map(m => m.computer_id));
+  // Ж4-и4: рамка едет за гостем — по ПК активной сессии, а не откуда нажал; без сессии — только колокол
+  callPCs = new Set(bellItems.filter(m => m.kind === 'call' && m.current_computer_id).map(m => m.current_computer_id));
   const n = bellItems.length;
   const b = document.getElementById('bellBadge');
   b.textContent = n;
@@ -1727,22 +1766,28 @@ function hallGridHTML(positioned, edit){
 
 function hallPCCell(pc, edit){
   const off = !pc.shell_online;
-  let cls = '', inf = 'своб.';
+  let cls = '', inf = 'своб.', inf2 = ''; // Ж4-и6: отсчёт — второй строкой, ник не режется
   if (pc.session){
     cls = ' busy';
-    inf = seatWaiting(pc)
-      ? '⏳ ' + esc(pc.session.nickname) + ' · ' + waitLeft(pc)
-      : (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at);
+    if (seatWaitingShell(pc)){ cls += ' wake'; inf = '⏻ ' + esc(pc.session.nickname); inf2 = waitLeft(pc); } // Ж4-и1: ⏻ = «просыпается» (легенда)
+    else if (seatWaiting(pc)){ inf = '⏳ ' + esc(pc.session.nickname); inf2 = waitLeft(pc); }
+    else {
+      inf = (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname);
+      // Ж5-и1: деньги на исходе — второй строкой вместо таймера: «⚡ ещё 6 мин»
+      if (sessLow(pc.session)){ cls += ' low'; inf2 = '⚡ ' + Math.max(0, pc.session.minutes_left) + 'м'; } // коротко, как таймер: плитка узкая
+      else inf2 = elapsed(pc.session.started_at);
+    }
   }
+  else if (pc.stuck){ cls = ' stuck'; inf = '⚠ занят'; inf2 = 'без сессии'; } // Ж4-и3 (Ж-Р9)
   else if (pc.status === 'maintenance'){ cls = ' maint'; inf = 'ремонт'; }
-  else if (pcHeld(pc)){ cls = ' hold'; inf = '📝 регистрация · ' + holdLeft(pc); }
+  else if (pcHeld(pc)){ cls = ' hold'; inf = '📝 регистрация'; inf2 = holdLeft(pc); }
   else if (!edit && hallSoon[pc.id]){ inf = 'бронь ' + hhmm(hallSoon[pc.id]); }
   else if (off){ inf = 'offline'; }
-  if (!edit && callPCs.has(pc.id)){ cls += ' call'; inf = '<span data-ic="bell"></span> зовёт'; } // Б2
+  if (!edit && callPCs.has(pc.id)){ cls += ' call'; inf = '<span data-ic="bell"></span> зовёт'; } // Б2; Ж4-и4: по ПК, где гость сидит сейчас
   const sel = edit && selPCId === pc.id ? ' sel' : '';
   const click = edit ? `hallPCClick('${pc.id}')` : `openPCDrawer('${pc.id}')`;
   return `<div class="hpc${cls}${off ? ' off' : ''}${sel}" onclick="${click}">
-    <div class="nm">${esc(pc.name)}</div><div class="inf">${inf}</div></div>`;
+    <div class="nm">${esc(pc.name)}</div><div class="inf">${inf}</div>${inf2 ? '<div class="inf2">' + inf2 + '</div>' : ''}</div>`;
 }
 
 /* ── редактор зала (А8, только owner) ── */
@@ -1906,10 +1951,14 @@ function pcTile(pc, soonAt){
   let cls = 'free', info = '<span class="pcdot" style="background:var(--green)"></span>своб.';
   if (pc.session){
     cls = 'busy';
-    info = seatWaiting(pc)
+    info = seatWaitingShell(pc) // Ж4-и1
+      ? '⏻ ' + esc(pc.session.nickname) + ' · просыпается · ' + waitLeft(pc)
+      : seatWaiting(pc)
       ? '⏳ ' + esc(pc.session.nickname) + ' · ' + waitLeft(pc)
       : (pc.session.paused_at ? '⏸ ' : '') + esc(pc.session.nickname) + ' · ' + elapsed(pc.session.started_at);
+    if (seatWaitingShell(pc)) cls += ' wake';
   }
+  else if (pc.stuck){ cls = 'stuck'; info = '⚠ занят без сессии'; } // Ж4-и3
   else if (pc.status === 'maintenance'){ cls = 'maint'; info = '<span data-ic="wrench"></span>ремонт'; }
   else if (pcHeld(pc)){ cls = 'hold'; info = '📝 регистрация · ' + holdLeft(pc); }
   else if (pc.status === 'reserved'){ info = '<span class="pcdot" style="background:var(--neu)"></span>резерв'; }
@@ -1955,15 +2004,27 @@ function renderPCDrawer(id){
       : '<span class="dot" style="background:var(--card2)"></span><span class="muted">offline</span>'}</td></tr>
   </table>`;
   if (pc.session){
+    const ss = pc.session;
     body += `<div class="dsub">Сессия</div>
     <table class="kv">
-      <tr><td class="muted">Гость</td><td><b>${esc(pc.session.nickname)}</b></td></tr>
-      ${seatWaiting(pc)
+      <tr><td class="muted">Гость</td><td><b>${esc(ss.nickname)}</b>${ss.user_id
+        ? ` · <a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${ss.user_id}')">карточка</a>` : ''}</td></tr>
+      ${ss.user_id ? `<tr><td class="muted">Деньги</td><td>${esc(fmtRate(ss.rate_pln))} · кошелёк <b>${fmtGr(ss.wallet_grosz)}</b>${reserveShort(ss)}</td></tr>
+      <tr><td class="muted">Хватит</td><td id="dUntil">${forecastLine(ss)}</td></tr>` : ''}
+      ${seatWaitingShell(pc)
+        ? `<tr><td class="muted">Статус</td><td>⏻ ждёт включения ПК — ${waitLeft(pc)} · деньги не идут</td></tr>
+      <tr><td class="muted">Что дальше</td><td class="muted">шелл выйдет на связь — начнётся окно [Готов!]; не выйдет — посадка снимется сама, ничего не спишется</td></tr>`
+        : seatWaiting(pc)
         ? `<tr><td class="muted">Статус</td><td>⏳ ждёт [Готов!] — ${waitLeft(pc)} · деньги не идут</td></tr>`
         : `<tr><td class="muted">Начало</td><td>${fmtTime(pc.session.started_at)}</td></tr>
       <tr><td class="muted">Идёт</td><td id="dElapsed">${elapsed(pc.session.started_at)}</td></tr>`}
       ${pc.session.paused_at ? `<tr><td class="muted">Пауза</td><td>⏸ с ${fmtTime(pc.session.paused_at)}${pc.session.paused_by === 'afk' ? ' · AFK' : ''} — время и деньги стоят</td></tr>` : ''}
     </table>
+    ${ss.user_id ? `<div class="actrow" style="margin-top:10px">
+      <button class="btn mini" onclick="openUserDrawer('${ss.user_id}','deposit')" title="карточка гостя с открытой формой депозита"><span data-ic="coins"></span>Пополнить</button>
+      <button class="btn ghost mini" onclick="openUserDrawer('${ss.user_id}','pack')"><span data-ic="clock"></span>Пакет</button>
+      <button class="btn ghost mini" onclick="sellToGuest('${ss.user_id}','${esc(ss.nickname)}')" title="Товары с этим гостем в поле «кому»"><span data-ic="box"></span>Продать</button>
+    </div>` : ''}
     ${seatWaiting(pc) ? `<button class="btn danger" style="width:100%; justify-content:center; margin-top:14px"
       onclick="armSeatCancel(this,'${pc.session.id}','${esc(pc.session.nickname)}')">
       <span data-ic="cross"></span>Отменить посадку</button>
@@ -1982,6 +2043,12 @@ function renderPCDrawer(id){
       </div>
       <div class="muted" style="margin-top:6px">Сессия и биллинг не рвутся, тариф сохраняется</div>`;
     }
+  } else if (pc.stuck){
+    // Ж4-и3 (Ж-Р9): статус «занят», сессии нет — лечится кнопкой, не автоматом
+    body += `<div class="dsub">⚠ Занят без сессии</div>
+    <div class="muted">Статус «${esc(pc.status)}», а активной сессии на этом ПК нет — сессия оборвалась на завершении или запись поправили руками. Гостя посадить нельзя, пока ПК не освободить.</div>
+    <button class="btn" style="width:100%; justify-content:center; margin-top:12px"
+      onclick="armButton(this, 'Ещё раз — освободить', () => pcRelease('${pc.id}'))"><span data-ic="check"></span>Освободить ПК</button>`;
   } else if (pc.status === 'maintenance'){
     body += `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:16px"
       onclick="setPCStatus('${pc.id}','available')"><span data-ic="check"></span>Из ремонта — в строй</button>`;
@@ -1991,6 +2058,9 @@ function renderPCDrawer(id){
       <input id="seatNick" class="input" placeholder="Ник, телефон или имя" autocomplete="off"
              oninput="seatSuggest('${pc.id}')"
              onkeydown="if(event.key==='Enter')seatGuest('${pc.id}')">
+      <div class="segs" title="На сколько садится — чтобы не посадить впритык к чужой брони (Г3)">${[30,60,120,180].map(m =>
+        `<button class="${seatPlan===m?'on':''}" onclick="seatPlan=${m}; renderPCDrawer('${pc.id}')">${m} мин</button>`).join('')}</div>
+      ${!pc.shell_online ? `<div class="muted" style="color:#93c5fd">⏻ ПК не на связи — включу по сети и подожду его ${readyWaitMin()} мин; деньги пойдут только после [Готов!]</div>` : ''}
       <button class="btn" style="width:100%; justify-content:center" onclick="seatGuest('${pc.id}')">
         <span data-ic="clock"></span>Начать сессию</button>
       <div id="seatCands"></div>
@@ -1998,8 +2068,10 @@ function renderPCDrawer(id){
     </div>
     ${pcHeld(pc)
       ? `<div class="muted" style="margin-top:12px">📝 Придержан под регистрацию — ещё ${holdLeft(pc)}</div>
-    <button class="btn ghost" style="width:100%; justify-content:center; margin-top:8px"
-      onclick="pcUnhold('${pc.id}')"><span data-ic="cross"></span>Снять придержание</button>`
+    <div class="actrow" style="margin-top:8px">
+      <button class="btn ghost mini" onclick="pcHold('${pc.id}', true)"><span data-ic="clock"></span>Продлить</button>
+      <button class="btn ghost mini" onclick="pcUnhold('${pc.id}')"><span data-ic="cross"></span>Снять придержание</button>
+    </div>`
       : `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:12px"
       onclick="pcHold('${pc.id}')"><span data-ic="user"></span>Занять под регистрацию</button>
     <div class="muted" style="margin-top:6px">Новому гостю негде завести аккаунт: посадить его нельзя — ника ещё нет. Машина не уйдёт другому, пока он регистрируется.</div>`}
@@ -2026,14 +2098,27 @@ function renderPCDrawer(id){
 }
 
 /* Е1-и5: придержать / отпустить ПК под регистрацию нового гостя. */
-async function pcHold(id){
+async function pcHold(id, extend){
   try{
-    const d = await api('/admin/computers/' + id + '/hold', {method:'POST'});
-    toast('📝 ' + (d.name || 'ПК') + ' придержан — веди гостя регистрироваться');
+    const d = await api('/admin/computers/' + id + '/hold', {method:'POST'}); // повторный POST продлевает срок (Ж4-и5)
+    toast(extend ? '📝 Придержание ' + (d.name || 'ПК') + ' продлено' : '📝 ' + (d.name || 'ПК') + ' придержан — веди гостя регистрироваться');
+    if (extend){ await refresh(); if (drawerPCId === id) renderPCDrawer(id); return; }
     closeDrawer();
     await refresh();
   }catch(e){ toast('⚠ ' + e.message); }
 }
+/* Ж4-и3 (Ж-Р9): освободить залипший ПК — в транзакции сервер проверит, что сессии нет */
+async function pcRelease(id){
+  try{
+    const d = await api('/admin/computers/' + id + '/release', {method:'POST'});
+    toast('✓ ' + (d.name || 'ПК') + ' освобождён (был «' + (d.was || '?') + '» без сессии)');
+    closeDrawer();
+    await refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+let ovCache = null; // последний /admin/overview — настройки стойке не видны, а это окно из него
+function readyWaitMin(){ return (ovCache && ovCache.ready_wait_min) || 7; }
+let seatPlan = 30; // Ж4-и5: «на сколько» — по умолчанию минимальный сеанс, как считал сервер без параметра
 async function pcUnhold(id){
   try{
     const d = await api('/admin/computers/' + id + '/hold', {method:'DELETE'});
@@ -2074,10 +2159,12 @@ async function seatGuest(pcId, forceId){
     if (!guest && !forceId){ toast('⚠ Нужен ник, телефон или имя гостя'); return; }
     const box = document.getElementById('seatCands');
     const body = forceId ? {guest_id: forceId} : {guest};
+    body.planned_min = seatPlan; // Ж4-и5
     try{
       const d = await api('/admin/computers/' + pcId + '/session', {method:'POST', body:JSON.stringify(body)});
       if (box) box.innerHTML = '';
-      toast('▶ ' + (d.nickname || guest) + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
+      if (d.shell_wait_until) toast('⏻ ' + (d.nickname || guest) + ' за «' + (d.computer||'ПК') + '»: ' + (d.shell_note || 'ПК не на связи — ждём его, деньги не идут')); // Ж4-и1
+      else toast('▶ ' + (d.nickname || guest) + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
       await refresh();
     }catch(e){
       if (e.code === 'guest_ambiguous' && box){
@@ -2091,6 +2178,36 @@ async function seatGuest(pcId, forceId){
   });
 }
 function seatPick(id){ seatGuest(seatPcId, id); }
+
+/* Ж5-и2 (№19): посадка из карточки гостя — ПК выбран селектом, гость известен
+   по id (никакого второго поиска по нику). Ответ тот же, что у шторки ПК. */
+let seatCardPc = null;
+async function seatFromCard(){
+  const sel = document.getElementById('seatPCSel');
+  const pcId = sel ? sel.value : seatCardPc;
+  if (!pcId || !drawerUserId){ toast('⚠ Выбери ПК'); return; }
+  return once('seat:' + pcId, async () => {
+    try{
+      const d = await api('/admin/computers/' + pcId + '/session', {method:'POST',
+        body:JSON.stringify({guest_id: drawerUserId, planned_min: seatPlan})});
+      if (d.shell_wait_until) toast('⏻ ' + (d.nickname || '') + ' за «' + (d.computer||'ПК') + '»: ' + (d.shell_note || 'ПК не на связи — ждём его, деньги не идут'));
+      else toast('▶ ' + (d.nickname || '') + ' за «' + (d.computer||'ПК') + '» · ' + (d.effective_rate_pln ?? d.rate_pln ?? '?') + ' zł/ч');
+      uForm = null;
+      await loadUserDrawer();
+      refresh();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+/* Ж5-и2/и4: в очередь по id — из карточки, когда свободных ПК нет */
+async function wlAddGuest(id, nick){
+  try{
+    const d = await api('/admin/waitlist', {method:'POST', body:JSON.stringify({guest_id: id})});
+    toast('⏳ ' + (d.nickname || nick) + ' в очереди — №' + d.position);
+    uForm = null;
+    if (drawerUserId === id) await loadUserDrawer();
+    refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
 
 /* Живой автопоиск в форме посадки: админ печатает 2+ символа — под полем
    сразу совпадения (тот же /admin/users?q=, что глобальный поиск и палитра).
@@ -2157,17 +2274,30 @@ function paintWaitlist(){
       </div>`).join('');
   mountIcons(list);
 }
-async function wlAdd(){
+/* Ж5-и4 (№15): очередь принимает ник, телефон или имя — тем же резолвером,
+   что посадка; несколько подходящих — выбор из списка под полем (409). */
+async function wlAdd(forceId){
   const inp = document.getElementById('wlNick');
-  const nickname = (inp.value || '').trim();
-  if (!nickname){ toast('⚠ Нужен ник гостя'); return; }
+  const guest = (inp.value || '').trim();
+  if (!guest && !forceId){ toast('⚠ Нужен ник, телефон или имя гостя'); return; }
+  const box = document.getElementById('wlCands');
   try{
-    const d = await api('/admin/waitlist', {method:'POST', body:JSON.stringify({nickname})});
+    const d = await api('/admin/waitlist', {method:'POST', body:JSON.stringify(forceId ? {guest_id: forceId} : {guest})});
     inp.value = '';
-    toast('⏳ ' + nickname + ' в очереди — №' + d.position);
+    if (box) box.innerHTML = '';
+    toast('⏳ ' + (d.nickname || guest) + ' в очереди — №' + d.position);
     await refresh();
-  }catch(e){ toast('⚠ ' + e.message); }
+  }catch(e){
+    if (e.code === 'guest_ambiguous' && box){
+      box.innerHTML = `<div class="muted" style="margin-top:6px">Подходит несколько — выбери гостя:</div>` + candsHtml(e.data.candidates || [], 'wlPick');
+      return;
+    }
+    if (box) box.innerHTML = '';
+    toast('⚠ ' + e.message);
+  }
 }
+function wlPick(id){ wlAdd(id); }
+function wlCandsClear(){ const b = document.getElementById('wlCands'); if (b && b.innerHTML) b.innerHTML = ''; }
 function wlSeat(nickname){
   const pc = hallData.find(p => p.status === 'available');
   if (!pc){ toast('⚠ Свободных ПК нет — как освободится, гостя позовёт уведомление'); return; }
@@ -2188,9 +2318,58 @@ function wlRemove(btn, id, nickname){
 /* Е1-и4: ПК посажен, но время ещё не пошло. У стойки это надо видеть
    отдельно от «занят»: гость может не дойти, и тогда посадку снимают без
    списания — деньги за эти минуты никто не платил. */
-function seatWaiting(pc){
-  return !!(pc && pc.session && pc.session.ready_deadline && !pc.session.ready_at);
+function seatWaiting(pc){ // Е1: окно [Готов!]; Ж4: или ожидание шелла — в обоих деньги не идут
+  return !!(pc && pc.session && !pc.session.ready_at && (pc.session.ready_deadline || pc.session.shell_wait_until));
 }
+function seatWaitingShell(pc){ // Ж4-и1 (Ж-Р6): ПК не был на связи при посадке — ждём агента
+  return !!(pc && pc.session && !pc.session.ready_at && pc.session.shell_wait_until);
+}
+/* Ж5-и1 (№18): деньги гостя в шторке ПК и в карточке — одной строкой, из
+   одних полей (сервер отдаёт их и в /admin/computers, и в /admin/users/:id тем
+   же прогнозом, что шелл получает в wallet_update). Клиент только печатает:
+   ни тарифа, ни минут здесь не считаем — иначе три шторки разойдутся. */
+function fmtGr(gr){ return ((gr || 0) / 100).toFixed(2).replace('.', ',') + ' zł'; }
+function fmtRate(pln){ return (pln == null ? '?' : fmtPLN(pln)) + ' zł/ч'; }
+function minsHuman(m){
+  m = Math.max(0, Math.round(m || 0));
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? h + ' ч' + (r ? ' ' + r + ' мин' : '') : r + ' мин';
+}
+/* запас сверх кошелька — «· запас 40 мин (Standard) · пакет 120 мин»; пусто, если ни того ни другого */
+function reserveShort(s){
+  const zone = (s.zone_minutes || 0) + (s.coin_minutes || 0), pack = s.pack_minutes || 0;
+  let t = '';
+  if (zone) t += ' · запас <b>' + zone + ' мин</b>';
+  if (pack) t += ' · пакет <b>' + pack + ' мин</b>';
+  return t;
+}
+/* «до 19:42 · ещё 42 мин»; чужая бронь режет раньше (Г3); пауза и окно [Готов!] честно без времени */
+function forecastLine(s){
+  if (!s) return '—';
+  if (s.zero_since) return '<span style="color:var(--orange)">на нуле — идёт грейс, сессия скоро завершится</span>';
+  const left = s.minutes_left || 0;
+  if (s.paused_at) return '⏸ пауза — время стоит · запаса на ' + minsHuman(left);
+  if (!s.until) return 'запаса на <b>' + minsHuman(left) + '</b> — отсчёт с [Готов!]';
+  let till = new Date(s.until), byBooking = false;
+  if (s.booking_deadline && new Date(s.booking_deadline) < till){ till = new Date(s.booking_deadline); byBooking = true; }
+  const rest = Math.max(0, Math.round((till - Date.now()) / 60000));
+  const low = rest <= 15;
+  return `до <b${low ? ' style="color:var(--orange)"' : ''}>${hhmm(till)}</b> · ещё ${minsHuman(rest)}`
+    + (byBooking ? ' <span class="muted">— дальше ПК уходит под бронь</span>' : '')
+    + (low && !byBooking ? ' <span class="muted">— пора пополнять</span>' : '');
+}
+/* деньги на исходе — для плитки и списка: идёт, не на паузе, меньше 15 мин */
+function sessLow(s){
+  return !!(s && s.until && !s.paused_at && !s.zero_since && (s.minutes_left || 0) <= 15);
+}
+/* Ж5-и2: «Продать» из карточки и шторки ПК — Товары с этим гостем в поле «кому» */
+function sellToGuest(id, nick){
+  nav('goods');
+  saleGuestSet(id, nick);
+  closeDrawer();
+  toast('🧾 Товары: продажи запишутся на ' + nick);
+}
+
 /* Е1-и5: ПК придержан под регистрацию — свободен, но автоматика его не
    предлагает, пока человек заводит аккаунт. Метка со сроком, не статус. */
 function pcHeld(pc){
@@ -2202,7 +2381,8 @@ function holdLeft(pc){
   return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
 }
 function waitLeft(pc){
-  const left = Math.round((new Date(pc.session.ready_deadline) - Date.now()) / 1000);
+  const until = pc.session.shell_wait_until || pc.session.ready_deadline; // Ж4: чей срок идёт
+  const left = Math.round((new Date(until) - Date.now()) / 1000);
   if (left <= 0) return '0:00';
   return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
 }
@@ -2236,15 +2416,21 @@ async function seatCancelNow(id, nick){
   try{
     await api('/admin/sessions/' + id + '/seat-cancel', {method:'POST'});
     toast('✓ Посадка снята: ' + nick + ' — ничего не списано');
-    closeDrawer();
+    if (cardHasSession(id)) await loadUserDrawer(); // Ж5-и2: сняли из карточки — карточка остаётся
+    else closeDrawer();
     await refresh();
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* Ж5-и2: действие над сессией пришло из карточки гостя, а не из шторки ПК */
+function cardHasSession(id){
+  return !!(drawerUserId && !drawerPCId && uData && uData.active_session && uData.active_session.id === id);
+}
 async function endSessionNow(id, nick){
   try{
     const d = await api('/admin/sessions/'+id+'/end', {method:'POST', body:'{}'});
     toast('⏹ '+nick+': +'+d.xp_earned+' XP, +'+d.coins_earned+' монет ('+d.minutes+' мин)');
+    if (cardHasSession(id)) await loadUserDrawer(); // Ж5-и2: карточка показывает «сессии нет», а не устаревшую строку
     await refresh();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -2298,7 +2484,10 @@ function fmtDate(iso){
 function renderUserDrawer(){
   if (!drawerUserId || !uData) return;
   const u = uData.user, s = uData.stats;
+  const as = uData.active_session && uData.active_session.id ? uData.active_session : null; // Ж5-и2: сессия целиком
   let body = `<table class="kv">
+    ${as ? `<tr><td class="muted">Сейчас</td><td>за <b>${esc(as.computer || 'ПК')}</b>${as.zone ? ' <span class="muted">· ' + esc(as.zone) + '</span>' : ''} · ${as.shell_wait_until && !as.ready_at ? '⏻ ждёт включения ПК'
+        : as.waiting ? '⏳ ждёт [Готов!]' : (as.paused_at ? '⏸ пауза' : 'идёт ' + elapsed(as.started_at))}<br>${forecastLine(as)}</td></tr>` : ''}
     <tr><td class="muted">Уровень</td><td><b>${u.level}</b> · ${(u.xp_total||0).toLocaleString('ru-RU')} XP</td></tr>
     <tr><td class="muted">Монеты</td><td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td></tr>
     <tr><td class="muted">Роль · статус</td><td>${u.role} · <span class="st ${u.status}">${u.status}</span></td></tr>
@@ -2318,6 +2507,7 @@ function renderUserDrawer(){
   if (u.role === 'player'){
     body += `<div class="dsub">Действия</div>
     <div class="actrow">
+      ${as ? '' : (u.status === 'banned' ? '' : `<button class="btn mini ${uForm==='seat'?'':'ghost'}" onclick="uFormToggle('seat')" title="Ж5-и2: посадить за свободный ПК прямо из карточки"><span data-ic="monitor"></span>Посадить за…</button>`)}
       <button class="btn mini ${uForm==='deposit'?'':'ghost'}" onclick="uFormToggle('deposit')"><span data-ic="coins"></span>Депозит</button>
       <button class="btn mini ${uForm==='xp'?'':'ghost'}" onclick="uFormToggle('xp')"><span data-ic="xp"></span>XP</button>
       <button class="btn mini ${uForm==='case'?'':'ghost'}" onclick="uFormToggle('case')"><span data-ic="chest"></span>Кейс</button>
@@ -2326,11 +2516,23 @@ function renderUserDrawer(){
       <button class="btn mini ${uForm==='edit'?'':'ghost'}" onclick="uFormToggle('edit')"><span data-ic="user"></span>Данные</button>
       <button class="btn mini ${uForm==='pwd'?'':'ghost'}" onclick="uFormToggle('pwd')"><span data-ic="lock"></span>Пароль</button>
       <button class="btn mini ${uForm==='incident'?'':'ghost'}" onclick="uFormToggle('incident')" title="К8: проблема с ПК — запись и компенсация"><span data-ic="wrench"></span>Проблема</button>
+      <button class="btn ghost mini" onclick="sellToGuest('${u.id}','${esc(u.nickname)}')" title="Товары с этим гостем в поле «кому»"><span data-ic="box"></span>Продать</button>
       ${u.status === 'banned'
         ? `<button class="btn ghost mini" onclick="unbanNow('${u.id}','${esc(u.nickname)}')"><span data-ic="unban"></span>Разбанить</button>`
         : `<button class="btn danger mini" onclick="armBan(this,'${u.id}','${esc(u.nickname)}')"><span data-ic="ban"></span>Бан</button>`}
     </div>
     <div id="uFormWrap">${uFormHtml()}</div>`;
+    // Ж5-и2 (№19): сессию гостя завершают из карточки, не бегая в шторку ПК;
+    // до [Готов!] это снятие посадки — денег не брали, минут не было (Е1-и4)
+    if (as){
+      body += as.waiting
+        ? `<button class="btn danger" style="width:100%; justify-content:center; margin-top:12px"
+            onclick="armSeatCancel(this,'${as.id}','${esc(u.nickname)}')"><span data-ic="cross"></span>Отменить посадку за ${esc(as.computer || 'ПК')}</button>
+          <div class="muted" style="margin-top:6px; text-align:center">Гость не дошёл — ПК освободится, ничего не спишется</div>`
+        : `<button class="btn danger" style="width:100%; justify-content:center; margin-top:12px"
+            onclick="armEndSession(this,'${as.id}','${esc(u.nickname)}','${as.started_at}')"><span data-ic="power"></span>Завершить сессию за ${esc(as.computer || 'ПК')}</button>
+          <div class="muted" style="margin-top:6px; text-align:center">XP и монеты начислятся за фактическое время</div>`;
+    }
   }
   body += `<div class="dsub">История</div>
   <div class="minitabs">
@@ -2347,6 +2549,11 @@ function renderUserDrawer(){
 async function uFormToggle(f){
   uForm = (uForm === f) ? null : f;
   if (uForm !== 'pwd') tempPass = null; // ушли с формы — пароль с экрана убрали
+  // Ж5-и2: селект свободных ПК — из свежего зала, а не из того, что видели
+  // при последнем заходе в «Зал» (за это время машины заняли или освободили)
+  if (uForm === 'seat'){
+    try{ const d = await api('/admin/computers'); hallData = d.computers || []; pcCache = hallData; }catch(e){ toast('⚠ ' + e.message); }
+  }
   if (uForm === 'redeem' && !zonesCache.length){
     try{ zonesCache = (await api('/admin/zones')).zones || []; }catch(e){}
   }
@@ -2542,6 +2749,26 @@ async function openUserChat(id){
 function uFormHtml(){
   if (!uForm) return '';
   if (uForm === 'incident') return incFormHtml({user_id: uData.user.id, has_guest: true}); // К8-и3
+  // Ж5-и2 (№19): посадка из карточки — тот же POST /computers/:id/session с
+  // guest_id, что из шторки ПК: окно [Готов!], planned_min, офлайн-шелл (Ж4)
+  if (uForm === 'seat'){
+    const free = (hallData || []).filter(p => p.status === 'available' && !p.session && !p.stuck && !pcHeld(p));
+    if (!free.length) return `<div class="uform">
+      <div class="muted">Свободных ПК нет${(hallData || []).some(pcHeld) ? ' (придержанные под регистрацию не считаем)' : ''} — поставь гостя в очередь: как освободится, его позовёт уведомление</div>
+      <button class="btn ghost" style="width:100%; justify-content:center" onclick="wlAddGuest('${uData.user.id}','${esc(uData.user.nickname)}')"><span data-ic="clock"></span>В очередь</button>
+    </div>`;
+    const cur = free.find(p => p.id === seatCardPc) || free[0];
+    seatCardPc = cur.id;
+    return `<div class="uform">
+      <select id="seatPCSel" class="input" onchange="seatCardPc=this.value; renderUserDrawer()">${free.map(p =>
+        `<option value="${p.id}"${p.id === cur.id ? ' selected' : ''}>${esc(p.name)}${p.zone ? ' · ' + esc(p.zone) : ''}${p.shell_online ? '' : ' · ⏻ не на связи'}</option>`).join('')}</select>
+      <div class="segs" title="На сколько садится — чтобы не посадить впритык к чужой брони (Г3)">${[30,60,120,180].map(m =>
+        `<button class="${seatPlan===m?'on':''}" onclick="seatPlan=${m}; renderUserDrawer()">${m} мин</button>`).join('')}</div>
+      ${!cur.shell_online ? `<div class="muted" style="color:#93c5fd">⏻ ПК не на связи — включу по сети и подожду его ${readyWaitMin()} мин; деньги пойдут только после [Готов!]</div>` : ''}
+      <button class="btn" style="width:100%; justify-content:center" onclick="seatFromCard()"><span data-ic="monitor"></span>Посадить за ${esc(cur.name)}</button>
+      <div class="muted">Без пароля гостя; тариф и таланты — его собственные · до [Готов!] деньги не идут</div>
+    </div>`;
+  }
   if (uForm === 'deposit') return `<div class="uform">
     <input id="d_sum" class="input" type="number" min="1" step="1" placeholder="Сумма, zł" value="50">
     <div class="segs">
@@ -2810,28 +3037,70 @@ async function unbanNow(id, nick){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
-/* ── Гости: живой поиск (debounce 300мс), инпут не пересоздаётся ── */
-let userQuery = '';
+/* ── Гости: живой поиск (debounce 300мс), инпут не пересоздаётся ──
+   Ж5-и3 (№23, №43): список только гостей (сервер: role=player по умолчанию,
+   персонал — в «Персонале»); фильтры и сортировка — параметры сервера, он
+   же отдаёт «Сейчас» (now_at: ПК и «хватит до») тем же прогнозом, что шторки. */
+let userQuery = '', userFilter = '', userSort = 'last_active', userDir = '', userSortTouched = false;
+const USER_SORT_TITLES = {nickname:'Ник', level:'LVL', wallet:'Кошелёк', coins:'Монеты', last_active:'Был активен', created:'Аккаунт с'};
+function uFilterSet(f, btn){
+  userFilter = f;
+  if (btn) segOn(btn);
+  // «новые за неделю» читаются по дате регистрации — пока админ сам не выбрал сортировку
+  if (!userSortTouched){ userSort = f === 'new' ? 'created' : 'last_active'; userDir = ''; }
+  renderUsersTable();
+}
+function uSortSet(k){
+  if (userSort === k) userDir = (userDir || (k === 'nickname' ? 'asc' : 'desc')) === 'asc' ? 'desc' : 'asc';
+  else { userSort = k; userDir = ''; }
+  userSortTouched = true;
+  renderUsersTable();
+}
+function uTh(k, label, extra){
+  const on = userSort === k, dir = userDir || (k === 'nickname' ? 'asc' : 'desc');
+  return `<th class="sortable${on ? ' on' : ''}" onclick="uSortSet('${k}')" title="сортировать по «${esc(label)}»"${extra || ''}>${label}${on ? (dir === 'asc' ? ' ↑' : ' ↓') : ''}</th>`;
+}
 async function renderUsersTable(){
-  const d = await api('/admin/users' + (userQuery ? '?q='+encodeURIComponent(userQuery) : ''));
+  const qs = new URLSearchParams();
+  if (userQuery) qs.set('q', userQuery);
+  if (userFilter) qs.set('filter', userFilter);
+  if (userSort !== 'last_active' || userDir) qs.set('sort', userSort);
+  if (userDir) qs.set('dir', userDir);
+  const d = await api('/admin/users' + (qs.toString() ? '?' + qs.toString() : ''));
   const mt = d.matched || {}; // Е0-и5б: id → чем гость совпал с запросом
+  const na = d.now_at || {};  // Ж5-и3: id → {computer, until, minutes_left, waiting, paused}
+  const cnt = document.getElementById('uCount');
+  if (cnt) cnt.textContent = d.users.length ? (d.users.length >= 100 ? 'первые 100' : d.users.length + (userFilter || userQuery ? ' по фильтру' : '')) : '';
+  const FILTER_EMPTY = {at_pc:'Сейчас за ПК никого нет', money:'Гостей с деньгами на кошельке нет', new:'За неделю новых гостей не появилось'};
   setHTML('usersTable', d.users.length === 0
     ? (userQuery
-      ? '<div class="empty"><span data-ic="search"></span>По запросу «' + esc(userQuery) + '» никого — ищем по нику, телефону и имени</div>'
+      ? '<div class="empty"><span data-ic="search"></span>По запросу «' + esc(userQuery) + '» никого' + (userFilter ? ' по этому фильтру' : '') + ' — ищем по нику, телефону и имени</div>'
+      : userFilter
+      ? '<div class="empty"><span data-ic="users"></span>' + FILTER_EMPTY[userFilter] + '</div>'
       : '<div class="empty"><span data-ic="users"></span>Гостей ещё нет — первый появится после регистрации на гостевом экране</div>')
-    : `<table><tr><th>Ник</th><th>LVL</th><th>XP</th><th>Монеты</th><th>Роль</th><th>Статус</th><th>Был активен</th><th></th></tr>
+    : `<table><tr>${uTh('nickname','Ник')}${uTh('level','LVL')}${uTh('wallet','Кошелёк')}<th>Сейчас</th><th>Телефон</th>${uTh('coins','Монеты')}<th>Статус</th>${uTh(userFilter === 'new' ? 'created' : 'last_active', userFilter === 'new' ? 'Аккаунт с' : 'Был активен')}<th></th></tr>
   ${d.users.map(u => `<tr onclick="openUserDrawer('${u.id}')" style="cursor:pointer">
     <td><b>${esc(u.nickname)}</b>${mt[u.id] ? `<span class="mchip">${esc(mt[u.id])}</span>` : ''}</td>
     <td>${u.level}</td>
-    <td>${(u.xp_total||0).toLocaleString('ru-RU')}</td>
+    <td${(u.wallet_grosz||0) > 0 ? '' : ' class="muted"'}>${fmtGr(u.wallet_grosz)}</td>
+    <td>${nowAtCell(na[u.id])}</td>
+    <td class="muted">${u.phone ? esc(u.phone) : '—'}</td>
     <td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td>
-    <td>${u.role}</td>
     <td><span class="st ${u.status}">${u.status}</span></td>
-    <td class="muted">${fmtTime(u.last_active_at)}</td>
+    <td class="muted">${userFilter === 'new' ? fmtDate(u.created_at) + ' ' + hhmm(u.created_at) : fmtTime(u.last_active_at)}</td>
     <td>${u.role === 'player' && u.status !== 'banned'
         ? `<button class="btn mini" onclick="event.stopPropagation(); openUserDrawer('${u.id}','deposit')"><span data-ic="coins"></span>Депозит</button>`
         : ''}</td>
   </tr>`).join('')}</table>`);
+}
+/* «PC-02 · до 19:42», «⏳ PC-02» (ждёт [Готов!]), «⏸ PC-02» (пауза); не играет — тире */
+function nowAtCell(n){
+  if (!n || !n.computer) return '<span class="muted">—</span>';
+  if (n.waiting) return '⏳ ' + esc(n.computer);
+  if (n.paused) return '⏸ ' + esc(n.computer);
+  if (!n.until) return '<b>' + esc(n.computer) + '</b>';
+  const low = (n.minutes_left || 0) <= 15;
+  return '<b>' + esc(n.computer) + '</b> <span class="muted">· до</span> <span' + (low ? ' style="color:var(--orange)"' : '') + '>' + hhmm(n.until) + '</span>';
 }
 
 /* ── Брони (А3): фильтры сегодня/завтра/все и живые/все ── */
@@ -3267,7 +3536,7 @@ const AUD_GROUPS = {
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
              'seat_cancel','session_move'], // ревью 26.08
   bookings: ['booking_create','booking_cancel','booking_restore'],
-  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold'],
+  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release'], // Ж4-и3
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
@@ -3303,7 +3572,7 @@ const AUD_LABEL = {
   // Эти виды сервер писал давно, а журнал печатал их сырым английским
   // идентификатором (ревью 26.08).
   guest_update:'гость: правка данных', password_reset:'сброс пароля',
-  pc_hold:'ПК придержан', pc_unhold:'придержание снято',
+  pc_hold:'ПК придержан', pc_unhold:'придержание снято', pc_release:'ПК освобождён', // Ж4-и3
   seat_cancel:'посадка снята', session_move:'пересадка',
   kitchen_done:'кухня: заказ выдан', kitchen_pay:'кухня: расчёт',
   kitchen_cancel:'кухня: заказ отменён',
@@ -3335,7 +3604,7 @@ const AUD_ICON = {
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
   guest_update:'edit', password_reset:'users', // ревью 26.08
-  pc_hold:'clock', pc_unhold:'check',
+  pc_hold:'clock', pc_unhold:'check', pc_release:'check', // Ж4-и3
   seat_cancel:'cross', session_move:'monitor',
   kitchen_done:'check', kitchen_pay:'coins', kitchen_cancel:'cross',
   package_warn:'bell', onboarding:'scroll',
@@ -3881,20 +4150,63 @@ function paintGoodsTiles(){
       </button>`).join('')}</div>`);
 }
 
+/* Ж5-и4 (№15): «кому» — ник, телефон или имя через общий резолвер; при 409
+   кандидаты под тулбаром, выбранный гость держится чипом (guest_id) до тех
+   пор, пока в поле не напечатают другое. Из карточки/шторки «Продать»
+   приходит сюда уже с id — без второго поиска. */
+let saleGuest = null, saleCandList = [], salePendingGood = null;
+function saleGuestSet(id, nick){
+  saleGuest = id ? {id, nickname: nick} : null;
+  const inp = document.getElementById('saleNick');
+  if (inp) inp.value = id ? nick : '';
+  const box = document.getElementById('saleCands');
+  if (box) box.innerHTML = '';
+  paintSaleGuest();
+}
+function paintSaleGuest(){
+  const chip = document.getElementById('saleGuestChip');
+  if (!chip) return;
+  chip.classList.toggle('hidden', !saleGuest);
+  chip.innerHTML = saleGuest ? '✓ ' + esc(saleGuest.nickname) + ' <a href="#" class="lnk" onclick="event.preventDefault(); saleGuestSet(null)">✕</a>' : '';
+}
+function saleGuestTyped(){ // напечатали другое — выбранный гость больше не действует
+  const inp = document.getElementById('saleNick');
+  if (saleGuest && inp && inp.value.trim() !== saleGuest.nickname){ saleGuest = null; paintSaleGuest(); }
+  const box = document.getElementById('saleCands');
+  if (box && box.innerHTML) box.innerHTML = '';
+}
+function salePick(id){
+  const c = saleCandList.find(x => x.id === id);
+  saleGuestSet(id, c ? c.nickname : '');
+  if (salePendingGood){ const g = salePendingGood; salePendingGood = null; sellGood(g); }
+}
 async function sellGood(id){
   return once('sell:' + id, async () => { // дабл-тап по плитке = две продажи (ревью 26.08)
     const g = goodsData.find(x => x.id === id);
     if (!g || g.stock <= 0) return;
-    const nick = document.getElementById('saleNick').value.trim();
+    const typed = document.getElementById('saleNick').value.trim();
+    const body = {good_id:id, qty:1, method:saleM};
+    if (saleGuest && typed === saleGuest.nickname) body.guest_id = saleGuest.id;
+    else if (typed) body.guest = typed;
+    const box = document.getElementById('saleCands');
     try{
-      const d = await api('/admin/sales', {method:'POST', body:JSON.stringify(
-        {good_id:id, qty:1, method:saleM, nickname:nick || undefined})});
+      const d = await api('/admin/sales', {method:'POST', body:JSON.stringify(body)});
       const sale = d.sale;
-      toast('✓ ' + sale.name + ' — ' + fmtPLN(sale.total_pln) + ' zł' + (nick ? ' · ' + nick : ''),
+      if (box) box.innerHTML = '';
+      if (sale.nickname && !saleGuest && sale.user_id) saleGuestSet(sale.user_id, sale.nickname); // нашёлся однозначно — дальше по id
+      toast('✓ ' + sale.name + ' — ' + fmtPLN(sale.total_pln) + ' zł' + (sale.nickname ? ' · ' + sale.nickname : ''),
             () => voidSale(sale.id, true));
       renderGoods();
       refresh(); // выручка в шапке
-    }catch(e){ toast('⚠ ' + e.message); }
+    }catch(e){
+      if (e.code === 'guest_ambiguous' && box){
+        saleCandList = e.data.candidates || []; salePendingGood = id;
+        box.innerHTML = `<div class="muted" style="margin:0 0 6px">Подходит несколько — выбери, на кого записать «${esc(g.name)}»:</div>` + candsHtml(saleCandList, 'salePick');
+        mountIcons(box);
+        return;
+      }
+      toast('⚠ ' + e.message);
+    }
   });
 }
 
@@ -3920,7 +4232,7 @@ function paintSales(d){
         <td><b>${esc(x.name)}</b>${x.qty > 1 ? ' ×' + x.qty : ''}${x.voided ? ' <span class="muted">— отменена</span>' : ''}</td>
         <td>${fmtPLN(x.total_pln)} zł</td>
         <td class="muted">${PAY_RU[x.method] || esc(x.method)}</td>
-        <td class="muted">${x.nickname ? esc(x.nickname) : '—'}</td>
+        <td class="muted">${x.nickname ? (x.user_id ? `<a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${x.user_id}')">${esc(x.nickname)}</a>` : esc(x.nickname)) : '—'}</td>
         <td class="muted">${esc(x.admin || '—')}</td>
         <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}')">Отменить</button>`}</td>
       </tr>`).join('')}</table>`);
@@ -5344,6 +5656,7 @@ function openDrawer(title, html){
   document.getElementById('drawerBody').innerHTML = html;
   const d = document.getElementById('drawer');
   d.classList.add('open'); d.setAttribute('aria-hidden','false');
+  document.body.classList.add('drawer-open'); // Ж4-и6: схема ужимается
   mountIcons(d);
 }
 function closeDrawer(){
@@ -5352,6 +5665,7 @@ function closeDrawer(){
   drawerUserId = null; uData = null; uForm = null; uChat = null;
   const d = document.getElementById('drawer');
   d.classList.remove('open'); d.setAttribute('aria-hidden','true');
+  document.body.classList.remove('drawer-open');
 }
 
 /* ── toast (второй аргумент — функция undo, добавляет кнопку «Вернуть»).

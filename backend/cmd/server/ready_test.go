@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -115,5 +116,45 @@ func TestBookingDeadlineIndependentOfReady(t *testing.T) {
 	}
 	if w := seatWindowMin(bookingStart, pressed, 15); w != 68 {
 		t.Errorf("окно от момента подтверждения = %d мин (68) — считать надо было от посадки", w)
+	}
+}
+
+// Ж4-и1 (Ж-Р6): третье состояние посадки — «ждёт шелл». Для остальной
+// системы это то же «не началась»: биллинг, пауза, прогресс и завершение
+// смотрят на sessionWaitingReady.
+func TestSessionWaitingShell(t *testing.T) {
+	now := time.Now()
+	dl := now.Add(7 * time.Minute)
+	waitingShell := &models.Session{ShellWaitUntil: &dl}
+	waitingReady := &models.Session{ReadyDeadline: &dl}
+	playing := &models.Session{ReadyDeadline: &dl, ReadyAt: &now}
+	plain := &models.Session{}
+	if !sessionWaitingShell(waitingShell) || !sessionWaitingReady(waitingShell) {
+		t.Error("посадка с shell_wait_until должна считаться и «ждёт шелл», и «не началась»")
+	}
+	if sessionWaitingShell(waitingReady) || !sessionWaitingReady(waitingReady) {
+		t.Error("окно [Готов!] — не ожидание шелла, но ещё не игра")
+	}
+	if sessionWaitingShell(playing) || sessionWaitingReady(playing) {
+		t.Error("после [Готов!] ожиданий нет")
+	}
+	if sessionWaitingShell(plain) || sessionWaitingReady(plain) {
+		t.Error("сессия без окон (старт с ПК) — сразу игра")
+	}
+}
+
+// Что говорит стойке посадка на ПК без связи — по исходу WoL.
+func TestShellWaitNote(t *testing.T) {
+	cases := map[string]string{
+		"sent":        "включаю по сети (WoL)",
+		"no_mac":      "нет MAC",
+		"no_agents":   "нет живых агентов",
+		"send_failed": "WoL не отправился",
+		"":            "деньги не идут",
+	}
+	for wol, want := range cases {
+		if got := shellWaitNote(wol, 7); !strings.Contains(got, want) || !strings.Contains(got, "7 мин") {
+			t.Errorf("wol=%q: %q — ожидалось упоминание %q и «7 мин»", wol, got, want)
+		}
 	}
 }

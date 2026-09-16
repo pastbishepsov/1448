@@ -727,6 +727,9 @@ const STR_RU = {
   toast_ready_go: '▶ Поехали — время пошло',
   toast_ready_wait: '🎮 Тебя посадили за {c} — подтверди, и время пойдёт',
   ntf_ready_auto: '▶ Время пошло: окно ожидания истекло',
+  ntf_seat_cancel: 'Посадку отменили у стойки',
+  ntf_seat_cancel_shell: 'Посадку сняли: ПК {c} не вышел на связь — ничего не списано',
+  ntf_admin_coming: '🛎 Админ уже идёт к тебе',
   live_xp_lbl: 'XP за сессию',
   today_at: 'сегодня {t}', tomorrow_at: 'завтра {t}',
   club_err: 'Клуб не загрузился',
@@ -1005,6 +1008,9 @@ const STR_EN = {
   toast_ready_go: '▶ Off we go — the clock is running',
   toast_ready_wait: '🎮 You’re seated at {c} — tap to start the clock',
   ntf_ready_auto: '▶ The clock started: the waiting window ran out',
+  ntf_seat_cancel: 'Your seat was cancelled at the desk',
+  ntf_seat_cancel_shell: 'Seat cancelled: PC {c} never came online — nothing charged',
+  ntf_admin_coming: '🛎 Staff is on the way',
   live_xp_lbl: 'Session XP',
   today_at: 'today {t}', tomorrow_at: 'tomorrow {t}',
   club_err: 'Failed to load the club',
@@ -1277,6 +1283,9 @@ const STR_PL = {
   toast_ready_go: '▶ Jedziemy — czas leci',
   toast_ready_wait: '🎮 Masz miejsce przy {c} — kliknij, a czas ruszy',
   ntf_ready_auto: '▶ Czas ruszył: okno oczekiwania minęło',
+  ntf_seat_cancel: 'Posadzenie anulowano przy ladzie',
+  ntf_seat_cancel_shell: 'Posadzenie anulowano: PC {c} nie połączył się — nic nie pobrano',
+  ntf_admin_coming: '🛎 Obsługa już idzie',
   live_xp_lbl: 'XP za sesję',
   today_at: 'dziś {t}', tomorrow_at: 'jutro {t}',
   club_err: 'Nie udało się wczytać klubu',
@@ -3115,6 +3124,10 @@ function ntfText(n){
     // Е1: сервер сам подтвердил сессию по истечении окна (Р1).
     case 'ready_auto':
       return STR.ntf_ready_auto;
+    case 'seat_cancelled': // Е1/Ж4: посадку сняли у стойки или ПК не вышел на связь
+      return p.reason === 'shell_offline' ? T('ntf_seat_cancel_shell', {c: p.computer || 'PC'}) : STR.ntf_seat_cancel;
+    case 'admin_coming': // Ж4-и4: админ принял вызов
+      return STR.ntf_admin_coming;
     // К8 (трек К, Р4): админ компенсировал проблему с ПК — минуты и/или деньги
     case 'incident_compensation': {
       const parts = [];
@@ -3155,7 +3168,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-16.1';
+const APP_VER = '2026-09-16.2';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

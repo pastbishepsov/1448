@@ -222,6 +222,26 @@ func billSession(s *models.Session, now time.Time) bool {
 	// посадки Г3 требует, чтобы в окно до чужой брони влез минимальный сеанс
 	// (30 мин), а ожидание ограничено семью минутами.
 	if sessionWaitingReady(s) {
+		// Ж4-и1 (Ж-Р6): посадка ждёт шелл. Агент на связи — окно [Готов!]
+		// начинается с этого момента; срок вышел без агента — посадка
+		// снимается без списания. Пока ждём — ни денег, ни авто-старта.
+		if sessionWaitingShell(s) {
+			if hub.IsConnected(s.ComputerID.String()) {
+				if err := shellArrived(s, now); err != nil && !errors.Is(err, errSessionGone) {
+					log.Printf("биллинг: переход посадки %s из ожидания шелла не прошёл: %v", s.ID, err)
+				}
+				return true
+			}
+			if now.Before(*s.ShellWaitUntil) {
+				return false
+			}
+			if err := shellWaitExpired(s, now); err != nil && !errors.Is(err, errSessionGone) {
+				log.Printf("биллинг: снятие посадки %s без шелла не прошло: %v", s.ID, err)
+			} else {
+				log.Printf("биллинг: посадка %s снята — ПК не вышел на связь", s.ID)
+			}
+			return true
+		}
 		if now.Before(*s.ReadyDeadline) {
 			return false
 		}

@@ -15,6 +15,7 @@ package main
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -38,12 +39,93 @@ func readyDeadlineFor(now time.Time, waitMin int64) *time.Time {
 	return &d
 }
 
-// sessionWaitingReady — сессия ждёт нажатия (чистая, тест).
-// Состояние держим полями, а не статусом: статус остаётся active, иначе
-// пришлось бы переписывать десятки выборок по enum (тот же приём, что у
-// паузы Г2-и1).
+// sessionWaitingReady — сессия ещё не началась: ждёт нажатия [Готов!] или
+// (Ж4, Ж-Р6) подключения шелла. Состояние держим полями, а не статусом:
+// статус остаётся active, иначе пришлось бы переписывать десятки выборок по
+// enum (тот же приём, что у паузы Г2-и1). Оба ожидания для остальных частей
+// системы одно и то же «деньги не идут, игры нет»: биллинг, пауза, прогресс
+// дня, автозаписи обрыва агента и завершение (→ отмена посадки) смотрят сюда.
 func sessionWaitingReady(s *models.Session) bool {
-	return s.ReadyDeadline != nil && s.ReadyAt == nil
+	return s.ReadyAt == nil && (s.ReadyDeadline != nil || s.ShellWaitUntil != nil)
+}
+
+// sessionWaitingShell — посадка на ПК без связи: ждём агента (Ж4-и1).
+func sessionWaitingShell(s *models.Session) bool {
+	return s.ReadyAt == nil && s.ShellWaitUntil != nil
+}
+
+// shellArrived — агент подключился, пока посадка ждала его: с ЭТОГО момента
+// начинается обычное окно [Готов!] (гость ещё идёт к машине); окно выключено
+// настройкой — старт сразу. started_at сдвигается сюда же, как в confirmReady.
+// CAS по shell_wait_until IS NOT NULL: биллинг и колбэк хаба могут прийти
+// одновременно — переход случится один раз.
+func shellArrived(s *models.Session, now time.Time) error {
+	dl := readyDeadlineFor(now, settingInt64("ready_wait_min", readyWaitMinDef))
+	upd := map[string]any{"shell_wait_until": nil, "ready_deadline": dl, "started_at": now,
+		"paused_at": nil, "paused_by": nil, "paused_total_sec": 0}
+	if dl == nil {
+		upd["ready_at"] = now
+	}
+	res := db.Model(&models.Session{}).
+		Where("id = ? AND status = ? AND shell_wait_until IS NOT NULL", s.ID, models.SessionStatusActive).
+		Updates(upd)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errSessionGone
+	}
+	s.ShellWaitUntil = nil
+	s.ReadyDeadline = dl
+	s.StartedAt = now
+	if dl == nil {
+		t := now
+		s.ReadyAt = &t
+	}
+	// Команда на ПК ушла в пустоту при посадке (шелла не было) — повторяем
+	// теперь, когда он на связи: экран покажет окно [Готов!].
+	startPayload := gin.H{"session_id": s.ID, "started_at": s.StartedAt}
+	if sp := sensPayloadFor(s.UserID); sp != nil {
+		startPayload["sens"] = sp
+	}
+	notifyShell(s.ComputerID.String(), websocket.MsgSessionStart, startPayload)
+	hub.AdminBroadcast("session", map[string]any{"kind": "shell_arrived", "session_id": s.ID,
+		"computer_id": s.ComputerID.String(), "ready_deadline": dl})
+	return nil
+}
+
+// shellArrivedForPC — колбэк хаба (агент подключился): если на этом ПК посадка
+// ждала шелл — переводим её в окно [Готов!] сразу, не дожидаясь тика биллинга.
+func shellArrivedForPC(computerID string) {
+	pcID, err := uuid.Parse(computerID)
+	if err != nil || db == nil {
+		return
+	}
+	var rows []models.Session
+	db.Where("computer_id = ? AND status = ? AND shell_wait_until IS NOT NULL AND ready_at IS NULL",
+		pcID, models.SessionStatusActive).Limit(1).Find(&rows)
+	if len(rows) == 0 {
+		return
+	}
+	if err := shellArrived(&rows[0], time.Now()); err != nil && !errors.Is(err, errSessionGone) {
+		log.Printf("посадка: переход из ожидания шелла не прошёл (%s): %v", rows[0].ID, err)
+	}
+}
+
+// shellWaitExpired — шелл так и не появился: посадка снимается без списания
+// (cancelled, ended_reason shell_offline), админкам — сигнал тостом, гостю —
+// уведомление. Общая точка с seat-cancel — cancelWaitingSession.
+func shellWaitExpired(s *models.Session, now time.Time) error {
+	res, err := cancelWaitingSession(s, now, "shell_offline")
+	if err != nil {
+		return err
+	}
+	var pc models.Computer
+	db.Select("name").First(&pc, "id = ?", s.ComputerID)
+	notifyUser(s.UserID, "seat_cancelled", map[string]any{"reason": "shell_offline", "computer": pc.Name})
+	hub.AdminBroadcast("session", map[string]any{"kind": "shell_timeout", "session_id": s.ID,
+		"computer_id": s.ComputerID.String(), "computer": pc.Name, "nickname": res.User.Nickname})
+	return nil
 }
 
 // confirmReady — перевести ожидающую сессию в оплачиваемую, начиная с момента
@@ -66,12 +148,14 @@ func confirmReady(s *models.Session, at time.Time) error {
 		"paused_at":        nil,
 		"paused_by":        nil,
 		"paused_total_sec": 0,
+		"shell_wait_until": nil, // Ж4: нажал [Готов!] с экрана — значит, машина живая, ждать шелл незачем
 	}).Error
 	if err != nil {
 		return err
 	}
 	t := at
 	s.ReadyAt = &t
+	s.ShellWaitUntil = nil
 	s.StartedAt = at
 	s.PausedAt, s.PausedBy = nil, nil
 	s.PausedTotalSec = 0

@@ -207,6 +207,22 @@ func handleAdminChatPending(c *gin.Context) {
 			nick[u.ID.String()] = u.Nickname
 		}
 	}
+	// Ж4-и4 (№21): рамка «зовёт» ставится по ПК, за которым гость сидит СЕЙЧАС,
+	// а не по тому, откуда нажал: гостя пересадили — рамка едет за ним; вышел
+	// из-за ПК — рамки нет, вызов остаётся только в колоколе.
+	curPC := map[string]string{}
+	if len(userIDs) > 0 {
+		ids := make([]string, 0, len(userIDs))
+		for id := range userIDs {
+			ids = append(ids, id)
+		}
+		var active []models.Session
+		db.Select("user_id, computer_id").Where("user_id IN ? AND status = ?", ids, models.SessionStatusActive).Find(&active)
+		for _, s := range active {
+			curPC[s.UserID.String()] = s.ComputerID.String()
+			pcIDs[s.ComputerID.String()] = true
+		}
+	}
 	pcName := map[string]string{}
 	if len(pcIDs) > 0 {
 		ids := make([]string, 0, len(pcIDs))
@@ -226,6 +242,10 @@ func handleAdminChatPending(c *gin.Context) {
 		if m.UserID != nil {
 			row["user_id"] = m.UserID
 			row["nickname"] = nick[m.UserID.String()]
+			if cur, ok := curPC[m.UserID.String()]; ok {
+				row["current_computer_id"] = cur
+				row["current_computer"] = pcName[cur]
+			}
 		}
 		if m.ComputerID != nil {
 			row["computer_id"] = m.ComputerID
@@ -440,6 +460,7 @@ func handleAdminChatAck(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "message_not_found", "message": "Сообщение не найдено"})
 		return
 	}
+	wasUnread := !m.ReadStaff // Updates ниже проставит поле и в структуре
 	updates := map[string]any{"read_staff": true}
 	if adminID, err := uuid.Parse(c.GetString("user_id")); err == nil {
 		updates["admin_id"] = adminID
@@ -447,6 +468,11 @@ func handleAdminChatAck(c *gin.Context) {
 	if err := db.Model(&m).Updates(updates).Error; err != nil {
 		respondDBError(c, err)
 		return
+	}
+	// Ж4-и4: «Принял» на вызов — гость видит на экране, что к нему идут,
+	// а не гадает, дошёл ли звонок (тост в шелле и PWA). Один раз на вызов.
+	if m.Kind == models.ChatKindCall && m.UserID != nil && wasUnread {
+		notifyUser(*m.UserID, "admin_coming", map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"id": m.ID, "read_staff": true})
 }

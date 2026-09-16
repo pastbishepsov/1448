@@ -85,7 +85,7 @@ func main() {
 	hub.OnAdminCall = agentAdminCall       // Б2: admin_call агента → чат + админки
 	hub.StateFor = shellStateFor           // К4-и1: state в ответ на session_tick
 	hub.OnShellOffline = agentLostOpen     // К8-и2: обрыв агента во время сессии → автозапись в журнал проблем
-	hub.OnShellOnline = agentLostClose     // К8-и2: агент вернулся → длительность обрыва
+	hub.OnShellOnline = onShellOnline      // К8-и2: агент вернулся → длительность обрыва; Ж4: посадка ждала шелл → окно [Готов!]
 	hub.OnSensResult = sensResultFromShell // С2-и4: агент применил сенсу → уведомление гостю
 	go hub.Run()
 
@@ -216,6 +216,7 @@ func main() {
 		adm.GET("/computers", handleAdminComputers)
 		adm.PATCH("/computers/:id/status", handleAdminSetComputerStatus) // ремонт (спринт А1)
 		adm.POST("/computers/:id/power", handleAdminPCPower)             // вкл/перезагрузка/выкл (Б8)
+		adm.POST("/computers/:id/release", handleAdminPCRelease)         // Ж4-и3 (Ж-Р9): «Освободить ПК» — занят без сессии
 		adm.POST("/computers/:id/session", handleAdminSeatGuest)         // посадить гостя (Б8)
 		adm.POST("/computers/:id/hold", handleAdminComputerHold)         // придержать под регистрацию (Е1-и5)
 		adm.DELETE("/computers/:id/hold", handleAdminComputerUnhold)     // снять придержание (Е1-и5)
@@ -611,6 +612,13 @@ func handleShellWS(c *gin.Context) {
 	if err := hub.ServeShell(c.Writer, c.Request, computerID, clubID); err != nil {
 		log.Printf("WS upgrade error: %v", err)
 	}
+}
+
+// onShellOnline — агент вышел на связь: закрыть автозапись обрыва (К8-и2) и,
+// если на этом ПК посадка ждала шелл, открыть окно [Готов!] (Ж4-и1).
+func onShellOnline(computerID string) {
+	agentLostClose(computerID)
+	shellArrivedForPC(computerID)
 }
 
 // notifyShell — best-effort команда на ПК (если он подключён).

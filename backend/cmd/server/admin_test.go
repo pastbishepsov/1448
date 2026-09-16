@@ -115,3 +115,31 @@ func TestClubDayStartAt(t *testing.T) {
 		t.Errorf("report_hour 0: %v", got)
 	}
 }
+
+// Ж5-и3: сортировка списка гостей — только из белого списка, направление
+// по умолчанию зависит от столбца (ник — по алфавиту, числа и даты — с большего).
+func TestUsersOrder(t *testing.T) {
+	cases := []struct {
+		name          string
+		sort, dir     string
+		wantCol, want string
+		wantOK        bool
+	}{
+		{"пусто — свежие сверху", "", "", "last_active_at", "desc", true},
+		{"ник — по алфавиту", "nickname", "", "LOWER(nickname)", "asc", true},
+		{"кошелёк — с большего", "wallet", "", "wallet_grosz", "desc", true},
+		{"монеты вверх — как просили", "coins", "asc", "coins_balance", "asc", true},
+		{"дата регистрации", "created", "desc", "created_at", "desc", true},
+		{"уровень", "level", "", "level", "desc", true},
+		{"столбец вне списка", "password_hash", "", "", "", false},
+		{"инъекция в столбце", "nickname; DROP TABLE users", "", "", "", false},
+		{"направление вне списка", "wallet", "sideways", "", "", false},
+	}
+	for _, tc := range cases {
+		col, _, dir, ok := usersOrder(tc.sort, tc.dir)
+		if ok != tc.wantOK || col != tc.wantCol || dir != tc.want {
+			t.Errorf("%s: usersOrder(%q,%q) = (%q,%q,%v), ожидалось (%q,%q,%v)",
+				tc.name, tc.sort, tc.dir, col, dir, ok, tc.wantCol, tc.want, tc.wantOK)
+		}
+	}
+}

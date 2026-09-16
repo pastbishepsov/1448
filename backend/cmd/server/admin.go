@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 	"github.com/pastbishepsov/1448/backend/internal/websocket"
@@ -133,6 +135,7 @@ func handleAdminOverview(c *gin.Context) {
 		"revenue_today": gin.H{"deposits_pln": money.DepositsPLN, "goods_pln": money.GoodsPLN,
 			"packs_pln": money.PacksPLN, "deposits": money.Deposits, "sales": money.GoodsSales},
 		"day_from": day.From, "day_to": day.To, "report_hour": reportHour,
+		"ready_wait_min": settingInt64("ready_wait_min", readyWaitMinDef), // Ж4: форма посадки говорит, сколько ждём ПК без связи
 	})
 }
 
@@ -148,20 +151,73 @@ func handleAdminOverview(c *gin.Context) {
 // seq scan. На масштабе клуба (тысячи гостей) — доли миллисекунды; когда
 // станет много, лечится триграммным индексом (pg_trgm), а не переписыванием
 // логики. Гнаться за этим сейчас — оптимизировать то, чего нет.
+//
+// Ж5-и3 (№23, №43): список — про ГОСТЕЙ. По умолчанию role=player: персонал
+// живёт в «Персонале», и «admin1» среди гостей у стойки только путал (role=all
+// оставлен для служебных нужд). Фильтры и сортировка — на сервере, а не в
+// браузере: таблица режется до 100 строк, и клиентский фильтр по ним показывал
+// бы «с деньгами» только среди недавно активных.
+//
+//	filter=at_pc  — сейчас за ПК (есть активная сессия)
+//	filter=money  — с деньгами на кошельке
+//	filter=new    — аккаунт моложе недели
+//	sort=last_active|nickname|level|coins|wallet|created, dir=asc|desc
+//
+// «Сейчас» (ПК и прогноз «хватит до») отдаётся картой now_at по id гостя —
+// одним запросом по активным сессиям найденных, тем же forecast.go, что в
+// шторке ПК и карточке.
 func handleAdminUsers(c *gin.Context) {
-	q := db.Model(&models.User{}).Order("last_active_at DESC").Limit(100)
+	now := time.Now()
+	role := strings.TrimSpace(c.DefaultQuery("role", string(models.UserRolePlayer)))
+	q := db.Model(&models.User{}).Limit(100)
+	switch role {
+	case "all":
+	case string(models.UserRolePlayer), string(models.UserRoleAdmin), string(models.UserRoleOwner):
+		q = q.Where("role = ?", role)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_role", "message": "role: player, admin, owner или all"})
+		return
+	}
 	s := strings.TrimSpace(c.Query("q"))
 	if s != "" {
 		// Условие общее с резолвером посадки и брони (Е0-и4): «нашёлся
 		// в поиске» и «сажается по этому же запросу» разъезжаться не должны.
 		q = q.Where(guestSearchCondition(s))
 	}
+	filter := strings.TrimSpace(c.Query("filter"))
+	switch filter {
+	case "", "all":
+		filter = ""
+	case "at_pc":
+		q = q.Where("id IN (?)", db.Model(&models.Session{}).Select("user_id").
+			Where("status = ?", models.SessionStatusActive))
+	case "money":
+		q = q.Where("wallet_grosz > 0")
+	case "new":
+		q = q.Where("created_at >= ?", now.Add(-7*24*time.Hour))
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_filter", "message": "filter: at_pc, money или new"})
+		return
+	}
+	col, sortKey, dir, ok := usersOrder(c.Query("sort"), c.Query("dir"))
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_sort",
+			"message": "sort: last_active, nickname, level, coins, wallet или created; dir: asc или desc"})
+		return
+	}
+	q = q.Order(col + " " + strings.ToUpper(dir))
+	if sortKey != "last_active" {
+		q = q.Order("last_active_at DESC") // равные значения — свежие сверху, как и раньше
+	}
 	var users []models.User
 	if err := q.Find(&users).Error; err != nil {
 		respondDBError(c, err)
 		return
 	}
-	resp := gin.H{"count": len(users), "users": users}
+	resp := gin.H{"count": len(users), "users": users, "role": role, "filter": filter, "sort": sortKey, "dir": dir}
+	if nowAt := usersNowAt(users, now); len(nowAt) > 0 {
+		resp["now_at"] = nowAt
+	}
 	if s != "" {
 		// Чем гость совпал — половина смысла ответа у стойки: три Ковальских
 		// в списке бесполезны, а «нашёлся по телефону» — уже ответ. Отдаём
@@ -175,6 +231,79 @@ func handleAdminUsers(c *gin.Context) {
 		resp["matched"] = matched
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// usersSortCols — белый список сортировок списка гостей: ключ запроса →
+// выражение ORDER BY. Имя столбца из запроса в SQL не попадает никогда.
+var usersSortCols = map[string]string{
+	"last_active": "last_active_at",
+	"nickname":    "LOWER(nickname)",
+	"level":       "level",
+	"coins":       "coins_balance",
+	"wallet":      "wallet_grosz",
+	"created":     "created_at",
+}
+
+// usersOrder — разобрать sort/dir (чистая, тест). Пусто — свежие сверху, как
+// было; для ника естественный порядок — по алфавиту, для чисел и дат — с
+// большего. ok=false — параметр вне списка.
+func usersOrder(sortKey, dir string) (col, key, direction string, ok bool) {
+	if sortKey == "" {
+		sortKey = "last_active"
+	}
+	col, ok = usersSortCols[sortKey]
+	if !ok {
+		return "", "", "", false
+	}
+	switch dir {
+	case "":
+		dir = "desc"
+		if sortKey == "nickname" {
+			dir = "asc"
+		}
+	case "asc", "desc":
+	default:
+		return "", "", "", false
+	}
+	return col, sortKey, dir, true
+}
+
+// usersNowAt — «Сейчас» для списка гостей: по активным сессиям найденных —
+// ПК, ожидание [Готов!]/шелла, пауза и прогноз «хватит до». Пусто, если никто
+// из списка не играет.
+func usersNowAt(users []models.User, now time.Time) map[string]gin.H {
+	if len(users) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(users))
+	byID := make(map[uuid.UUID]*models.User, len(users))
+	for i := range users {
+		ids = append(ids, users[i].ID)
+		byID[users[i].ID] = &users[i]
+	}
+	var act []models.Session
+	db.Preload("Computer").Where("status = ? AND user_id IN ?", models.SessionStatusActive, ids).Find(&act)
+	if len(act) == 0 {
+		return nil
+	}
+	out := make(map[string]gin.H, len(act))
+	for i := range act {
+		s := &act[i]
+		row := gin.H{
+			"session_id": s.ID, "started_at": s.StartedAt,
+			"waiting": sessionWaitingReady(s), "paused": s.PausedAt != nil,
+		}
+		if u := byID[s.UserID]; u != nil && s.Computer != nil {
+			row["computer"] = s.Computer.Name
+			f := forecastSession(s, u, s.Computer.ZoneID, now)
+			row["minutes_left"] = f.MinutesLeft
+			if f.Until != nil {
+				row["until"] = f.Until
+			}
+		}
+		out[s.UserID.String()] = row
+	}
+	return out
 }
 
 // setUserStatus — общий код бана/разбана.
@@ -310,14 +439,27 @@ func handleAdminUserCard(c *gin.Context) {
 	}
 	// Ж2: запас минут по зонам («60 мин Standard · 18 мин без зоны») и зона ПК
 	// активной сессии — форма «Время за монеты» подставляет её по умолчанию.
-	var activeZone gin.H
+	// Ж5-и2 (№19): та же сессия целиком — «Сейчас за PC-02 · 42 мин · хватит
+	// до 19:42» в шапке карточки и id для «Завершить сессию» прямо отсюда;
+	// прогноз — общий с шторкой ПК и экраном гостя (forecast.go).
+	var activeSess gin.H
 	var act models.Session
 	if db.Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).First(&act).Error == nil {
 		var pc models.Computer
-		if db.Select("name, zone_id").First(&pc, "id = ?", act.ComputerID).Error == nil {
-			activeZone = gin.H{"computer": pc.Name, "zone_id": pc.ZoneID}
+		if db.Select("id, name, zone_id").First(&pc, "id = ?", act.ComputerID).Error == nil {
+			now := time.Now()
+			activeSess = gin.H{
+				"id": act.ID, "computer": pc.Name, "computer_id": pc.ID, "zone_id": pc.ZoneID,
+				"started_at": act.StartedAt, "paused_at": act.PausedAt, "paused_by": act.PausedBy,
+				"ready_at": act.ReadyAt, "ready_deadline": act.ReadyDeadline, "shell_wait_until": act.ShellWaitUntil,
+				"waiting":  sessionWaitingReady(&act), // окно [Готов!] или ожидание шелла — деньги не идут
+				"rate_pln": act.EffectiveRatePLN, "billed_minutes": act.BilledMinutes, "zero_since": act.ZeroSince,
+			}
 			if z := zoneByID(pc.ZoneID); z != nil {
-				activeZone["zone"] = z.Name
+				activeSess["zone"] = z.Name
+			}
+			for k, v := range forecastFields(&user, forecastSession(&act, &user, pc.ZoneID, now)) {
+				activeSess[k] = v
 			}
 		}
 	}
@@ -328,7 +470,7 @@ func handleAdminUserCard(c *gin.Context) {
 		"deposits":       deposits,
 		"grants":         grOut,
 		"reserve":        grantMinutesByZone(user.ID, user.CoinMinutes),
-		"active_session": activeZone,
+		"active_session": activeSess,
 		"money_scope":    map[bool]string{true: "all", false: "today"}[ownerView],
 	})
 }
@@ -348,6 +490,7 @@ func handleAdminComputers(c *gin.Context) {
 		byComputer[active[i].ComputerID.String()] = &active[i]
 	}
 
+	now := time.Now()
 	out := make([]gin.H, 0, len(computers))
 	for _, pc := range computers {
 		row := gin.H{
@@ -364,11 +507,11 @@ func handleAdminComputers(c *gin.Context) {
 		}
 		// Е1-и5: придержан под регистрацию — в зале это отдельная пометка,
 		// а не «занят»: машина свободна, просто её не надо перехватывать.
-		if computerHeld(&pc, time.Now()) {
+		if computerHeld(&pc, now) {
 			row["hold_until"] = pc.HoldUntil
 		}
 		if s, ok := byComputer[pc.ID.String()]; ok {
-			row["session"] = gin.H{
+			sess := gin.H{
 				"id": s.ID, "started_at": s.StartedAt,
 				"nickname": nicknameOf(s.User),
 				// Г2-и4: пауза видна в зале и в шторке ПК
@@ -376,7 +519,29 @@ func handleAdminComputers(c *gin.Context) {
 				// Е1-и4: ждёт нажатия [Готов!] — в зале это «⏳ ждёт 6:12»,
 				// и по этому же признаку в шторке появляется отмена посадки.
 				"ready_at": s.ReadyAt, "ready_deadline": s.ReadyDeadline,
+				// Ж4-и1: посадка ждёт шелл — «⏻ просыпается · 6:12», отмена посадки та же
+				"shell_wait_until": s.ShellWaitUntil,
 			}
+			// Ж5-и1 (№18): деньги гостя прямо в шторке ПК — «тариф · кошелёк ·
+			// запас · хватит до HH:MM», тем же прогнозом, что видит гость на
+			// своём экране (forecast.go). user_id — ссылка на карточку и
+			// «Пополнить» без второго поиска по нику.
+			if s.User != nil {
+				sess["user_id"] = s.UserID
+				sess["rate_pln"] = s.EffectiveRatePLN
+				sess["billed_minutes"] = s.BilledMinutes
+				sess["charged_grosz"] = s.ChargedGrosz
+				sess["zero_since"] = s.ZeroSince
+				for k, v := range forecastFields(s.User, forecastSession(s, s.User, pc.ZoneID, now)) {
+					sess[k] = v
+				}
+			}
+			row["session"] = sess
+		} else if pc.Status == models.ComputerStatusInSession || pc.Status == models.ComputerStatusReserved {
+			// Ж4-и3 (Ж-Р9): статус «занят», а сессии нет — залипший ПК. Не лечим
+			// молча: плитке пометка «⚠ занят без сессии», в шторке кнопка
+			// «Освободить ПК» (POST /admin/computers/:id/release).
+			row["stuck"] = true
 		}
 		out = append(out, row)
 	}
@@ -591,6 +756,65 @@ func handleAdminPCPower(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "status": req.Action})
 }
 
+// POST /admin/computers/:id/release — «Освободить ПК» (Ж4-и3, Ж-Р9): статус
+// in_session или reserved без активной сессии — залипший ПК (обрыв на
+// завершении, ручная правка базы, старые данные). Не самолечение: админ видит
+// пометку «⚠ занят без сессии» и жмёт кнопку сам. В транзакции: активной
+// сессии нет → available; есть — 409, потому что тогда ПК занят по-честному.
+func handleAdminPCRelease(c *gin.Context) {
+	var pc models.Computer
+	if err := db.First(&pc, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "computer_not_found", "message": "ПК не найден"})
+		return
+	}
+	if pc.Status != models.ComputerStatusInSession && pc.Status != models.ComputerStatusReserved {
+		c.JSON(http.StatusConflict, gin.H{"code": "not_stuck",
+			"message": "ПК не залип: статус «" + string(pc.Status) + "» — освобождать нечего"})
+		return
+	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var active int64
+		if err := tx.Model(&models.Session{}).
+			Where("computer_id = ? AND status = ?", pc.ID, models.SessionStatusActive).Count(&active).Error; err != nil {
+			return err
+		}
+		if active > 0 {
+			return errHasSession
+		}
+		res := tx.Model(&models.Computer{}).
+			Where("id = ? AND status IN ?", pc.ID, []models.ComputerStatus{models.ComputerStatusInSession, models.ComputerStatusReserved}).
+			Update("status", models.ComputerStatusAvailable)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errNotStuck
+		}
+		return nil
+	})
+	if errors.Is(err, errHasSession) {
+		c.JSON(http.StatusConflict, gin.H{"code": "has_session", "message": "На ПК идёт сессия — это не залипание, заверши её"})
+		return
+	}
+	if errors.Is(err, errNotStuck) {
+		c.JSON(http.StatusConflict, gin.H{"code": "not_stuck", "message": "ПК уже освободили"})
+		return
+	}
+	if err != nil {
+		respondDBError(c, err)
+		return
+	}
+	logAdminAction(c, "pc_release", nil, pc.Name+" — был «"+string(pc.Status)+"» без сессии, освобождён")
+	hub.AdminBroadcast("pc_release", map[string]any{"computer_id": pc.ID.String(), "computer": pc.Name})
+	checkWaitlistNotify(pc.ClubID) // Б9: свободный ПК — очередь узнаёт
+	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "name": pc.Name, "status": models.ComputerStatusAvailable, "was": pc.Status})
+}
+
+var (
+	errHasSession = errors.New("has_session")
+	errNotStuck   = errors.New("not_stuck")
+)
+
 // POST /admin/computers/:id/session {nickname} — посадить гостя за этот ПК
 // (Б8): без пароля гостя, тариф и таланты — его собственные (общий
 // startSessionFor). Инвариант цели тот же, что у депозита/гранта.
@@ -635,7 +859,11 @@ func handleAdminSeatGuest(c *gin.Context) {
 		// (ревью 26.08).
 		resp["nickname"] = user.Nickname
 		target := user.ID
-		logAdminAction(c, "session_start", &target, user.Nickname+" за "+pc.Name)
+		details := user.Nickname + " за " + pc.Name
+		if _, waiting := resp["shell_wait_until"]; waiting { // Ж4: в журнале видно, что машина была не на связи
+			details += " · ПК не на связи, WoL: " + fmt.Sprint(resp["wol"])
+		}
+		logAdminAction(c, "session_start", &target, details)
 		if from, _ := resp["from_waitlist"].(bool); from { // Б9: посадка из очереди
 			logAdminAction(c, "waitlist_seat", &target, user.Nickname+" за "+pc.Name)
 		}

@@ -276,6 +276,19 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		t := now
 		readyAt = &t
 	}
+	// Ж4-и1 (Ж-Р6): посадка от стойки на ПК без связи. Окно [Готов!] не
+	// открываем — нажать на тёмном экране некому, а через ready_wait_min оно
+	// стартовало бы само и списывало деньги за пустую машину (ревью 14.09,
+	// №9–10). Вместо этого ждём шелл те же ready_wait_min: подключился —
+	// окно начинается с того момента (shellArrived), нет — посадка снимается
+	// без списания (shellWaitExpired). Ж4-и2: заодно сами будим машину по
+	// сети, если есть MAC и живой сосед-агент.
+	var shellWait *time.Time
+	wol := ""
+	if !readyNow && readyDeadline != nil && !hub.IsConnected(computer.ID.String()) {
+		shellWait, readyDeadline = readyDeadline, nil
+		wol = autoWakeOnSeat(&computer)
+	}
 
 	session := models.Session{
 		UserID:           userID,
@@ -285,6 +298,7 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		StartedAt:        now,
 		ReadyDeadline:    readyDeadline,
 		ReadyAt:          readyAt,
+		ShellWaitUntil:   shellWait,
 		BaseRatePLN:      baseRate,
 		EffectiveRatePLN: rate,
 	}
@@ -352,7 +366,7 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 	checkBirthdayGift(userID)     // Г8-и4: сел играть в день рождения — подарок
 	applyStreakFreezes(userID, now) // Г6-и4: вернулся — заморозки латают пропуск
 
-	return http.StatusCreated, gin.H{
+	resp := gin.H{
 		"session_id":         session.ID,
 		"started_at":         session.StartedAt,
 		"computer":           computer.Name,
@@ -365,6 +379,46 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		"ready_deadline":     session.ReadyDeadline, // Е1: nil — окно выключено или старт с ПК (Р10)
 		"ready_at":           session.ReadyAt,       // К0-и6: сам стартовал — время уже идёт
 	}
+	if shellWait != nil { // Ж4: ждём шелл — стойке честно, что машина не на связи и что с WoL
+		resp["shell_wait_until"] = shellWait
+		resp["wol"] = wol
+		resp["shell_note"] = shellWaitNote(wol, settingInt64("ready_wait_min", readyWaitMinDef))
+	}
+	return http.StatusCreated, resp
+}
+
+// autoWakeOnSeat — Ж4-и2: при посадке на спящий ПК шлём WoL сами, той же
+// логикой, что кнопка «Включить» (handleAdminPCPower on): нужен MAC машины и
+// хоть один живой агент в клубе, который отправит магический пакет по сети.
+// Возвращает исход словом: sent | no_mac | no_agents | send_failed.
+func autoWakeOnSeat(pc *models.Computer) string {
+	if pc.MAC == nil || *pc.MAC == "" {
+		return "no_mac"
+	}
+	proxyID, ok := hub.AnyClientInClub(pc.ClubID.String())
+	if !ok {
+		return "no_agents"
+	}
+	if err := hub.Send(proxyID, websocket.MsgWOL, gin.H{"mac": *pc.MAC}); err != nil {
+		return "send_failed"
+	}
+	return "sent"
+}
+
+// shellWaitNote — что сказать стойке о посадке на ПК без связи (чистая, тест).
+func shellWaitNote(wol string, waitMin int64) string {
+	base := fmt.Sprintf("ПК не на связи — ждём его %d мин, деньги не идут", waitMin)
+	switch wol {
+	case "sent":
+		return base + "; включаю по сети (WoL)"
+	case "no_mac":
+		return base + "; включить по сети не могу — у ПК нет MAC, включи руками"
+	case "no_agents":
+		return base + "; включить по сети не могу — в клубе нет живых агентов, включи руками"
+	case "send_failed":
+		return base + "; WoL не отправился, включи руками"
+	}
+	return base
 }
 
 // POST /me/sessions/end — завершить активную сессию и начислить XP/coins.

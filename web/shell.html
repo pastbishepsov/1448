@@ -1544,6 +1544,8 @@ const SH_RU = {
   toast_ready_go: "▶ Поехали — время пошло",
   ntf_ready_auto: "▶ Время пошло: окно ожидания истекло",
   ntf_seat_cancel: "Посадку отменили у стойки",
+  ntf_seat_cancel_shell: "Посадку сняли: ПК {c} не вышел на связь — ничего не списано",
+  ntf_admin_coming: "🛎 Админ уже идёт к тебе",
   ntf_comp: "🛠 Компенсация за проблему с ПК: {c}",
   ntf_comp_min: "+{n} мин",
   ntf_comp_pln: "+{a} zł",
@@ -2084,6 +2086,8 @@ const SH_EN = {
   toast_ready_go: "▶ Off we go — the clock is running",
   ntf_ready_auto: "▶ The clock started: the waiting window ran out",
   ntf_seat_cancel: "Your seat was cancelled at the desk",
+  ntf_seat_cancel_shell: "Seat cancelled: PC {c} never came online — nothing charged",
+  ntf_admin_coming: "🛎 Staff is on the way",
   ntf_comp: "🛠 Compensation for the PC issue: {c}",
   ntf_comp_min: "+{n} min",
   ntf_comp_pln: "+{a} zł",
@@ -2624,6 +2628,8 @@ const SH_PL = {
   toast_ready_go: "▶ Jedziemy — czas leci",
   ntf_ready_auto: "▶ Czas ruszył: okno oczekiwania minęło",
   ntf_seat_cancel: "Posadzenie anulowano przy ladzie",
+  ntf_seat_cancel_shell: "Posadzenie anulowano: PC {c} nie połączył się — nic nie pobrano",
+  ntf_admin_coming: "🛎 Obsługa już idzie",
   ntf_comp: "🛠 Rekompensata za problem z PC: {c}",
   ntf_comp_min: "+{n} min",
   ntf_comp_pln: "+{a} zł",
@@ -4101,7 +4107,9 @@ function notifText(n){
       + (p.reward_skillpoints > 0 ? T('ntf_ach_sp', {n: p.reward_skillpoints}) : '');
     case 'sens_applied': return sensAppliedText(p); // С2-и4: агент подставил сенсу по команде сервера
     case 'ready_auto': return STR.ntf_ready_auto;   // Е1: окно истекло, время пошло
-    case 'seat_cancelled': return STR.ntf_seat_cancel; // Е1: посадку сняли у стойки
+    case 'seat_cancelled': return p.reason === 'shell_offline' // Ж4: ПК не включился — посадка снята автоматом
+      ? T('ntf_seat_cancel_shell', {c: p.computer || STR.pc_default}) : STR.ntf_seat_cancel; // Е1: посадку сняли у стойки
+    case 'admin_coming': return STR.ntf_admin_coming; // Ж4-и4: админ принял вызов
   }
   return STR.ntf_default;
 }
