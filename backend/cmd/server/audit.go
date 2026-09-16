@@ -188,16 +188,70 @@ func handleAdminAudit(c *gin.Context) {
 	}
 
 	// Продажи товаров (В2) — свой источник, как у депозитов; отменённая
-	// продажа даёт вторую строку в момент отмены.
+	// продажа даёт вторую строку в момент отмены. Ж6-и2: позиции одного чека
+	// (общий receipt_id, одна секунда) — одной строкой «чек: A ×2, B — 23.00 zł»;
+	// Ж6-и1: продажа в долг помечена «(в долг)», её расчёт — отдельной строкой
+	// sale_paid в момент денег.
+	saleMethod := func(s *models.Sale) string {
+		if s.PaidAt == nil && s.VoidedAt == nil {
+			return "в долг"
+		}
+		if s.Postpaid && s.PaidAt != nil {
+			return s.Method + ", был в долг"
+		}
+		return s.Method
+	}
 	saleText := func(s *models.Sale) string {
-		return fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)
+		return fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, saleMethod(s))
+	}
+	receiptText := func(group []*models.Sale) string {
+		names := make([]string, 0, len(group))
+		total := 0.0
+		for _, s := range group {
+			names = append(names, receiptItemName(s))
+			total += s.TotalPLN
+		}
+		return fmt.Sprintf("чек: %s — %.2f zł (%s)", strings.Join(names, ", "), roundPLN(total), saleMethod(group[0]))
 	}
 	if want("sale") {
 		var sales []models.Sale
-		scope(db.Model(&models.Sale{}), "created_at").Find(&sales)
+		scope(db.Model(&models.Sale{}), "created_at").Order("created_at").Find(&sales)
+		byReceipt := map[string][]*models.Sale{}
+		order := []string{}
 		for i := range sales {
 			s := &sales[i]
-			items = append(items, item{"sale:" + s.ID.String(), s.CreatedAt, "sale", s.CreatedBy, s.UserID, saleText(s)})
+			if s.ReceiptID == nil {
+				items = append(items, item{"sale:" + s.ID.String(), s.CreatedAt, "sale", s.CreatedBy, s.UserID, saleText(s)})
+				continue
+			}
+			k := s.ReceiptID.String()
+			if _, ok := byReceipt[k]; !ok {
+				order = append(order, k)
+			}
+			byReceipt[k] = append(byReceipt[k], s)
+		}
+		for _, k := range order {
+			group := byReceipt[k]
+			first := group[0]
+			if len(group) == 1 {
+				items = append(items, item{"sale:" + first.ID.String(), first.CreatedAt, "sale", first.CreatedBy, first.UserID, saleText(first)})
+				continue
+			}
+			items = append(items, item{"receipt:" + k, first.CreatedAt, "sale", first.CreatedBy, first.UserID, receiptText(group)})
+		}
+	}
+	if want("sale_paid") {
+		// расчёт долга (Ж6): деньги пришли позже продажи — строка в момент paid_at
+		var paid []models.Sale
+		scope(db.Model(&models.Sale{}).Where("postpaid = TRUE AND paid_at IS NOT NULL AND paid_at <> created_at"), "paid_at").Find(&paid)
+		for i := range paid {
+			s := &paid[i]
+			by := s.CreatedBy
+			if s.PaidBy != nil {
+				by = *s.PaidBy
+			}
+			items = append(items, item{"sale_paid:" + s.ID.String(), *s.PaidAt, "sale_paid", by, s.UserID,
+				fmt.Sprintf("расчёт: %s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)})
 		}
 	}
 	if want("sale_void") {
@@ -209,7 +263,11 @@ func handleAdminAudit(c *gin.Context) {
 			if s.VoidedBy != nil {
 				by = *s.VoidedBy
 			}
-			items = append(items, item{"sale_void:" + s.ID.String(), *s.VoidedAt, "sale_void", by, s.UserID, "отмена: " + saleText(s)})
+			vt := "отмена: " + fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)
+			if s.PaidAt == nil {
+				vt += " · долг списан, денег не брали"
+			}
+			items = append(items, item{"sale_void:" + s.ID.String(), *s.VoidedAt, "sale_void", by, s.UserID, vt})
 		}
 	}
 

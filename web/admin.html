@@ -340,7 +340,7 @@
   /* В2: плитки товаров — продажа в один тап у стойки */
   .gtiles{display:flex; flex-wrap:wrap; gap:10px; margin:2px 0 10px}
   .gtile{background:var(--card); border:1px solid var(--hair); border-radius:12px; padding:10px 14px;
-         min-width:136px; cursor:pointer; text-align:left; color:var(--txt);
+         min-width:136px; cursor:pointer; text-align:left; color:var(--txt); position:relative; /* Ж6-и2: бейдж корзины */
          transition:border-color .15s var(--smooth), transform .08s var(--smooth)}
   .gtile:hover{border-color:var(--acc)}
   .gtile:active{transform:scale(.97)}
@@ -392,6 +392,23 @@
   .hpc.low .inf2{color:var(--orange); font-weight:700} /* Ж5-и1: деньги на исходе */
   .lnk{color:var(--dim); text-decoration:underline dotted; text-underline-offset:3px} .lnk:hover{color:var(--txt)}
   th.sortable{cursor:pointer; user-select:none} th.sortable:hover,th.sortable.on{color:var(--txt)} /* Ж5-и3: сортировка гостей */
+  /* Ж6-и2: корзина под плитками */
+  .cart{margin:12px 0 4px; border:1px solid var(--hair); border-radius:12px; background:var(--panel); padding:10px 12px}
+  .cartrows{display:flex; flex-direction:column; gap:6px}
+  .cartrow{display:flex; align-items:center; gap:10px; font-size:13.5px}
+  .cartrow .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .cartrow .qty{display:inline-flex; align-items:center; gap:4px}
+  .cartrow .qty button{width:26px; height:26px; border-radius:7px; border:1px solid var(--hair); background:transparent; color:var(--txt); cursor:pointer; font:inherit}
+  .cartrow .qty button:hover{border-color:var(--acc)}
+  .cartrow .qty b{min-width:22px; text-align:center}
+  .cartrow .sum{min-width:78px; text-align:right}
+  .cartfoot{display:flex; align-items:center; gap:12px; margin-top:10px; padding-top:10px; border-top:1px solid var(--hair)}
+  .cartfoot b{margin-left:auto; font-size:16px}
+  .gtile.incart{border-color:var(--acc); box-shadow:inset 0 0 0 1px var(--acc)}
+  .gtile .inq{position:absolute; top:6px; right:8px; background:var(--acc); color:#fff; border-radius:99px; font-size:11px; font-weight:800; padding:1px 7px}
+  .rcp td{padding-top:4px; padding-bottom:4px; color:var(--dim); font-size:12.5px} /* позиции раскрытого чека */
+  .rcp td:first-child{padding-left:28px}
+  .debtline{color:var(--orange); font-weight:700}
   /* Ж4-и6: открытая шторка не наезжает на правые колонки схемы */
   body.drawer-open .content{padding-right:424px; transition:padding-right .25s var(--smooth)}
   @media (max-width:1000px){ body.drawer-open .content{padding-right:24px} }
@@ -672,7 +689,11 @@
       <section id="s-kitchen" class="hidden">
         <div class="card" style="margin-bottom:14px">
           <h3 style="margin:0 0 4px">Кухня — очередь заказов</h3>
-          <div class="muted">Заказы гостей с шелла и мобилки. Поток: принял → готовим → несут → выдан → <b>оплата у стойки, когда гость доиграл</b> (Р10). Нал/карта/BLIK — выручка; кошельком — списание с предоплаты (не выручка).</div>
+          <div class="muted">Заказы гостей с шелла и мобилки — и от стойки (Ж6-и3). Поток: принял → готовим → несут → выдан → <b>оплата у стойки, когда гость доиграл</b> (Р10). Нал/карта/BLIK — выручка; кошельком — списание с предоплаты (не выручка).</div>
+          <div class="toolrow" style="margin:10px 0 0">
+            <button class="btn mini" onclick="kitNewToggle()"><span data-ic="plus"></span>Новый заказ</button>
+          </div>
+          <div id="kitNew" class="hidden"></div>
         </div>
         <div id="kitBoard"></div>
       </section>
@@ -684,6 +705,7 @@
             <button class="on" data-m="cash" onclick="saleMethod('cash',this)">Наличные</button>
             <button data-m="card" onclick="saleMethod('card',this)">Карта</button>
             <button data-m="blik" onclick="saleMethod('blik',this)">BLIK</button>
+            <button data-m="later" onclick="saleMethod('later',this)" title="Ж-Р8: в долг гостю за ПК — рассчитается у стойки при выходе, как кухня">При выходе</button>
           </div>
           <input id="saleNick" class="input" placeholder="Кому: ник, телефон или имя — необязательно" autocomplete="off" style="min-width:250px" oninput="saleGuestTyped()">
           <span id="saleGuestChip" class="mchip hidden" title="продажи запишутся на этого гостя; ✕ — снять"></span>
@@ -692,6 +714,16 @@
         <div id="saleCands"></div><!-- Ж5-и4 (№15): выбор из кандидатов при 409, как в посадке -->
         <div class="toolrow"><div class="segs" id="goodsCats"></div></div>
         <div id="goodsTiles"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+        <!-- Ж6-и2: корзина — плитки складывают позиции, одна кнопка «Продать» → чек -->
+        <div class="cart hidden" id="cartBox">
+          <div class="cartrows" id="cartRows"></div>
+          <div class="cartfoot">
+            <span class="muted" id="cartHint"></span>
+            <b id="cartTotal">0,00 zł</b>
+            <button class="btn ghost mini" onclick="cartClear()"><span data-ic="cross"></span>Очистить</button>
+            <button class="btn" id="cartSellBtn" onclick="cartSell()"><span data-ic="box"></span>Продать</button>
+          </div>
+        </div>
         <div class="sect">Продажи смены · <span id="salesTotal" style="text-transform:none; letter-spacing:0">—</span></div>
         <div class="tablewrap" id="salesTable"><div class="skel"></div><div class="skel"></div></div>
         <div class="sect">Ценник и остатки</div>
@@ -780,6 +812,8 @@
              реально был; расхождение важнее обеих цифр по отдельности. -->
         <div class="tablewrap hidden" id="shWorked"></div>
         <div class="hidden" id="shMismatch" style="margin:10px 0 14px"></div>
+        <!-- Ж6-и4: сдачи касс за смену — ожидалось / пересчитано / расхождение -->
+        <div class="hidden" id="shCloseouts" style="margin:10px 0 14px"></div>
       </section>
 
       <section id="s-staff" class="hidden">
@@ -1404,17 +1438,21 @@ function feedLine(m){
       ? 'отмена депозита: ' + (d.nickname||'гость') + ' · ' + (+d.amount_pln||0) + ' zł'
         + (+d.refund_pln < +d.amount_pln ? ' (снято ' + fmtPLN(d.refund_pln||0) + ', отыграно ' + fmtPLN(d.unrecovered_pln||0) + ')' : '')
       : (d.nickname||'гость') + ' внёс ' + (+d.amount_pln||0) + ' zł (+' + (d.coins||0) + ' монет)';
-    case 'sale': return d.kind === 'void'
-      ? 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł'
-      : 'продано: ' + (d.name||'товар') + (d.qty > 1 ? ' ×' + d.qty : '')
-        + ' · ' + (+d.total_pln||0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '');
+    case 'sale': {
+      if (d.kind === 'void') return 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł' + (d.unpaid ? ' (долг списан)' : '');
+      if (d.kind === 'settle') return '🧾 ' + (d.nickname||'гость') + ' рассчитался: ' + fmtPLN(d.total_pln||0) + ' zł · ' + (PAY_RU[d.method]||d.method||'') // Ж6-и1
+        + [d.kitchen_pln > 0 ? 'кухня ' + fmtPLN(d.kitchen_pln) : '', d.bar_pln > 0 ? 'бар ' + fmtPLN(d.bar_pln) : ''].filter(Boolean).map(x => ' · ' + x).join('');
+      const what = (d.items > 1 ? 'чек (' + d.items + '): ' : '') + (d.name||'товар') + (d.items > 1 ? '' : (d.qty > 1 ? ' ×' + d.qty : '')); // Ж6-и2
+      return (d.kind === 'later' ? 'в долг: ' : 'продано: ') + what
+        + ' · ' + (+d.total_pln||0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '') + (d.kind === 'later' ? ' · рассчитается при выходе' : '');
+    }
     case 'kitchen': {
       if (d.kind === 'cancel') return 'кухня: гость отменил заказ — ' + (d.name||'');
-      if (d.kind === 'unpaid') return '🧾 ' + (d.nickname||'гость') + ' доиграл, кухня не оплачена: '
-        + (+d.total_pln||0) + ' zł — рассчитай у стойки';
-      return 'кухня: новый заказ — ' + (d.name||'') + (d.qty > 1 ? ' ×' + d.qty : '')
+      if (d.kind === 'unpaid') return '🧾 ' + (d.nickname||'гость') + ' доиграл, не рассчитан: '
+        + (+d.total_pln||0) + ' zł' + (d.bar_pln > 0 ? ' (кухня ' + fmtPLN(d.kitchen_pln||0) + ' · бар ' + fmtPLN(d.bar_pln) + ')' : '') + ' — рассчитай у стойки'; // Ж6: кухня + бар
+      return 'кухня: ' + (d.by_staff ? 'заказ от стойки' : 'новый заказ') + ' — ' + (d.name||'') + (d.qty > 1 ? ' ×' + d.qty : '')
         + ' · ' + (+d.total_pln||0) + ' zł · ' + (d.nickname||'гость')
-        + (d.computer ? ' · ' + d.computer : '') + ' · расчёт после игры';
+        + (d.computer ? ' · ' + d.computer : '') + (d.method && d.method !== 'later' ? ' · оплачен: ' + (PAY_RU[d.method]||d.method) : ' · расчёт после игры');
     }
     case 'coin_redeem': return (d.nickname||'гость') + ' взял ' + (d.minutes||0) + ' мин за '
       + (d.coins||0) + ' монет' + (d.zone ? ' · ' + d.zone : '');
@@ -2455,8 +2493,10 @@ async function openUserDrawer(id, form){
   if (drawerUserId !== id){ uChat = null; tempPass = null; } // Б3+Е0: чужой чат и чужой пароль не показываем
   drawerUserId = id;
   uForm = form || null;
+  uDebt = null;
   await loadUserDrawer();
   loadUserExtras(); // Е2-и4: пакеты гостя и каталог — вдогонку, не задерживая карточку
+  if (uForm === 'debt') api('/admin/users/' + id + '/debt').then(d => { if (uForm === 'debt' && drawerUserId === id){ uDebt = d; renderUserDrawer(); } }).catch(() => {}); // Ж6-и1
   if (uData && uData.user) palPush({t:'user', id:id, name:uData.user.nickname}); // Б9-и3: недавнее
 }
 async function loadUserDrawer(){
@@ -2496,7 +2536,8 @@ function renderUserDrawer(){
     ${(uData.reserve||[]).length ? `<tr><td class="muted">Запас минут</td><td>${reserveLine(uData.reserve)}</td></tr>` : ''}
     ${uPackMin > 0 ? `<tr><td class="muted">Пакеты</td><td><b>${uPackMin} мин</b> ${uPackZones()}</td></tr>` : ''}
     ${s.no_show_count ? `<tr><td class="muted">No-show</td><td>🕳 ${s.no_show_count} — брони сгорали без прихода</td></tr>` : ''}
-    ${s.kitchen_unpaid_count ? `<tr><td class="muted">Кухня</td><td>🧾 не оплачено: <b>${fmtPLN(s.kitchen_unpaid_pln)} zł</b> (${s.kitchen_unpaid_count}) — расчёт у стойки</td></tr>` : ''}
+    ${s.unpaid_pln > 0 ? `<tr><td class="muted">Должен</td><td><span class="debtline">🧾 ${fmtPLN(s.unpaid_pln)} zł</span> <span class="muted">— ${[s.kitchen_unpaid_count ? 'кухня ' + fmtPLN(s.kitchen_unpaid_pln) + ' zł (' + s.kitchen_unpaid_count + ')' : '', s.bar_unpaid_count ? 'бар ' + fmtPLN(s.bar_unpaid_pln) + ' zł (' + s.bar_unpaid_count + ')' : ''].filter(Boolean).join(' · ')}</span>
+        · <a href="#" class="lnk" onclick="event.preventDefault(); uFormToggle('debt')">рассчитать</a></td></tr>` : ''}
     ${s.deposited_pln !== undefined ? `<tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>` : ''}
     ${(u.first_name || u.last_name) ? `<tr><td class="muted">Имя</td><td>${esc(((u.first_name||'') + ' ' + (u.last_name||'')).trim())}</td></tr>` : ''}
     ${u.phone ? `<tr><td class="muted">Телефон</td><td>${esc(u.phone)}</td></tr>` : ''}
@@ -2508,6 +2549,7 @@ function renderUserDrawer(){
     body += `<div class="dsub">Действия</div>
     <div class="actrow">
       ${as ? '' : (u.status === 'banned' ? '' : `<button class="btn mini ${uForm==='seat'?'':'ghost'}" onclick="uFormToggle('seat')" title="Ж5-и2: посадить за свободный ПК прямо из карточки"><span data-ic="monitor"></span>Посадить за…</button>`)}
+      ${s.unpaid_pln > 0 ? `<button class="btn mini ${uForm==='debt'?'':'ghost'}" style="${uForm==='debt'?'':'border-color:var(--orange); color:var(--orange)'}" onclick="uFormToggle('debt')" title="Ж-Р8: одной операцией закрыть кухню и бар"><span data-ic="coins"></span>Рассчитать ${fmtPLN(s.unpaid_pln)} zł</button>` : ''}
       <button class="btn mini ${uForm==='deposit'?'':'ghost'}" onclick="uFormToggle('deposit')"><span data-ic="coins"></span>Депозит</button>
       <button class="btn mini ${uForm==='xp'?'':'ghost'}" onclick="uFormToggle('xp')"><span data-ic="xp"></span>XP</button>
       <button class="btn mini ${uForm==='case'?'':'ghost'}" onclick="uFormToggle('case')"><span data-ic="chest"></span>Кейс</button>
@@ -2546,9 +2588,28 @@ function renderUserDrawer(){
   openDrawer(u.nickname, body);
 }
 
+let settleM = 'cash', uDebt = null; // Ж6-и1
+async function settleDebt(){
+  return once('settle:' + drawerUserId, async () => {
+    try{
+      const d = await api('/admin/users/' + drawerUserId + '/settle', {method:'POST', body:JSON.stringify({method: settleM})});
+      toast('✓ ' + (d.nickname || 'гость') + ' рассчитался: ' + fmtPLN(d.paid_pln) + ' zł · ' + (PAY_RU[d.method] || d.method)
+        + [d.kitchen && d.kitchen.pln > 0 ? 'кухня ' + fmtPLN(d.kitchen.pln) : '', d.bar && d.bar.pln > 0 ? 'бар ' + fmtPLN(d.bar.pln) : ''].filter(Boolean).map(x => ' · ' + x).join(''));
+      uForm = null; uDebt = null;
+      await loadUserDrawer();
+      if (curTab === 'goods') renderGoods();
+      kitBadgeLoad();
+      refresh();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
 async function uFormToggle(f){
   uForm = (uForm === f) ? null : f;
   if (uForm !== 'pwd') tempPass = null; // ушли с формы — пароль с экрана убрали
+  if (uForm === 'debt'){ // Ж6-и1: что именно должен — вдогонку, форма уже открыта
+    uDebt = null;
+    api('/admin/users/' + drawerUserId + '/debt').then(d => { if (uForm === 'debt' && drawerUserId === d.user_id){ uDebt = d; renderUserDrawer(); } }).catch(() => {});
+  }
   // Ж5-и2: селект свободных ПК — из свежего зала, а не из того, что видели
   // при последнем заходе в «Зал» (за это время машины заняли или освободили)
   if (uForm === 'seat'){
@@ -2749,6 +2810,23 @@ async function openUserChat(id){
 function uFormHtml(){
   if (!uForm) return '';
   if (uForm === 'incident') return incFormHtml({user_id: uData.user.id, has_guest: true}); // К8-и3
+  // Ж6-и1 (Ж-Р8): расчёт долга — кухня и бар одной операцией, нал/карта/BLIK
+  if (uForm === 'debt'){
+    const st = uData.stats || {};
+    if (!(st.unpaid_pln > 0)) return `<div class="uform"><div class="muted">Гость ничего не должен</div></div>`;
+    const items = uDebt && uDebt.items ? uDebt.items : null;
+    return `<div class="uform">
+      <div class="muted">Должен <b class="debtline">${fmtPLN(st.unpaid_pln)} zł</b>${st.kitchen_unpaid_count ? ' · кухня ' + fmtPLN(st.kitchen_unpaid_pln) + ' zł' : ''}${st.bar_unpaid_count ? ' · бар ' + fmtPLN(st.bar_unpaid_pln) + ' zł' : ''}</div>
+      ${items ? `<div class="muted" style="font-size:12px">${items.map(it => (it.kind === 'kitchen' ? '🍔 ' : '🛒 ') + esc(it.name) + (it.qty > 1 ? ' ×' + it.qty : '') + ' — ' + fmtPLN(it.total_pln) + ' zł · ' + hhmm(it.created_at)).join('<br>')}</div>` : '<div class="muted" style="font-size:12px">загружаю позиции…</div>'}
+      <div class="segs">
+        <button class="${settleM==='cash'?'on':''}" onclick="settleM='cash'; renderUserDrawer()">Нал</button>
+        <button class="${settleM==='card'?'on':''}" onclick="settleM='card'; renderUserDrawer()">Карта</button>
+        <button class="${settleM==='blik'?'on':''}" onclick="settleM='blik'; renderUserDrawer()">BLIK</button>
+      </div>
+      <button class="btn" style="width:100%; justify-content:center" onclick="armButton(this, 'Ещё раз — рассчитать ' + fmtPLN(${st.unpaid_pln}) + ' zł', () => settleDebt())"><span data-ic="coins"></span>Рассчитать ${fmtPLN(st.unpaid_pln)} zł · ${PAY_RU[settleM]}</button>
+      <div class="muted">Кухня и бар закрываются вместе; сумма попадёт в выручку смены сейчас. Кошельком товары не платятся (Ж-Р8).</div>
+    </div>`;
+  }
   // Ж5-и2 (№19): посадка из карточки — тот же POST /computers/:id/session с
   // guest_id, что из шторки ПК: окно [Готов!], planned_min, офлайн-шелл (Ж4)
   if (uForm === 'seat'){
@@ -3530,7 +3608,8 @@ let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
   money: ['deposit','deposit_void','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn','incident_compensate', // К8: компенсация — обязательство
           'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
-          'kitchen_done','kitchen_pay','kitchen_cancel'], // кухню считают у той же стойки (ревью 26.08)
+          'kitchen_done','kitchen_pay','kitchen_cancel', // кухню считают у той же стойки (ревью 26.08)
+          'sale_paid','settle','kitchen_order','shift_close'], // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -3539,8 +3618,8 @@ const AUD_GROUPS = {
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release'], // Ж4-и3
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
-  goods: ['sale','sale_void','good_create','good_update','good_delete','stock_in','stock_adjust'],
-  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding'], // ревью 26.08
+  goods: ['sale','sale_void','sale_paid','settle','good_create','good_update','good_delete','stock_in','stock_adjust'], // Ж6
+  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close'], // ревью 26.08; Ж6-и4: сдача кассы
 };
 const AUD_LABEL = {
   deposit:'депозит', deposit_void:'отмена депозита', grant:'начисление', ban:'бан', unban:'разбан',
@@ -3559,10 +3638,10 @@ const AUD_LABEL = {
   shift_tpl_create:'смена: создана', shift_tpl_update:'смена: правка',
   shift_tpl_delete:'смена: удалена', shift_assign:'график: назначен',
   shift_unassign:'график: снят',
-  sale:'продажа', sale_void:'отмена продажи',
+  sale:'продажа', sale_void:'отмена продажи', sale_paid:'расчёт долга', settle:'рассчитался у стойки', // Ж6
   staff_card:'персонал: карточка',
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
-  work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка',
+  work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка', shift_close:'сдача кассы', // Ж6-и4
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   coin_redeem:'монеты: время за монеты',
   coin_burn:'монеты: сгорание',
@@ -3574,7 +3653,7 @@ const AUD_LABEL = {
   guest_update:'гость: правка данных', password_reset:'сброс пароля',
   pc_hold:'ПК придержан', pc_unhold:'придержание снято', pc_release:'ПК освобождён', // Ж4-и3
   seat_cancel:'посадка снята', session_move:'пересадка',
-  kitchen_done:'кухня: заказ выдан', kitchen_pay:'кухня: расчёт',
+  kitchen_done:'кухня: заказ выдан', kitchen_pay:'кухня: расчёт', kitchen_order:'кухня: заказ от стойки', // Ж6-и3
   kitchen_cancel:'кухня: заказ отменён',
   package_warn:'пакеты: предупреждение о сгорании',
   onboarding:'обучение пройдено',
@@ -3593,7 +3672,7 @@ const AUD_ICON = {
   staff_promote:'users', staff_demote:'out',
   shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',
   shift_assign:'cal', shift_unassign:'out',
-  sale:'box', sale_void:'cross',
+  sale:'box', sale_void:'cross', sale_paid:'coins', settle:'coins', shift_close:'coins', kitchen_order:'box', // Ж6
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out',
   work_start:'clock', work_stop:'check', work_edit:'edit',
@@ -3913,7 +3992,8 @@ async function renderShift(){
        <div class="kpi">Наиграно <b>${shiftHours(d.sessions.minutes)}</b></div>
        <div class="kpi">Новые гости <b>${d.new_guests}</b></div>
        <div class="kpi">Брони <b>+${d.bookings.created}${d.bookings.cancelled ? ' / −' + d.bookings.cancelled : ''}</b></div>
-       <div class="kpi" title="баны · ремонты · вызовы админа">Инциденты <b>${d.incidents.bans + d.incidents.repairs + d.incidents.calls}</b></div>`;
+       <div class="kpi" title="баны · ремонты · вызовы админа">Инциденты <b>${d.incidents.bans + d.incidents.repairs + d.incidents.calls}</b></div>
+       ${d.revenue.unpaid ? `<div class="kpi" title="выдано в долг за смену и ещё не рассчитано (бар + кухня) — не выручка">В долг <b style="color:var(--orange)">${fmtPLN(d.revenue.unpaid_pln||0)} zł</b></div>` : ''}`;
     const st = document.getElementById('shStaff');
     if (st){
       const w = d.staff || [];
@@ -3922,7 +4002,29 @@ async function renderShift(){
         ? 'работали: ' + w.map(x => x.nickname + (x.shift ? ' (' + x.shift + ')' : '')).join(', ') : '';
     }
     paintShiftFact(d);
+    paintShiftCloseouts(d.closeouts || []);
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* Ж6-и4: касса смены глазами владельца — кто сколько сдал и сошлось ли. */
+function paintShiftCloseouts(list){
+  const box = document.getElementById('shCloseouts');
+  if (!box) return;
+  box.classList.toggle('hidden', !list.length);
+  if (!list.length) return;
+  const bad = list.filter(c => c.skipped || (c.diff_pln != null && c.diff_pln !== 0));
+  box.innerHTML = (bad.length ? `<div class="mmrow ${bad.some(c => !c.skipped) ? 'bad' : 'warn'}"><span data-ic="coins"></span>
+      <span>Касса: ${bad.map(c => '<b>' + esc(c.nickname) + '</b> — ' + (c.skipped ? 'ушёл без пересчёта' : (c.diff_pln > 0 ? 'излишек +' : 'недостача −') + fmtPLN(Math.abs(c.diff_pln)) + ' zł')).join('; ')}.</span></div>` : '')
+    + `<div class="tablewrap"><table><tr><th>Кто</th><th>Когда</th><th>Должно быть</th><th>Пересчитано</th><th>Расхождение</th><th>Заметка</th></tr>
+    ${list.map(c => `<tr>
+      <td><b>${esc(c.nickname)}</b></td>
+      <td class="muted">${hhmm(c.created_at)}</td>
+      <td title="пополнения ${fmtPLN(c.deposits_pln)} · товары ${fmtPLN(c.goods_pln)} · пакеты ${fmtPLN(c.packs_pln)}${c.refunds_pln > 0 ? ' · возвраты −' + fmtPLN(c.refunds_pln) : ''}">${fmtPLN(c.expected_pln)} zł</td>
+      <td>${c.skipped ? '<span style="color:var(--orange)">без пересчёта</span>' : fmtPLN(c.counted_pln) + ' zł'}</td>
+      <td>${c.skipped ? '—' : (c.diff_pln === 0 ? '<span class="muted">сошлось</span>' : `<b style="color:var(--orange)">${c.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(c.diff_pln))} zł</b>`)}</td>
+      <td class="muted">${esc(c.note || '')}</td>
+    </tr>`).join('')}</table></div>`;
+  mountIcons(box);
 }
 
 /* Е3-и3: кто реально работал в эту смену и чем это расходится с графиком.
@@ -4017,6 +4119,7 @@ function paintKitchen(){
         <button class="btn ghost mini" onclick="kitPay('${o.id}','card')">карта</button>
         <button class="btn ghost mini" onclick="kitPay('${o.id}','blik')">BLIK</button>
         <button class="btn ghost mini" onclick="kitPay('${o.id}','wallet')">кошельком</button>
+        ${o.user_id ? `<a href="#" class="lnk muted" onclick="event.preventDefault(); openUserDrawer('${o.user_id}','debt')" title="Ж6: весь долг гостя — кухня и бар — одной операцией">рассчитать всё в карточке</a>` : ''}
       </div>` : ''}
       ${['done','cancelled'].includes(o.status) ? '' : `
       <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap">
@@ -4030,6 +4133,71 @@ function paintKitchen(){
       : '<div class="empty">🍔 Очередь пуста — заказы гостей с шелла и мобилки появятся тут сами</div>')
     + (unpaid.length ? '<div class="muted" style="margin:16px 2px 8px; font-weight:700">Ждут оплаты — ' + unpaid.length + ' на ' + fmtPLN(unpaid.reduce((a, o) => a + (+o.total_pln||0), 0)) + ' zł</div>' + unpaid.map(card).join('') : '')
     + (closed.length ? '<div class="muted" style="margin:16px 2px 8px; font-weight:700">За смену</div>' + closed.map(card).join('') : ''));
+}
+/* ── Ж6-и3: заказ кухни от стойки. Гость — через общий резолвер (ник,
+   телефон, имя; кандидаты при 409), позиция из ценника, «на сколько»;
+   оплата — при выходе (Р10, только гостю за ПК) или сразу. ── */
+let kitNewOpen = false, kitNewGood = null, kitNewQty = 1, kitNewMethod = 'later', kitNewGuest = null, kitNewCands = [];
+function kitNewToggle(){ kitNewOpen = !kitNewOpen; if (kitNewOpen && !goodsData.length) api('/admin/goods').then(g => { goodsData = g.goods || []; paintKitNew(); }).catch(() => {}); paintKitNew(); }
+function paintKitNew(){
+  const box = document.getElementById('kitNew');
+  if (!box) return;
+  box.classList.toggle('hidden', !kitNewOpen);
+  if (!kitNewOpen) return;
+  const list = goodsData.filter(g => g.active);
+  if (!list.find(g => g.id === kitNewGood)) kitNewGood = list.length ? list[0].id : null;
+  const g = list.find(x => x.id === kitNewGood);
+  const typedEl = document.getElementById('kitGuest');
+  const typed = typedEl ? typedEl.value : (kitNewGuest ? kitNewGuest.nickname : '');
+  box.innerHTML = `<div class="uform" style="margin-top:10px">
+    <div class="actrow" style="gap:8px">
+      <input id="kitGuest" class="input" placeholder="Кому: ник, телефон или имя" autocomplete="off" value="${esc(typed)}" style="flex:1; min-width:180px" oninput="kitGuestTyped()">
+      ${kitNewGuest ? `<span class="mchip">✓ ${esc(kitNewGuest.nickname)} <a href="#" class="lnk" onclick="event.preventDefault(); kitNewGuest=null; paintKitNew()">✕</a></span>` : ''}
+    </div>
+    <div id="kitCands">${kitNewCands.length ? '<div class="muted" style="margin:0 0 6px">Подходит несколько — выбери гостя:</div>' + candsHtml(kitNewCands, 'kitPick') : ''}</div>
+    <div class="actrow" style="gap:8px">
+      <select class="input" style="flex:1; min-width:0" onchange="kitNewGood=this.value; paintKitNew()">${list.map(x =>
+        `<option value="${x.id}"${x.id === kitNewGood ? ' selected' : ''}>${esc(x.name)} · ${fmtPLN(x.price_pln)} zł${x.stock <= 0 ? ' · нет на складе' : ''}</option>`).join('')}</select>
+      <span class="qty" style="display:inline-flex; align-items:center; gap:4px"><button class="btn ghost mini" onclick="kitNewQty=Math.max(1,kitNewQty-1); paintKitNew()">−</button><b style="min-width:22px; text-align:center">${kitNewQty}</b><button class="btn ghost mini" onclick="kitNewQty=Math.min(5,kitNewQty+1); paintKitNew()">+</button></span>
+    </div>
+    <div class="segs">${[['later','При выходе'],['cash','Нал'],['card','Карта'],['blik','BLIK'],['wallet','Кошелёк']].map(([m,l]) =>
+      `<button class="${kitNewMethod===m?'on':''}" onclick="kitNewMethod='${m}'; paintKitNew()">${l}</button>`).join('')}</div>
+    <button class="btn" style="width:100%; justify-content:center" onclick="kitNewSubmit()"><span data-ic="check"></span>Принять заказ${g ? ' · ' + fmtPLN(g.price_pln * kitNewQty) + ' zł' : ''}</button>
+    <div class="muted">${kitNewMethod === 'later' ? 'Рассчитается у стойки при выходе (Р10) — только гостю за ПК; заказ понесут к его машине' : 'Оплачен сразу — ' + (kitNewMethod === 'wallet' ? 'спишем с кошелька гостя (не выручка)' : 'сумма попадёт в выручку смены')}${kitNewGuest || typed ? '' : ' · сначала укажи гостя'}</div>
+  </div>`;
+  mountIcons(box);
+}
+function kitGuestTyped(){ const inp = document.getElementById('kitGuest'); if (kitNewGuest && inp && inp.value.trim() !== kitNewGuest.nickname) kitNewGuest = null; if (kitNewCands.length){ kitNewCands = []; const c = document.getElementById('kitCands'); if (c) c.innerHTML = ''; } }
+function kitPick(id){
+  const c = kitNewCands.find(x => x.id === id);
+  kitNewGuest = {id, nickname: c ? c.nickname : ''}; kitNewCands = [];
+  const inp = document.getElementById('kitGuest'); if (inp) inp.value = kitNewGuest.nickname; // поле = выбранный гость → уйдёт guest_id
+  paintKitNew();
+  kitNewSubmit();
+}
+async function kitNewSubmit(){
+  return once('kitnew', async () => {
+    const inp = document.getElementById('kitGuest');
+    const typed = inp ? inp.value.trim() : '';
+    const body = {good_id: kitNewGood, qty: kitNewQty, method: kitNewMethod};
+    if (kitNewGuest && (typed === kitNewGuest.nickname || !typed)) body.guest_id = kitNewGuest.id;
+    else if (typed) body.guest = typed;
+    else { toast('⚠ Укажи гостя: ник, телефон или имя'); return; }
+    try{
+      const d = await api('/admin/kitchen/orders', {method:'POST', body:JSON.stringify(body)});
+      const o = d.order || {};
+      toast('🍔 ' + (o.name || 'заказ') + (o.qty > 1 ? ' ×' + o.qty : '') + ' — ' + fmtPLN(o.total_pln || 0) + ' zł · ' + (d.nickname || '')
+        + (o.computer ? ' · к ' + o.computer : '') + (d.debt ? ' · при выходе (должен ' + fmtPLN(d.debt.total_pln) + ' zł)' : ' · оплачен'));
+      kitNewGuest = d.nickname && kitNewGuest ? kitNewGuest : kitNewGuest; kitNewQty = 1; kitNewCands = [];
+      if (inp) inp.value = kitNewGuest ? kitNewGuest.nickname : '';
+      await kitBadgeLoad();
+      paintKitNew();
+      refresh();
+    }catch(e){
+      if (e.code === 'guest_ambiguous'){ kitNewCands = e.data.candidates || []; paintKitNew(); return; }
+      toast('⚠ ' + e.message);
+    }
+  });
 }
 async function kitStatus(id, status){
   try{
@@ -4100,6 +4268,7 @@ let goodsData = [], goodsCat = null, saleM = 'cash';
 function saleMethod(m, btn){
   saleM = m;
   btn.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+  paintCart(); // Ж6: подпись под корзиной зависит от способа
 }
 
 async function renderGoods(){
@@ -4142,12 +4311,103 @@ function paintGoodsTiles(){
   setHTML('goodsTiles', list.length === 0
     ? '<div class="empty"><span data-ic="box"></span>Ценник пуст — заведи первую позицию</div>'
     : `<div class="gtiles">${list.map(g => `
-      <button class="gtile ${g.stock <= 0 ? 'out' : (g.low ? 'low' : '')}" onclick="sellGood('${g.id}')"
-              ${g.stock <= 0 ? 'disabled' : ''} title="${g.stock <= 0 ? 'нет на складе' : 'продать 1 шт'}">
+      <button class="gtile ${g.stock <= 0 ? 'out' : (g.low ? 'low' : '')}${cart[g.id] ? ' incart' : ''}" onclick="cartAdd('${g.id}')"
+              ${g.stock <= 0 ? 'disabled' : ''} title="${g.stock <= 0 ? 'нет на складе' : 'в чек +1'}">
+        ${cart[g.id] ? '<span class="inq">' + cart[g.id] + '</span>' : ''}
         <b>${esc(g.name)}</b>
         <span class="gp">${fmtPLN(g.price_pln)} zł</span>
         <span class="gs">${g.stock <= 0 ? 'нет на складе' : 'осталось ' + g.stock + (g.low ? ' · заканчивается' : '')}</span>
       </button>`).join('')}</div>`);
+  paintCart();
+}
+
+/* ── Ж6-и2: корзина. Плитка кладёт позицию в чек (повтор — +1), «Продать»
+   отправляет весь чек одним запросом: N строк sales с общим receipt_id, одна
+   транзакция — не хватило одной позиции, не продано ничего. До Ж6 плитка
+   продавала сразу по одной штуке; теперь одна кнопка на весь чек. ── */
+let cart = {}; // good_id → qty
+function cartAdd(id){
+  const g = goodsData.find(x => x.id === id);
+  if (!g || g.stock <= 0) return;
+  const q = (cart[id] || 0) + 1;
+  if (q > g.stock){ toast('⚠ «' + g.name + '»: на складе ' + g.stock); return; }
+  cart[id] = q;
+  paintGoodsTiles();
+}
+function cartQty(id, d){
+  const g = goodsData.find(x => x.id === id);
+  const q = (cart[id] || 0) + d;
+  if (q <= 0) delete cart[id];
+  else if (g && q > g.stock){ toast('⚠ «' + g.name + '»: на складе ' + g.stock); return; }
+  else cart[id] = q;
+  paintGoodsTiles();
+}
+function cartClear(){ cart = {}; paintGoodsTiles(); }
+function cartTotalPLN(){
+  return Object.keys(cart).reduce((a, id) => { const g = goodsData.find(x => x.id === id); return a + (g ? g.price_pln * cart[id] : 0); }, 0);
+}
+function paintCart(){
+  const box = document.getElementById('cartBox');
+  if (!box) return;
+  const ids = Object.keys(cart);
+  box.classList.toggle('hidden', !ids.length);
+  if (!ids.length) return;
+  document.getElementById('cartRows').innerHTML = ids.map(id => {
+    const g = goodsData.find(x => x.id === id) || {name:'?', price_pln:0};
+    return `<div class="cartrow"><span class="nm"><b>${esc(g.name)}</b> <span class="muted">· ${fmtPLN(g.price_pln)} zł</span></span>
+      <span class="qty"><button onclick="cartQty('${id}',-1)">−</button><b>${cart[id]}</b><button onclick="cartQty('${id}',1)">+</button></span>
+      <span class="sum">${fmtPLN(g.price_pln * cart[id])} zł</span></div>`;
+  }).join('');
+  setText('cartTotal', fmtPLN(cartTotalPLN()) + ' zł');
+  const n = ids.reduce((a, id) => a + cart[id], 0);
+  setText('cartHint', n + ' шт · ' + (saleM === 'later'
+    ? (saleGuest ? 'в долг ' + saleGuest.nickname + ' — рассчитается при выходе' : 'в долг — укажи гостя за ПК')
+    : (PAY_RU[saleM] || saleM) + (saleGuest ? ' · ' + saleGuest.nickname : '')));
+  const btn = document.getElementById('cartSellBtn');
+  if (btn) btn.innerHTML = '<span data-ic="box"></span>' + (saleM === 'later' ? 'В долг' : 'Продать') + ' · ' + fmtPLN(cartTotalPLN()) + ' zł';
+  mountIcons(box);
+}
+/* весь чек одним запросом; ошибка по гостю (кандидаты) — как у одиночной продажи */
+async function cartSell(){
+  const ids = Object.keys(cart);
+  if (!ids.length) return;
+  return once('cart', async () => {
+    const typed = document.getElementById('saleNick').value.trim();
+    const body = {items: ids.map(id => ({good_id: id, qty: cart[id]})), method: saleM};
+    if (saleGuest && typed === saleGuest.nickname) body.guest_id = saleGuest.id;
+    else if (typed) body.guest = typed;
+    if (saleM === 'later' && !body.guest_id && !body.guest){ toast('⚠ В долг — только на гостя за ПК: укажи, кому'); return; }
+    const box = document.getElementById('saleCands');
+    try{
+      const d = await api('/admin/sales', {method:'POST', body:JSON.stringify(body)});
+      const r = d.receipt || {};
+      if (box) box.innerHTML = '';
+      if (d.nickname && !saleGuest && d.sale && d.sale.user_id) saleGuestSet(d.sale.user_id, d.nickname);
+      const what = (r.count > 1 ? 'чек из ' + r.count + ' позиций' : (d.sale ? d.sale.name + (d.sale.qty > 1 ? ' ×' + d.sale.qty : '') : 'продажа'));
+      toast((r.unpaid ? '🧾 В долг: ' : '✓ ') + what + ' — ' + fmtPLN(r.total_pln || 0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '')
+        + (r.unpaid && d.debt ? ' · должен всего ' + fmtPLN(d.debt.total_pln) + ' zł' : ''),
+        () => voidReceipt(r.id, true));
+      cart = {};
+      renderGoods();
+      refresh(); // выручка в шапке
+    }catch(e){
+      if (e.code === 'guest_ambiguous' && box){
+        saleCandList = e.data.candidates || []; salePendingGood = null; salePendingCart = true;
+        box.innerHTML = `<div class="muted" style="margin:0 0 6px">Подходит несколько — выбери, на кого записать чек:</div>` + candsHtml(saleCandList, 'salePick');
+        mountIcons(box);
+        return;
+      }
+      toast('⚠ ' + e.message);
+    }
+  });
+}
+async function voidReceipt(id, quiet){
+  try{
+    const d = await api('/admin/receipts/' + id + '/void', {method:'POST'});
+    if (!quiet) toast('✓ Чек отменён — ' + (d.voided || []).length + ' позиций вернулись на склад');
+    renderGoods();
+    refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* Ж5-и4 (№15): «кому» — ник, телефон или имя через общий резолвер; при 409
@@ -4175,10 +4435,12 @@ function saleGuestTyped(){ // напечатали другое — выбран
   const box = document.getElementById('saleCands');
   if (box && box.innerHTML) box.innerHTML = '';
 }
+let salePendingCart = false;
 function salePick(id){
   const c = saleCandList.find(x => x.id === id);
   saleGuestSet(id, c ? c.nickname : '');
   if (salePendingGood){ const g = salePendingGood; salePendingGood = null; sellGood(g); }
+  else if (salePendingCart){ salePendingCart = false; cartSell(); } // Ж6-и2: чек ждал выбора гостя
 }
 async function sellGood(id){
   return once('sell:' + id, async () => { // дабл-тап по плитке = две продажи (ревью 26.08)
@@ -4219,25 +4481,75 @@ async function voidSale(id, quiet){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* Ж6-и2: чек — одной строкой с раскрытием позиций; Ж6-и1: продажа в долг —
+   «в долг · рассчитается при выходе» и ссылка на карточку («Рассчитать» там). */
+let openReceipts = new Set(), salesCache = [];
 function paintSales(d){
   setText('salesTotal', (d.date || '') + ' · ' + fmtPLN(d.total_pln || 0) + ' zł' +
     (d.wallet_pln ? ' · кошельком: ' + fmtPLN(d.wallet_pln) + ' zł (не выручка)' : '') +
+    (d.unpaid ? ' · в долг: ' + fmtPLN(d.unpaid_pln || 0) + ' zł (' + d.unpaid + ', не выручка)' : '') +
     (d.voided ? ' · отменено: ' + d.voided : ''));
   const rows = d.sales || [];
-  setHTML('salesTable', rows.length === 0
-    ? '<div class="empty"><span data-ic="box"></span>За смену пока ничего не продано</div>'
-    : `<table><tr><th>Время</th><th>Позиция</th><th>Сумма</th><th>Оплата</th><th>Гость</th><th>Продал</th><th></th></tr>
-      ${rows.map(x => `<tr${x.voided ? ' style="opacity:.45"' : ''}>
+  salesCache = rows; lastSalesResp = d;
+  // группировка по чеку: позиции одного receipt_id — одна строка (сумма, состав), раскрывается кликом
+  const groups = [], byR = {};
+  rows.forEach(x => {
+    if (!x.receipt_id){ groups.push({one: x}); return; }
+    if (!byR[x.receipt_id]){ byR[x.receipt_id] = {rid: x.receipt_id, items: []}; groups.push(byR[x.receipt_id]); }
+    byR[x.receipt_id].items.push(x);
+  });
+  groups.forEach(g => { if (g.items) g.items.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); }); // позиции — в порядке чека
+  const guestCell = x => x.nickname ? (x.user_id ? `<a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${x.user_id}')">${esc(x.nickname)}</a>` : esc(x.nickname)) : '—';
+  const payCell = x => x.voided ? '<span class="muted">' + (PAY_RU[x.method] || esc(x.method)) + '</span>'
+    : x.unpaid ? `<span class="debtline" title="Ж-Р8: рассчитается у стойки при выходе">в долг</span>${x.user_id ? ` · <a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${x.user_id}','debt')">рассчитать</a>` : ''}`
+    : (PAY_RU[x.method] || esc(x.method)) + (x.postpaid ? ' <span class="muted" title="продано в долг, рассчитано ' + (x.paid_at ? hhmm(x.paid_at) : '') + '">· был долг</span>' : '');
+  const oneRow = x => `<tr${x.voided ? ' style="opacity:.45"' : ''}>
         <td class="muted">${hhmm(x.created_at)}</td>
         <td><b>${esc(x.name)}</b>${x.qty > 1 ? ' ×' + x.qty : ''}${x.voided ? ' <span class="muted">— отменена</span>' : ''}</td>
         <td>${fmtPLN(x.total_pln)} zł</td>
-        <td class="muted">${PAY_RU[x.method] || esc(x.method)}</td>
-        <td class="muted">${x.nickname ? (x.user_id ? `<a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${x.user_id}')">${esc(x.nickname)}</a>` : esc(x.nickname)) : '—'}</td>
+        <td class="muted">${payCell(x)}</td>
+        <td class="muted">${guestCell(x)}</td>
         <td class="muted">${esc(x.admin || '—')}</td>
-        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}')">Отменить</button>`}</td>
-      </tr>`).join('')}</table>`);
+        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}')">${x.unpaid ? 'Списать' : 'Отменить'}</button>`}</td>
+      </tr>`;
+  const receiptRows = g => {
+    if (g.items.length === 1) return oneRow(g.items[0]);
+    const live = g.items.filter(x => !x.voided), f = g.items[0];
+    const allVoid = !live.length, total = (allVoid ? g.items : live).reduce((a, x) => a + (+x.total_pln || 0), 0); // отменённый чек — его сумма, а не 0
+    const open = openReceipts.has(g.rid);
+    return `<tr${allVoid ? ' style="opacity:.45"' : ''} style="cursor:pointer" onclick="toggleReceipt('${g.rid}')">
+        <td class="muted">${hhmm(f.created_at)}</td>
+        <td><b>${open ? '▾' : '▸'} Чек · ${g.items.length} позиции</b> <span class="muted">${g.items.map(x => esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '')).join(', ')}</span>${allVoid ? ' <span class="muted">— отменён</span>' : (live.length < g.items.length ? ' <span class="muted">— часть отменена</span>' : '')}</td>
+        <td>${fmtPLN(total)} zł</td>
+        <td class="muted">${payCell(live[0] || f)}</td>
+        <td class="muted">${guestCell(f)}</td>
+        <td class="muted">${esc(f.admin || '—')}</td>
+        <td onclick="event.stopPropagation()">${allVoid ? '' : `<button class="btn ghost mini" onclick="armVoidReceipt(this,'${g.rid}')">${live[0] && live[0].unpaid ? 'Списать чек' : 'Вернуть чек'}</button>`}</td>
+      </tr>` + (open ? g.items.map(x => `<tr class="rcp"${x.voided ? ' style="opacity:.45"' : ''}>
+        <td></td><td>${esc(x.name)}${x.qty > 1 ? ' ×' + x.qty : ''}${x.voided ? ' — отменена' : ''}</td>
+        <td>${fmtPLN(x.total_pln)} zł</td><td></td><td></td><td></td>
+        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}')">${x.unpaid ? 'Списать' : 'Вернуть'}</button>`}</td>
+      </tr>`).join('') : '');
+  };
+  setHTML('salesTable', rows.length === 0
+    ? '<div class="empty"><span data-ic="box"></span>За смену пока ничего не продано</div>'
+    : `<table><tr><th>Время</th><th>Позиция</th><th>Сумма</th><th>Оплата</th><th>Гость</th><th>Продал</th><th></th></tr>
+      ${groups.map(g => g.one ? oneRow(g.one) : receiptRows(g)).join('')}</table>`);
 }
-const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK', wallet:'кошелёк'};
+function toggleReceipt(rid){
+  if (openReceipts.has(rid)) openReceipts.delete(rid); else openReceipts.add(rid);
+  paintSales(lastSalesResp || {sales: salesCache}); // перерисовать без запроса
+}
+let lastSalesResp = null;
+function armVoidReceipt(btn, rid){
+  if (btn.dataset.armed){ voidReceipt(rid); return; }
+  btn.dataset.armed = '1';
+  const label = btn.textContent;
+  btn.textContent = 'Точно — весь чек?';
+  btn.classList.add('danger');
+  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = label; btn.classList.remove('danger'); } }, 4000);
+}
+const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK', wallet:'кошелёк', later:'при выходе'};
 
 /* отмена продажи — arm-confirm: деньги уходят из выручки смены */
 function armVoid(btn, id){
@@ -5000,9 +5312,24 @@ function paintShiftChip(){
 
 /* Шторка «Моя смена»: показать факт и дать закрыть её одной кнопкой.
    Уход — arm-паттерн: закрытая по ошибке смена стоит человеку часов. */
-function openMyShift(){
+/* Ж6-и4 (№32): уход = сдача кассы. Сервер говорит, сколько наличных должно
+   быть в ящике по операциям этого админа за клубные сутки; админ вбивает
+   пересчитанное, разница уходит владельцу (канал персонала, сводка, табель).
+   Уйти без пересчёта можно — отдельной кнопкой и с пометкой. */
+let closeoutPrev = null, closeoutCounted = '';
+async function openMyShift(){
   drawerUserId = null; drawerPCId = null;
   const on = !!(myShift && myShift.on_shift);
+  if (on){ // каждый раз свежая цифра: касса меняется каждой продажей
+    try{ closeoutPrev = await api('/admin/work/closeout'); }catch(e){ closeoutPrev = {error: e.message}; }
+  }
+  paintMyShift();
+}
+function paintMyShift(){
+  const on = !!(myShift && myShift.on_shift);
+  const cp = closeoutPrev || {};
+  const counted = closeoutCounted === '' ? null : Math.round(parseFloat(String(closeoutCounted).replace(',', '.')) * 100) / 100;
+  const diff = counted == null || isNaN(counted) ? null : Math.round((counted - (cp.expected_pln || 0)) * 100) / 100;
   const body = !myShift
     ? '<div class="muted">Табель не отвечает — попробуй обновить страницу</div>'
     : `<table class="kv">
@@ -5014,25 +5341,53 @@ function openMyShift(){
         : `<tr><td class="muted">Сегодня отработано</td><td><b>${hm(myShift.minutes_today)}</b></td></tr>`}
       </table>
       ${on
-        ? `<div class="muted" style="margin-top:12px">Уход закрывает запись табеля — по ней считается зарплата.</div>
-           <button class="btn danger" style="width:100%; justify-content:center; margin-top:8px"
-                   onclick="armShiftStop(this)"><span data-ic="out"></span>Отметить уход</button>`
+        ? `<div class="dsub">Сдача кассы</div>
+           ${cp.error ? `<div class="muted">Касса не посчиталась: ${esc(cp.error)}</div>` : `
+           <table class="kv">
+             <tr><td class="muted">В ящике должно быть</td><td><b id="coExpected">${fmtPLN(cp.expected_pln || 0)} zł</b> <span class="muted">— наличные по твоим операциям за сутки с ${cp.from ? hhmm(cp.from) : '—'}</span></td></tr>
+             <tr><td class="muted">Из чего</td><td class="muted">пополнения ${fmtPLN(cp.deposits_pln || 0)} · товары и кухня ${fmtPLN(cp.goods_pln || 0)} · пакеты ${fmtPLN(cp.packs_pln || 0)}${cp.refunds_pln > 0 ? ' · минус возвраты налом ' + fmtPLN(cp.refunds_pln) : ''}${cp.club_expected_pln != null && Math.abs(cp.club_expected_pln - (cp.expected_pln || 0)) >= 0.01 ? ' · всего за сутки по всем: ' + fmtPLN(cp.club_expected_pln) : ''}</td></tr>
+           </table>
+           <div class="uform" style="margin-top:8px">
+             <input id="coCounted" class="input" type="number" min="0" step="0.01" placeholder="Пересчитано, zł" value="${esc(closeoutCounted)}" oninput="closeoutCounted=this.value; coPaintDiff()">
+             <div id="coDiff" class="muted">${coDiffText(diff)}</div>
+             <input id="coNote" class="input" placeholder="Передал смену: кому, что не доделано (необязательно)" maxlength="500">
+             <button class="btn ${diff != null && diff !== 0 ? 'danger' : ''}" style="width:100%; justify-content:center" id="coSubmit"
+                     onclick="armButton(this, 'Ещё раз — сдать смену', () => shiftStop(false))"><span data-ic="out"></span>Сдать смену</button>
+             <button class="btn ghost" style="width:100%; justify-content:center"
+                     onclick="armButton(this, 'Точно без пересчёта?', () => shiftStop(true))">Уйти без пересчёта</button>
+             <div class="muted">Уход закрывает запись табеля — по ней считается зарплата. Расхождение и «без пересчёта» увидит владелец.</div>
+           </div>`}`
         : `<div class="muted" style="margin-top:12px">Смена открывается сама, когда ты входишь в систему. Если её нет, а ты работаешь — открой руками.</div>
            <button class="btn" style="width:100%; justify-content:center; margin-top:8px"
                    onclick="shiftStart()"><span data-ic="check"></span>Я пришёл</button>`}`;
   openDrawer('Моя смена', body);
 }
-
-function armShiftStop(btn){
-  if (btn.dataset.armed){ shiftStop(); return; }
-  btn.dataset.armed = '1';
-  btn.innerHTML = 'Точно ухожу?';
-  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.innerHTML = '<span data-ic="out"></span>Отметить уход'; mountIcons(btn); } }, 4000);
+function coDiffText(diff){
+  if (diff == null || isNaN(diff)) return 'Пересчитай наличные в ящике и вбей сумму — сравню с ожидаемой';
+  if (diff === 0) return '✓ Касса сошлась';
+  return (diff > 0 ? 'Излишек +' : 'Недостача −') + fmtPLN(Math.abs(diff)) + ' zł — уйдёт владельцу в канал персонала';
 }
-async function shiftStop(){
+function coPaintDiff(){
+  const cp = closeoutPrev || {};
+  const v = closeoutCounted === '' ? null : Math.round(parseFloat(String(closeoutCounted).replace(',', '.')) * 100) / 100;
+  const diff = v == null || isNaN(v) ? null : Math.round((v - (cp.expected_pln || 0)) * 100) / 100;
+  const el = document.getElementById('coDiff'); if (el) el.textContent = coDiffText(diff);
+  const btn = document.getElementById('coSubmit'); if (btn) btn.classList.toggle('danger', diff != null && diff !== 0);
+}
+async function shiftStop(skipCount){
+  const body = {};
+  if (!skipCount){
+    const v = parseFloat(String(closeoutCounted).replace(',', '.'));
+    if (closeoutCounted === '' || isNaN(v) || v < 0){ toast('⚠ Вбей пересчитанную сумму — или уходи «без пересчёта»'); return; }
+    body.counted_pln = Math.round(v * 100) / 100;
+  }
+  const note = document.getElementById('coNote');
+  if (note && note.value.trim()) body.note = note.value.trim();
   try{
-    const d = await api('/admin/work/stop', {method:'POST'});
-    toast('✓ Смена закрыта · ' + hm(d.entry.minutes));
+    const d = await api('/admin/work/stop', {method:'POST', body:JSON.stringify(body)});
+    const co = d.closeout;
+    toast('✓ Смена закрыта · ' + hm(d.entry.minutes) + (co ? (co.skipped ? ' · касса без пересчёта' : (co.diff_pln === 0 ? ' · касса сошлась' : ' · расхождение ' + (co.diff_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(co.diff_pln)) + ' zł — владелец увидит')) : ''));
+    closeoutPrev = null; closeoutCounted = '';
     closeDrawer();
     await loadMyShift();
     renderMyShift();
@@ -5067,10 +5422,10 @@ async function renderMyShift(){
 }
 
 async function workToggle(on){
+  if (on){ await loadMyShift(); closeoutPrev = null; openMyShift(); return; } // Ж6-и4: уход — через сдачу кассы
   try{
-    const d = await api('/admin/work/' + (on ? 'stop' : 'start'), {method:'POST'});
-    if (on) toast('✓ Смена закрыта · ' + hm(d.entry.minutes));
-    else if (d.auto_closed_previous) toast('⚠ Прошлая смена осталась незакрытой — закрыл по расписанию, проверь табель');
+    const d = await api('/admin/work/start', {method:'POST'});
+    if (d.auto_closed_previous) toast('⚠ Прошлая смена осталась незакрытой — закрыл по расписанию, проверь табель');
     else toast('✓ Приход отмечен');
     renderMyShift();
     loadMyShift(); // Е3-и2: топбар не должен отставать от раздела
@@ -5101,7 +5456,7 @@ async function renderTimesheet(){
         <td><b>${esc(e.nickname||'—')}</b></td>
         <td class="muted">${e.shift ? esc(e.shift) : 'вне смены'}</td>
         <td>${hhmm(e.started_at)} — ${e.open ? 'ещё на смене' : hhmm(e.ended_at)}</td>
-        <td>${e.open ? '—' : hm(e.minutes)}${e.auto_closed ? ' <span class="muted">· не отметил уход</span>' : ''}</td>
+        <td>${e.open ? '—' : hm(e.minutes)}${e.auto_closed ? ' <span class="muted">· не отметил уход</span>' : ''}${e.closeout ? (e.closeout.skipped ? ' <span style="color:var(--orange)" title="ушёл без пересчёта кассы">· касса не считана</span>' : (e.closeout.diff_pln === 0 ? ' <span class="muted" title="касса сошлась: ' + fmtPLN(e.closeout.expected_pln) + ' zł">· касса ✓</span>' : ` <span style="color:var(--orange)" title="должно быть ${fmtPLN(e.closeout.expected_pln)} zł, пересчитано ${fmtPLN(e.closeout.counted_pln)} zł">· касса ${e.closeout.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(e.closeout.diff_pln))} zł</span>`)) : ''}</td>
         <td style="white-space:nowrap">
           <button class="btn ghost mini" onclick="tsEdit('${e.id}')"><span data-ic="edit"></span></button>
           <button class="btn ghost mini danger" onclick="armTsDelete(this,'${e.id}')">✕</button>

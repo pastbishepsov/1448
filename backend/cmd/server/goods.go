@@ -57,7 +57,8 @@ var goodErrors = map[string]string{
 	"bad_low":        "Порог «заканчивается» — неотрицательное число",
 	"bad_description": fmt.Sprintf("Описание — до %d символов", maxGoodDescription),
 	"bad_qty":        fmt.Sprintf("Количество — от 1 до %d", maxSaleQty),
-	"bad_method":     "Оплата: наличные, карта или BLIK",
+	"too_many_items": fmt.Sprintf("В чеке — до %d позиций", maxReceiptItems),
+	"bad_method":     "Оплата: наличные, карта, BLIK — или «при выходе» гостю за ПК",
 	"bad_reason":     "Причина движения: supply или adjust",
 	"need_note":      "У корректировки должна быть причина — её увидит владелец",
 	"negative_stock": "Остаток ушёл бы в минус",
@@ -404,20 +405,34 @@ func handleAdminGoodMoves(c *gin.Context) {
 
 // ── Продажи ───────────────────────────────────────────────────────────
 
-type saleRequest struct {
-	GoodID   string `json:"good_id" binding:"required"`
-	Qty      int    `json:"qty"`
-	Method   string `json:"method"`
-	Nickname string `json:"nickname"` // строгий ник (как понимала админка до Ж5)
-	Guest    string `json:"guest"`    // Ж5-и4: ник, телефон ИЛИ имя — через общий резолвер
-	GuestID  string `json:"guest_id"` // Ж5-и4: выбран из списка кандидатов (409 guest_ambiguous)
+type saleItem struct {
+	GoodID string `json:"good_id"`
+	Qty    int    `json:"qty"`
 }
+
+type saleRequest struct {
+	GoodID   string     `json:"good_id"` // одна позиция (как до Ж6) …
+	Qty      int        `json:"qty"`
+	Items    []saleItem `json:"items"`    // … или корзина (Ж6-и2): все позиции одним чеком
+	Method   string     `json:"method"`   // cash | card | blik | later (Ж6-и1: в долг до выхода, только гостю за ПК)
+	Nickname string     `json:"nickname"` // строгий ник (как понимала админка до Ж5)
+	Guest    string     `json:"guest"`    // Ж5-и4: ник, телефон ИЛИ имя — через общий резолвер
+	GuestID  string     `json:"guest_id"` // Ж5-и4: выбран из списка кандидатов (409 guest_ambiguous)
+}
+
+// maxReceiptItems — позиций в одном чеке; больше — это уже поставка, а не продажа
+const maxReceiptItems = 20
 
 func saleOut(s *models.Sale, nick map[string]string) gin.H {
 	row := gin.H{
 		"id": s.ID, "name": s.Name, "qty": s.Qty, "price_pln": s.PricePLN,
 		"total_pln": s.TotalPLN, "method": s.Method, "created_at": s.CreatedAt,
 		"admin": nick[s.CreatedBy.String()], "voided": s.VoidedAt != nil,
+		// Ж6 (Ж-Р8): в долг — paid_at пуст, деньги придут при расчёте у стойки
+		"paid_at": s.PaidAt, "unpaid": s.PaidAt == nil && s.VoidedAt == nil, "postpaid": s.Postpaid,
+	}
+	if s.ReceiptID != nil {
+		row["receipt_id"] = s.ReceiptID // Ж6-и2: чек — позиции одной продажи
 	}
 	if s.UserID != nil {
 		row["nickname"] = nick[s.UserID.String()]
@@ -429,49 +444,87 @@ func saleOut(s *models.Sale, nick map[string]string) gin.H {
 	return row
 }
 
-// POST /admin/sales — продать позицию за злотые (staff).
+// saleMethodOK — способы живых денег у стойки (Ж-Р8: кошельком товары не платятся).
+func saleMethodOK(m string) bool {
+	return m == "cash" || m == "card" || m == "blik"
+}
+
+// saleItemsFromRequest — корзина из запроса (чистая, тест): одна позиция
+// good_id/qty (как до Ж6) или список items; количества по каждой строке
+// нормализуются (пусто = 1), одинаковые позиции складываются в одну строку.
+func saleItemsFromRequest(req *saleRequest) ([]saleItem, string) {
+	items := req.Items
+	if len(items) == 0 {
+		if strings.TrimSpace(req.GoodID) == "" {
+			return nil, "invalid_request"
+		}
+		items = []saleItem{{GoodID: req.GoodID, Qty: req.Qty}}
+	}
+	if len(items) > maxReceiptItems*10 { // сырой список до слияния: защита от мусора, не бизнес-лимит
+		return nil, "too_many_items"
+	}
+	merged := make([]saleItem, 0, len(items))
+	idx := map[string]int{}
+	for _, it := range items {
+		id := strings.TrimSpace(it.GoodID)
+		if id == "" {
+			return nil, "invalid_request"
+		}
+		q := it.Qty
+		if q <= 0 {
+			q = 1
+		}
+		if i, ok := idx[id]; ok {
+			merged[i].Qty += q
+		} else {
+			idx[id] = len(merged)
+			merged = append(merged, saleItem{GoodID: id, Qty: q})
+		}
+	}
+	if len(merged) > maxReceiptItems {
+		return nil, "too_many_items"
+	}
+	for _, it := range merged {
+		if it.Qty > maxSaleQty {
+			return nil, "bad_qty"
+		}
+	}
+	return merged, ""
+}
+
+// POST /admin/sales — продать позицию или корзину за злотые (staff).
+//
+// Ж6-и2: `items` — несколько позиций одним чеком (общий receipt_id, одна
+// транзакция: не хватило одной — не продано ничего). Ж6-и1 (Ж-Р8):
+// method=later — в долг «рассчитать у стойки при выходе», только гостю с
+// идущей сессией: товар выдан и склад списан сразу, деньги (и выручка) —
+// при расчёте (/admin/users/:id/settle), как у кухни (Р10).
 func handleAdminSaleCreate(c *gin.Context) {
 	var req saleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		goodFail(c, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	if req.Qty <= 0 {
-		req.Qty = 1
-	}
-	if req.Qty > maxSaleQty {
-		goodFail(c, http.StatusBadRequest, "bad_qty")
+	items, code := saleItemsFromRequest(&req)
+	if code != "" {
+		goodFail(c, http.StatusBadRequest, code)
 		return
 	}
 	method := req.Method
 	if method == "" {
 		method = "cash"
 	}
-	if method != "cash" && method != "card" && method != "blik" {
+	if !saleMethodOK(method) && method != models.SaleMethodLater {
 		goodFail(c, http.StatusBadRequest, "bad_method")
 		return
 	}
-	var g models.Good
-	if err := db.First(&g, "id = ?", req.GoodID).Error; err != nil {
-		goodFail(c, http.StatusNotFound, "good_not_found")
-		return
-	}
-	if !g.Active {
-		goodFail(c, http.StatusConflict, "good_inactive")
-		return
-	}
-	if g.Stock < req.Qty {
-		c.JSON(http.StatusConflict, gin.H{"code": "out_of_stock",
-			"message": fmt.Sprintf("«%s»: на складе %d шт", g.Name, g.Stock)})
-		return
-	}
 
-	// привязка к гостю — необязательная метка «кому продали»; цель, как и у
-	// прочих операций персонала, только player (решение №4 трека Б).
-	// Ж5-и4 (№15): опознание — общим резолвером посадки и очереди: ник,
-	// телефон или имя, при неоднозначности 409 с кандидатами; строгий nickname
-	// понимается как раньше. Резолвер ищет только среди гостей, поэтому ник
-	// персонала здесь — «не найден», а не отдельный код.
+	// привязка к гостю — необязательная метка «кому продали» (у долга —
+	// обязательная); цель, как и у прочих операций персонала, только player
+	// (решение №4 трека Б). Ж5-и4 (№15): опознание — общим резолвером посадки
+	// и очереди: ник, телефон или имя, при неоднозначности 409 с кандидатами;
+	// строгий nickname понимается как раньше. Резолвер ищет только среди
+	// гостей, поэтому ник персонала здесь — «не найден», а не отдельный код.
 	var guest *models.User
 	if strings.TrimSpace(req.Nickname) != "" || strings.TrimSpace(req.Guest) != "" || strings.TrimSpace(req.GuestID) != "" {
 		guest = lookupGuestForAction(c, req.GuestID, req.Guest, req.Nickname) // 404 и 409 пишет сам
@@ -479,36 +532,98 @@ func handleAdminSaleCreate(c *gin.Context) {
 			return
 		}
 	}
+	if method == models.SaleMethodLater {
+		if guest == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "need_guest", "message": "В долг — только на гостя: укажи, кому продаёшь"})
+			return
+		}
+		if guest.Status == models.UserStatusBanned {
+			c.JSON(http.StatusConflict, gin.H{"code": "banned", "message": "Аккаунт заблокирован — в долг не продаём"})
+			return
+		}
+		var n int64
+		db.Model(&models.Session{}).Where("user_id = ? AND status = ?", guest.ID, models.SessionStatusActive).Count(&n)
+		if n == 0 {
+			c.JSON(http.StatusConflict, gin.H{"code": "need_session",
+				"message": "В долг — только гостю за ПК (рассчитается при выходе); без сессии продай за нал, карту или BLIK"})
+			return
+		}
+	}
+
+	// позиции чека: активны и есть на складе (точная проверка — CAS в транзакции)
+	goods := make([]models.Good, 0, len(items))
+	for _, it := range items {
+		var g models.Good
+		if err := db.First(&g, "id = ?", it.GoodID).Error; err != nil {
+			goodFail(c, http.StatusNotFound, "good_not_found")
+			return
+		}
+		if !g.Active {
+			c.JSON(http.StatusConflict, gin.H{"code": "good_inactive", "message": fmt.Sprintf("«%s» выключена — включи её в ценнике", g.Name)})
+			return
+		}
+		if g.Stock < it.Qty {
+			c.JSON(http.StatusConflict, gin.H{"code": "out_of_stock",
+				"message": fmt.Sprintf("«%s»: на складе %d шт", g.Name, g.Stock)})
+			return
+		}
+		goods = append(goods, g)
+	}
 
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
-	goodID := g.ID
-	sale := models.Sale{
-		ClubID: g.ClubID, GoodID: &goodID, Name: g.Name, Qty: req.Qty,
-		PricePLN: g.PricePLN, TotalPLN: roundPLN(g.PricePLN * float64(req.Qty)),
-		Method: method, CreatedBy: adminID,
+	now := time.Now()
+	receiptID := uuid.New()
+	sales := make([]models.Sale, 0, len(items))
+	for i, it := range items {
+		g := goods[i]
+		goodID := g.ID
+		s := models.Sale{
+			ClubID: g.ClubID, GoodID: &goodID, Name: g.Name, Qty: it.Qty,
+			PricePLN: g.PricePLN, TotalPLN: roundPLN(g.PricePLN * float64(it.Qty)),
+			Method: method, CreatedBy: adminID, ReceiptID: &receiptID,
+		}
+		if method == models.SaleMethodLater {
+			s.Postpaid = true // paid_at пуст — деньги при расчёте
+		} else {
+			paid := now
+			s.PaidAt = &paid
+		}
+		if guest != nil {
+			s.UserID = &guest.ID
+		}
+		sales = append(sales, s)
 	}
-	if guest != nil {
-		sale.UserID = &guest.ID
-	}
+	var short *models.Good
 	err := db.Transaction(func(tx *gorm.DB) error {
-		// остаток списываем условием в WHERE: две кассы не уведут его в минус
-		res := tx.Model(&models.Good{}).Where("id = ? AND stock >= ?", g.ID, req.Qty).
-			UpdateColumn("stock", gorm.Expr("stock - ?", req.Qty))
-		if res.Error != nil {
-			return res.Error
+		for i := range sales {
+			g := &goods[i]
+			// остаток списываем условием в WHERE: две кассы не уведут его в минус
+			res := tx.Model(&models.Good{}).Where("id = ? AND stock >= ?", g.ID, sales[i].Qty).
+				UpdateColumn("stock", gorm.Expr("stock - ?", sales[i].Qty))
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				short = g
+				return errOutOfStock
+			}
+			if err := tx.Create(&sales[i]).Error; err != nil {
+				return err
+			}
+			saleID := sales[i].ID
+			if err := tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -sales[i].Qty,
+				Reason: "sale", SaleID: &saleID, CreatedBy: &adminID}).Error; err != nil {
+				return err
+			}
 		}
-		if res.RowsAffected == 0 {
-			return errOutOfStock
-		}
-		if err := tx.Create(&sale).Error; err != nil {
-			return err
-		}
-		saleID := sale.ID
-		return tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty,
-			Reason: "sale", SaleID: &saleID, CreatedBy: &adminID}).Error
+		return nil
 	})
 	if err == errOutOfStock {
-		goodFail(c, http.StatusConflict, "out_of_stock")
+		msg := goodErrors["out_of_stock"]
+		if short != nil {
+			msg = fmt.Sprintf("«%s»: на складе не хватает — чек не продан", short.Name)
+		}
+		c.JSON(http.StatusConflict, gin.H{"code": "out_of_stock", "message": msg})
 		return
 	}
 	if err != nil {
@@ -516,18 +631,62 @@ func handleAdminSaleCreate(c *gin.Context) {
 		return
 	}
 
-	payload := map[string]any{"name": sale.Name, "qty": sale.Qty, "total_pln": sale.TotalPLN, "method": sale.Method}
+	total := 0.0
+	names := make([]string, 0, len(sales))
+	for i := range sales {
+		total += sales[i].TotalPLN
+		names = append(names, receiptItemName(&sales[i]))
+	}
+	total = roundPLN(total)
+	payload := map[string]any{"name": strings.Join(names, ", "), "qty": len(sales), "total_pln": total, "method": method,
+		"receipt_id": receiptID, "items": len(sales)}
+	if len(sales) == 1 {
+		payload["name"], payload["qty"] = sales[0].Name, sales[0].Qty
+	}
 	if guest != nil {
 		payload["nickname"] = guest.Nickname
 	}
+	if method == models.SaleMethodLater {
+		payload["kind"] = "later" // в ленте: «в долг», не выручка
+	}
 	hub.AdminBroadcast("sale", payload)
 
-	db.First(&g, "id = ?", g.ID)
 	nick := nicknamesByID([]string{adminID.String()})
 	if guest != nil {
 		nick[guest.ID.String()] = guest.Nickname
 	}
-	c.JSON(http.StatusCreated, gin.H{"sale": saleOut(&sale, nick), "good": goodOut(&g)})
+	outSales := make([]gin.H, 0, len(sales))
+	for i := range sales {
+		outSales = append(outSales, saleOut(&sales[i], nick))
+	}
+	goodsOut := make([]gin.H, 0, len(goods))
+	for i := range goods {
+		var g models.Good
+		if db.First(&g, "id = ?", goods[i].ID).Error == nil {
+			goodsOut = append(goodsOut, goodOut(&g))
+		}
+	}
+	resp := gin.H{
+		"sale": outSales[0], "good": goodsOut[0], // как до Ж6: первая (и обычно единственная) позиция
+		"receipt": gin.H{"id": receiptID, "total_pln": total, "items": outSales, "method": method,
+			"unpaid": method == models.SaleMethodLater, "count": len(outSales)},
+		"goods": goodsOut,
+	}
+	if guest != nil {
+		resp["nickname"] = guest.Nickname
+		if method == models.SaleMethodLater {
+			resp["debt"] = guestDebt(guest.ID) // сколько гость теперь должен всего (кухня + бар)
+		}
+	}
+	c.JSON(http.StatusCreated, resp)
+}
+
+// receiptItemName — «Coca-Cola ×2» для строки чека в ленте и журнале.
+func receiptItemName(s *models.Sale) string {
+	if s.Qty > 1 {
+		return fmt.Sprintf("%s ×%d", s.Name, s.Qty)
+	}
+	return s.Name
 }
 
 var errOutOfStock = fmt.Errorf("out_of_stock")
@@ -549,9 +708,14 @@ func handleAdminSales(c *gin.Context) {
 	if c.GetString("user_role") != string(models.UserRoleOwner) {
 		from, to, key, _ = shiftWindow("", reportHour, time.Now())
 	}
+	// Ж6 (Ж-Р8): лента смены — проданное в окне И рассчитанное в окне (долг
+	// вчерашней смены, закрытый сегодня, — сегодняшние деньги), а неоплаченный
+	// долг висит в ленте любого дня, пока гость не рассчитается (как «ждут
+	// оплаты» у кухни). В выручку идут только строки с paid_at в окне.
 	var sales []models.Sale
-	db.Where("created_at >= ? AND created_at < ?", from, to).
-		Order("created_at DESC").Limit(200).Find(&sales)
+	db.Where("(created_at >= ? AND created_at < ?) OR (paid_at >= ? AND paid_at < ?) OR (paid_at IS NULL AND voided_at IS NULL)",
+		from, to, from, to).
+		Order("created_at DESC").Limit(300).Find(&sales)
 
 	ids := make([]string, 0, len(sales)*2)
 	for _, s := range sales {
@@ -562,20 +726,27 @@ func handleAdminSales(c *gin.Context) {
 	}
 	nick := nicknamesByID(ids)
 	out := make([]gin.H, 0, len(sales))
-	total, walletTotal, voided := 0.0, 0.0, 0
+	total, walletTotal, unpaidTotal, voided, unpaid := 0.0, 0.0, 0.0, 0, 0
 	for i := range sales {
-		out = append(out, saleOut(&sales[i], nick))
+		s := &sales[i]
+		out = append(out, saleOut(s, nick))
 		switch {
-		case sales[i].VoidedAt != nil:
+		case s.VoidedAt != nil:
 			voided++
-		case sales[i].Method == "wallet": // Г7/Р7: кухня кошельком — не выручка
-			walletTotal += sales[i].TotalPLN
+		case s.PaidAt == nil:
+			unpaid++
+			unpaidTotal += s.TotalPLN
+		case s.PaidAt.Before(from) || !s.PaidAt.Before(to):
+			// продано сегодня, рассчитано в другие сутки — деньги не этой смены
+		case s.Method == "wallet": // Г7/Р7: кухня кошельком — не выручка
+			walletTotal += s.TotalPLN
 		default:
-			total += sales[i].TotalPLN
+			total += s.TotalPLN
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"date": key, "count": len(out), "sales": out,
-		"total_pln": roundPLN(total), "wallet_pln": roundPLN(walletTotal), "voided": voided})
+		"total_pln": roundPLN(total), "wallet_pln": roundPLN(walletTotal), "voided": voided,
+		"unpaid": unpaid, "unpaid_pln": roundPLN(unpaidTotal)})
 }
 
 // canVoidSale — чистая (тест в goods_test.go): владелец отменяет любую продажу,
@@ -594,7 +765,59 @@ func canVoidSale(role, saleCreatedBy, userID string, saleAt, dayFrom, dayTo time
 	return true, ""
 }
 
-// POST /admin/sales/:id/void — отменить продажу, вернуть товар на склад.
+// voidSaleTx — отмена одной продажи внутри транзакции: CAS по voided_at,
+// возврат на склад, возврат в кошелёк для «кошельком». Продажа в долг (Ж6)
+// без paid_at — денег не брали: только склад, долг гостя уменьшается сам.
+func voidSaleTx(tx *gorm.DB, sale *models.Sale, adminID uuid.UUID, now time.Time) error {
+	// CAS по voided_at: проверка снаружи вне транзакции, и двойной клик по
+	// «отменить» возвращал деньги на кошелёк и товар на склад дважды
+	// (ревью 26.08).
+	res := tx.Model(&models.Sale{}).
+		Where("id = ? AND voided_at IS NULL", sale.ID).
+		Updates(map[string]any{"voided_at": now, "voided_by": adminID})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errAlreadyVoid
+	}
+	// Г7: продажа «кошельком» — это выданный заказ кухни; отмена возвращает
+	// деньги в кошелёк гостя (иначе списание повисло бы без товара)
+	if sale.Method == "wallet" && sale.UserID != nil && sale.PaidAt != nil {
+		saleID := sale.ID
+		if _, err := walletApply(tx, walletOp{
+			UserID: *sale.UserID, Kind: models.WalletTxRefund,
+			Amount: models.GroszFromPLN(sale.TotalPLN), RefType: "sale", RefID: &saleID,
+			Note: "возврат: отмена продажи " + sale.Name, CreatedBy: &adminID,
+		}); err != nil {
+			return err
+		}
+	}
+	if sale.GoodID == nil { // позицию успели удалить — возвращать некуда
+		return nil
+	}
+	if err := tx.Model(&models.Good{}).Where("id = ?", *sale.GoodID).
+		UpdateColumn("stock", gorm.Expr("stock + ?", sale.Qty)).Error; err != nil {
+		return err
+	}
+	saleID := sale.ID
+	return tx.Create(&models.StockMove{ClubID: sale.ClubID, GoodID: *sale.GoodID, Delta: sale.Qty,
+		Reason: "void", Note: "отмена продажи", SaleID: &saleID, CreatedBy: &adminID}).Error
+}
+
+// saleVoidAllowed — права на отмену (canVoidSale) с ответом 403; вернул false — выходить.
+func saleVoidAllowed(c *gin.Context, sale *models.Sale) bool {
+	reportHour := int(settingInt64("report_hour", 8))
+	from, to, _, _ := shiftWindow("", reportHour, time.Now())
+	if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
+		c.GetString("user_id"), sale.CreatedAt, from, to); !ok {
+		goodFail(c, http.StatusForbidden, code)
+		return false
+	}
+	return true
+}
+
+// POST /admin/sales/:id/void — отменить продажу (одну позицию), вернуть товар на склад.
 func handleAdminSaleVoid(c *gin.Context) {
 	var sale models.Sale
 	if err := db.First(&sale, "id = ?", c.Param("id")).Error; err != nil {
@@ -605,51 +828,12 @@ func handleAdminSaleVoid(c *gin.Context) {
 		goodFail(c, http.StatusConflict, "already_void")
 		return
 	}
-	reportHour := int(settingInt64("report_hour", 8))
-	from, to, _, _ := shiftWindow("", reportHour, time.Now())
-	if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
-		c.GetString("user_id"), sale.CreatedAt, from, to); !ok {
-		goodFail(c, http.StatusForbidden, code)
+	if !saleVoidAllowed(c, &sale) {
 		return
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
-	err := db.Transaction(func(tx *gorm.DB) error {
-		// CAS по voided_at: проверка выше вне транзакции, и двойной клик по
-		// «отменить» возвращал деньги на кошелёк и товар на склад дважды
-		// (ревью 26.08).
-		res := tx.Model(&models.Sale{}).
-			Where("id = ? AND voided_at IS NULL", sale.ID).
-			Updates(map[string]any{"voided_at": now, "voided_by": adminID})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return errAlreadyVoid
-		}
-		// Г7: продажа «кошельком» — это выданный заказ кухни; отмена возвращает
-		// деньги в кошелёк гостя (иначе списание повисло бы без товара)
-		if sale.Method == "wallet" && sale.UserID != nil {
-			saleID := sale.ID
-			if _, err := walletApply(tx, walletOp{
-				UserID: *sale.UserID, Kind: models.WalletTxRefund,
-				Amount: models.GroszFromPLN(sale.TotalPLN), RefType: "sale", RefID: &saleID,
-				Note: "возврат: отмена продажи " + sale.Name, CreatedBy: &adminID,
-			}); err != nil {
-				return err
-			}
-		}
-		if sale.GoodID == nil { // позицию успели удалить — возвращать некуда
-			return nil
-		}
-		if err := tx.Model(&models.Good{}).Where("id = ?", *sale.GoodID).
-			UpdateColumn("stock", gorm.Expr("stock + ?", sale.Qty)).Error; err != nil {
-			return err
-		}
-		saleID := sale.ID
-		return tx.Create(&models.StockMove{ClubID: sale.ClubID, GoodID: *sale.GoodID, Delta: sale.Qty,
-			Reason: "void", Note: "отмена продажи", SaleID: &saleID, CreatedBy: &adminID}).Error
-	})
+	err := db.Transaction(func(tx *gorm.DB) error { return voidSaleTx(tx, &sale, adminID, now) })
 	if errors.Is(err, errAlreadyVoid) {
 		goodFail(c, http.StatusConflict, "already_void")
 		return
@@ -658,6 +842,61 @@ func handleAdminSaleVoid(c *gin.Context) {
 		goodFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
-	hub.AdminBroadcast("sale", map[string]any{"kind": "void", "name": sale.Name, "total_pln": sale.TotalPLN})
-	c.JSON(http.StatusOK, gin.H{"voided": sale.ID})
+	payload := map[string]any{"kind": "void", "name": sale.Name, "total_pln": sale.TotalPLN}
+	if sale.PaidAt == nil {
+		payload["unpaid"] = true // долг списан вместе с товаром — денег не возвращаем
+	}
+	hub.AdminBroadcast("sale", payload)
+	c.JSON(http.StatusOK, gin.H{"voided": sale.ID, "unpaid": sale.PaidAt == nil})
+}
+
+// POST /admin/receipts/:id/void — Ж6-и2: отменить чек целиком — все живые
+// позиции одной транзакцией (права — по каждой, как у одиночной отмены;
+// уже отменённые позиции пропускаются, а не ломают остальные).
+func handleAdminReceiptVoid(c *gin.Context) {
+	var sales []models.Sale
+	db.Where("receipt_id = ?", c.Param("id")).Order("created_at").Find(&sales)
+	if len(sales) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": "receipt_not_found", "message": "Чек не найден"})
+		return
+	}
+	live := make([]*models.Sale, 0, len(sales))
+	for i := range sales {
+		if sales[i].VoidedAt == nil {
+			live = append(live, &sales[i])
+		}
+	}
+	if len(live) == 0 {
+		goodFail(c, http.StatusConflict, "already_void")
+		return
+	}
+	for _, s := range live {
+		if !saleVoidAllowed(c, s) {
+			return
+		}
+	}
+	adminID, _ := uuid.Parse(c.GetString("user_id"))
+	now := time.Now()
+	err := db.Transaction(func(tx *gorm.DB) error {
+		for _, s := range live {
+			if err := voidSaleTx(tx, s, adminID, now); err != nil && !errors.Is(err, errAlreadyVoid) {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		goodFail(c, http.StatusInternalServerError, "db_error")
+		return
+	}
+	total := 0.0
+	names := make([]string, 0, len(live))
+	ids := make([]uuid.UUID, 0, len(live))
+	for _, s := range live {
+		total += s.TotalPLN
+		names = append(names, receiptItemName(s))
+		ids = append(ids, s.ID)
+	}
+	hub.AdminBroadcast("sale", map[string]any{"kind": "void", "name": "чек: " + strings.Join(names, ", "), "total_pln": roundPLN(total), "items": len(live)})
+	c.JSON(http.StatusOK, gin.H{"receipt_id": c.Param("id"), "voided": ids, "total_pln": roundPLN(total)})
 }

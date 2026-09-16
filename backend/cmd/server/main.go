@@ -243,9 +243,10 @@ func main() {
 		// Табель (В3-этап 4, миграция 026): отметиться может каждый за себя,
 		// правит записи владелец.
 		adm.POST("/work/start", handleWorkStart)
-		adm.POST("/work/stop", handleWorkStop)
+		adm.POST("/work/stop", handleWorkStop) // Ж6-и4: + {counted_pln, note} — сдача кассы
 		adm.GET("/work/me", handleWorkMe)
-		adm.GET("/staff-chat", handleStaffChatList) // Е6: канал админ ↔ владелец (Р7)
+		adm.GET("/work/closeout", handleWorkCloseoutPreview) // Ж6-и4: сколько должно быть в ящике
+		adm.GET("/staff-chat", handleStaffChatList)          // Е6: канал админ ↔ владелец (Р7)
 		adm.POST("/staff-chat", handleStaffChatPost)
 		adm.POST("/staff-chat/read", handleStaffChatRead)
 		adm.POST("/ws-ticket", handleAdminWSTicket)      // Ж0-и5: одноразовый тикет для /ws/admin
@@ -265,9 +266,13 @@ func main() {
 		adm.GET("/goods", handleAdminGoods)
 		adm.POST("/goods/:id/stock", handleAdminGoodStock)
 		adm.GET("/sales", handleAdminSales)
-		adm.POST("/sales", handleAdminSaleCreate)
+		adm.POST("/sales", handleAdminSaleCreate) // Ж6: корзина items[] одним чеком, method=later — в долг гостю за ПК
 		adm.POST("/sales/:id/void", handleAdminSaleVoid)
+		adm.POST("/receipts/:id/void", handleAdminReceiptVoid)           // Ж6-и2: отменить чек целиком
+		adm.GET("/users/:id/debt", handleAdminUserDebt)                  // Ж6-и1: долг гостя — кухня + бар, позиции
+		adm.POST("/users/:id/settle", handleAdminUserSettle)             // Ж6-и1 (Ж-Р8): «Рассчитать» — одной операцией
 		adm.GET("/kitchen/orders", handleAdminKitchenOrders)             // очередь кухни (Г7)
+		adm.POST("/kitchen/orders", handleAdminKitchenOrderCreate)       // Ж6-и3: заказ от стойки (гость через резолвер)
 		adm.POST("/kitchen/orders/:id/status", handleAdminKitchenStatus) // принял→готовит→несут→выдан (Г7)
 		adm.POST("/kitchen/orders/:id/pay", handleAdminKitchenPay)       // расчёт у стойки после игры (Р10)
 		adm.POST("/kitchen/orders/:id/cancel", handleAdminKitchenCancel) // отмена с возвратом склада (Г7)

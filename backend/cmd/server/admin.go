@@ -429,10 +429,14 @@ func handleAdminUserCard(c *gin.Context) {
 		"hours_played":   agg.Minutes / 60,
 		"no_show_count":  noShows,
 	}
-	// Г7/Р10: выданная и не рассчитанная кухня — видно прямо в карточке
-	if kCnt, kSum := unpaidKitchen(user.ID); kCnt > 0 {
-		stats["kitchen_unpaid_count"] = kCnt
-		stats["kitchen_unpaid_pln"] = kSum
+	// Г7/Р10: выданная и не рассчитанная кухня — видно прямо в карточке.
+	// Ж6 (Ж-Р8): плюс бар в долг — одной строкой «должен N zł (кухня + бар)».
+	if debt := guestDebt(user.ID); debt.TotalPLN > 0 {
+		stats["kitchen_unpaid_count"] = debt.KitchenCount
+		stats["kitchen_unpaid_pln"] = debt.KitchenPLN
+		stats["bar_unpaid_count"] = debt.BarCount
+		stats["bar_unpaid_pln"] = debt.BarPLN
+		stats["unpaid_pln"] = debt.TotalPLN
 	}
 	if ownerView {
 		stats["deposited_pln"] = depSum

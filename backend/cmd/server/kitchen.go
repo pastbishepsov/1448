@@ -241,8 +241,11 @@ func handleGetMyKitchenOrders(c *gin.Context) {
 		out = append(out, kitchenOrderOut(&orders[i], computerNameByID(orders[i].ComputerID)))
 	}
 	cnt, sum := unpaidKitchen(uid)
+	// Ж6 (Ж-Р8): бар в долг — тот же «рассчитайся у стойки»; гость видит весь долг
+	barCnt, barSum := unpaidBar(uid)
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "orders": out,
-		"unpaid_count": cnt, "unpaid_pln": sum})
+		"unpaid_count": cnt, "unpaid_pln": sum,
+		"bar_unpaid_count": barCnt, "bar_unpaid_pln": barSum, "unpaid_total_pln": roundPLN(sum + barSum)})
 }
 
 func computerNameByID(id *uuid.UUID) string {
@@ -342,6 +345,7 @@ func handleAdminKitchenOrders(c *gin.Context) {
 		o := &orders[i]
 		row := kitchenOrderOut(o, computerNameByID(o.ComputerID))
 		row["nickname"] = nick[o.UserID.String()]
+		row["user_id"] = o.UserID // Ж6-и1: «рассчитать всё» ведёт в карточку гостя
 		out = append(out, row)
 		if o.Status == models.KitchenDone && o.PaidAt == nil {
 			unpaid++
@@ -432,15 +436,17 @@ func handleAdminKitchenPay(c *gin.Context) {
 		return
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
+	now := time.Now()
 	sale := models.Sale{
 		ClubID: o.ClubID, GoodID: o.GoodID, Name: o.Name, Qty: o.Qty,
 		PricePLN: o.PricePLN, TotalPLN: o.TotalPLN, Method: req.Method,
 		UserID: &o.UserID, CreatedBy: adminID,
+		PaidAt: &now, Postpaid: true, // Ж6: момент денег — расчёт; заказ был в долг
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.KitchenOrder{}).
 			Where("id = ? AND status = ? AND paid_at IS NULL", o.ID, models.KitchenDone).
-			Updates(map[string]any{"pay_method": req.Method, "paid_at": time.Now(), "paid_by": adminID})
+			Updates(map[string]any{"pay_method": req.Method, "paid_at": now, "paid_by": adminID})
 		if res.Error != nil {
 			return res.Error
 		}

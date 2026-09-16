@@ -803,6 +803,7 @@ const STR_RU = {
   ntf_kt_paid: '💚 {n}: оплачен — спасибо!',
   ntf_kt_cancelled: '↩ {n}: отменён',
   ntf_kt_unpaid: '🧾 Не забудь рассчитаться за кухню у стойки: {z} zł',
+  ntf_unpaid: '🧾 Не забудь рассчитаться у стойки: {z} zł (кухня и бар)',
   ach_reward_case: '+ кейс {t}',
   lb_title: 'Топ клуба',
   lb_me: 'Твоё место: #{n}',
@@ -1083,6 +1084,7 @@ const STR_EN = {
   ntf_kt_paid: '💚 {n}: paid — thank you!',
   ntf_kt_cancelled: '↩ {n}: cancelled',
   ntf_kt_unpaid: '🧾 Don’t forget to pay for the kitchen at the desk: {z} zł',
+  ntf_unpaid: '🧾 Don’t forget to settle at the desk: {z} zł (kitchen and bar)',
   ach_reward_case: '+ {t} case',
   lb_title: 'Club top',
   lb_me: 'Your place: #{n}',
@@ -1358,6 +1360,7 @@ const STR_PL = {
   ntf_kt_paid: '💚 {n}: opłacone — dziękujemy!',
   ntf_kt_cancelled: '↩ {n}: anulowane',
   ntf_kt_unpaid: '🧾 Nie zapomnij zapłacić za kuchnię przy ladzie: {z} zł',
+  ntf_unpaid: '🧾 Nie zapomnij rozliczyć się przy ladzie: {z} zł (kuchnia i bar)',
   ach_reward_case: '+ skrzynka {t}',
   lb_title: 'Top klubu',
   lb_me: 'Twoje miejsce: #{n}',
@@ -3073,7 +3076,7 @@ function ntfText(n){
       if (p.status === 'delivering' && p.computer) t += ' → ' + p.computer;
       return t;
     }
-    case 'kitchen_unpaid': return T('ntf_kt_unpaid', {z: p.total_pln || 0});
+    case 'kitchen_unpaid': return T(p.bar_pln > 0 ? 'ntf_unpaid' : 'ntf_kt_unpaid', {z: p.total_pln || 0}); // Ж6: бар в долг — тот же долг у стойки
     case 'streak_frozen': return T('ntf_streak_frozen', {n: p.days || 1, left: p.left || 0});
     case 'birthday_gift': return T('ntf_birthday', {t: p.case_tier || ''});
     case 'booking_cancel':
@@ -3168,7 +3171,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-16.2';
+const APP_VER = '2026-09-16.3';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

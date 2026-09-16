@@ -470,15 +470,19 @@ type finishResult struct {
 type receipt struct {
 	WalletGrosz      int64   `json:"wallet_grosz"`
 	KitchenUnpaidPLN float64 `json:"kitchen_unpaid_pln"`
+	BarUnpaidPLN     float64 `json:"bar_unpaid_pln"` // Ж6 (Ж-Р8): товары в долг «при выходе»
+	UnpaidPLN        float64 `json:"unpaid_pln"`     // Ж6: весь долг у стойки — кухня + бар
 	StreakDays       int     `json:"streak_days"`
 }
 
 // receiptFor — чек по текущему состоянию гостя.
 func receiptFor(userID uuid.UUID, walletGrosz int64, now time.Time) receipt {
-	_, kSum := unpaidKitchen(userID)
+	debt := guestDebt(userID)
 	return receipt{
 		WalletGrosz:      walletGrosz,
-		KitchenUnpaidPLN: kSum,
+		KitchenUnpaidPLN: debt.KitchenPLN,
+		BarUnpaidPLN:     debt.BarPLN,
+		UnpaidPLN:        debt.TotalPLN,
 		StreakDays:       gatherPeriodicStats(userID, now).VisitStreak,
 	}
 }
@@ -676,12 +680,16 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 	closeSessionIncidents(session.ID, now)
 
 	// Г7/Р10: доиграл с неоплаченной кухней → гостю напоминание «рассчитайся
-	// у стойки», админам сигнал в живую ленту
-	kCnt, kSum := unpaidKitchen(session.UserID)
-	if kCnt > 0 {
-		notifyUser(session.UserID, "kitchen_unpaid", map[string]any{"count": kCnt, "total_pln": kSum})
+	// у стойки», админам сигнал в живую ленту. Ж6 (Ж-Р8): бар в долг — тот же
+	// долг; в payload — весь долг и разбивка, клиенты без бара читают как раньше.
+	debt := guestDebt(session.UserID)
+	if debt.TotalPLN > 0 {
+		notifyUser(session.UserID, "kitchen_unpaid", map[string]any{
+			"count": debt.KitchenCount + debt.BarCount, "total_pln": debt.TotalPLN,
+			"kitchen_pln": debt.KitchenPLN, "bar_pln": debt.BarPLN})
 		hub.AdminBroadcast("kitchen", map[string]any{
-			"kind": "unpaid", "nickname": user.Nickname, "total_pln": kSum, "count": kCnt})
+			"kind": "unpaid", "nickname": user.Nickname, "total_pln": debt.TotalPLN,
+			"count": debt.KitchenCount + debt.BarCount, "kitchen_pln": debt.KitchenPLN, "bar_pln": debt.BarPLN})
 	}
 
 	// Команда на ПК: завершить и заблокировать (если Shell подключён).
@@ -715,7 +723,8 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 		// К3-и6: кошелёк — после финального расчёта (user прочитан после settle),
 		// стрик — с учётом только что закрытой сессии (stats собраны после
 		// recordSessionProgress).
-		Receipt: receipt{WalletGrosz: user.WalletGrosz, KitchenUnpaidPLN: kSum, StreakDays: stats.VisitStreak},
+		Receipt: receipt{WalletGrosz: user.WalletGrosz, KitchenUnpaidPLN: debt.KitchenPLN,
+			BarUnpaidPLN: debt.BarPLN, UnpaidPLN: debt.TotalPLN, StreakDays: stats.VisitStreak}, // Ж6: долг целиком
 	}, nil
 }
 

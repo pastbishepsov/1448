@@ -48,13 +48,23 @@ type Sale struct {
 	Qty       int        `json:"qty"       gorm:"not null"`
 	PricePLN  float64    `json:"price_pln" gorm:"type:decimal(8,2);not null"`
 	TotalPLN  float64    `json:"total_pln" gorm:"type:decimal(8,2);not null"`
-	Method    string     `json:"method"    gorm:"size:16;not null;default:cash"`
+	Method    string     `json:"method"    gorm:"size:16;not null;default:cash"` // cash | card | blik | wallet | later (Ж6: в долг, ждёт расчёта)
 	UserID    *uuid.UUID `json:"user_id,omitempty"   gorm:"type:uuid"`
 	CreatedBy uuid.UUID  `json:"created_by"          gorm:"type:uuid;not null"`
 	VoidedAt  *time.Time `json:"voided_at,omitempty"`
 	VoidedBy  *uuid.UUID `json:"voided_by,omitempty" gorm:"type:uuid"`
 	CreatedAt time.Time  `json:"created_at"`
+
+	// Ж6 (Ж-Р8, миграция 065): деньги считаются по paid_at — у обычной продажи
+	// оно равно created_at, у продажи в долг NULL до расчёта у стойки.
+	PaidAt    *time.Time `json:"paid_at,omitempty"`
+	PaidBy    *uuid.UUID `json:"paid_by,omitempty"    gorm:"type:uuid"`
+	Postpaid  bool       `json:"postpaid"             gorm:"not null;default:false"`
+	ReceiptID *uuid.UUID `json:"receipt_id,omitempty" gorm:"type:uuid"` // чек: общий id позиций одной продажи
 }
+
+// SaleMethodLater — продажа в долг (Ж6): товар выдан, деньги — при расчёте.
+const SaleMethodLater = "later"
 
 func (s *Sale) BeforeCreate(tx *gorm.DB) error {
 	if s.ID == uuid.Nil {

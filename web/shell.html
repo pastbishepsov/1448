@@ -1529,6 +1529,7 @@ const SH_RU = {
   ntf_kt_cancelled: "↩ {n}: отменён",
   ntf_kt_other: "🍔 {n}: обновление заказа",
   ntf_kt_unpaid: "🧾 Не забудь рассчитаться за кухню у стойки: {z} zł",
+  ntf_unpaid: "🧾 Не забудь рассчитаться у стойки: {z} zł (кухня и бар)",
   ntf_birthday: "🎂 С днём рождения! Клуб дарит кейс {t} — открой его во вкладке «Кейсы»",
   ntf_default: "🔔 Обновление аккаунта",
   ntf_profile: "🔔 Админ обновил твои данные: {f}",
@@ -1653,6 +1654,7 @@ const SH_RU = {
   eo_r_manual: "Сессия завершена из приложения",
   eo_left: "Осталось на кошельке: <b>{z}</b>",
   eo_kitchen: "Кухня к оплате: <b>{z}</b> — рассчитайся у стойки",
+  eo_unpaid: "К оплате у стойки: <b>{z}</b> — кухня и бар",
   eo_streak: "Стрик визитов: <b>{s}</b>",
 };
 
@@ -2071,6 +2073,7 @@ const SH_EN = {
   ntf_kt_cancelled: "↩ {n}: cancelled",
   ntf_kt_other: "🍔 {n}: order update",
   ntf_kt_unpaid: "🧾 Don’t forget to pay for the kitchen at the desk: {z} zł",
+  ntf_unpaid: "🧾 Don’t forget to settle at the desk: {z} zł (kitchen and bar)",
   ntf_birthday: "🎂 Happy birthday! The club gifts you a {t} case — open it in the “Cases” tab",
   ntf_default: "🔔 Account update",
   ntf_profile: "🔔 An admin updated your details: {f}",
@@ -2195,6 +2198,7 @@ const SH_EN = {
   eo_r_manual: "Ended from the app",
   eo_left: "Wallet left: <b>{z}</b>",
   eo_kitchen: "Kitchen to pay: <b>{z}</b> — settle at the desk",
+  eo_unpaid: "To pay at the desk: <b>{z}</b> — kitchen and bar",
   eo_streak: "Visit streak: <b>{s}</b>",
 };
 
@@ -2613,6 +2617,7 @@ const SH_PL = {
   ntf_kt_cancelled: "↩ {n}: anulowane",
   ntf_kt_other: "🍔 {n}: aktualizacja zamówienia",
   ntf_kt_unpaid: "🧾 Nie zapomnij zapłacić za kuchnię przy ladzie: {z} zł",
+  ntf_unpaid: "🧾 Nie zapomnij rozliczyć się przy ladzie: {z} zł (kuchnia i bar)",
   ntf_birthday: "🎂 Wszystkiego najlepszego! Klub daje ci skrzynkę {t} — otwórz ją w zakładce „Skrzynki”",
   ntf_default: "🔔 Aktualizacja konta",
   ntf_profile: "🔔 Administrator zaktualizował twoje dane: {f}",
@@ -2737,6 +2742,7 @@ const SH_PL = {
   eo_r_manual: "Sesja zakończona z aplikacji",
   eo_left: "Zostało w portfelu: <b>{z}</b>",
   eo_kitchen: "Kuchnia do zapłaty: <b>{z}</b> — rozlicz się przy ladzie",
+  eo_unpaid: "Do zapłaty przy ladzie: <b>{z}</b> — kuchnia i bar",
   eo_streak: "Seria wizyt: <b>{s}</b>",
 };
 
@@ -4075,7 +4081,7 @@ function notifText(n){
       }
       return T('ntf_kt_other', {n: nm});
     }
-    case 'kitchen_unpaid': return T('ntf_kt_unpaid', {z: p.total_pln||0});
+    case 'kitchen_unpaid': return T(p.bar_pln > 0 ? 'ntf_unpaid' : 'ntf_kt_unpaid', {z: p.total_pln||0}); // Ж6: бар в долг — тот же долг у стойки
     case 'streak_frozen': return T('ntf_streak_frozen', {n: p.days||1, left: p.left||0});
     case 'birthday_gift': return T('ntf_birthday', {t: p.case_tier||''});
     // Е0: свои данные менял не гость. Сервер шлёт СТАБИЛЬНЫЕ ключи полей,
@@ -4548,7 +4554,8 @@ function showEndScreen(d, reasonKey, external){
   const r = d.receipt, rc = document.getElementById('eoReceipt');
   if (r){
     const lines = [T('eo_left', {z: fmtZl(r.wallet_grosz)})];
-    if (r.kitchen_unpaid_pln > 0) lines.push('<span class="debt">' + T('eo_kitchen', {z: fmtZl(Math.round(r.kitchen_unpaid_pln * 100))}) + '</span>');
+    if (r.bar_unpaid_pln > 0) lines.push('<span class="debt">' + T('eo_unpaid', {z: fmtZl(Math.round((r.unpaid_pln || 0) * 100))}) + '</span>'); // Ж6 (Ж-Р8): кухня + бар одной строкой
+    else if (r.kitchen_unpaid_pln > 0) lines.push('<span class="debt">' + T('eo_kitchen', {z: fmtZl(Math.round(r.kitchen_unpaid_pln * 100))}) + '</span>');
     if (r.streak_days > 0) lines.push(T('eo_streak', {s: T('streak_days', {n: r.streak_days})}));
     rc.innerHTML = lines.map(l => `<span>${l}</span>`).join('');
   }

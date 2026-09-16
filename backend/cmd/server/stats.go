@@ -73,10 +73,11 @@ func handleAdminStatsShift(c *gin.Context) {
 	// депозитом, которым гость пополнял кошелёк. Считать их второй раз значит
 	// показать владельцу выручку больше, чем реально в кассе (ревью 26.08:
 	// /admin/sales и aggMoney это правило соблюдают, сводка смены — нет).
+	// Ж6 (Ж-Р8): деньги по paid_at — долг «при выходе» ложится в смену расчёта.
 	depRows = nil
 	db.Model(&models.Sale{}).
 		Select("method, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> ?", from, to, "wallet").
+		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> ?", from, to, "wallet").
 		Group("method").Scan(&depRows)
 	var goodsPLN float64
 	var saleCount int64
@@ -92,13 +93,29 @@ func handleAdminStatsShift(c *gin.Context) {
 	var walletCount int64
 	db.Model(&models.Sale{}).
 		Select("COALESCE(SUM(total_pln),0)").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method = ?", from, to, "wallet").
+		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method = ?", from, to, "wallet").
 		Scan(&walletPLN)
 	db.Model(&models.Sale{}).
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method = ?", from, to, "wallet").
+		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method = ?", from, to, "wallet").
 		Count(&walletCount)
 	saleCount += walletCount
 	totalPLN := depPLN + goodsPLN
+	// Ж6: долг, выданный в эту смену и ещё не рассчитанный — не выручка, но
+	// владелец должен видеть, сколько «висит» (бар + кухня)
+	var unpaidPLN float64
+	var unpaidCount int64
+	db.Model(&models.Sale{}).Select("COALESCE(SUM(total_pln),0)").
+		Where("created_at >= ? AND created_at < ? AND paid_at IS NULL AND voided_at IS NULL", from, to).Scan(&unpaidPLN)
+	db.Model(&models.Sale{}).
+		Where("created_at >= ? AND created_at < ? AND paid_at IS NULL AND voided_at IS NULL", from, to).Count(&unpaidCount)
+	var kUnpaid struct {
+		Cnt int64
+		Sum float64
+	}
+	db.Model(&models.KitchenOrder{}).Select("COUNT(*) AS cnt, COALESCE(SUM(total_pln),0) AS sum").
+		Where("created_at >= ? AND created_at < ? AND status = ? AND paid_at IS NULL", from, to, models.KitchenDone).Scan(&kUnpaid)
+	unpaidPLN += kUnpaid.Sum
+	unpaidCount += kUnpaid.Cnt
 
 	// сессии: начатые в окне; часы — по завершённым в окне (начисления
 	// привязаны к завершению, активные ещё не отыграли своё)
@@ -194,10 +211,13 @@ func handleAdminStatsShift(c *gin.Context) {
 		"revenue": gin.H{"total_pln": totalPLN, "by_method": byMethod, "deposits": depCount,
 			"deposits_pln": depPLN, "goods_pln": goodsPLN, "sales": saleCount,
 			// оборот кошельком — уже учтён в депозитах, в total_pln не входит
-			"wallet_pln": walletPLN, "wallet_sales": walletCount},
+			"wallet_pln": walletPLN, "wallet_sales": walletCount,
+			// Ж6: выдано в долг за смену и ещё не рассчитано (бар + кухня) — не выручка
+			"unpaid_pln": roundPLN(unpaidPLN), "unpaid": unpaidCount},
 		"sessions":   gin.H{"started": sessStarted, "minutes": minutes},
 		"new_guests": newGuests,
 		"bookings":   gin.H{"created": bkCreated, "cancelled": bkCancelled},
 		"incidents":  gin.H{"bans": bans, "repairs": repairs, "calls": calls},
+		"closeouts":  closeoutsForDay(key), // Ж6-и4: сдачи касс за смену — ожидалось / пересчитано / расхождение
 	})
 }

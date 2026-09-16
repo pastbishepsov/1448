@@ -251,10 +251,12 @@ func aggMoney(p period) moneyAgg {
 		Cnt   int64
 		Items int64
 	}
-	// Р7 (Г7): продажи «кошельком» — погашение обязательства, НЕ выручка
+	// Р7 (Г7): продажи «кошельком» — погашение обязательства, НЕ выручка.
+	// Ж6 (Ж-Р8): деньги считаются по paid_at — продажа в долг попадает в
+	// выручку в момент расчёта у стойки, а не когда товар выдали.
 	db.Model(&models.Sale{}).
 		Select("COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt, COALESCE(SUM(qty),0) AS items").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Scan(&goods)
+		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Scan(&goods)
 	a.GoodsPLN, a.GoodsSales, a.GoodsItems = goods.Pln, goods.Cnt, goods.Items
 
 	// Е2-и6: пакеты времени. Кошельком оплаченные в выручку НЕ идут (Г-Р7) —
@@ -294,7 +296,7 @@ func aggMoney(p period) moneyAgg {
 	}
 	rows = nil
 	db.Model(&models.Sale{}).Select("method, COALESCE(SUM(total_pln),0) AS pln").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
+		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
 		Group("method").Scan(&rows)
 	for _, r := range rows {
 		add(r.Method, r.Pln)
@@ -345,8 +347,8 @@ func handleReportMoney(c *gin.Context) {
 	}
 	rows = nil
 	db.Model(&models.Sale{}).
-		Select(dayExpr("created_at", reportHour)+" AS d, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
+		Select(dayExpr("paid_at", reportHour)+" AS d, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
+		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
 		Group("d").Order("d").Scan(&rows)
 	for _, r := range rows {
 		v := get(r.D.Format("2006-01-02"))
@@ -391,9 +393,9 @@ func handleReportMoney(c *gin.Context) {
 	}
 	admRows = nil
 	db.Model(&models.Sale{}).
-		Select("created_by AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
-		Group("created_by").Scan(&admRows)
+		Select("COALESCE(paid_by, created_by) AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
+		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
+		Group("COALESCE(paid_by, created_by)").Scan(&admRows)
 	for _, r := range admRows {
 		a := getAdmin(r.AdminID)
 		a.goods, a.sales = r.Pln, r.Cnt
@@ -419,11 +421,13 @@ func handleReportMoney(c *gin.Context) {
 		Pln   float64
 		Items int64
 	}
-	// штуки — полные (и кухня с кошельков тоже: владельцу важно, что едят);
-	// деньги — только выручка (Р7: wallet-продажи в неё не входят)
+	// штуки — полные (и кухня с кошельков тоже: владельцу важно, что едят), по
+	// моменту продажи; деньги — только выручка (Р7: wallet-продажи в неё не
+	// входят) и по моменту расчёта (Ж6: долг считается, когда его закрыли)
 	db.Model(&models.Sale{}).
-		Select("name, COALESCE(SUM(total_pln) FILTER (WHERE method <> 'wallet'),0) AS pln, COALESCE(SUM(qty),0) AS items").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
+		Select("name, COALESCE(SUM(total_pln) FILTER (WHERE method <> 'wallet' AND paid_at >= ? AND paid_at < ?),0) AS pln, "+
+			"COALESCE(SUM(qty) FILTER (WHERE created_at >= ? AND created_at < ?),0) AS items", p.From, p.To, p.From, p.To).
+		Where("((created_at >= ? AND created_at < ?) OR (paid_at >= ? AND paid_at < ?)) AND voided_at IS NULL", p.From, p.To, p.From, p.To).
 		Group("name").Order("pln DESC").Limit(15).Scan(&goodRows)
 	topGoods := make([]gin.H, 0, len(goodRows))
 	for _, r := range goodRows {
@@ -997,9 +1001,9 @@ func handleReportStaff(c *gin.Context) {
 	}
 
 	var sales []models.Sale
-	db.Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Find(&sales)
+	db.Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Find(&sales)
 	for _, sl := range sales {
-		b := get(shiftOf(sl.CreatedAt))
+		b := get(shiftOf(*sl.PaidAt)) // Ж6: деньги — по моменту расчёта
 		b.goods += sl.TotalPLN
 		b.sales++
 	}
@@ -1087,9 +1091,9 @@ func handleReportStaff(c *gin.Context) {
 	}
 	depRows = nil
 	db.Model(&models.Sale{}).
-		Select("created_by AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
-		Group("created_by").Scan(&depRows)
+		Select("COALESCE(paid_by, created_by) AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
+		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
+		Group("COALESCE(paid_by, created_by)").Scan(&depRows)
 	for _, r := range depRows {
 		w := who(r.AdminID)
 		w.revenue += r.Pln

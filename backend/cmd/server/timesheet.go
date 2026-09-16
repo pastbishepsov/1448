@@ -186,11 +186,35 @@ func shiftSuffix(name string) string {
 	return " · " + name
 }
 
-// POST /admin/work/stop — «ушёл» (staff, за себя).
+// POST /admin/work/stop {counted_pln?, note?} — «ушёл» (staff, за себя).
+//
+// Ж6-и4 (№32): уход — это и сдача кассы. counted_pln — пересчитанные
+// наличные в ящике: сервер сравнит с ожидаемой суммой по операциям админа за
+// клубные сутки (closeout.go), запишет расхождение и сообщит владельцу;
+// без counted_pln — «ушёл без пересчёта», запись с пометкой skipped. Тело
+// необязательно: старый вызов без него — уход без пересчёта.
 func handleWorkStop(c *gin.Context) {
 	userID, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "bad_token", "message": "Не разобрал токен"})
+		return
+	}
+	var req struct {
+		CountedPLN *float64 `json:"counted_pln"`
+		Note       string   `json:"note"`
+	}
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "counted_pln — сумма в злотых, note — текст"})
+			return
+		}
+	}
+	if req.CountedPLN != nil && (*req.CountedPLN < 0 || *req.CountedPLN > 1_000_000) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_amount", "message": "Пересчитанная сумма — от 0 до 1 000 000 zł"})
+		return
+	}
+	if len([]rune(req.Note)) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "too_long", "message": "Заметка — до 500 символов"})
 		return
 	}
 	open := openEntryFor(userID)
@@ -208,7 +232,11 @@ func handleWorkStop(c *gin.Context) {
 	}
 	logAdminAction(c, "work_stop", nil, fmt.Sprintf("ушёл · %s", hoursRU(int64(mins))))
 	open.EndedAt, open.Minutes = &now, mins
-	c.JSON(http.StatusOK, gin.H{"entry": workOut(open, "")})
+	resp := gin.H{"entry": workOut(open, "")}
+	if co := recordCloseout(c, userID, open, req.CountedPLN, req.Note, now); co != nil {
+		resp["closeout"] = closeoutOut(co)
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func hoursRU(minutes int64) string {
@@ -281,6 +309,7 @@ func handleWorkList(c *gin.Context) {
 	}
 	nick := nicknamesByID(ids)
 
+	closeouts := closeoutsByEntry(entries) // Ж6-и4: сдача кассы у записи табеля
 	items := make([]gin.H, 0, len(entries))
 	openCnt, autoCnt := 0, 0
 	for i := range entries {
@@ -292,6 +321,9 @@ func handleWorkList(c *gin.Context) {
 		row := workOut(&w, name)
 		row["nickname"] = nick[w.UserID.String()]
 		row["user_id"] = w.UserID
+		if co, ok := closeouts[w.ID.String()]; ok {
+			row["closeout"] = co
+		}
 		items = append(items, row)
 		if w.EndedAt == nil {
 			openCnt++
