@@ -582,13 +582,28 @@ func livePackage(id string) (*models.TimePackage, *models.Zone, string) {
 // GET /admin/users/:id/packages — пакеты гостя у стойки (staff).
 func handleAdminUserPackages(c *gin.Context) {
 	list, live := userPackages(c.Param("id"))
-	c.JSON(http.StatusOK, gin.H{"packages": list, "minutes_live": live})
+	c.JSON(http.StatusOK, gin.H{"packages": list, "minutes_live": live,
+		"minutes_by_zone": reserveByZone(c.Param("id"))})
 }
 
-// GET /me/packages — свои пакеты (шелл и PWA).
+// GET /me/packages — свои пакеты (шелл и PWA). Ж2: рядом — запас минут за
+// монеты и компенсации по зонам (minutes_by_zone), чтобы клиент печатал его
+// словами зоны, а не одним числом «везде».
 func handleMyPackages(c *gin.Context) {
 	list, live := userPackages(c.GetString("user_id"))
-	c.JSON(http.StatusOK, gin.H{"packages": list, "minutes_live": live})
+	c.JSON(http.StatusOK, gin.H{"packages": list, "minutes_live": live,
+		"minutes_by_zone": reserveByZone(c.GetString("user_id"))})
+}
+
+// reserveByZone — зонные гранты гостя + пул без зоны (users.coin_minutes).
+func reserveByZone(userID string) []zoneMinutes {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil
+	}
+	var pool int64
+	db.Model(&models.User{}).Select("COALESCE(coin_minutes,0)").Where("id = ?", uid).Scan(&pool)
+	return grantMinutesByZone(uid, pool)
 }
 
 // userPackages — история пакетов гостя и сумма ЖИВЫХ минут. Отменённые и

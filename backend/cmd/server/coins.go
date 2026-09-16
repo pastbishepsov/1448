@@ -102,15 +102,23 @@ func handleAdminRedeemCoins(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"code": "no_club", "message": "Клуб не найден"})
 		return
 	}
+	// Ж2 (Ж-Р3): зона обязательна и означает ЗОНУ, а не цену — выданные
+	// минуты годны только в ней (как пакет, Р10). Без zone_id берём зону ПК,
+	// за которым гость сидит сейчас; нет сессии — админ выбирает в форме.
+	// Клуб без зон вовсе — минуты без зоны по клубному тарифу (годны везде).
+	zone, code := redeemZoneFor(req.ZoneID, user.ID)
+	if code != "" {
+		c.JSON(map[string]int{"zone_not_found": http.StatusNotFound, "zone_required": http.StatusBadRequest}[code],
+			gin.H{"code": code, "message": map[string]string{
+				"zone_not_found": "Зона не найдена",
+				"zone_required":  "Выбери зону — минуты годны только в ней (гость не за ПК)",
+			}[code]})
+		return
+	}
 	rate, zoneName := club.BaseRatePLN, ""
 	var zoneID *uuid.UUID
-	if req.ZoneID != "" {
-		var z models.Zone
-		if err := db.First(&z, "id = ?", req.ZoneID).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"code": "zone_not_found", "message": "Зона не найдена"})
-			return
-		}
-		rate, zoneName, zoneID = z.RatePLN, z.Name, &z.ID
+	if zone != nil {
+		rate, zoneName, zoneID = zone.RatePLN, zone.Name, &zone.ID
 	}
 
 	sr := spendRate()
@@ -144,12 +152,14 @@ func handleAdminRedeemCoins(c *gin.Context) {
 		}
 		// Г1-и5: выданные минуты — в минутный запас гостя; биллинг тратит его
 		// РАНЬШЕ кошелька, так «монеты гасятся только временем» перестаёт быть
-		// честным словом и становится учётом.
-		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).
-			UpdateColumn("coin_minutes", gorm.Expr("coin_minutes + ?", rec.Minutes)).Error; err != nil {
+		// честным словом и становится учётом. Ж2: запас теперь зонный —
+		// строка minute_grants на выдачу (ref_id → выдача), а не общий счётчик.
+		if err := tx.Create(&rec).Error; err != nil {
 			return err
 		}
-		return tx.Create(&rec).Error
+		refID := rec.ID
+		grant := grantFor(user.ID, zone, rec.Minutes, models.MinuteGrantRedeem, &refID, &adminID)
+		return tx.Create(&grant).Error
 	})
 	if err == errNotEnoughCoins {
 		c.JSON(http.StatusConflict, gin.H{"code": "not_enough_coins", "message": "Монет не хватило"})
@@ -162,7 +172,9 @@ func handleAdminRedeemCoins(c *gin.Context) {
 
 	// Г1: свежие минуты оживляют активную сессию — предупреждения и грейс
 	// начинаются заново (как у депозита; общая точка — reviveActiveSession).
-	reviveActiveSession(user.ID, nil)
+	// Ж2: только сессию в ЭТОЙ зоне — минуты чужой зоны сессию не спасают,
+	// как и пакет (К0-и2).
+	reviveActiveSession(user.ID, zoneID)
 
 	db.First(user, "id = ?", user.ID)
 	target := user.ID
@@ -172,8 +184,34 @@ func handleAdminRedeemCoins(c *gin.Context) {
 		"nickname": user.Nickname, "minutes": rec.Minutes, "coins": rec.Coins, "zone": zoneName})
 	c.JSON(http.StatusOK, gin.H{
 		"id": rec.ID, "minutes": rec.Minutes, "coins": rec.Coins, "value_pln": rec.ValuePLN,
-		"zone": zoneName, "coins_balance": user.CoinsBalance, "coin_minutes": user.CoinMinutes,
+		"zone": zoneName, "zone_id": zoneID, "coins_balance": user.CoinsBalance, "coin_minutes": user.CoinMinutes,
+		"zone_minutes": grantMinutesByZone(user.ID, user.CoinMinutes), // Ж2: запас по зонам для карточки
 	})
+}
+
+// redeemZoneFor — зона выдачи (Ж2): явная из запроса; иначе зона ПК активной
+// сессии гостя; иначе — если зон в клубе нет — без зоны, а если есть —
+// «zone_required». Коды: zone_not_found | zone_required | "".
+func redeemZoneFor(zoneIDStr string, userID uuid.UUID) (*models.Zone, string) {
+	if zoneIDStr != "" {
+		var z models.Zone
+		if err := db.First(&z, "id = ?", zoneIDStr).Error; err != nil {
+			return nil, "zone_not_found"
+		}
+		return &z, ""
+	}
+	var s models.Session
+	if db.Where("user_id = ? AND status = ?", userID, models.SessionStatusActive).First(&s).Error == nil {
+		if z := zoneByID(zoneOfComputer(s.ComputerID)); z != nil {
+			return z, ""
+		}
+	}
+	var zones int64
+	db.Model(&models.Zone{}).Count(&zones)
+	if zones == 0 {
+		return nil, ""
+	}
+	return nil, "zone_required"
 }
 
 var errNotEnoughCoins = fmt.Errorf("not_enough_coins")
@@ -214,6 +252,7 @@ func handleCoinRedeemVoid(c *gin.Context) {
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
 	coinsReturned := rec.Coins
+	minutesTakenBack := 0
 	err := db.Transaction(func(tx *gorm.DB) error {
 		// CAS по voided_at: проверка выше сделана вне транзакции, и двойной
 		// клик по «отменить» возвращал монеты дважды (ревью 26.08).
@@ -229,22 +268,31 @@ func handleCoinRedeemVoid(c *gin.Context) {
 		// Г1-и5: забираем обратно минутный запас — но не больше, чем у гостя
 		// осталось: если часть выданного времени уже отсижена, вернуть можно
 		// только неотсиженный хвост (отмена существует для свежих ошибок).
-		var before int
-		if err := tx.Model(&models.User{}).Where("id = ?", rec.UserID).
-			Select("coin_minutes").Scan(&before).Error; err != nil {
-			return err
-		}
-		takenBack := rec.Minutes
-		if before < takenBack {
-			takenBack = before
-		}
-		if err := tx.Model(&models.User{}).Where("id = ?", rec.UserID).
-			UpdateColumn("coin_minutes", gorm.Expr("GREATEST(coin_minutes - ?, 0)", rec.Minutes)).Error; err != nil {
-			return err
+		// Ж2: у выдачи свой грант — остаток известен точно, по нему и монеты;
+		// старые выдачи без гранта — по общему пулу, как раньше.
+		var takenBack int
+		if left, found := grantsRemainingFor(tx, rec.ID); found {
+			takenBack = left
+			if err := tx.Model(&models.MinuteGrant{}).Where("ref_id = ?", rec.ID).
+				UpdateColumn("minutes_left", 0).Error; err != nil {
+				return err
+			}
+		} else {
+			var before int
+			if err := tx.Model(&models.User{}).Where("id = ?", rec.UserID).
+				Select("coin_minutes").Scan(&before).Error; err != nil {
+				return err
+			}
+			takenBack = min(rec.Minutes, before)
+			if err := tx.Model(&models.User{}).Where("id = ?", rec.UserID).
+				UpdateColumn("coin_minutes", gorm.Expr("GREATEST(coin_minutes - ?, 0)", rec.Minutes)).Error; err != nil {
+				return err
+			}
 		}
 		// Монеты возвращаем ПРОПОРЦИОНАЛЬНО реально изъятым минутам: иначе за
 		// уже отыгранный час гость получал и время, и все монеты назад — так
 		// же, как это делает refundForVoid у пакетов (ревью 26.08).
+		minutesTakenBack = takenBack
 		coinsReturned = refundCoinsForVoid(rec.Coins, rec.Minutes, takenBack)
 		if coinsReturned <= 0 {
 			return nil
@@ -262,8 +310,8 @@ func handleCoinRedeemVoid(c *gin.Context) {
 	}
 	target := rec.UserID
 	logAdminAction(c, "coin_redeem_void", &target,
-		fmt.Sprintf("отмена: %d мин%s, %d монет вернулись", rec.Minutes, zoneSuffix(rec.ZoneName), coinsReturned))
-	c.JSON(http.StatusOK, gin.H{"voided": rec.ID, "coins_returned": coinsReturned})
+		fmt.Sprintf("отмена: %d мин%s, забрано %d мин, %d монет вернулись", rec.Minutes, zoneSuffix(rec.ZoneName), minutesTakenBack, coinsReturned))
+	c.JSON(http.StatusOK, gin.H{"voided": rec.ID, "coins_returned": coinsReturned, "minutes_taken": minutesTakenBack})
 }
 
 // ── Отчёт «Монеты»: эмиссия и обязательства ───────────────────────────
@@ -338,6 +386,21 @@ func handleReportCoins(c *gin.Context) {
 
 	var onHand int64
 	db.Model(&models.User{}).Select("COALESCE(SUM(coins_balance),0)").Scan(&onHand)
+	// Ж2: выданные и ещё не отыгранные минуты — обязательство клуба временем,
+	// по обеим таблицам: пул без зоны (coin_minutes) и зонные гранты.
+	var owedPool, owedZoned int64
+	db.Model(&models.User{}).Select("COALESCE(SUM(coin_minutes),0)").Scan(&owedPool)
+	db.Model(&models.MinuteGrant{}).Select("COALESCE(SUM(minutes_left),0)").Scan(&owedZoned)
+	var owedZones []struct {
+		ZoneName string
+		Minutes  int64
+	}
+	db.Model(&models.MinuteGrant{}).Select("COALESCE(MAX(zone_name),'') AS zone_name, COALESCE(SUM(minutes_left),0) AS minutes").
+		Where("minutes_left > 0").Group("zone_id").Order("MAX(zone_name)").Scan(&owedZones)
+	owedRows := make([]gin.H, 0, len(owedZones))
+	for _, z := range owedZones {
+		owedRows = append(owedRows, gin.H{"zone": z.ZoneName, "minutes": z.Minutes})
+	}
 
 	// сколько монет капает за час игры и какая это доля цены часа — та самая
 	// цифра, ради которой владелец и просил конвертер
@@ -395,6 +458,8 @@ func handleReportCoins(c *gin.Context) {
 			"coins":     onHand,
 			"value_pln": coinValuePLN(onHand, sr),
 		},
+		// Ж2: минуты, которые клуб ещё должен временем
+		"minutes_owed": gin.H{"total": owedPool + owedZoned, "pool": owedPool, "zoned": owedZoned, "by_zone": owedRows},
 		"rates":       gin.H{"spend": sr, "buy": settingInt64("coins_per_pln", coinsPerPLN), "per_min": perMin},
 		"converter":   rows,
 		"redemptions": items,

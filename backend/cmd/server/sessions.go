@@ -255,11 +255,14 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		// гость с пятичасовым пакетом и пустым кошельком не смог бы сесть за
 		// машину, время на которой он уже оплатил.
 		packMin := livePackMinutes(user.ID, computer.ZoneID, now)
-		covered := int64(minutesLeft(user.CoinMinutes, packMin, user.WalletGrosz, rateGrosz, 0))
+		// Ж2 (Ж-Р3): зонные минуты — только ЭТОЙ зоны: минуты «в Standard» на
+		// VIP-машину не пускают, как и пакет чужой зоны.
+		reserveMin := user.CoinMinutes + liveGrantMinutes(user.ID, computer.ZoneID)
+		covered := int64(minutesLeft(reserveMin, packMin, user.WalletGrosz, rateGrosz, 0))
 		if covered < minStart {
 			needPLN := models.PLNFromGrosz(costForMinutes(rateGrosz, int(minStart)))
 			return http.StatusConflict, gin.H{"code": "wallet_low",
-				"message": walletLowMessage(minStart, needPLN, models.PLNFromGrosz(user.WalletGrosz), user.CoinMinutes, packMin)}
+				"message": walletLowMessage(minStart, needPLN, models.PLNFromGrosz(user.WalletGrosz), reserveMin, packMin)}
 		}
 	}
 
@@ -677,6 +680,8 @@ func handleGetMySessions(c *gin.Context) {
 	var bookingDeadline *time.Time
 	var activeComputer string // Е1: экран [Готов!] называет машину — «ПК-07»
 	var packMinutes int64     // Е2-и5: минуты пакета, годные ЗДЕСЬ — прогноз без них врёт
+	var zoneMinutes int64     // Ж2: зонные минуты (за монеты, компенсации), годные ЗДЕСЬ
+	var activeZone string     // Ж2: имя зоны машины — клиент говорит «в этой зоне» словами
 	hasActive := false
 	for i := range sessions {
 		if sessions[i].Status != models.SessionStatusActive {
@@ -694,13 +699,17 @@ func handleGetMySessions(c *gin.Context) {
 			// пакетам сразу значило бы обещать гостю время, которое на ЭТОЙ
 			// машине не потратить.
 			packMinutes = livePackMinutes(sessions[i].UserID, pc.ZoneID, time.Now())
+			zoneMinutes = liveGrantMinutes(sessions[i].UserID, pc.ZoneID)
+			if z := zoneByID(pc.ZoneID); z != nil {
+				activeZone = z.Name
+			}
 		}
 		break
 	}
 
 	resp := gin.H{"count": len(sessions), "sessions": sessions,
-		"booking_deadline": bookingDeadline, "computer": activeComputer,
-		"pack_minutes": packMinutes}
+		"booking_deadline": bookingDeadline, "computer": activeComputer, "zone": activeZone,
+		"pack_minutes": packMinutes, "zone_minutes": zoneMinutes}
 	// К3-и6: сессию закрыли не с этого экрана (админ, ноль кошелька, бронь,
 	// AFK, телефон) — киоск узнаёт об этом из поллинга и показывает тот же
 	// экран «Сессия завершена» с чеком. Чек считаем только когда он к месту:

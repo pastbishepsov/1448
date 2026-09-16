@@ -5,10 +5,11 @@ package main
 //
 // Как это работает:
 //   - фоновый прогон раз в billingTickSeconds по всем активным сессиям;
-//   - за каждую ПРОШЕДШУЮ целую минуту сессия «доначисляется»: сперва из
-//     минутного запаса монет (users.coin_minutes, В4-redeem — Г1-и5), потом
-//     деньгами из кошелька по ставке сессии (цена зоны минус скидки — та же
-//     effective_rate_pln, что и раньше);
+//   - за каждую ПРОШЕДШУЮ целую минуту сессия «доначисляется»: сперва
+//     зонными минутами этой зоны (minute_grants, Ж2 / Ж-Р3), потом минутным
+//     запасом без зоны (users.coin_minutes, В4-redeem — Г1-и5), потом
+//     пакетами зоны (Е2-и3) и деньгами из кошелька по ставке сессии (цена
+//     зоны минус скидки — та же effective_rate_pln, что и раньше);
 //   - деньги уходят ТОЛЬКО через walletApply (kind=session_spend, ref=сессия) —
 //     журнал остаётся полным, инвариант Г0 не нарушается;
 //   - суммы считаются от общего итога (chargeDelta), а не по минуте: за 60
@@ -84,20 +85,22 @@ func minutesAffordable(wallet, rateGrosz int64, already int) int {
 	return m
 }
 
-// minutesLeft — прогноз: минутный запас монет + минуты пакета + деньги
-// кошелька (Е2-и3). Пакет входит сюда обязательно: гость с пятичасовым
-// пакетом и пустым кошельком должен видеть пять часов, а не ноль, — и по
-// этому же прогнозу его пускает порог старта.
+// minutesLeft — прогноз: минутный запас (зонные минуты ЭТОЙ зоны + пул без
+// зоны, Ж2) + минуты пакета + деньги кошелька (Е2-и3). Пакет входит сюда
+// обязательно: гость с пятичасовым пакетом и пустым кошельком должен видеть
+// пять часов, а не ноль, — и по этому же прогнозу его пускает порог старта.
+// Зонные минуты ЧУЖОЙ зоны сюда не входят намеренно: здесь их не потратить.
 func minutesLeft(coinMinutes, packMinutes, wallet, rateGrosz int64, alreadyMoney int) int {
 	return int(coinMinutes) + int(packMinutes) + minutesAffordable(wallet, rateGrosz, alreadyMoney)
 }
 
 // walletTickPayload — единое тело wallet_update для шелла.
-func walletTickPayload(u *models.User, s *models.Session, left int) map[string]any {
+func walletTickPayload(u *models.User, s *models.Session, left int, zoneMinutes int64) map[string]any {
 	return map[string]any{
 		"wallet_grosz":   u.WalletGrosz,
 		"wallet_pln":     models.PLNFromGrosz(u.WalletGrosz),
 		"coin_minutes":   u.CoinMinutes,
+		"zone_minutes":   zoneMinutes,       // Ж2: зонные минуты, годные на ЭТОЙ машине
 		"pack_minutes":   s.PackMinutesUsed, // Е2-и3: сколько этой сессии закрыл пакет
 		"minutes_left":   left,
 		"charged_grosz":  s.ChargedGrosz,
@@ -106,9 +109,10 @@ func walletTickPayload(u *models.User, s *models.Session, left int) map[string]a
 }
 
 // settleSessionMinutes — доначислить сессии минуты до targetMinutes: сперва
-// минутным запасом, затем кошельком; если денег на весь хвост нет — списывает
-// сколько покрывается и сообщает, что упёрлись в ноль. Вся правка — одной
-// транзакцией, сессия под условием status=active (гонка с завершением).
+// зонными минутами этой зоны (Ж2), затем пулом без зоны, пакетами зоны и
+// кошельком; если денег на весь хвост нет — списывает сколько покрывается и
+// сообщает, что упёрлись в ноль. Вся правка — одной транзакцией, сессия под
+// условием status=active (гонка с завершением).
 // bestEffort=true (финальный расчёт при завершении) не считает ноль ошибкой.
 func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes int, now time.Time) (hitZero bool, err error) {
 	delta := targetMinutes - s.BilledMinutes
@@ -129,21 +133,27 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 			First(user, "id = ?", s.UserID).Error; err != nil {
 			return err
 		}
-		useCoin := int64(delta)
+		// Ж2 (Ж-Р3): сперва зонные минуты этой зоны — они годны только здесь,
+		// а пул без зоны пригодится гостю и на другой машине.
+		useGrant, gerr := takeGrantMinutes(tx, liveGrantsFor(tx, s.UserID, zoneID), delta)
+		if gerr != nil {
+			return gerr
+		}
+		useCoin := int64(delta - useGrant)
 		if useCoin > user.CoinMinutes {
 			useCoin = user.CoinMinutes
 		}
 		// Е2-и3: после монет — минуты пакета этой зоны, ближайший к сгоранию
 		// первым. Деньги трогаем только тем, что пакеты не закрыли.
 		usePack := 0
-		if rest := delta - int(useCoin); rest > 0 {
+		if rest := delta - useGrant - int(useCoin); rest > 0 {
 			var perr error
 			usePack, perr = takePackageMinutes(tx, livePackagesFor(tx, s.UserID, zoneID, now), rest)
 			if perr != nil {
 				return perr
 			}
 		}
-		payMin := delta - int(useCoin) - usePack
+		payMin := delta - useGrant - int(useCoin) - usePack
 		charge := chargeDelta(rateGrosz, s.MoneyMinutes, payMin)
 		if charge > user.WalletGrosz {
 			payMin = minutesAffordable(user.WalletGrosz, rateGrosz, s.MoneyMinutes)
@@ -154,8 +164,8 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 		// Сессию правим первой и только пока она active: если её параллельно
 		// завершили — не списываем ничего.
 		upd := map[string]any{
-			"billed_minutes":    s.BilledMinutes + int(useCoin) + usePack + payMin,
-			"coin_minutes_used": s.CoinMinutesUsed + int(useCoin),
+			"billed_minutes":    s.BilledMinutes + useGrant + int(useCoin) + usePack + payMin,
+			"coin_minutes_used": s.CoinMinutesUsed + useGrant + int(useCoin), // зонные минуты — тот же запас за монеты
 			"pack_minutes_used": s.PackMinutesUsed + usePack,
 			"money_minutes":     s.MoneyMinutes + payMin,
 			"charged_grosz":     s.ChargedGrosz + charge,
@@ -185,8 +195,8 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 			}
 		}
 		// локальное состояние — для прогноза и уведомлений после транзакции
-		s.BilledMinutes += int(useCoin) + usePack + payMin
-		s.CoinMinutesUsed += int(useCoin)
+		s.BilledMinutes += useGrant + int(useCoin) + usePack + payMin
+		s.CoinMinutesUsed += useGrant + int(useCoin)
 		s.PackMinutesUsed += usePack
 		s.MoneyMinutes += payMin
 		s.ChargedGrosz += charge
@@ -343,9 +353,11 @@ func billSession(s *models.Session, now time.Time) bool {
 		checkAchievements(s.UserID, fullPlayerStats(s.UserID, now))
 	}
 
-	packLeft := livePackMinutes(s.UserID, zoneOfComputer(s.ComputerID), now) // Е2-и3
-	left := minutesLeft(user.CoinMinutes, packLeft, user.WalletGrosz, rateGrosz, s.MoneyMinutes)
-	notifyShell(s.ComputerID.String(), websocket.MsgWalletUpdate, walletTickPayload(&user, s, left))
+	zoneID := zoneOfComputer(s.ComputerID)
+	packLeft := livePackMinutes(s.UserID, zoneID, now) // Е2-и3
+	grantLeft := liveGrantMinutes(s.UserID, zoneID)    // Ж2: зонные минуты, годные здесь
+	left := minutesLeft(user.CoinMinutes+grantLeft, packLeft, user.WalletGrosz, rateGrosz, s.MoneyMinutes)
+	notifyShell(s.ComputerID.String(), websocket.MsgWalletUpdate, walletTickPayload(&user, s, left, grantLeft))
 
 	if hitZero {
 		zs := now

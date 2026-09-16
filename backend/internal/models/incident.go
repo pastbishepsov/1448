@@ -31,7 +31,7 @@ type Incident struct {
 	Minutes    int        `json:"minutes"     gorm:"not null;default:0"`
 	Note       string     `json:"note"        gorm:"not null;default:''"`
 
-	CompMinutes   int        `json:"comp_minutes"  gorm:"not null;default:0"` // → users.coin_minutes
+	CompMinutes   int        `json:"comp_minutes"  gorm:"not null;default:0"` // → minute_grants зоны ПК (Ж2), без ПК — users.coin_minutes
 	CompGrosz     int64      `json:"comp_grosz"    gorm:"not null;default:0"` // → кошелёк (adjust)
 	CompensatedAt *time.Time `json:"compensated_at,omitempty"`
 	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`

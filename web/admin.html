@@ -2270,7 +2270,8 @@ function renderUserDrawer(){
     <tr><td class="muted">Монеты</td><td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td></tr>
     <tr><td class="muted">Роль · статус</td><td>${u.role} · <span class="st ${u.status}">${u.status}</span></td></tr>
     <tr><td class="muted">Наиграно</td><td>${s.hours_played} ч · сессий ${s.sessions_count}</td></tr>
-    <tr><td class="muted">Кошелёк</td><td><b>${((u.wallet_grosz||0)/100).toFixed(2).replace('.', ',')} zł</b>${u.coin_minutes ? ' · +' + u.coin_minutes + ' мин запаса' : ''}</td></tr>
+    <tr><td class="muted">Кошелёк</td><td><b>${((u.wallet_grosz||0)/100).toFixed(2).replace('.', ',')} zł</b></td></tr>
+    ${(uData.reserve||[]).length ? `<tr><td class="muted">Запас минут</td><td>${reserveLine(uData.reserve)}</td></tr>` : ''}
     ${uPackMin > 0 ? `<tr><td class="muted">Пакеты</td><td><b>${uPackMin} мин</b> ${uPackZones()}</td></tr>` : ''}
     ${s.no_show_count ? `<tr><td class="muted">No-show</td><td>🕳 ${s.no_show_count} — брони сгорали без прихода</td></tr>` : ''}
     ${s.kitchen_unpaid_count ? `<tr><td class="muted">Кухня</td><td>🧾 не оплачено: <b>${fmtPLN(s.kitchen_unpaid_pln)} zł</b> (${s.kitchen_unpaid_count}) — расчёт у стойки</td></tr>` : ''}
@@ -2316,8 +2317,19 @@ async function uFormToggle(f){
   if (uForm === 'redeem' && !zonesCache.length){
     try{ zonesCache = (await api('/admin/zones')).zones || []; }catch(e){}
   }
-  if (uForm === 'redeem' && !redeemZone && zonesCache.length) redeemZone = zonesCache[0].id;
+  // Ж2 (Ж-Р3): минуты годны только в своей зоне — по умолчанию зона ПК, за
+  // которым гость сидит сейчас; без сессии — первая зона, админ переключит
+  if (uForm === 'redeem' && zonesCache.length){
+    const sz = uData && uData.active_session && uData.active_session.zone_id;
+    if (sz && zonesCache.some(z => z.id === sz)) redeemZone = sz;
+    else if (!redeemZone) redeemZone = zonesCache[0].id;
+  }
   renderUserDrawer();
+}
+
+/* Ж2: запас минут словами зоны — «60 мин Standard · 18 мин без зоны». */
+function reserveLine(rows){
+  return (rows || []).map(r => '<b>' + r.minutes + ' мин</b> ' + (r.from_pool || !r.zone ? '<span class="muted">без зоны</span>' : esc(r.zone))).join(' · ');
 }
 
 /* Е2-и4: выдача пакета гостю у стойки. */
@@ -2379,7 +2391,7 @@ function uPackZones(){
 async function voidRedeem(id, userId){
   try{
     const d = await api('/admin/coin-redemptions/' + id + '/void', {method:'POST'});
-    toast('✓ Выдача отменена — ' + d.coins_returned + ' монет вернулись');
+    toast('✓ Выдача отменена — ' + (d.minutes_taken !== undefined ? 'забрано ' + d.minutes_taken + ' мин, ' : '') + d.coins_returned + ' монет вернулись');
     if (userId && drawerUserId === userId) await openUserDrawer(userId);
     if (curTab === 'stats') renderReports();
     refresh();
@@ -2585,7 +2597,8 @@ function uFormHtml(){
            placeholder="или сколько угодно минут" oninput="redeemMinSet(this.value)">
     <div class="muted" id="redeemHint">${esc(redeemHintText())}</div>
     <button class="btn" style="width:100%; justify-content:center" onclick="submitRedeem()"><span data-ic="clock"></span>Выдать время</button>
-    <div class="muted">Монеты спишутся с баланса гостя, время выдаёшь ты — в отчёте это ляжет в «отдано временем»</div>
+    <div class="muted">Минуты годны только в выбранной зоне (как пакет)${uData.active_session && uData.active_session.zone ? ' · гость сейчас за ' + esc(uData.active_session.computer || 'ПК') + ' — ' + esc(uData.active_session.zone) : ''}
+      · монеты спишутся с баланса гостя, в отчёте это ляжет в «отдано временем»</div>
   </div>`;
 }
 
@@ -4280,6 +4293,10 @@ function paintCoins(d){
                 {title:'по курсу погашения ' + r.spend + ' монет за 1 zł — столько клуб отдаст временем'})}
        ${repKpi('Выпущено за период', (t.issued||0).toLocaleString('ru-RU'), k.issued, {was:(w.issued||0).toLocaleString('ru-RU')})}
        ${repKpi('Погашено за период', (t.redeemed||0).toLocaleString('ru-RU'), k.redeemed, {was:(w.redeemed||0).toLocaleString('ru-RU')})}
+       ${repKpi('Должны временем', packHM((d.minutes_owed||{}).total || 0), undefined,
+                {title:'выданные за монеты и компенсации минуты, ещё не отыгранные (Ж2): по зонам — '
+                       + (((d.minutes_owed||{}).by_zone||[]).map(z => (z.zone || 'без зоны') + ' ' + z.minutes + ' мин').join(', ') || 'нет')
+                       + ' · старый запас без зоны — ' + ((d.minutes_owed||{}).pool || 0) + ' мин'})}
      </div>
      <div class="kpis">
        ${repKpi('За пополнения', (t.deposits||0).toLocaleString('ru-RU'), undefined, {title:'куплено гостями за злотые, курс ' + r.buy + ' монет за 1 zł'})}

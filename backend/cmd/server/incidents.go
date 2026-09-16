@@ -144,9 +144,22 @@ func applyCompensation(inc *models.Incident, cp compensation, adminID uuid.UUID,
 		return errIncidentNoGuest
 	}
 	uid := *inc.UserID
+	// Ж2 (Ж-Р3): минуты компенсации — к зоне ПК из записи, годны только там
+	// (проблема была на этой машине — и время возвращаем на ней же); записи
+	// без ПК или ПК без зоны — в старый пул без зоны, как раньше.
+	var compZone *models.Zone
+	if inc.ComputerID != nil {
+		compZone = zoneByID(zoneOfComputer(*inc.ComputerID))
+	}
 	return db.Transaction(func(tx *gorm.DB) error {
 		if cp.Minutes > 0 {
-			if err := tx.Model(&models.User{}).Where("id = ?", uid).
+			if compZone != nil {
+				ref := inc.ID
+				grant := grantFor(uid, compZone, cp.Minutes, models.MinuteGrantCompensation, &ref, &adminID)
+				if err := tx.Create(&grant).Error; err != nil {
+					return err
+				}
+			} else if err := tx.Model(&models.User{}).Where("id = ?", uid).
 				UpdateColumn("coin_minutes", gorm.Expr("coin_minutes + ?", cp.Minutes)).Error; err != nil {
 				return err
 			}
@@ -194,9 +207,15 @@ const (
 func afterCompensation(c *gin.Context, inc *models.Incident, cp compensation) {
 	uid := *inc.UserID
 	reviveActiveSession(uid, nil)
-	notifyUser(uid, "incident_compensation", map[string]any{
+	payload := map[string]any{
 		"kind": inc.Kind, "minutes": cp.Minutes, "wallet_pln": models.PLNFromGrosz(cp.Grosz), "note": inc.Note,
-	})
+	}
+	if cp.Minutes > 0 && inc.ComputerID != nil { // Ж2: гостю — в какой зоне годны минуты
+		if z := zoneByID(zoneOfComputer(*inc.ComputerID)); z != nil {
+			payload["zone"] = z.Name
+		}
+	}
+	notifyUser(uid, "incident_compensation", payload)
 	logAdminAction(c, "incident_compensate", &uid, fmt.Sprintf("%s: %s%s", incidentKindName(inc.Kind), cp.text(), incidentNote(inc.Note)))
 	hub.AdminBroadcast("incident", map[string]any{"id": inc.ID, "kind": inc.Kind, "open": false, "compensation": cp.text()})
 }

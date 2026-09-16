@@ -1316,6 +1316,12 @@ const SH_RU = {
   pack_bought: "▶ {n} — время на счету",
   pack_poor: "На кошельке не хватает. Пополни у стойки",
   pack_zone_note: "Минуты пакета тратятся только в своей зоне и раньше кошелька",
+  res_head: "Минуты за монеты и компенсации",
+  res_zone: "{n} мин · {z}",
+  res_any: "{n} мин · везде",
+  res_here: " — в этой зоне",
+  res_other: " — в другой зоне, здесь не тратятся",
+  res_note: "Такие минуты годны только в своей зоне и тратятся раньше кошелька",
   ntf_pack_added: "▶ Пакет «{n}»: +{m} мин ({z})",
   ntf_pack_void: "↩ Выдача пакета «{n}» отменена",
   ntf_pack_soon: "⏳ Пакет «{n}» сгорит через {d} дн — осталось {m} мин",
@@ -1850,6 +1856,12 @@ const SH_EN = {
   pack_bought: "▶ {n} — the time is yours",
   pack_poor: "Not enough in the wallet. Top up at the desk",
   pack_zone_note: "Package minutes work only in their zone and go before the wallet",
+  res_head: "Minutes from coins & compensations",
+  res_zone: "{n} min · {z}",
+  res_any: "{n} min · anywhere",
+  res_here: " — this zone",
+  res_other: " — another zone, not spent here",
+  res_note: "Such minutes work only in their zone and go before the wallet",
   ntf_pack_added: "▶ Package “{n}”: +{m} min ({z})",
   ntf_pack_void: "↩ Package “{n}” was cancelled",
   ntf_pack_soon: "⏳ Package “{n}” expires in {d} d — {m} min left",
@@ -2384,6 +2396,12 @@ const SH_PL = {
   pack_bought: "▶ {n} — czas na koncie",
   pack_poor: "W portfelu za mało. Doładuj przy ladzie",
   pack_zone_note: "Minuty pakietu działają tylko w swojej strefie i idą przed portfelem",
+  res_head: "Minuty za monety i rekompensaty",
+  res_zone: "{n} min · {z}",
+  res_any: "{n} min · wszędzie",
+  res_here: " — w tej strefie",
+  res_other: " — w innej strefie, tu nie działają",
+  res_note: "Takie minuty działają tylko w swojej strefie i idą przed portfelem",
   ntf_pack_added: "▶ Pakiet „{n}”: +{m} min ({z})",
   ntf_pack_void: "↩ Wydanie pakietu „{n}” anulowano",
   ntf_pack_soon: "⏳ Pakiet „{n}” wygasa za {d} dn — zostało {m} min",
@@ -3185,7 +3203,7 @@ function logout(){
   sensProfile = null; sensProfileApplied = false;
   cases = []; sessions = []; bookings = []; achievements = null; leaderboard = null;
   economy = null; talents = null; myPacks = []; myOrders = []; myUnpaidPln = 0;
-  packMinutesHere = 0; bookingDeadline = null; sessComputer = null; lastFavsKey = '';
+  packMinutesHere = 0; zoneMinutesHere = 0; sessZone = ''; minutesByZone = []; bookingDeadline = null; sessComputer = null; lastFavsKey = '';
   aimClose(); aimLast = null;   // С0: калибратор и его результат — чужие
   lsDel('1448_aim_result'); lsDel('1448_dpi'); // старый localStorage-мост (до С0) — чистим, если остался
   const bub = document.getElementById('casesBub');
@@ -3260,6 +3278,8 @@ async function loadAll(){
     sessions = ss.sessions || [];
     bookingDeadline = ss.booking_deadline || null; // Г3: ПК уйдёт под бронь
     packMinutesHere = ss.pack_minutes || 0;        // Е2-и5: минуты пакета ЭТОЙ зоны
+    zoneMinutesHere = ss.zone_minutes || 0;        // Ж2: зонные минуты, годные здесь
+    sessZone = ss.zone || '';
     bookings = bk.bookings || [];
     economy = ec;
     sensProfile = sp;
@@ -3314,6 +3334,8 @@ function renderTop(){
 const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
 
 let packMinutesHere = 0; // Е2-и5: минуты пакета, годные на ЭТОЙ машине (сервер, /me/sessions)
+let zoneMinutesHere = 0, sessZone = ''; // Ж2: зонные минуты за монеты/компенсации, годные ЗДЕСЬ, и имя зоны машины
+let minutesByZone = [];                 // Ж2: запас по зонам (сервер, /me/packages) — печатается словами зоны
 
 /* ── Кошелёк (Г1): баланс в шапке + прогноз «хватит до HH:MM».
    Клиент только показывает: баланс и ставка приходят с сервера (Р2),
@@ -3331,7 +3353,9 @@ function renderWallet(){
     if (rateGr > 0){
       // Е2-и5: минуты пакета — такое же оплаченное время, как монеты. Без них
       // «хватит до 19:40» врёт в меньшую сторону, и гость идёт доплачивать зря.
-      const left = (me.coin_minutes || 0) + (packMinutesHere || 0)
+      // Ж2: зонные минуты — только годные на ЭТОЙ машине (сервер отдаёт их
+      // отдельно от пула без зоны); минуты чужой зоны в прогноз не входят
+      const left = (me.coin_minutes || 0) + (zoneMinutesHere || 0) + (packMinutesHere || 0)
                  + Math.floor((me.wallet_grosz || 0) * 60 / rateGr);
       low = left <= 15;
       if (left > 0){
@@ -3356,6 +3380,7 @@ async function loadPacks(){
     const [mine, shop] = await Promise.all([api('/me/packages'), api('/me/packages/catalog')]);
     myPacks = mine.packages || [];
     packShop = shop.packages || [];
+    minutesByZone = mine.minutes_by_zone || []; // Ж2
   }catch(e){ /* тихо: панель покажет, что есть */ }
   if (curTab === 'pack') renderSide();
   if (packShopOpen()) paintPackShop();
@@ -3367,6 +3392,23 @@ function packLiveLine(){
   const byZone = {};
   live.forEach(p => { byZone[p.zone || '—'] = (byZone[p.zone || '—'] || 0) + p.minutes_left; });
   return Object.keys(byZone).map(z => T('pack_live', {n: byZone[z], z: esc(z)})).join(' · ');
+}
+
+/* Ж2 (Ж-Р3): запас минут за монеты и компенсации — словами зоны. Минуты
+   «в Standard» на VIP-машине не тратятся, и гость должен видеть это до того,
+   как прогноз «хватит до» его удивит. */
+function reserveBlock(){
+  const rows = (minutesByZone || []).filter(r => r.minutes > 0);
+  if (!rows.length) return '';
+  const line = r => {
+    if (r.from_pool || !r.zone) return T('res_any', {n: r.minutes});
+    return T('res_zone', {n: r.minutes, z: esc(r.zone)}) + (sessZone ? (r.zone === sessZone ? STR.res_here : STR.res_other) : '');
+  };
+  return `<div class="card" style="margin-top:12px">
+      <h3 style="margin-bottom:10px">${esc(STR.res_head)}</h3>
+      ${rows.map(r => `<div class="sess-item"${sessZone && r.zone && !r.from_pool && r.zone !== sessZone ? ' style="opacity:.55"' : ''}><span>${line(r)}</span></div>`).join('')}
+      <div class="muted" style="margin-top:10px">${esc(STR.res_note)}</div>
+    </div>`;
 }
 
 /* Состояние пакета словом: «0 из 180» без объяснения выглядит как ошибка. */
@@ -3409,6 +3451,7 @@ function renderPacks(){
       ${mine}
       <div class="muted" style="margin-top:10px">${esc(STR.pack_zone_note)}</div>
     </div>
+    ${reserveBlock()}
     ${packShop.length ? `<h3 style="margin:16px 0 0">${esc(STR.pack_shop)}</h3>
     <div class="muted">${esc(T('pack_from_wallet', {w: wallet}))}</div>${shop}` : ''}`;
 }
@@ -4047,7 +4090,7 @@ function notifText(n){
     // К8 (Р4): админ компенсировал проблему с ПК — минуты в запас и/или деньги на кошелёк
     case 'incident_compensation': {
       const parts = [];
-      if (p.minutes > 0) parts.push(T('ntf_comp_min', {n: p.minutes}));
+      if (p.minutes > 0) parts.push(T('ntf_comp_min', {n: p.minutes}) + (p.zone ? ' · ' + p.zone : '')); // Ж2: минуты годны в зоне ПК
       if (p.wallet_pln > 0) parts.push(T('ntf_comp_pln', {a: fmtNum(p.wallet_pln)}));
       return T('ntf_comp', {c: parts.join(STR.ntf_comp_and)}) + (p.note ? ' · ' + p.note : '');
     }
@@ -4653,6 +4696,8 @@ setInterval(async () => {
     bookingDeadline = ss.booking_deadline || null; // Г3
     sessComputer = ss.computer || sessComputer;    // Е1
     packMinutesHere = ss.pack_minutes || 0;        // Е2-и5: пакет тает — прогноз едет за ним
+    zoneMinutesHere = ss.zone_minutes || 0;        // Ж2: зонные минуты тают так же
+    sessZone = ss.zone || sessZone;
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);

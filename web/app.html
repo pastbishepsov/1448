@@ -918,6 +918,11 @@ const STR_RU = {
   pack_bought: '▶ {n} — время на счету',
   pack_poor: 'На кошельке не хватает — пополни у стойки',
   pack_zone_note: 'Минуты пакета тратятся только в своей зоне и раньше кошелька',
+  res_head: 'Минуты за монеты и компенсации',
+  res_zone: '{n} мин · {z}',
+  res_min: '{n} мин',
+  res_any: '{n} мин · везде',
+  res_note: 'Такие минуты годны только в своей зоне и тратятся раньше кошелька',
   pack_shop_empty: 'Клуб пока не продаёт пакеты',
   live_pack: 'из них {n} мин пакетом',
   ntf_pack_added: '▶ Пакет «{n}»: +{m} мин ({z})',
@@ -1188,6 +1193,11 @@ const STR_EN = {
   pack_bought: '▶ {n} — the time is yours',
   pack_poor: 'Not enough in the wallet — top up at the desk',
   pack_zone_note: 'Package minutes work only in their zone and go before the wallet',
+  res_head: 'Minutes from coins & compensations',
+  res_zone: '{n} min · {z}',
+  res_min: '{n} min',
+  res_any: '{n} min · anywhere',
+  res_note: 'Such minutes work only in their zone and go before the wallet',
   pack_shop_empty: 'The club does not sell packages yet',
   live_pack: '{n} min of it from a package',
   ntf_pack_added: '▶ Package “{n}”: +{m} min ({z})',
@@ -1455,6 +1465,11 @@ const STR_PL = {
   pack_bought: '▶ {n} — czas na koncie',
   pack_poor: 'W portfelu za mało — doładuj przy ladzie',
   pack_zone_note: 'Minuty pakietu działają tylko w swojej strefie i idą przed portfelem',
+  res_head: 'Minuty za monety i rekompensaty',
+  res_zone: '{n} min · {z}',
+  res_min: '{n} min',
+  res_any: '{n} min · wszędzie',
+  res_note: 'Takie minuty działają tylko w swojej strefie i idą przed portfelem',
   pack_shop_empty: 'Klub nie sprzedaje jeszcze pakietów',
   live_pack: 'w tym {n} min z pakietu',
   ntf_pack_added: '▶ Pakiet „{n}”: +{m} min ({z})',
@@ -2439,13 +2454,30 @@ function renderHist(){
 /* ── Е2-и5в: пакеты времени. Купленное время лежит рядом с деньгами —
    это и есть деньги, просто уже превращённые в часы. ── */
 let myPacks = [], packShop = [], packBusy = false;
+let minutesByZone = []; // Ж2: запас минут за монеты/компенсации по зонам (сервер, /me/packages)
 
 async function loadPacks(){
   try{
     const [mine, shop] = await Promise.all([api('/me/packages'), api('/me/packages/catalog')]);
     myPacks = mine.packages || [];
     packShop = shop.packages || [];
+    minutesByZone = mine.minutes_by_zone || [];
   }catch(e){ /* тихо: экран покажет то, что есть */ }
+}
+
+/* Ж2 (Ж-Р3): запас минут словами зоны — «60 мин · Standard», «18 мин · везде».
+   Минуты «в Standard» на VIP не тратятся; телефон не знает, за какой машиной
+   гость сядет, поэтому просто перечисляет зоны. */
+function reserveBlockHtml(){
+  const rows = (minutesByZone || []).filter(r => r.minutes > 0);
+  if (!rows.length) return '';
+  return `<div class="sect" style="margin-top:2px">${esc(STR.res_head)}</div>
+    ${rows.map(r => `<div class="hrow">
+      <span class="h-when">${esc(r.from_pool || !r.zone ? '—' : r.zone)}</span>
+      <span class="h-l">${esc(r.from_pool || !r.zone ? T('res_any', {n: r.minutes}) : T('res_min', {n: r.minutes}))}</span>
+      <span class="h-v"></span>
+    </div>`).join('')}
+    <div class="muted" style="margin:6px 0 10px">${esc(STR.res_note)}</div>`;
 }
 
 /* Состояние словом: «0 из 180» без объяснения читается как поломка. */
@@ -2478,7 +2510,8 @@ function packBlockHtml(){
     ${live ? `<div class="cnum" style="margin:0 0 6px"><b>${esc(live)}</b></div>` : ''}
     ${rows}
     <div class="muted" style="margin:6px 0 10px">${esc(STR.pack_zone_note)}</div>
-    <button class="btn ghost slim" style="margin:0 0 12px" onclick="openPackShop()">${esc(STR.pack_buy_btn)}</button>`;
+    <button class="btn ghost slim" style="margin:0 0 12px" onclick="openPackShop()">${esc(STR.pack_buy_btn)}</button>
+    ${reserveBlockHtml()}`;
 }
 
 function openPackShop(){
@@ -3085,7 +3118,7 @@ function ntfText(n){
     // К8 (трек К, Р4): админ компенсировал проблему с ПК — минуты и/или деньги
     case 'incident_compensation': {
       const parts = [];
-      if (p.minutes > 0) parts.push(T('ntf_comp_min', {n: p.minutes}));
+      if (p.minutes > 0) parts.push(T('ntf_comp_min', {n: p.minutes}) + (p.zone ? ' · ' + p.zone : '')); // Ж2: минуты годны в зоне ПК
       if (p.wallet_pln > 0) parts.push(T('ntf_comp_pln', {a: (Number.isInteger(+p.wallet_pln) ? String(+p.wallet_pln) : (+p.wallet_pln).toFixed(2)).replace('.', ',')}));
       return T('ntf_comp', {c: parts.join(STR.ntf_comp_and)}) + (p.note ? ' · ' + p.note : '');
     }
@@ -3122,7 +3155,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-15.1';
+const APP_VER = '2026-09-16.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

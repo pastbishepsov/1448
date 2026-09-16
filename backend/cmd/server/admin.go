@@ -290,13 +290,28 @@ func handleAdminUserCard(c *gin.Context) {
 	if ownerView {
 		stats["deposited_pln"] = depSum
 	}
+	// Ж2: запас минут по зонам («60 мин Standard · 18 мин без зоны») и зона ПК
+	// активной сессии — форма «Время за монеты» подставляет её по умолчанию.
+	var activeZone gin.H
+	var act models.Session
+	if db.Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).First(&act).Error == nil {
+		var pc models.Computer
+		if db.Select("name, zone_id").First(&pc, "id = ?", act.ComputerID).Error == nil {
+			activeZone = gin.H{"computer": pc.Name, "zone_id": pc.ZoneID}
+			if z := zoneByID(pc.ZoneID); z != nil {
+				activeZone["zone"] = z.Name
+			}
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"user":        user,
-		"stats":       stats,
-		"sessions":    sesOut,
-		"deposits":    deposits,
-		"grants":      grOut,
-		"money_scope": map[bool]string{true: "all", false: "today"}[ownerView],
+		"user":           user,
+		"stats":          stats,
+		"sessions":       sesOut,
+		"deposits":       deposits,
+		"grants":         grOut,
+		"reserve":        grantMinutesByZone(user.ID, user.CoinMinutes),
+		"active_session": activeZone,
+		"money_scope":    map[bool]string{true: "all", false: "today"}[ownerView],
 	})
 }
 
