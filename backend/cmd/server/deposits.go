@@ -199,7 +199,7 @@ func handleAdminDeposit(c *gin.Context) {
 		"wallet_pln": models.PLNFromGrosz(walletAfter),
 	})
 
-	c.JSON(http.StatusCreated, gin.H{
+	resp := gin.H{
 		"deposit_id":    dep.ID,
 		"nickname":      user.Nickname,
 		"amount_pln":    req.AmountPLN,
@@ -208,7 +208,53 @@ func handleAdminDeposit(c *gin.Context) {
 		"coins_balance": user.CoinsBalance,
 		"wallet_grosz":  walletAfter,
 		"wallet_pln":    models.PLNFromGrosz(walletAfter),
-	})
+	}
+	// Ж7-и2 (Ж-Р11): деньги — в злотых, часы — только справкой рядом:
+	// «+50 zł · хватит ещё на 2 ч 30 мин». Считаем по тарифу гостя (forecast.go).
+	if hint := depositHoursHint(user, models.GroszFromPLN(req.AmountPLN), time.Now()); hint != nil {
+		resp["hours_hint"] = hint
+	}
+	c.JSON(http.StatusCreated, resp)
+}
+
+// depositHoursHint — на сколько минут игры хватит внесённой суммы (Ж7-и2,
+// Ж-Р11): по тарифу идущей сессии гостя (с его скидками), а без сессии — по
+// самой дешёвой зоне клуба (или клубному тарифу), с пометкой, по какой. nil —
+// тариф неизвестен (нет ни зон, ни клуба), справку не показываем.
+func depositHoursHint(user *models.User, amountGrosz int64, now time.Time) gin.H {
+	var sess models.Session
+	if db.Where("user_id = ? AND status = ?", user.ID, models.SessionStatusActive).First(&sess).Error == nil {
+		rateGrosz := models.GroszFromPLN(sess.EffectiveRatePLN)
+		if rateGrosz <= 0 {
+			return nil
+		}
+		zoneID := zoneOfComputer(sess.ComputerID)
+		f := forecastSession(&sess, user, zoneID, now) // весь запас: кошелёк после депозита + минуты
+		hint := gin.H{
+			"minutes":      minutesAffordable(amountGrosz, rateGrosz, 0), // сколько добавил именно этот депозит
+			"minutes_left": f.MinutesLeft,                                // сколько теперь всего
+			"rate_pln":     sess.EffectiveRatePLN,
+			"session":      true,
+		}
+		if z := zoneByID(zoneID); z != nil {
+			hint["zone"] = z.Name
+		}
+		if f.Until != nil {
+			hint["until"] = f.Until
+		}
+		return hint
+	}
+	var z models.Zone
+	if db.Where("rate_pln > 0").Order("rate_pln, sort, name").First(&z).Error == nil {
+		return gin.H{"minutes": minutesAffordable(amountGrosz, models.GroszFromPLN(z.RatePLN), 0),
+			"rate_pln": z.RatePLN, "zone": z.Name, "session": false}
+	}
+	club, ok := defaultClub()
+	if !ok || club.BaseRatePLN <= 0 {
+		return nil
+	}
+	return gin.H{"minutes": minutesAffordable(amountGrosz, models.GroszFromPLN(club.BaseRatePLN), 0),
+		"rate_pln": club.BaseRatePLN, "session": false}
 }
 
 // GET /me/deposits — история пополнений игрока.

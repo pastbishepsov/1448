@@ -188,6 +188,11 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		pc := &candidates[i]
 		if pc.Status != models.ComputerStatusAvailable {
 			if explicit {
+				// Ж7-и2 (ревью 14.09): «занят» про машину в ремонте — ложь у стойки:
+				// админ ищет, кто за ней сидит. Ремонт называем ремонтом.
+				if pc.Status == models.ComputerStatusMaintenance {
+					return http.StatusConflict, gin.H{"code": "computer_maintenance", "message": "ПК в ремонте — верни его в строй из шторки или посади за другой"}
+				}
 				return http.StatusConflict, gin.H{"code": "computer_busy", "message": "Компьютер занят"}
 			}
 			continue
