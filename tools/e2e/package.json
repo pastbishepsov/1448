@@ -1,0 +1,13 @@
+{
+  "name": "1448-e2e",
+  "private": true,
+  "description": "Живые проверки админки 14:48 (трек Ж): браузерные сценарии на playwright-core; API-сценарии — python3 рядом",
+  "scripts": {
+    "e2e": "bash run_all.sh e2e",
+    "pw": "bash run_all.sh pw",
+    "all": "bash run_all.sh all"
+  },
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}
