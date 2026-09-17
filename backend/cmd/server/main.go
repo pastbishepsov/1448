@@ -182,6 +182,7 @@ func main() {
 		clubs.GET("/:id/computers", handleGetClubComputers)                // ← настоящий
 		clubs.POST("/:id/bookings", authMiddleware(), handleCreateBooking) // ← настоящий
 
+		v1.GET("/board/state", handleBoardState)         // Ж8-и3: табло — без логина, по board_token
 		v1.GET("/ws/shell", handleShellWS)               // ← настоящий
 		v1.GET("/ws/admin", handleAdminWS)               // live-канал админки (спринт А6)
 		v1.GET("/catalog", handleGetCatalog)             // ← настоящий (гостевой экран + агент)
@@ -271,6 +272,8 @@ func main() {
 		adm.POST("/receipts/:id/void", handleAdminReceiptVoid)           // Ж6-и2: отменить чек целиком
 		adm.GET("/users/:id/debt", handleAdminUserDebt)                  // Ж6-и1: долг гостя — кухня + бар, позиции
 		adm.POST("/users/:id/settle", handleAdminUserSettle)             // Ж6-и1 (Ж-Р8): «Рассчитать» — одной операцией
+		adm.GET("/seat-group/suggest", handleAdminSeatGroupSuggest)      // Ж8-и2 (Ж-Р13): соседние свободные ПК под компанию
+		adm.POST("/seat-group", handleAdminSeatGroup)                    // Ж8-и2: посадить компанию одним запросом
 		adm.GET("/kitchen/orders", handleAdminKitchenOrders)             // очередь кухни (Г7)
 		adm.POST("/kitchen/orders", handleAdminKitchenOrderCreate)       // Ж6-и3: заказ от стойки (гость через резолвер)
 		adm.POST("/kitchen/orders/:id/status", handleAdminKitchenStatus) // принял→готовит→несут→выдан (Г7)
@@ -319,6 +322,9 @@ func main() {
 		own.GET("/stats/shift", handleAdminStatsShift) // сводка смены (Б10)
 		own.GET("/settings", handleAdminSettingsGet)
 		own.PUT("/settings", handleAdminSettingsPut)
+		own.GET("/board/token", handleAdminBoardTokenGet)       // Ж8-и3 (Ж-Р12): токен и ссылка табло
+		own.POST("/board/token", handleAdminBoardTokenRotate)   // выпустить новый
+		own.DELETE("/board/token", handleAdminBoardTokenDelete) // выключить табло
 		// Персонал (спринт Б5): назначение/снятие админов вместо SQL
 		own.GET("/staff", handleAdminStaffList)
 		// Кадровая карточка (В3-этап 2, миграция 025): личные данные сотрудника
@@ -363,6 +369,9 @@ func main() {
 		// Стойка/демо: админка и обложки кейсов с того же origin, что и API
 		// (same-origin — CrossOriginProtection пропускает без допусков).
 		r.StaticFile("/admin", filepath.Join(webDir, "admin.html"))
+		// Ж8-и3 (Ж-Р12): табло зала под ТВ — своя страница, ходит в
+		// /api/v1/board/state с токеном из URL, логина нет.
+		r.StaticFile("/board", filepath.Join(webDir, "board.html"))
 		// Витрина гостевого экрана (демо 27.08): тот же shell.html, что в
 		// киоске; запуск игр тут не работает — им занимается агент на ПК.
 		r.StaticFile("/shell", filepath.Join(webDir, "shell.html"))

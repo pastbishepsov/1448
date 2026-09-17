@@ -612,13 +612,19 @@
           <div class="kpi" onclick="nav('bookings')">Броней сегодня <b id="kBookings">—</b></div>
           <div class="kpi hidden" id="kQueueKpi" onclick="nav('hall')">В очереди <b id="kQueue">—</b></div>
         </div>
-        <div class="toolrow ownerOnly hidden">
-          <button class="btn ghost mini" id="hallEditBtn" onclick="toggleHallEdit()"><span data-ic="edit"></span>Редактор зала</button>
+        <div class="toolrow">
+          <button class="btn ghost mini" onclick="openGroupDrawer()" title="Ж-Р13: посадить компанию рядом — отдельной кнопкой, не шагом обычной посадки"><span data-ic="users"></span>Компания</button>
+          <button class="btn ghost mini ownerOnly hidden" id="hallEditBtn" onclick="toggleHallEdit()"><span data-ic="edit"></span>Редактор зала</button>
           <span class="muted hidden" id="hallEditHint">тапни ПК, потом клетку — переставить · повторный тап по ПК — карточка · «+» — новый ПК</span>
         </div>
         <div class="hallrow">
           <div id="hallMap" style="flex:1; min-width:0"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
           <aside class="feed">
+            <!-- Ж8-и1 (№33): у кого деньги на исходе — данные Ж5-и1 (minutes_left в /admin/computers) -->
+            <div class="wl hidden" id="lowBox">
+              <div class="dsub" style="margin-top:0">Скоро на нуле <span id="lowN" class="muted"></span></div>
+              <div id="lowList" class="muted" style="font-size:12px"></div>
+            </div>
             <div class="wl" id="wlBox">
               <div class="dsub" style="margin-top:0">Очередь <span id="wlN" class="muted"></span></div>
               <div id="wlList" class="muted" style="font-size:12px">Пока никто не ждёт</div>
@@ -937,6 +943,13 @@
           <span class="muted" id="packsHint"></span>
         </div>
         <div class="tablewrap" id="packsTable"><div class="skel"></div><div class="skel"></div></div>
+
+        <!-- Ж8-и3 (Ж-Р12): табло зала под ТВ — своя страница /board под токеном, без логина -->
+        <div class="sect">Табло зала</div>
+        <div class="card" style="max-width:720px">
+          <div class="muted" style="margin-bottom:10px">Страница для телевизора у входа: зал по зонам (свободно/занято без ников), очередь по никам, ближайшие брони. Открывается по ссылке с токеном — без логина; перевыпуск токена гасит старую ссылку.</div>
+          <div id="boardBox"><div class="skel"></div></div>
+        </div>
       </section>
     </main>
   </div>
@@ -1562,6 +1575,7 @@ function handleLiveEvent(m){
         computer:d.computer, computer_id:d.computer_id, user_id:d.user_id, created_at:m.at});
       if (bellItems.length > 50) bellItems.pop();
       paintBell();
+      if (d.kind === 'call') playCallSound(); // Ж8-и5: сигнал только на вызов
       toast(d.kind === 'call'
         ? '🛎 ' + (d.nickname || d.computer || 'Гость') + ' зовёт админа'
         : '💬 ' + (d.nickname || 'гость') + ': ' + (d.text||''));
@@ -1641,6 +1655,39 @@ async function sendStaffMsg(){
 /* ── Б2: колокол — очередь вызовов и сообщений (GET /admin/chat/pending) ── */
 let bellItems = [], callPCs = new Set();
 
+/* ── Ж8-и5 (№41): звук вызова. Короткий сигнал WebAudio на НОВЫЙ вызов (не на
+   текст): у стойки колокол в углу легко не заметить, а гость ждёт. Переключатель
+   в шапке колокола; хранится в localStorage — это удобство конкретной машины
+   (у стойки звук нужен, у владельца дома — нет), не правило клуба. Браузер не
+   даёт звучать до первого жеста на странице — первый сигнал прозвучит после
+   первого клика (если вызов пришёл раньше, он просто беззвучный). ── */
+let callSoundOn = localStorage.getItem('1448a_callsound') !== 'off', audioCtx = null, audioUnlocked = false;
+function callSoundToggle(){
+  callSoundOn = !callSoundOn;
+  localStorage.setItem('1448a_callsound', callSoundOn ? 'on' : 'off');
+  paintBellDrop();
+  if (callSoundOn) playCallSound(true);
+}
+function playCallSound(force){
+  if (!callSoundOn && !force) return;
+  if (!audioUnlocked) return; // до первого клика браузер звук не пропустит
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = audioCtx.currentTime;
+    [[880, 0], [1175, 0.14]].forEach(([f, dt]) => { // две короткие ноты — «дзинь», не сирена
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0 + dt); g.gain.exponentialRampToValueAtTime(0.25, t0 + dt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.22);
+      o.connect(g); g.connect(audioCtx.destination); o.start(t0 + dt); o.stop(t0 + dt + 0.25);
+    });
+  }catch(e){}
+}
+document.addEventListener('pointerdown', () => {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try{ audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }catch(e){}
+}, {capture: true});
+
 async function loadBell(){
   try{
     const d = await api('/admin/chat/pending');
@@ -1661,7 +1708,10 @@ function paintBell(){
 }
 function paintBellDrop(){
   const drop = document.getElementById('bellDrop');
-  drop.innerHTML = bellItems.length === 0
+  drop.innerHTML = `<div class="bi" style="justify-content:space-between; color:var(--dim); font-size:12px; margin-bottom:6px; border-bottom:1px solid var(--hair); border-radius:0; padding-bottom:8px">
+      <span>Вызовы и сообщения</span>
+      <button class="btn ghost mini" id="callSoundBtn" onclick="event.stopPropagation(); callSoundToggle()" title="Ж8-и5: звук на новый вызов — настройка этого компьютера">${callSoundOn ? '🔔 звук вкл' : '🔕 звук выкл'}</button>
+    </div>` + (bellItems.length === 0
     ? '<div class="none">Вызовов нет — в зале тихо</div>'
     : bellItems.map(m => `<div class="bi${m.kind==='call'?' call':''}${m.user_id?' clickable':''}"${m.user_id ? ` onclick="openUserChat('${m.user_id}')" title="Открыть чат"` : ''}>
         <span data-ic="${m.kind==='call'?'bell':'scroll'}"></span>
@@ -1670,7 +1720,7 @@ function paintBellDrop(){
           <div class="muted">${m.kind==='call' ? 'зовёт админа' : esc(m.text)} · ${hhmm(m.created_at)}</div>
         </div>
         <button class="btn ghost mini" onclick="event.stopPropagation(); ackChat('${m.id}')">Принял</button>
-      </div>`).join('');
+      </div>`).join(''));
   mountIcons(drop);
 }
 function toggleBell(){
@@ -1759,6 +1809,7 @@ async function renderHall(){
   onShiftData = osn.items || [];
   paintHall();
   paintWaitlist();
+  paintLowBalance(); // Ж8-и1
   paintOnShift();
   // обновить открытый drawer свежими данными — но не под руками у оператора:
   // перерисовка стирает набранный ник и сбрасывает взвод (ревью 26.08)
@@ -2220,6 +2271,129 @@ async function seatGuest(pcId, forceId){
 }
 function seatPick(id){ seatGuest(seatPcId, id); }
 
+/* ── Ж8-и2 (Ж-Р13): посадка компании. Гости через общий резолвер (2–6),
+   зона, сервер предлагает соседние свободные ПК по схеме, админ правит
+   селектами, «Посадить всех» — один запрос POST /admin/seat-group; частичный
+   успех показывается построчно. Каждый платит со своего кошелька. ── */
+let grp = null; // {guests:[{id,nickname,pc}], zone, plan, cands:{i,list}, sug:[], free:[], result:null}
+async function openGroupDrawer(){
+  drawerPCId = null; drawerUserId = null;
+  grp = {guests: [{}, {}], zone: '', plan: 60, cands: null, sug: [], free: [], result: null, busy: false};
+  if (!zonesCache.length){ try{ zonesCache = (await api('/admin/zones')).zones || []; }catch(e){} }
+  paintGroupDrawer();
+  grpSuggest();
+}
+function grpN(){ return grp.guests.length; }
+function paintGroupDrawer(){
+  if (!grp) return;
+  const g = grp;
+  const pcOpts = (sel) => g.free.map(p => `<option value="${p.id}"${p.id === sel ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  const seated = i => !!(g.result && g.result[i] && g.result[i].ok);
+  const pendRows = g.guests.filter((x, i) => !seated(i));
+  const usedPc = new Set(pendRows.map(x => x.pc).filter(Boolean));
+  let body = `<div class="uform" style="margin-top:0">
+    <div class="segs" title="Сколько гостей">${[2,3,4,5,6].map(n => `<button class="${grpN()===n?'on':''}" onclick="grpSize(${n})">${n}</button>`).join('')}</div>
+    ${zonesCache.length > 1 ? `<div class="segs"><button class="${!g.zone?'on':''}" onclick="grp.zone=''; grpSuggest()">Любая зона</button>${zonesCache.map(z =>
+      `<button class="${g.zone===z.id?'on':''}" onclick="grp.zone='${z.id}'; grpSuggest()">${esc(z.name)}</button>`).join('')}</div>` : ''}
+    <div class="segs" title="На сколько садятся — чтобы не посадить впритык к чужой брони">${[30,60,120,180].map(m =>
+      `<button class="${g.plan===m?'on':''}" onclick="grp.plan=${m}; grpSuggest()">${m} мин</button>`).join('')}</div>
+    <div class="muted">${g.result ? 'Кто не сел — поправь гостя или ПК и нажми ещё раз' : (g.free.length < grpN() ? '⚠ Свободных подходящих ПК ' + g.free.length + ' — на компанию из ' + grpN() + ' не хватает' : (g.sug.length ? 'Предложены соседние машины по схеме зала: ' + g.sug.map(p => esc(p.name)).join(', ') + ' — можно поправить' : 'Ищу соседние машины…'))}</div>
+    <div id="grpRows">${g.guests.map((x, i) => { const r = g.result && g.result[i];
+      if (r && r.ok) return `<div class="actrow" style="gap:6px; align-items:center; opacity:.65">
+        <span class="mchip" style="min-width:0; overflow:hidden; text-overflow:ellipsis">✓ ${esc(x.nickname)}</span><span class="muted">→</span><b style="font-size:13px">${esc(r.computer || '')}</b>
+        <span class="muted" style="margin-left:auto; font-size:12px; color:var(--green)">▶ посажен${r.shell_wait_until ? ' · ⏻ ждём ПК' : ''}</span></div>`; // сел — строка застывает: ПК и так занят, менять нечего
+      return `<div class="actrow" style="gap:6px; align-items:center${r ? '; border-left:2px solid var(--orange); padding-left:6px' : ''}">
+        ${x.id ? `<span class="mchip" style="min-width:0; overflow:hidden; text-overflow:ellipsis">✓ ${esc(x.nickname)}</span><a href="#" class="lnk" onclick="event.preventDefault(); grpGuestClear(${i})">✕</a>`
+               : `<input id="grpG${i}" class="input" placeholder="Гость ${i+1}: ник, телефон или имя" autocomplete="off" style="flex:1; min-width:120px" value="${esc(x.typed || '')}" oninput="grp.guests[${i}].typed=this.value" onkeydown="if(event.key==='Enter')grpResolve(${i})" onblur="grpResolve(${i})">`}
+        <span class="muted">→</span>
+        <select class="input" style="width:130px; min-width:0" onchange="grp.guests[${i}].pc=this.value; paintGroupDrawer()">${pcOpts(x.pc)}${!g.free.length ? '<option value="">— нет ПК —</option>' : ''}</select>
+        ${r ? `<span class="muted" style="flex-basis:100%; font-size:12px; color:var(--orange)">⚠ ${esc(r.message || r.code || 'не сел')}</span>` : ''}
+      </div>`; }).join('')}</div>
+    ${g.cands ? `<div class="muted">Гость ${g.cands.i + 1}: подходит несколько — выбери:</div>` + candsHtml(g.cands.list, 'grpPick') : ''}
+    ${[...usedPc].length !== pendRows.filter(x => x.pc).length ? '<div class="muted" style="color:var(--orange)">⚠ Один ПК выбран дважды</div>' : ''}
+    <button class="btn" style="width:100%; justify-content:center" onclick="grpSeatAll()" ${g.busy ? 'disabled' : ''}><span data-ic="users"></span>Посадить всех${g.result ? ' ещё раз (кто не сел)' : ''}</button>
+    <div class="muted">Каждый платит со своего кошелька; до [Готов!] деньги не идут. Кто не сел — останется в списке с причиной.</div>
+  </div>`;
+  openDrawer('Компания', body);
+  const firstEmpty = g.guests.findIndex(x => !x.id);
+  if (firstEmpty >= 0 && !g.cands){ const inp = document.getElementById('grpG' + firstEmpty); if (inp && document.activeElement !== inp && !inp.value) inp.focus(); }
+}
+function grpSize(n){
+  while (grp.guests.length < n) grp.guests.push({});
+  while (grp.guests.length > n) grp.guests.pop();
+  grp.result = null;
+  grpSuggest();
+}
+async function grpSuggest(){
+  if (!grp) return;
+  const g = grp;
+  try{
+    const seated = i => !!(g.result && g.result[i] && g.result[i].ok);
+    const pendN = g.guests.filter((x, i) => !seated(i)).length;
+    const d = await api('/admin/seat-group/suggest?n=' + Math.max(2, pendN) + '&planned_min=' + g.plan + (g.zone ? '&zone_id=' + g.zone : ''));
+    g.free = d.free || []; g.sug = d.suggested || [];
+    // предложенные — по местам, у которых ПК ещё не выбран руками (или выбранный ушёл из свободных); посаженные строки не трогаем
+    const freeIds = new Set(g.free.map(p => p.id));
+    g.guests.forEach((x, i) => { if (!seated(i) && x.pc && !freeIds.has(x.pc)) x.pc = ''; });
+    const taken = new Set(g.guests.filter((x, i) => !seated(i)).map(x => x.pc).filter(Boolean));
+    let k = 0;
+    g.guests.forEach((x, i) => { if (!seated(i) && !x.pc){ while (k < g.sug.length && taken.has(g.sug[k].id)) k++; if (k < g.sug.length){ x.pc = g.sug[k].id; taken.add(x.pc); k++; } } });
+  }catch(e){ toast('⚠ ' + e.message); }
+  paintGroupDrawer();
+}
+async function grpResolve(i){
+  const x = grp.guests[i];
+  if (!x || x.id) return;
+  const q = (x.typed || '').trim();
+  if (!q) return;
+  try{
+    const d = await api('/admin/users?q=' + encodeURIComponent(q) + '&role=player');
+    const list = d.users || [];
+    const exact = list.filter(u => u.nickname.toLowerCase() === q.toLowerCase());
+    const pick = exact.length === 1 ? exact[0] : (list.length === 1 ? list[0] : null);
+    if (pick){ grpSet(i, pick); return; }
+    if (!list.length){ toast('⚠ Гость «' + q + '» не найден'); return; }
+    grp.cands = {i, list: list.slice(0, 5).map(u => ({id: u.id, nickname: u.nickname, name: ((u.first_name||'') + ' ' + (u.last_name||'')).trim(), phone: u.phone, matched_by: (d.matched||{})[u.id]}))};
+    paintGroupDrawer();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function grpPick(id){
+  const c = grp.cands; if (!c) return;
+  const u = c.list.find(x => x.id === id);
+  grp.cands = null;
+  grpSet(c.i, u || {id, nickname: ''});
+}
+function grpSet(i, u){
+  if (grp.guests.some((x, j) => j !== i && x.id === u.id)){ toast('⚠ ' + u.nickname + ' уже в списке'); grp.guests[i].typed = ''; paintGroupDrawer(); return; }
+  grp.guests[i] = Object.assign({}, grp.guests[i], {id: u.id, nickname: u.nickname, typed: ''});
+  paintGroupDrawer();
+}
+function grpGuestClear(i){ grp.guests[i] = {pc: grp.guests[i].pc}; grp.result = null; paintGroupDrawer(); }
+async function grpSeatAll(){
+  const g = grp; if (!g || g.busy) return;
+  const pend = g.guests.map((x, i) => ({x, i})).filter(({x, i}) => !(g.result && g.result[i] && g.result[i].ok));
+  if (pend.some(({x}) => !x.id)){ toast('⚠ Опознай всех гостей — нажми Enter в поле или выбери из списка'); const i = g.guests.findIndex(x => !x.id); if (i >= 0) grpResolve(i); return; }
+  if (pend.some(({x}) => !x.pc)){ toast('⚠ У каждого гостя должен быть ПК'); return; }
+  const pcs = pend.map(({x}) => x.pc);
+  if (new Set(pcs).size !== pcs.length){ toast('⚠ Один ПК выбран дважды'); return; }
+  if (pend.length < 2){ // остался один — обычная посадка тем же путём
+    const {x} = pend[0];
+    try{ const d = await api('/admin/computers/' + x.pc + '/session', {method:'POST', body:JSON.stringify({guest_id: x.id, planned_min: g.plan})});
+      toast('▶ ' + (d.nickname || x.nickname) + ' за «' + (d.computer||'ПК') + '»'); closeDrawer(); grp = null; refresh(); }catch(e){ toast('⚠ ' + e.message); }
+    return;
+  }
+  g.busy = true; paintGroupDrawer();
+  try{
+    const d = await api('/admin/seat-group', {method:'POST', body:JSON.stringify({planned_min: g.plan, seats: pend.map(({x}) => ({guest_id: x.id, computer_id: x.pc}))})});
+    const res = g.result ? g.result.slice() : g.guests.map(() => null);
+    (d.results || []).forEach((r, k) => { res[pend[k].i] = r; });
+    g.result = res; g.busy = false;
+    if (d.seated === d.total){ toast('▶ Компания посажена: ' + d.seated + ' гост' + (d.seated >= 5 ? 'ей' : 'я')); closeDrawer(); grp = null; }
+    else { toast('⚠ Посажено ' + d.seated + ' из ' + d.total + ' — смотри, кто не сел'); await grpSuggest(); }
+    refresh();
+  }catch(e){ g.busy = false; paintGroupDrawer(); toast('⚠ ' + e.message); }
+}
+
 /* Ж5-и2 (№19): посадка из карточки гостя — ПК выбран селектом, гость известен
    по id (никакого второго поиска по нику). Ответ тот же, что у шторки ПК. */
 let seatCardPc = null;
@@ -2297,6 +2471,29 @@ function paintOnShift(){
 /* ── Б9: очередь-вейтлист — виджет над лентой Зала. Данные едут в renderHall
    (GET /admin/waitlist), live-события "waitlist" будят refresh как все. ── */
 let wlData = [];
+/* ── Ж8-и1 (№33): «Скоро на нуле» — сессии с запасом ≤ 15 мин (тот же
+   minutes_left, что видит гость, Ж5-и1). Кнопки ведут в карточку с нужной
+   формой; данные обновляются вместе с залом (7 с / live-события), между
+   обновлениями сервер сам шлёт wallet_update тиком раз в 30 с — этого хватает. ── */
+const LOW_MIN = 15;
+function paintLowBalance(){
+  const box = document.getElementById('lowBox'), list = document.getElementById('lowList');
+  if (!box || !list) return;
+  const rows = hallData.filter(p => p.session && p.session.user_id && !seatWaiting(p) && !p.session.paused_at
+      && (p.session.zero_since || (p.session.minutes_left ?? 999) <= LOW_MIN))
+    .sort((a, b) => (a.session.minutes_left ?? 0) - (b.session.minutes_left ?? 0));
+  box.classList.toggle('hidden', !rows.length);
+  setText('lowN', rows.length ? rows.length : '');
+  if (!rows.length){ list.innerHTML = ''; return; }
+  list.innerHTML = rows.map(p => { const s = p.session; return `<div class="wi">
+      <b><a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${s.user_id}')">${esc(s.nickname)}</a></b>
+      <span class="wn">· ${esc(p.name)}</span>
+      <span class="wt" style="color:var(--orange); font-weight:700">${s.zero_since ? 'на нуле' : 'ещё ' + Math.max(0, s.minutes_left) + ' мин'}</span>
+      <button title="Карточка с формой депозита" onclick="openUserDrawer('${s.user_id}','deposit')"><span data-ic="coins"></span> пополнить</button>
+      <button title="Карточка с формой пакета" onclick="openUserDrawer('${s.user_id}','pack')"><span data-ic="clock"></span> пакет</button>
+    </div>`; }).join('');
+  mountIcons(list);
+}
 function paintWaitlist(){
   const list = document.getElementById('wlList');
   if (!list) return;
@@ -6006,6 +6203,7 @@ function armZoneDelete(btn, id){
 async function renderSettings(){
   renderZones();    // В4-5: цены зон живут здесь же, в «Экономике»
   renderPackages(); // Е2-и4: и пакеты времени — там же, это тот же прайс
+  renderBoardBox(); // Ж8-и3: табло зала — токен и ссылка
   try{
     const d = await api('/admin/settings');
     document.getElementById('set_xp').value = d.settings.xp_per_min;
@@ -6081,6 +6279,68 @@ async function saveSettings(){
     toast('✓ Настройки сохранены — действуют на новые начисления');
     renderSettings();
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* Ж8-и3 (Ж-Р12): табло зала. Токен выпускает сервер — «1234» у входа не секрет;
+   владелец видит готовую ссылку, копирует её в ТВ-браузер. Перевыпуск гасит старую
+   ссылку сразу, поэтому кнопка со взводом (armButton), как у всего необратимого. */
+let boardState = null;
+async function renderBoardBox(){
+  const box = document.getElementById('boardBox');
+  if (!box) return;
+  try{
+    boardState = await api('/admin/board/token');
+  }catch(e){ box.innerHTML = '<div class="muted">⚠ ' + esc(e.message) + '</div>'; return; }
+  paintBoardBox();
+}
+function paintBoardBox(){
+  const box = document.getElementById('boardBox');
+  const d = boardState || {};
+  if (!d.enabled){
+    box.innerHTML = `<div class="toolrow" style="margin-bottom:10px"><span class="st cancelled">выключено</span><span class="muted">Табло не отвечает никому: ссылки нет. Выпусти токен — появится ссылка для телевизора.</span></div>
+      <div class="toolrow"><button class="btn mini" id="boardRotateBtn" onclick="boardRotate(this)"><span data-ic="plus"></span>Выпустить ссылку</button></div>`;
+    mountIcons(box);
+    return;
+  }
+  const link = location.origin + d.path;
+  box.innerHTML = `<div class="toolrow" style="margin-bottom:10px"><span class="st active">включено</span><span class="muted">открой эту ссылку на телевизоре у входа — обновляется само раз в 10 с</span></div>
+    <div class="muted" style="font-size:12px; margin-bottom:4px">Ссылка для телевизора</div>
+    <input id="boardLink" class="input" readonly value="${esc(link)}" onclick="this.select()" style="width:100%; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; margin-bottom:10px">
+    <div class="toolrow">
+      <button class="btn mini" onclick="boardCopy()"><span data-ic="save"></span>Скопировать ссылку</button>
+      <a class="btn ghost mini" href="${esc(d.path)}" target="_blank" rel="noopener" style="text-decoration:none"><span data-ic="monitor"></span>Открыть табло</a>
+      <button class="btn ghost mini" id="boardRotateBtn" onclick="boardRotate(this)"><span data-ic="wrench"></span>Перевыпустить токен</button>
+      <button class="btn ghost mini" id="boardOffBtn" onclick="boardOff(this)"><span data-ic="power"></span>Выключить табло</button>
+    </div>
+    <div class="muted" style="margin-top:8px">Токен: <code>${esc(d.token)}</code>. Перевыпуск гасит старую ссылку сразу — табло у входа надо переоткрыть.</div>`;
+  mountIcons(box);
+}
+async function boardCopy(){
+  const inp = document.getElementById('boardLink');
+  if (!inp) return;
+  try{ await navigator.clipboard.writeText(inp.value); toast('✓ Ссылка скопирована'); }
+  catch(e){ inp.select(); toast('Выдели и скопируй ссылку вручную'); }
+}
+function boardRotate(btn){
+  const wasOn = !!(boardState && boardState.enabled);
+  const go = async () => {
+    try{
+      boardState = await api('/admin/board/token', {method:'POST'});
+      paintBoardBox();
+      toast(wasOn ? '✓ Новый токен — старая ссылка больше не работает' : '✓ Табло включено — ссылка готова');
+    }catch(e){ toast('⚠ ' + e.message); }
+  };
+  if (!wasOn){ go(); return; } // включить — нечего ломать, без взвода
+  armButton(btn, '<span data-ic="wrench"></span>Ещё раз — старая ссылка умрёт', go);
+}
+function boardOff(btn){
+  armButton(btn, '<span data-ic="power"></span>Ещё раз — выключить табло', async () => {
+    try{
+      boardState = await api('/admin/board/token', {method:'DELETE'});
+      paintBoardBox();
+      toast('✓ Табло выключено');
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 
 /* ── drawer (инфраструктура; наполнение — А1/А2/А3) ── */
@@ -6290,9 +6550,62 @@ function palOpen(){
 function palClose(){ pal.classList.add('hidden'); palPickAct = null; palInp.blur(); }
 function palToggle(){ if (pal.classList.contains('hidden')) palOpen(); else palClose(); }
 
+/* Ж8-и4 (№38): клавиатурный режим. Цифры в палитре — номер ПК: «12» → PC-12,
+   «1» → все с единицей в номере (PC-01, PC-10…), «v3» → VIP-03; четыре и
+   больше цифр — телефон гостя (порог резолвера Е0). Enter — точное совпадение
+   (или первая строка), стрелки — выбор. Разбор чистый (тест в pw_zh8.js). */
+function palParsePC(q){
+  const m = /^\s*([a-zA-Zа-яА-Я]{0,4})[\s-]*(\d{1,3})\s*$/.exec(q || '');
+  if (!m) return null;
+  const prefix = m[1].toLowerCase(), num = m[2];
+  const PREFIX = {'': 'pc', 'p': 'pc', 'pc': 'pc', 'пк': 'pc', 'п': 'pc', 'v': 'vip', 'vip': 'vip', 'в': 'vip', 'вип': 'vip'};
+  if (!(prefix in PREFIX)) return null;
+  return {kind: PREFIX[prefix], num, explicitPrefix: prefix !== ''};
+}
+function palPCMatch(pcName, parsed){
+  const m = /^([a-zA-Z]+)-?0*(\d+)$/.exec(pcName || '');
+  if (!m) return 0;
+  const kind = m[1].toLowerCase(), num = m[2];
+  if (parsed.kind === 'vip' && kind !== 'vip') return 0;
+  if (parsed.kind === 'pc' && parsed.explicitPrefix && kind !== 'pc') return 0;
+  const want = String(parseInt(parsed.num, 10));
+  if (num === want) return 3;              // точное: «12» → PC-12
+  if (parsed.num.length === 1 && num.includes(want)) return 1; // «1» → PC-01, PC-10, PC-21…
+  return 0;
+}
+async function palDigitsBuild(q){
+  const digits = q.replace(/\D/g, '');
+  const parsed = palParsePC(q);
+  if (digits.length >= 4 && !parsed){ // телефон → гости
+    try{
+      const d = await api('/admin/users?q=' + encodeURIComponent(q));
+      if (palInp.value.trim() !== q) return;
+      const mt = d.matched || {};
+      palItems = (d.users || []).slice(0, 8).map(u => ({sec:'Гости по телефону', ic:'users', name:u.nickname,
+        sub:(u.phone ? u.phone + ' · ' : '') + 'LVL ' + u.level + (mt[u.id] ? ' · ' + mt[u.id] : ''),
+        run:() => { palClose(); openUserDrawer(u.id); }}));
+      palSel = 0; palPaint('Гостя с таким телефоном нет');
+    }catch(e){ palItems = []; palPaint('Гостя с таким телефоном нет'); }
+    return true;
+  }
+  if (!parsed) return false;
+  if (!pcCache.length){ try{ const d = await api('/admin/computers'); pcCache = d.computers || []; }catch(e){} }
+  const scored = pcCache.map(p => ({p, sc: palPCMatch(p.name, parsed)})).filter(x => x.sc > 0)
+    .sort((a, b) => b.sc - a.sc || (a.p.name || '').localeCompare(b.p.name || ''));
+  palItems = scored.slice(0, 10).map(({p, sc}) => ({sec: sc === 3 ? 'ПК' : 'ПК с такой цифрой', ic:'monitor', name:p.name,
+    sub:p.session ? 'занят: ' + p.session.nickname : (p.stuck ? '⚠ без сессии' : p.status === 'maintenance' ? 'ремонт' : (p.shell_online ? 'свободен' : 'offline')),
+    run:() => { palClose(); nav('hall'); openPCDrawer(p.id); }}));
+  palSel = 0;
+  palPaint('ПК с номером ' + parsed.num + ' нет');
+  return true;
+}
 function palBuild(){
   const q = palInp.value.trim();
   if (palPickAct) return; // pick-режим строится своим путём
+  if (/^\s*[a-zA-Zа-яА-Я]{0,4}[\s-]*\d{1,3}\s*$/.test(q) && palParsePC(q) || q.replace(/\D/g, '').length >= 4){
+    palDigitsBuild(q); // Ж8-и4: цифры — это ПК или телефон, не поиск по разделам
+    return;
+  }
   const items = [];
   if (!q) palRecent().slice(0, 5).forEach(r => items.push({
     sec:'Недавнее', ic:r.t === 'pc' ? 'monitor' : 'users', name:r.name,

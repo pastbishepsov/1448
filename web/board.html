@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>14:48 — табло зала</title>
+<!--
+  Ж8-и3 «Табло зала» (ADMIN.md, трек Ж; решение Ж-Р12, ревью 14.09 №37).
+  Страница под ТВ у входа: зал по зонам (свободно / занято — БЕЗ ников), очередь
+  по никам, ближайшие брони. Логина нет — токен из URL (?token=…), его выпускает
+  владелец в «Экономике»; сервер отвечает 401, если токен не тот или табло
+  выключено. Обновление раз в 10 с (значение подсказывает сервер), без WebSocket:
+  ТВ-браузер должен пережить сутки без утечек. Стиль — 14:48 Noir (DESIGN.md),
+  крупно: читается с трёх метров.
+-->
+<style>
+  :root{
+    --bg:#070708; --panel:#0f0f12; --card:#141417; --card2:#1c1c21;
+    --txt:#f2f0f2; --dim:#8d8d97; --acc:#ff2740; --acc3:#ff5563;
+    --hair:rgba(255,255,255,.055); --green:#34d399; --orange:#fb923c;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%; margin:0}
+  body{background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       display:flex; flex-direction:column; overflow:hidden; cursor:none}
+  header{display:flex; align-items:baseline; gap:22px; padding:26px 40px 10px}
+  .logo{font-weight:900; font-size:34px; letter-spacing:1px}
+  .logo b{color:var(--acc)}
+  .club{color:var(--dim); font-size:20px; flex:1}
+  .clock{font-size:34px; font-weight:800; font-variant-numeric:tabular-nums}
+  main{flex:1; display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,.9fr); gap:26px; padding:10px 40px 30px; min-height:0}
+  .col{display:flex; flex-direction:column; gap:20px; min-height:0}
+  .card{background:var(--panel); border:1px solid var(--hair); border-radius:22px; padding:22px 26px}
+  .card h2{margin:0 0 14px; font-size:16px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); font-weight:800}
+  .kpi{display:flex; align-items:baseline; gap:14px; margin-bottom:8px}
+  .kpi b{font-size:64px; font-weight:900; line-height:1; color:var(--green)}
+  .kpi b.none{color:var(--acc3)}
+  .kpi span{font-size:22px; color:var(--dim)}
+  .zone{margin-top:18px}
+  .zone .zh{display:flex; align-items:baseline; gap:12px; margin-bottom:10px}
+  .zone .zh .nm{font-size:24px; font-weight:800}
+  .zone .zh .rate{color:var(--dim); font-size:18px}
+  .zone .zh .cnt{margin-left:auto; font-size:24px; font-weight:800; font-variant-numeric:tabular-nums}
+  .zone .zh .cnt em{color:var(--green); font-style:normal}
+  .pcs{display:flex; flex-wrap:wrap; gap:10px}
+  .pc{min-width:104px; padding:12px 14px; border-radius:14px; border:1px solid var(--hair); background:var(--card);
+      font-size:20px; font-weight:800; text-align:center; letter-spacing:.5px}
+  .pc.free{border-color:rgba(52,211,153,.55); color:var(--green); background:rgba(52,211,153,.08)}
+  .pc.busy{color:var(--dim); background:var(--card); opacity:.75}
+  .pc.busy::after{content:'занят'; display:block; font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--dim); margin-top:2px}
+  .pc.free::after{content:'свободен'; display:block; font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--green); opacity:.8; margin-top:2px}
+  .queue{flex:1; min-height:0; overflow:hidden}
+  .qi{display:flex; align-items:center; gap:16px; padding:14px 8px; border-bottom:1px solid var(--hair); font-size:26px}
+  .qi .pos{width:44px; height:44px; border-radius:12px; background:var(--card2); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:20px; color:var(--dim)}
+  .qi.called .pos{background:var(--acc); color:#fff}
+  .qi b{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .qi .w{color:var(--dim); font-size:18px}
+  .qi.called .w{color:var(--acc3); font-weight:800}
+  .empty{color:var(--dim); font-size:20px; padding:14px 8px}
+  .bk{display:flex; align-items:center; gap:14px; padding:10px 8px; border-bottom:1px solid var(--hair); font-size:20px}
+  .bk .t{font-weight:900; font-variant-numeric:tabular-nums; width:78px}
+  .bk .c{flex:1; color:var(--txt)}
+  .bk .d{color:var(--dim); font-size:16px}
+  .bk.soon .t{color:var(--acc3)}
+  footer{display:flex; align-items:center; gap:12px; padding:0 40px 18px; color:var(--dim); font-size:14px}
+  footer .dot{width:8px; height:8px; border-radius:50%; background:var(--green)}
+  footer.stale .dot{background:var(--acc)}
+  .off{position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px; background:var(--bg); text-align:center; padding:40px}
+  .off.show{display:flex}
+  .off h1{font-size:44px; margin:0}
+  .off p{color:var(--dim); font-size:20px; max-width:720px; margin:0}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">14<b>:</b>48</div>
+  <div class="club" id="club"></div>
+  <div class="clock" id="clock">--:--</div>
+</header>
+<main>
+  <div class="col">
+    <section class="card">
+      <h2>Зал</h2>
+      <div class="kpi"><b id="free">—</b><span id="freeTxt">свободных ПК</span></div>
+      <div id="zones"></div>
+    </section>
+  </div>
+  <div class="col">
+    <section class="card queue">
+      <h2>Очередь <span id="qN" style="color:var(--txt)"></span></h2>
+      <div id="queue"><div class="empty">Очереди нет — подходите к стойке</div></div>
+    </section>
+    <section class="card">
+      <h2>Ближайшие брони</h2>
+      <div id="bookings"><div class="empty">Броней на ближайшие часы нет</div></div>
+    </section>
+  </div>
+</main>
+<footer id="foot"><span class="dot"></span><span id="footTxt">обновляется каждые 10 с</span></footer>
+<div class="off" id="off">
+  <div class="logo">14<b>:</b>48</div>
+  <h1 id="offTitle">Табло выключено</h1>
+  <p id="offTxt">Владелец выпускает ссылку с токеном в «Экономике» админки. Открой табло по этой ссылке.</p>
+</div>
+<script>
+/* Табло только читает: одна ручка, один токен из URL, никаких действий. */
+const token = new URLSearchParams(location.search).get('token') || '';
+const API = '/api/v1/board/state?token=' + encodeURIComponent(token);
+let refreshSec = 10, lastOk = 0, timer = null;
+const esc = s => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
+const hhmm = iso => { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const plural = (n, one, few, many) => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? one : (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? few : many); };
+
+function paint(d){
+  document.getElementById('club').textContent = d.club || '';
+  const free = d.free || 0;
+  const fb = document.getElementById('free');
+  fb.textContent = free; fb.classList.toggle('none', free === 0);
+  document.getElementById('freeTxt').textContent = free === 0 ? 'свободных ПК нет — становитесь в очередь' : plural(free, 'свободный ПК из ' + d.total, 'свободных ПК из ' + d.total, 'свободных ПК из ' + d.total);
+  document.getElementById('zones').innerHTML = (d.zones || []).map(z => `
+    <div class="zone">
+      <div class="zh"><span class="nm">${esc(z.name)}</span><span class="rate">${(+z.rate_pln || 0).toLocaleString('ru-RU', {minimumFractionDigits: 0, maximumFractionDigits: 2})} zł/ч</span>
+        <span class="cnt"><em>${z.free}</em> / ${z.total}</span></div>
+      <div class="pcs">${[...(z.free_list || []).map(n => ({n, free: true})), ...(z.busy_list || []).map(n => ({n, free: false}))]
+        .sort((a, b) => a.n.localeCompare(b.n, undefined, {numeric: true})) // по номеру, как стоят в зале: гость ищет «свою» машину глазами
+        .map(p => `<div class="pc ${p.free ? 'free' : 'busy'}">${esc(p.n)}</div>`).join('')}</div>
+    </div>`).join('');
+  const q = d.queue || [];
+  document.getElementById('qN').textContent = q.length ? '· ' + q.length : '';
+  document.getElementById('queue').innerHTML = q.length === 0
+    ? '<div class="empty">Очереди нет — подходите к стойке</div>'
+    : q.slice(0, 8).map(w => `<div class="qi${w.called ? ' called' : ''}"><span class="pos">${w.position}</span><b>${esc(w.nickname)}</b>
+        <span class="w">${w.called ? 'ваш ПК свободен — к стойке' : (w.waited_min || 0) + ' мин'}</span></div>`).join('')
+      + (q.length > 8 ? `<div class="empty">и ещё ${q.length - 8}</div>` : '');
+  const bk = d.bookings || [];
+  const now = Date.now();
+  document.getElementById('bookings').innerHTML = bk.length === 0
+    ? '<div class="empty">Броней на ближайшие часы нет</div>'
+    : bk.slice(0, 6).map(b => `<div class="bk${new Date(b.start_time) - now < 30 * 60000 ? ' soon' : ''}"><span class="t">${hhmm(b.start_time)}</span><span class="c">${esc(b.computer || 'любой ПК')}</span><span class="d">${b.duration_min} мин</span></div>`).join('');
+}
+
+async function tick(){
+  try{
+    const r = await fetch(API, {cache: 'no-store'});
+    if (r.status === 401){ showOff('Табло выключено', 'Ссылка устарела или табло выключено в «Экономике». Владелец выпускает новую ссылку с токеном.'); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    refreshSec = Math.max(5, +d.refresh_sec || 10);
+    document.getElementById('off').classList.remove('show');
+    paint(d);
+    lastOk = Date.now();
+    document.getElementById('foot').classList.remove('stale');
+    document.getElementById('footTxt').textContent = 'обновлено ' + hhmm(new Date().toISOString()) + ' · каждые ' + refreshSec + ' с';
+  }catch(e){
+    // сеть моргнула — старые данные остаются, снизу честная пометка
+    document.getElementById('foot').classList.add('stale');
+    document.getElementById('footTxt').textContent = 'нет связи с сервером' + (lastOk ? ' · данные на ' + hhmm(new Date(lastOk).toISOString()) : '');
+  }finally{
+    clearTimeout(timer);
+    timer = setTimeout(tick, refreshSec * 1000);
+  }
+}
+function showOff(title, txt){
+  document.getElementById('offTitle').textContent = title;
+  document.getElementById('offTxt').textContent = txt;
+  document.getElementById('off').classList.add('show');
+  clearTimeout(timer);
+  timer = setTimeout(tick, 30000); // владелец включит — табло само оживёт
+}
+setInterval(() => { document.getElementById('clock').textContent = hhmm(new Date().toISOString()); }, 1000);
+document.getElementById('clock').textContent = hhmm(new Date().toISOString());
+if (!token) showOff('Табло выключено', 'В адресе нет токена. Владелец выпускает ссылку с токеном в «Экономике» админки — открой табло по ней.');
+else tick();
+</script>
+</body>
+</html>
