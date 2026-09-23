@@ -679,15 +679,27 @@ const devJWTSecret = "dev_insecure_secret_change_me"
 
 // maxRequestBody — потолок тела запроса. ShouldBindJSON разбирает JSON в
 // память ДО любой валидации, поэтому без потолка публичный /auth/login с
-// гигабайтным телом укладывает контейнер в OOM (ревью 26.08). Фото товара
-// имеет собственный, больший лимит через io.LimitReader.
+// гигабайтным телом укладывает контейнер в OOM (ревью 26.08).
+// З0-и2 (№32): исключений нет. Раньше из-под потолка по префиксу выпадали все
+// /admin/goods*, и 3 МБ JSON в приход склада разбирался целиком и ложился в
+// журнал. Фото товара и обложка режутся своими LimitReader на 500 КБ — это
+// меньше общего потолка, отдельный путь им не нужен.
 const maxRequestBody = 1 << 20 // 1 МБ
 
 func bodyLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.Body != nil && c.Request.Method != http.MethodGet && !strings.HasPrefix(c.FullPath(), "/api/v1/admin/goods") {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBody)
+		if c.Request.Body == nil || c.Request.Method == http.MethodGet {
+			c.Next()
+			return
 		}
+		// заявленный размер больше потолка — отказ сразу: тело не читаем и не разбираем
+		if c.Request.ContentLength > maxRequestBody {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"code": "body_too_large",
+				"message": "Запрос больше 1 МБ — сервер такие не принимает"})
+			return
+		}
+		// размер не заявлен (chunked) или занижен — чтение оборвётся на потолке
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBody)
 		c.Next()
 	}
 }
