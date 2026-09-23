@@ -72,12 +72,12 @@ func TestCloseoutMessage(t *testing.T) {
 		wantSub  string
 		wantNone bool
 	}{
-		{"сошлось — молчим", 50000, counted(50000), "", "", true},
+		{"сошлось — строка с суммой (З1-и1)", 50000, counted(50000), "", "касса сошлась — в ящике 500.00 zł", false},
 		{"недостача", 50000, counted(48000), "", "расхождение −20.00 zł", false},
 		{"излишек", 50000, counted(50500), "", "расхождение +5.00 zł", false},
 		{"без пересчёта", 50000, nil, "", "без пересчёта кассы (по операциям должно быть 500.00 zł)", false},
 		{"заметка добавляется", 50000, counted(48000), "сдал Ане", "Передал смену: сдал Ане", false},
-		{"сошлось с заметкой — всё равно молчим", 50000, counted(50000), "всё ок", "", true},
+		{"сошлось с заметкой — заметка тоже", 50000, counted(50000), "всё ок", "Передал смену: всё ок", false},
 	}
 	for _, tc := range cases {
 		got := closeoutMessage(tc.expected, tc.counted, tc.note)
@@ -93,6 +93,22 @@ func TestCloseoutMessage(t *testing.T) {
 	}
 	if d := closeoutDiff(50000, 48000); d != -2000 {
 		t.Errorf("closeoutDiff = %d, ожидалось -2000", d)
+	}
+	// З1-и1: окно сдачи — от начала смены или от прошлой сдачи, если она позже
+	day := time.Date(2026, 9, 23, 8, 0, 0, 0, time.UTC)
+	entry := day.Add(-11 * time.Hour) // ночная: вчера 21:00
+	early, late := day.Add(-12*time.Hour), day.Add(2*time.Hour)
+	if got := closeoutFrom(&entry, nil, day); !got.Equal(entry) {
+		t.Errorf("ночная смена: окно с %v, ожидалось с начала смены %v", got, entry)
+	}
+	if got := closeoutFrom(&entry, &early, day); !got.Equal(entry) {
+		t.Errorf("сдача раньше смены окно не двигает: %v", got)
+	}
+	if got := closeoutFrom(&entry, &late, day); !got.Equal(late) {
+		t.Errorf("сдача позже начала смены — окно с неё: %v", got)
+	}
+	if got := closeoutFrom(nil, nil, day); !got.Equal(day) {
+		t.Errorf("без смены — с начала клубных суток: %v", got)
 	}
 	e := cashExpectation{Deposits: 10000, Goods: 2500, Packs: 6000, Refunds: 500}
 	if e.Total() != 18000 {

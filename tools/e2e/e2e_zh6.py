@@ -267,12 +267,15 @@ co = d.get("closeout") or {}
 check("уход без тела → closeout.skipped=true, counted нет", s == 200 and co.get("skipped") is True and "counted_pln" not in co, f"{s} {json.dumps(co, ensure_ascii=False)[:160]}")
 staff3 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
 check("владельцу: «Сдал смену без пересчёта кассы»", any("без пересчёта кассы" in m["text"] for m in staff3[len(staff2):]), json.dumps([m['text'] for m in staff3[len(staff2):]], ensure_ascii=False)[:200])
-# касса сошлась — молча
+# касса сошлась — владельцу строка с суммой (трек З, З1-и1, №1 «а»: раньше молчали — «сошлось»
+# было неотличимо от «вбил ожидаемую цифру»)
 api("POST", "/admin/work/start", {}, a2)
 pv3 = api("GET", "/admin/work/closeout", None, a2)[1]
 staff4 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
 s, d = api("POST", "/admin/work/stop", {"counted_pln": pv3["expected_pln"]}, a2)
-check("касса сошлась → diff 0, в канал ничего", s == 200 and near(d["closeout"]["diff_pln"], 0) and len(api("GET", "/admin/staff-chat", None, ot)[1]["messages"]) == len(staff4), f"{s} {d.get('closeout', {}).get('diff_pln')}")
+staff5 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
+check("касса сошлась → diff 0, владельцу строка «касса сошлась»", s == 200 and near(d["closeout"]["diff_pln"], 0)
+      and any("касса сошлась" in m["text"] for m in staff5[len(staff4):]), f"{s} {d.get('closeout', {}).get('diff_pln')} {json.dumps([m['text'] for m in staff5[len(staff4):]], ensure_ascii=False)[:160]}")
 s, d = api("POST", "/admin/work/stop", {"counted_pln": -5}, a2)
 check("stop без открытой смены / отрицательная сумма → 400 или 409", s in (400, 409), f"{s} {d.get('code')}")
 api("POST", "/admin/work/start", {}, a2)

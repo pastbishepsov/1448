@@ -4,10 +4,17 @@ package main
 // миграция 066). «Отметить уход» закрывал табель и молчал про деньги —
 // расхождение в ящике всплывало через день, когда уже не восстановить, кто и
 // что. Теперь уход идёт через пересчёт: сервер считает, сколько наличных
-// должно быть по операциям ЭТОГО админа за клубные сутки, админ вбивает
+// должно быть по операциям ЭТОГО админа за его смену, админ вбивает
 // пересчитанное, разница ложится в shift_closeouts и уходит владельцу — в
 // канал персонала, в сводку смены и в табель. Уход без пересчёта остаётся
 // возможным и честно помечается.
+//
+// З1-и1 (OWNER.md, №1 «а»): окно — смена, а не клубные сутки. Ночная смена,
+// сданная в 08:05, получала «должно быть 0» и ложный излишек, вторая сдача за
+// сутки включала деньги первой (ложная недостача), сдача датировалась днём
+// нажатия и пропадала из сводки своей смены, а «сошлось» владельцу не писалось
+// вовсе. Теперь окно — от начала записи табеля (или от прошлой сдачи этого
+// админа, если она позже) до «сейчас», дата сдачи — дата записи табеля.
 //
 // Ожидаемая наличность (только method=cash, живые деньги у стойки):
 //   + депозиты, созданные админом в клубные сутки и не отменённые
@@ -103,18 +110,49 @@ func expectedCash(adminID *uuid.UUID, from, to time.Time) cashExpectation {
 	return e
 }
 
+// closeoutFrom — начало окна «должно быть в ящике» (З1-и1, чистая, тест): от
+// начала смены (записи табеля) или от прошлой сдачи этого админа, если она
+// позже; без открытой смены — от начала клубных суток, но не раньше прошлой сдачи.
+func closeoutFrom(entryStart, lastCloseout *time.Time, dayStart time.Time) time.Time {
+	from := dayStart
+	if entryStart != nil {
+		from = *entryStart
+	}
+	if lastCloseout != nil && lastCloseout.After(from) {
+		from = *lastCloseout
+	}
+	return from
+}
+
+// closeoutWindow — окно сдачи для админа сейчас и дата, которой она ляжет:
+// дата записи табеля (ночная смена — вчерашняя), без смены — клубные сутки.
+func closeoutWindow(adminID uuid.UUID, entry *models.WorkEntry, now time.Time) (from, day time.Time) {
+	reportHour := int(settingInt64("report_hour", 8))
+	dayStart, _, _, _ := shiftWindow("", reportHour, now)
+	day = clubDayOf(now, reportHour)
+	var start, lastAt *time.Time
+	if entry != nil {
+		start, day = &entry.StartedAt, entry.Date
+	}
+	var last models.ShiftCloseout
+	if db.Where("user_id = ? AND created_at <= ?", adminID, now).Order("created_at DESC").First(&last).Error == nil {
+		lastAt = &last.CreatedAt
+	}
+	return closeoutFrom(start, lastAt, dayStart), day
+}
+
 // closeoutDiff — расхождение (чистая, тест): пересчитано минус ожидалось.
 func closeoutDiff(expected, counted int64) int64 { return counted - expected }
 
-// closeoutMessage — текст владельцу в канал персонала (чистая, тест). Пусто —
-// сообщать нечего: касса сошлась.
+// closeoutMessage — текст владельцу в канал персонала (чистая, тест). З1-и1:
+// «сошлось» тоже строка с суммой — иначе оно неотличимо от «вбил ожидаемую цифру».
 func closeoutMessage(expected int64, counted *int64, note string) string {
 	var b strings.Builder
 	switch {
 	case counted == nil:
 		fmt.Fprintf(&b, "🧮 Сдал смену без пересчёта кассы (по операциям должно быть %.2f zł)", models.PLNFromGrosz(expected))
 	case closeoutDiff(expected, *counted) == 0:
-		return ""
+		fmt.Fprintf(&b, "🧮 Сдал смену: касса сошлась — в ящике %.2f zł", models.PLNFromGrosz(*counted))
 	default:
 		d := closeoutDiff(expected, *counted)
 		sign := "−"
@@ -153,8 +191,8 @@ func closeoutOut(co *models.ShiftCloseout) gin.H {
 }
 
 // GET /admin/work/closeout — «сколько должно быть в ящике» перед уходом
-// (staff, за себя): ожидаемая наличность этого админа за текущие клубные
-// сутки с разбивкой, и справочно — всего за сутки по всем.
+// (staff, за себя): ожидаемая наличность этого админа за его смену с
+// разбивкой, и справочно — всего за то же окно по всем (З1-и1).
 func handleWorkCloseoutPreview(c *gin.Context) {
 	adminID, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
@@ -162,28 +200,27 @@ func handleWorkCloseoutPreview(c *gin.Context) {
 		return
 	}
 	now := time.Now()
-	reportHour := int(settingInt64("report_hour", 8))
-	from, _, key, _ := shiftWindow("", reportHour, now)
+	open := openEntryFor(adminID)
+	from, day := closeoutWindow(adminID, open, now)
 	mine := expectedCash(&adminID, from, now)
 	all := expectedCash(nil, from, now)
 	resp := mine.out()
-	resp["date"], resp["from"], resp["club_expected_pln"] = key, from, models.PLNFromGrosz(all.Total())
-	resp["on_shift"] = openEntryFor(adminID) != nil
+	resp["date"], resp["from"], resp["club_expected_pln"] = day.Format("2006-01-02"), from, models.PLNFromGrosz(all.Total())
+	resp["on_shift"] = open != nil
 	c.JSON(http.StatusOK, resp)
 }
 
 // recordCloseout — записать сдачу кассы при уходе и известить владельца.
 // countedPLN nil = ушёл без пересчёта. Возвращает запись и текст сообщения.
 func recordCloseout(c *gin.Context, adminID uuid.UUID, entry *models.WorkEntry, countedPLN *float64, note string, now time.Time) *models.ShiftCloseout {
-	reportHour := int(settingInt64("report_hour", 8))
-	from, _, _, _ := shiftWindow("", reportHour, now)
+	from, day := closeoutWindow(adminID, entry, now) // З1-и1: окно смены, дата — день записи табеля
 	e := expectedCash(&adminID, from, now)
 	club, ok := defaultClub()
 	if !ok {
 		return nil
 	}
 	co := models.ShiftCloseout{
-		ClubID: club.ID, UserID: adminID, Date: clubDayOf(now, reportHour),
+		ClubID: club.ID, UserID: adminID, Date: day,
 		ExpectedGrosz: e.Total(), DepositsGrosz: e.Deposits, GoodsGrosz: e.Goods,
 		PacksGrosz: e.Packs, RefundsGrosz: e.Refunds, Note: strings.TrimSpace(note), Skipped: countedPLN == nil,
 	}

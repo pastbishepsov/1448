@@ -5637,10 +5637,13 @@ function paintShiftChip(){
 /* Шторка «Моя смена»: показать факт и дать закрыть её одной кнопкой.
    Уход — arm-паттерн: закрытая по ошибке смена стоит человеку часов. */
 /* Ж6-и4 (№32): уход = сдача кассы. Сервер говорит, сколько наличных должно
-   быть в ящике по операциям этого админа за клубные сутки; админ вбивает
+   быть в ящике по операциям этого админа за его смену (З1-и1); админ вбивает
    пересчитанное, разница уходит владельцу (канал персонала, сводка, табель).
    Уйти без пересчёта можно — отдельной кнопкой и с пометкой. */
 let closeoutPrev = null, closeoutCounted = '';
+// З1-и1: начало окна сдачи — время, а если смена началась не сегодня — ещё и дата («22.09 21:00»)
+function coFrom(iso){ const d = new Date(iso), t = new Date();
+  return (d.toDateString() === t.toDateString() ? '' : String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ') + hhmm(iso); }
 async function openMyShift(){
   drawerUserId = null; drawerPCId = null;
   const on = !!(myShift && myShift.on_shift);
@@ -5668,8 +5671,8 @@ function paintMyShift(){
         ? `<div class="dsub">Сдача кассы</div>
            ${cp.error ? `<div class="muted">Касса не посчиталась: ${esc(cp.error)}</div>` : `
            <table class="kv">
-             <tr><td class="muted">В ящике должно быть</td><td><b id="coExpected">${fmtPLN(cp.expected_pln || 0)} zł</b> <span class="muted">— наличные по твоим операциям за сутки с ${cp.from ? hhmm(cp.from) : '—'}</span></td></tr>
-             <tr><td class="muted">Из чего</td><td class="muted">пополнения ${fmtPLN(cp.deposits_pln || 0)} · товары и кухня ${fmtPLN(cp.goods_pln || 0)} · пакеты ${fmtPLN(cp.packs_pln || 0)}${cp.refunds_pln > 0 ? ' · минус возвраты налом ' + fmtPLN(cp.refunds_pln) : ''}${cp.club_expected_pln != null && Math.abs(cp.club_expected_pln - (cp.expected_pln || 0)) >= 0.01 ? ' · всего за сутки по всем: ' + fmtPLN(cp.club_expected_pln) : ''}</td></tr>
+             <tr><td class="muted">В ящике должно быть</td><td><b id="coExpected">${fmtPLN(cp.expected_pln || 0)} zł</b> <span class="muted">— наличные по твоим операциям за смену с ${cp.from ? coFrom(cp.from) : '—'}</span></td></tr>
+             <tr><td class="muted">Из чего</td><td class="muted">пополнения ${fmtPLN(cp.deposits_pln || 0)} · товары и кухня ${fmtPLN(cp.goods_pln || 0)} · пакеты ${fmtPLN(cp.packs_pln || 0)}${cp.refunds_pln > 0 ? ' · минус возвраты налом ' + fmtPLN(cp.refunds_pln) : ''}${cp.club_expected_pln != null && Math.abs(cp.club_expected_pln - (cp.expected_pln || 0)) >= 0.01 ? ' · всего за смену по всем: ' + fmtPLN(cp.club_expected_pln) : ''}</td></tr>
            </table>
            <div class="uform" style="margin-top:8px">
              <input id="coCounted" class="input" type="number" min="0" step="0.01" placeholder="Пересчитано, zł" value="${esc(closeoutCounted)}" oninput="closeoutCounted=this.value; coPaintDiff()">
@@ -5679,7 +5682,7 @@ function paintMyShift(){
                      onclick="armButton(this, 'Ещё раз — сдать смену', () => shiftStop(false))"><span data-ic="out"></span>Сдать смену</button>
              <button class="btn ghost" style="width:100%; justify-content:center"
                      onclick="armButton(this, 'Точно без пересчёта?', () => shiftStop(true))">Уйти без пересчёта</button>
-             <div class="muted">Уход закрывает запись табеля — по ней считается зарплата. Расхождение и «без пересчёта» увидит владелец.</div>
+             <div class="muted">Уход закрывает запись табеля — по ней считается зарплата. Итог сдачи увидит владелец — и когда сошлось, и когда нет.</div>
            </div>`}`
         : `<div class="muted" style="margin-top:12px">Смена открывается сама, когда ты входишь в систему. Если её нет, а ты работаешь — открой руками.</div>
            <button class="btn" style="width:100%; justify-content:center; margin-top:8px"
