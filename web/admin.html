@@ -886,6 +886,8 @@
           <input id="set_compcap" class="input" type="number" min="0" max="1000000">
           <label class="muted" for="set_compcapmin">Дневной лимит компенсаций минутами на админа (0 — без лимита)</label>
           <input id="set_compcapmin" class="input" type="number" min="0" max="100000">
+          <label class="muted" for="set_casecap">Кейсов в день на админа, штук (0 — без лимита; владелец не ограничен)</label>
+          <input id="set_casecap" class="input" type="number" min="0" max="1000">
           <label class="muted" for="set_rhour">Час границы клубных суток — сводка смены (0–23)</label>
           <input id="set_rhour" class="input" type="number" min="0" max="23">
           <label class="muted" for="set_segnew">Сегмент «новые»: окно первого визита, дней</label>
@@ -6232,6 +6234,7 @@ async function renderSettings(){
     document.getElementById('set_depcap').value = d.settings.admin_day_deposit_cap_pln;
     document.getElementById('set_compcap').value = d.settings.admin_day_comp_cap_pln ?? 0; // Ж0-и2 (Ж-Р2)
     document.getElementById('set_compcapmin').value = d.settings.admin_day_comp_cap_min ?? 0;
+    document.getElementById('set_casecap').value = d.settings.admin_day_case_cap ?? 0; // З0-и4
     document.getElementById('set_rhour').value = d.settings.report_hour;
     document.getElementById('set_segnew').value = d.settings.seg_new_days;
     document.getElementById('set_seglost').value = d.settings.seg_lost_days;
@@ -6266,6 +6269,7 @@ async function saveSettings(){
     admin_day_deposit_cap_pln: parseInt(document.getElementById('set_depcap').value),
     admin_day_comp_cap_pln: parseInt(document.getElementById('set_compcap').value), // Ж0-и2
     admin_day_comp_cap_min: parseInt(document.getElementById('set_compcapmin').value),
+    admin_day_case_cap: parseInt(document.getElementById('set_casecap').value), // З0-и4
     report_hour: parseInt(document.getElementById('set_rhour').value),
     seg_new_days: parseInt(document.getElementById('set_segnew').value),
     seg_lost_days: parseInt(document.getElementById('set_seglost').value),

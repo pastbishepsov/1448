@@ -98,6 +98,22 @@ func handleAdminGrant(c *gin.Context) {
 		}
 	}
 
+	// З0-и4 (№9 «а»): дневной потолок кейсов для роли admin, штук (0 = без лимита).
+	// Кейс — эмиссия монет (gods — до 20 000), потолок XP его не касался.
+	if req.Type == "case" && c.GetString("user_role") == string(models.UserRoleAdmin) {
+		if cap := settingInt64("admin_day_case_cap", 0); cap > 0 {
+			var used int64
+			db.Model(&models.AdminGrant{}).
+				Where("admin_id = ? AND grant_type = 'case' AND created_at >= ?", adminID, clubDayStart(time.Now())).
+				Count(&used)
+			if adminDayCapExceeded(float64(used), 1, float64(cap)) {
+				c.JSON(http.StatusForbidden, gin.H{"code": "day_cap",
+					"message": fmt.Sprintf("Дневной лимит кейсов на админа: %d (уже выдано %d)", cap, used)})
+				return
+			}
+		}
+	}
+
 	entry := models.AdminGrant{
 		UserID: user.ID, AdminID: adminID,
 		GrantType: req.Type, Reason: strings.TrimSpace(req.Reason),

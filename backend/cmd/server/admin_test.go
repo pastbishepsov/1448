@@ -64,6 +64,8 @@ func TestAdminDayCapExceeded(t *testing.T) {
 		{"ровно в потолок — можно", 400, 100, 500, false},
 		{"перебор", 450, 100, 500, true},
 		{"первая же операция больше лимита", 0, 600, 500, true},
+		{"кейсы (З0-и4): второй при потолке 2 — можно", 1, 1, 2, false},
+		{"кейсы (З0-и4): третий при потолке 2 — нет", 2, 1, 2, true},
 	}
 	for _, tc := range cases {
 		if got := adminDayCapExceeded(tc.used, tc.add, tc.cap); got != tc.want {
