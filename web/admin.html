@@ -3835,7 +3835,7 @@ const AUD_GROUPS = {
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','sale_paid','settle','good_create','good_update','good_delete','stock_in','stock_adjust'], // Ж6
-  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close'], // ревью 26.08; Ж6-и4: сдача кассы
+  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close','login_failed'], // ревью 26.08; Ж6-и4: сдача кассы
 };
 const AUD_LABEL = {
   deposit:'депозит', deposit_void:'отмена депозита', grant:'начисление', ban:'бан', unban:'разбан',
@@ -3858,6 +3858,7 @@ const AUD_LABEL = {
   staff_card:'персонал: карточка',
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
   work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка', shift_close:'сдача кассы', // Ж6-и4
+  login_failed:'вход: неверный пароль', // З0-и3: серия неудач входа персонала — только владельцу
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   coin_redeem:'монеты: время за монеты',
   coin_burn:'монеты: сгорание',

@@ -478,25 +478,37 @@ func handleLogin(c *gin.Context) {
 	}
 
 	// К0-и5: перебор пароля режем по аккаунту, а не по IP (IP подделывается
-	// заголовком X-Forwarded-For). Проверка стоит ДО поиска в БД, чтобы и
-	// несуществующий логин не давал бесконечных попыток.
+	// заголовком X-Forwarded-For); несуществующий логин считается так же, как
+	// гостевой. З0-и3 (№28): сперва — кто это: персоналу после серии не замок,
+	// а темп (loginguard.go), серия неудач — строка login_failed владельцу.
 	now := time.Now()
-	if locked, wait := loginGuardian.locked(req.Login, now); locked {
+	var user models.User
+	found := db.Where("nickname = ? OR email = ?", req.Login, req.Login).First(&user).Error == nil
+	staff := found && roleIsStaff(string(user.Role))
+	if locked, wait := loginGuardian.locked(req.Login, staff, now); locked {
+		if staff {
+			secs := int((wait + time.Second - 1) / time.Second)
+			c.Header("Retry-After", fmt.Sprint(secs))
+			c.JSON(http.StatusTooManyRequests, gin.H{"code": "login_paced", "retry_after": secs,
+				"message": fmt.Sprintf("Много неверных паролей подряд — следующая попытка через %d с", secs)})
+			return
+		}
 		c.JSON(http.StatusTooManyRequests, gin.H{"code": "login_locked",
 			"message": fmt.Sprintf("Слишком много неверных попыток. Подожди %d мин или подойди к стойке — админ сбросит пароль",
 				int(wait.Minutes())+1)})
 		return
 	}
 
-	var user models.User
-	if err := db.Where("nickname = ? OR email = ?", req.Login, req.Login).First(&user).Error; err != nil {
-		loginGuardian.fail(req.Login, now)
+	if !found {
+		loginGuardian.fail(req.Login, false, now)
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_credentials", "message": "Неверный логин или пароль"})
 		return
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
-		loginGuardian.fail(req.Login, now)
+		if n, report := loginGuardian.fail(req.Login, staff, now); report {
+			logLoginFailed(&user, n, c.ClientIP())
+		}
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_credentials", "message": "Неверный логин или пароль"})
 		return
 	}

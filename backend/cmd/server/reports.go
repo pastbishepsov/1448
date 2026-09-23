@@ -1104,7 +1104,8 @@ func handleReportStaff(c *gin.Context) {
 		Cnt     int64
 	}
 	db.Model(&models.AdminAction{}).Select("admin_id, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ?", p.From, p.To).Group("admin_id").Scan(&actRows)
+		Where("created_at >= ? AND created_at < ? AND action <> ?", p.From, p.To, "login_failed"). // З0-и3
+		Group("admin_id").Scan(&actRows)
 	for _, r := range actRows {
 		who(r.AdminID).actions = r.Cnt
 	}

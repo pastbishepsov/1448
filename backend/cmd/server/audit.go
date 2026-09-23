@@ -42,6 +42,15 @@ func logAdminActionAs(adminID uuid.UUID, action string, targetUserID *uuid.UUID,
 	}
 }
 
+// logLoginFailed — серия неверных паролей к аккаунту персонала (З0-и3, №28):
+// одна строка журнала на серию — кто, сколько, с какого IP. Видна только
+// владельцу (hiddenFromAdmin) и в «действия» сотрудника не считается.
+func logLoginFailed(u *models.User, n int, ip string) {
+	target := u.ID
+	logAdminActionAs(u.ID, "login_failed", &target, fmt.Sprintf(
+		"%d неверных паролей подряд · IP %s · дальше вход не чаще раза в %d с", n, ip, int(loginStaffPace.Seconds())))
+}
+
 // GET /admin/audit — лента событий: источники (начисления, депозиты и их
 // отмены, продажи и их отмены, admin_actions) сливаются по времени.
 // Роли (Б1-и4, решение №3): owner видит всё; admin — текущие клубные сутки и
@@ -118,7 +127,7 @@ func handleAdminAudit(c *gin.Context) {
 	}
 	hiddenFromAdmin := func(action string) bool {
 		return !ownerView &&
-			(action == "settings_update" || strings.HasPrefix(action, "staff_"))
+			(action == "settings_update" || action == "login_failed" || strings.HasPrefix(action, "staff_"))
 	}
 
 	type item struct {
@@ -287,7 +296,11 @@ func handleAdminAudit(c *gin.Context) {
 		if hiddenFromAdmin(a.Action) {
 			continue
 		}
-		items = append(items, item{"action:" + a.ID.String(), a.CreatedAt, a.Action, a.AdminID, a.TargetUserID, a.Details})
+		by := a.AdminID
+		if a.Action == "login_failed" {
+			by = uuid.Nil // З0-и3: кто подбирал пароль — неизвестно; чей аккаунт — в колонке гостя
+		}
+		items = append(items, item{"action:" + a.ID.String(), a.CreatedAt, a.Action, by, a.TargetUserID, a.Details})
 	}
 
 	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })

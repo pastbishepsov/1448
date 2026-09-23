@@ -61,7 +61,7 @@ func handleAdminStaffList(c *gin.Context) {
 	}
 	var rows []cnt
 	db.Model(&models.AdminAction{}).Select("admin_id, COUNT(*) AS n").
-		Where("created_at >= ?", today).Group("admin_id").Scan(&rows)
+		Where("created_at >= ? AND action <> ?", today, "login_failed").Group("admin_id").Scan(&rows) // З0-и3: чужие попытки входа — не его действия
 	for _, r := range rows {
 		acts[r.AdminID] += r.N
 	}
