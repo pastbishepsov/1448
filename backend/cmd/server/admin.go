@@ -25,15 +25,47 @@ func roleIsStaff(role string) bool {
 	return role == string(models.UserRoleAdmin) || role == string(models.UserRoleOwner)
 }
 
+// staffRoleNow — роль и статус человека из базы, а не из токена (З0-и1, №3):
+// увольнение и снятие роли действуют в ту же секунду. Персонала мало, чтение
+// по первичному ключу. active=false — аккаунт заблокирован.
+func staffRoleNow(userID string) (role string, active bool, err error) {
+	var u models.User
+	if err := db.Select("role", "status").First(&u, "id = ?", userID).Error; err != nil {
+		return "", false, err
+	}
+	return string(u.Role), u.Status != models.UserStatusBanned, nil
+}
+
 // adminMiddleware — пускает только персонал. Ставится ПОСЛЕ authMiddleware.
+// З0-и1 (№3): роль и статус — из базы, claim токена больше ничего не решает;
+// в контекст кладётся роль из базы — её видят ownerMiddleware и все ручки ниже.
 func adminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !roleIsStaff(c.GetString("user_role")) {
+		role, active, err := staffRoleNow(c.GetString("user_id"))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+			return
+		}
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"code": "db_unavailable", "message": "База недоступна — повтори через минуту"})
+			return
+		}
+		if !active || !roleIsStaff(role) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": "forbidden", "message": "Нужны права администратора"})
 			return
 		}
+		c.Set("user_role", role)
 		c.Next()
 	}
+}
+
+// dropAdminWS — закрыть live-каналы админки человека, у которого забрали роль
+// (З0-и1): открытая вкладка уволенного не должна дальше получать ленту зала.
+func dropAdminWS(userID uuid.UUID) {
+	if hub == nil {
+		return
+	}
+	hub.DropAdmin(userID.String())
 }
 
 // canTargetUser — чистый инвариант действий персонала над аккаунтом

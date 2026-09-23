@@ -598,7 +598,12 @@ func handleAdminWS(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "unauthorized", "message": "Нужен свежий тикет персонала (POST /admin/ws-ticket)"})
 		return
 	}
-	if err := hub.ServeAdmin(c.Writer, c.Request); err != nil {
+	// З0-и1: тикет живёт 30 с — за это время человека могли уволить; роль — из базы в момент апгрейда.
+	if role, active, err := staffRoleNow(tk.UserID); err != nil || !active || !roleIsStaff(role) {
+		c.JSON(http.StatusForbidden, gin.H{"code": "forbidden", "message": "Нужны права администратора"})
+		return
+	}
+	if err := hub.ServeAdmin(c.Writer, c.Request, tk.UserID); err != nil {
 		log.Printf("WS admin: ошибка апгрейда: %v", err)
 	}
 }

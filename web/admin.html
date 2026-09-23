@@ -833,7 +833,6 @@
             <button onclick="staffViewSet('archive',this)">Уволенные</button>
           </div>
         </div>
-        <div class="muted ownerOnly hidden" style="margin:-6px 0 12px">Роль вступает в силу после перелогина сотрудника</div>
         <!-- В3-этап 4: отметка прихода и ухода — видна и админу, и владельцу -->
         <div class="toolrow" id="myShiftBox"></div>
         <div class="tablewrap ownerOnly hidden" id="staffTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -1097,6 +1096,10 @@ async function api(path, opts = {}, retry = true){
     throw new Error('Нет связи с сервером — повтори через минуту');
   }
   const data = await res.json().catch(()=>({}));
+  if (res.status === 403 && data.code === 'forbidden' && me){ // З0-и1: роль сняли — не долбимся в закрытую дверь
+    accessRevoked();
+    throw Object.assign(new Error('Доступ к админке закрыт'), {code:'forbidden', data});
+  }
   if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code, data});
   return data;
 }
@@ -1134,6 +1137,15 @@ function logout(){
   closeDrawer();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
+}
+
+/* З0-и1 (№3): роль — из базы. Уволили или сняли роль — сервер отвечает 403 forbidden на любую ручку
+   админки и закрывает live-канал кодом 4403. Админка не долбится в закрытую дверь (раньше — тикет
+   каждые 5 с), а выходит на экран входа и говорит почему. */
+function accessRevoked(){
+  if (!me) return;
+  logout();
+  document.getElementById('loginErr').textContent = 'Доступ к админке закрыт — роль сотрудника снята. Если это ошибка, напиши владельцу.';
 }
 
 function enter(){
@@ -1420,9 +1432,10 @@ async function connectWS(){
   try{ ws = new WebSocket(API.replace(/^http/, 'ws') + '/ws/admin?ticket=' + encodeURIComponent(ticket)); }
   catch(e){ scheduleWSRetry(); return; }
   ws.onopen = () => { wsOpen = true; setPolling(30000); refresh(); loadFeedBackfill(); }; // Ж3-и4: что было, пока сокет молчал
-  ws.onclose = () => {
+  ws.onclose = ev => {
     wsOpen = false; ws = null;
     if (!me) return;
+    if (ev && ev.code === 4403){ accessRevoked(); return; } // З0-и1: сервер закрыл канал — роль сняли
     setPolling(7000);
     scheduleWSRetry();
   };
@@ -5549,7 +5562,7 @@ async function promoteStaff(){
   if (!nickname){ toast('⚠ Нужен ник гостя'); return; }
   try{
     const d = await api('/admin/staff', {method:'POST', body:JSON.stringify({nickname})});
-    toast('✓ ' + d.nickname + ' теперь админ — пусть перелогинится');
+    toast('✓ ' + d.nickname + ' теперь админ — может входить в админку'); // З0-и1: роль из базы, перелогин не нужен
     inp.value = '';
     renderStaff();
   }catch(e){ toast('⚠ ' + e.message); }

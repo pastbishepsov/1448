@@ -177,6 +177,7 @@ func handleAdminStaffDemote(c *gin.Context) {
 		respondDBError(c, err)
 		return
 	}
+	dropAdminWS(user.ID) // З0-и1: роль из базы — доступ уже закрыт, рвём и открытую вкладку
 	// БАГ до этого фикса: снятый админ оставался висеть в будущих сменах —
 	// назначение проверяет роль только в момент постановки, а снятие график
 	// не трогало, и в сетке недели стоял человек, который тут больше не работает.
@@ -583,6 +584,7 @@ func handleAdminStaffDismiss(c *gin.Context) {
 		respondDBError(c, err)
 		return
 	}
+	dropAdminWS(user.ID) // З0-и1: роль из базы — доступ уже закрыт, рвём и открытую вкладку
 	removed := clearFutureShifts(user.ID)
 
 	target := user.ID

@@ -1,9 +1,14 @@
 package websocket
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // Тесты хаба (ревью 26.08). Клиенты создаются без conn: register/unregister/Send
@@ -168,5 +173,55 @@ func TestAdminBroadcastUsesWriteDeadline(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("AdminBroadcast завис")
+	}
+}
+
+// З0-и1 (№3): увольнение рвёт live-канал именно этого человека — кадром close с
+// кодом CloseAccessRevoked; каналы остальных живут и получают события.
+func TestDropAdminClosesOnlyThatUser(t *testing.T) {
+	h := NewHub()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = h.ServeAdmin(w, r, r.URL.Query().Get("u"))
+	}))
+	defer srv.Close()
+	dial := func(u string) *websocket.Conn {
+		c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/?u="+u, nil)
+		if err != nil {
+			t.Fatalf("канал %s: %v", u, err)
+		}
+		return c
+	}
+	fired, other := dial("fired"), dial("other")
+	defer other.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		h.adminsMu.Lock()
+		n := len(h.admins)
+		h.adminsMu.Unlock()
+		if n == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("хаб видит %d админок, ждали 2", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if n := h.DropAdmin("fired"); n != 1 {
+		t.Fatalf("DropAdmin закрыл %d каналов, ждали 1", n)
+	}
+	_ = fired.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err := fired.ReadMessage()
+	if !websocket.IsCloseError(err, CloseAccessRevoked) {
+		t.Fatalf("уволенный получил %v, ждали close %d", err, CloseAccessRevoked)
+	}
+
+	h.AdminBroadcast("ping", map[string]any{"a": 1})
+	_ = other.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, msg, err := other.ReadMessage(); err != nil || !strings.Contains(string(msg), `"ping"`) {
+		t.Fatalf("чужой канал задет: %v %s", err, msg)
+	}
+	if n := h.DropAdmin("nobody"); n != 0 {
+		t.Fatalf("DropAdmin без каналов вернул %d", n)
 	}
 }

@@ -10,14 +10,14 @@
 Всё, что проверка меняет в общем стенде, возвращается в конце: set_settings(), hire_temp() и
 agent_start() сами регистрируют уборку; своё — at_end(fn). Уборка идёт и при падении скрипта.
 Стенд задаётся окружением (_env.py, README): адрес API, строка базы, куда писать логи."""
-import atexit, base64, json, re, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+import atexit, base64, json, os, re, socket, struct, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 
-from _env import API, BASE, DB, SRV_LOG, MOCK_AGENT, agent_log
+from _env import API, BASE, HOST, PORT, DB, SRV_LOG, MOCK_AGENT, agent_log
 
 __all__ = ["API", "BASE", "DB", "SRV_LOG", "TZ", "GUEST_PASS", "STAFF_PASS", "sql", "rows", "uid", "login", "tok",
-           "tokens", "password_of", "api", "J", "check", "near", "section", "at_end", "done", "club_day", "at_club", "settings",
+           "tokens", "password_of", "jwt_claims", "api", "J", "check", "near", "section", "at_end", "done", "club_day", "at_club", "settings",
            "set_settings", "restore_settings", "wallet", "topup", "ensure_wallet", "pcs", "seat", "end", "end_all", "free_pcs",
-           "hire_temp", "dismiss", "audit", "agent_start", "agent_stop"]
+           "hire_temp", "dismiss", "audit", "ws_admin", "ws_read", "agent_start", "agent_stop"]
 
 TZ = "Europe/Warsaw"  # часовой пояс клуба; сессия psql может жить в UTC — время клуба только через AT TIME ZONE
 GUEST_PASS, STAFF_PASS = "Guest12345", "Admin12345"
@@ -72,12 +72,16 @@ def login(nick, password=None, **extra):
 
 _cache = {}  # ник → {"access", "refresh", "exp"}
 
-def _exp(token):
+def jwt_claims(token):
+    """Полезная нагрузка JWT без проверки подписи: {"sub", "role", "iat", "exp", …}; мусор — {}."""
     try:
         part = token.split(".")[1]
-        return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4))).get("exp", 0)
+        return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
     except Exception:
-        return 0
+        return {}
+
+def _exp(token):
+    return jwt_claims(token).get("exp", 0)
 
 def tokens(nick, password=None, fresh=False):
     """Пара токенов из кэша процесса; нет, истекает через минуту или fresh — вход заново.
@@ -265,6 +269,49 @@ def dismiss(nick, **body):
         return 200, {}
     _cache.pop(nick, None)
     return api("POST", f"/admin/staff/{uid(nick)}/dismiss", body, "boss")
+
+
+# ── live-канал админки ───────────────────────────────────────────────────────────────────────────
+def ws_admin(ticket):
+    """Сырой апгрейд /ws/admin по тикету (без библиотек): (сокет, код ответа; 101 — канал открыт).
+    Тикет: api("POST", "/admin/ws-ticket", {}, who)[1]["ticket"]."""
+    s = socket.create_connection((HOST, PORT), timeout=5)
+    s.sendall((f"GET /api/v1/ws/admin?ticket={ticket} HTTP/1.1\r\nHost: {HOST}:{PORT}\r\nUpgrade: websocket\r\n"
+               f"Connection: Upgrade\r\nSec-WebSocket-Key: {base64.b64encode(os.urandom(16)).decode()}\r\n"
+               "Sec-WebSocket-Version: 13\r\n\r\n").encode())
+    head = b""
+    while b"\r\n\r\n" not in head and (ch := s.recv(1)):
+        head += ch
+    return s, int(head.split(b" ")[1]) if head.startswith(b"HTTP/1.1 ") else -1
+
+def ws_read(s, wait=5):
+    """Кадры сервера, пока не придёт close или wait секунд тишины: (события — JSON текстовых кадров,
+    код close или None, если канал молчит или оборван без close)."""
+    s.settimeout(wait)
+    events = []
+    def need(k):
+        b = b""
+        while len(b) < k:
+            ch = s.recv(k - len(b))
+            if not ch:
+                raise OSError("eof")
+            b += ch
+        return b
+    try:
+        while True:
+            b1, b2 = need(2)
+            n = b2 & 0x7F
+            n = struct.unpack(">H", need(2))[0] if n == 126 else struct.unpack(">Q", need(8))[0] if n == 127 else n
+            data = need(n)
+            if b1 & 0x0F == 8:
+                return events, (struct.unpack(">H", data[:2])[0] if len(data) >= 2 else 1005)
+            if b1 & 0x0F == 1:
+                try:
+                    events.append(json.loads(data))
+                except ValueError:
+                    pass
+    except OSError:
+        return events, None
 
 
 # ── журнал и мок агента ──────────────────────────────────────────────────────────────────────────

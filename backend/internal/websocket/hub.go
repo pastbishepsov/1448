@@ -126,7 +126,7 @@ type Hub struct {
 	unregister chan *Client
 	mu         sync.RWMutex
 
-	admins   map[*websocket.Conn]bool // подключённые админки (спринт А6)
+	admins   map[*websocket.Conn]string // подключённые админки (спринт А6) → user_id (З0-и1: чтобы рвать канал уволенному)
 	adminsMu sync.Mutex
 
 	// OnAdminCall — колбэк на admin_call от агента (спринт Б2): пакет
@@ -153,7 +153,7 @@ func NewHub() *Hub {
 		clients:    make(map[string]*Client),
 		register:   make(chan *Client, 64),
 		unregister: make(chan *Client, 64),
-		admins:     make(map[*websocket.Conn]bool),
+		admins:     make(map[*websocket.Conn]string),
 	}
 }
 
@@ -210,15 +210,20 @@ type AdminEvent struct {
 	Data map[string]any `json:"data,omitempty"`
 }
 
+// CloseAccessRevoked — код закрытия live-канала, когда у человека забрали роль
+// (З0-и1, №3): админка по нему выходит на экран входа, а не переподключается.
+const CloseAccessRevoked = 4403
+
 // ServeAdmin — апгрейд соединения админки; read-loop нужен только для
-// обнаружения разрыва (админка ничего не шлёт).
-func (h *Hub) ServeAdmin(w http.ResponseWriter, r *http.Request) error {
+// обнаружения разрыва (админка ничего не шлёт). userID — чей это канал
+// (из тикета): по нему DropAdmin рвёт каналы уволенного.
+func (h *Hub) ServeAdmin(w http.ResponseWriter, r *http.Request, userID string) error {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return err
 	}
 	h.adminsMu.Lock()
-	h.admins[conn] = true
+	h.admins[conn] = userID
 	n := len(h.admins)
 	h.adminsMu.Unlock()
 	log.Printf("WS: админка подключена (всего: %d)", n)
@@ -237,6 +242,26 @@ func (h *Hub) ServeAdmin(w http.ResponseWriter, r *http.Request) error {
 		}
 	}()
 	return nil
+}
+
+// DropAdmin — закрыть все live-каналы админки этого человека (увольнение,
+// снятие роли — З0-и1): кадр close с кодом CloseAccessRevoked, затем разрыв.
+// Возвращает, сколько каналов закрыто.
+func (h *Hub) DropAdmin(userID string) int {
+	h.adminsMu.Lock()
+	defer h.adminsMu.Unlock()
+	n := 0
+	for conn, uid := range h.admins {
+		if uid != userID {
+			continue
+		}
+		_ = conn.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(CloseAccessRevoked, "access_revoked"), time.Now().Add(adminWriteTimeout))
+		delete(h.admins, conn)
+		conn.Close()
+		n++
+	}
+	return n
 }
 
 // AdminBroadcast — рассылка события всем подключённым админкам (best-effort:
