@@ -67,6 +67,11 @@
              border:1px solid var(--hair); border-radius:22px; padding:32px;
              display:flex; flex-direction:column; gap:10px}
   .err{color:var(--acc3); font-size:14px; min-height:18px}
+  /* З0-и5: «недавно входили на этом компьютере» — ник одним нажатием, пароль всегда руками */
+  .nickchips{display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:12.5px; color:var(--dim)}
+  .nickchips button{border:1px solid var(--hair); background:transparent; color:var(--txt); border-radius:9px;
+                    padding:4px 10px; font:inherit; cursor:pointer}
+  .nickchips button:hover{border-color:var(--acc)}
 
   /* ═══ КАРКАС: топбар + rail + контент + drawer ═══ */
   #appView{height:100vh; display:flex; flex-direction:column}
@@ -537,7 +542,9 @@
     <span class="tag" style="font-size:16px">ADMIN</span>
   </div>
   <div class="logincard">
-    <input id="nick" class="input" placeholder="Никнейм администратора" autocomplete="off" autofocus>
+    <input id="nick" class="input" placeholder="Никнейм администратора" autocomplete="off" list="nickRecent" autofocus>
+    <datalist id="nickRecent"></datalist>
+    <div id="nickChips" class="nickchips hidden"></div>
     <input id="pass" class="input" type="password" placeholder="Пароль" onkeydown="if(event.key==='Enter')login()">
     <div id="loginErr" class="err"></div>
     <button class="btn" style="justify-content:center" onclick="login()">Войти</button>
@@ -1119,9 +1126,33 @@ async function login(){
     }
     setTokens(d.access_token, d.refresh_token);
     me = d.user;
+    rememberNick(me.nickname); // З0-и5: ник — в «недавние», пароль в форме не остаётся
+    document.getElementById('pass').value = '';
     enter();
   }catch(e){ err.textContent = e.message || 'Ошибка'; }
 }
+
+/* З0-и5 (З-Р36): форма входа не хранит чужой пароль. После входа пароль стирается сразу, после
+   «Выйти» — и ник, и пароль: следующий за стойкой не войдёт в чужую учётку одним нажатием. Ник
+   подставляется из «недавно входили на этом компьютере» — список живёт в браузере стойки (до 6,
+   только успешные входы персонала); общего списка админов с сервера нет — страница входа открыта
+   всему интернету. */
+const RECENT_NICKS = '1448a_recent_nicks';
+function recentNicks(){
+  try{ return JSON.parse(localStorage.getItem(RECENT_NICKS) || '[]').filter(x => typeof x === 'string' && x); }
+  catch(e){ return []; }
+}
+function saveRecentNicks(list){ try{ localStorage.setItem(RECENT_NICKS, JSON.stringify(list.slice(0, 6))); }catch(e){} }
+function rememberNick(n){ if (n) saveRecentNicks([n, ...recentNicks().filter(x => x.toLowerCase() !== n.toLowerCase())]); }
+function forgetNick(n){ if (n) saveRecentNicks(recentNicks().filter(x => x.toLowerCase() !== n.toLowerCase())); }
+function renderRecentNicks(){
+  const list = recentNicks(), box = document.getElementById('nickChips');
+  document.getElementById('nickRecent').innerHTML = list.map(n => '<option value="' + esc(n) + '">').join('');
+  box.innerHTML = list.length ? '<span>Недавно входили здесь:</span>'
+    + list.map(n => '<button type="button" onclick="pickNick(this.textContent)">' + esc(n) + '</button>').join('') : '';
+  box.classList.toggle('hidden', !list.length);
+}
+function pickNick(n){ document.getElementById('nick').value = n; document.getElementById('pass').focus(); }
 
 function logout(){
   const r = tokens().r; // отзываем refresh на сервере (fire-and-forget)
@@ -1139,6 +1170,8 @@ function logout(){
   closeDrawer();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
+  document.getElementById('nick').value = ''; document.getElementById('pass').value = ''; // З0-и5
+  renderRecentNicks();
 }
 
 /* З0-и1 (№3): роль — из базы. Уволили или сняли роль — сервер отвечает 403 forbidden на любую ручку
@@ -1146,6 +1179,7 @@ function logout(){
    каждые 5 с), а выходит на экран входа и говорит почему. */
 function accessRevoked(){
   if (!me) return;
+  forgetNick(me.nickname); // З0-и5: роль сняли — из «недавних» этого компьютера тоже
   logout();
   document.getElementById('loginErr').textContent = 'Доступ к админке закрыт — роль сотрудника снята. Если это ошибка, напиши владельцу.';
 }
@@ -6756,6 +6790,7 @@ document.addEventListener('keydown', e => {
 /* ── старт (Б1) ── */
 (async function init(){
   mountIcons();
+  renderRecentNicks(); // З0-и5
   if (tokens().a || tokens().r){
     try{
       const u = await api('/me');
