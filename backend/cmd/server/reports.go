@@ -46,6 +46,15 @@ func guestSessions() *gorm.DB {
 		Where("users.role = ?", models.UserRolePlayer)
 }
 
+// sessionMinutes — «наиграно» сессией (З4-и3, №16): у завершённой — итог при
+// завершении (minutes_used, без пауз), у идущей — «на сейчас», сколько уже
+// учёл биллинг (billed_minutes). Сессия относится к суткам своего начала — и в
+// сводке смены, и в отчётах. Раньше идущая давала 0 везде (minutes_used
+// пишется при завершении), а сводка смены брала завершённые в эти сутки:
+// ночная сессия через report_hour попадала в сводке в один день, в отчётах —
+// в другой.
+const sessionMinutes = "CASE WHEN sessions.status = 'active' THEN sessions.billed_minutes ELSE sessions.minutes_used END"
+
 // ── Период ────────────────────────────────────────────────────────────
 
 const maxPeriodDays = 730 // два года: защита от отчёта «за всё время» на проде
@@ -574,7 +583,7 @@ func activeUsers(p period) map[string][2]int64 {
 		Cnt     int64
 	}
 	guestSessions().
-		Select("sessions.user_id, COALESCE(SUM(sessions.minutes_used),0) AS minutes, COUNT(*) AS cnt").
+		Select("sessions.user_id, COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt").
 		Where("sessions.started_at >= ? AND sessions.started_at < ?", p.From, p.To).
 		Group("sessions.user_id").Scan(&rows)
 	out := make(map[string][2]int64, len(rows))
@@ -827,7 +836,7 @@ func aggLoad(p period, shifts []models.Shift, computers int64) loadAgg {
 		Cnt     int64
 	}
 	countedSessions().
-		Select("COALESCE(SUM(minutes_used),0) AS minutes, COUNT(*) AS cnt").
+		Select("COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt").
 		Where("started_at >= ? AND started_at < ?", p.From, p.To).Scan(&head)
 	a.Sessions = head.Cnt
 	a.Hours = math.Round(float64(head.Minutes)/60*10) / 10
@@ -859,7 +868,7 @@ func handleReportLoad(c *gin.Context) {
 		Cnt     int64
 	}
 	countedSessions().
-		Select(dayExpr("started_at", reportHour)+" AS d, COALESCE(SUM(minutes_used),0) AS minutes, COUNT(*) AS cnt").
+		Select(dayExpr("started_at", reportHour)+" AS d, COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt").
 		Where("started_at >= ? AND started_at < ?", p.From, p.To).
 		Group("d").Order("d").Scan(&dayRows)
 	byDay := map[string][2]float64{}
@@ -873,7 +882,7 @@ func handleReportLoad(c *gin.Context) {
 		Cnt     int64
 	}
 	countedSessions().
-		Select("EXTRACT(HOUR FROM started_at)::int AS h, COALESCE(SUM(minutes_used),0) AS minutes, COUNT(*) AS cnt").
+		Select("EXTRACT(HOUR FROM started_at)::int AS h, COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt").
 		Where("started_at >= ? AND started_at < ?", p.From, p.To).
 		Group("h").Order("h").Scan(&hourRows)
 	byHour := map[int][2]int64{}
@@ -897,7 +906,7 @@ func handleReportLoad(c *gin.Context) {
 		Pcs     int64
 	}
 	countedSessions().
-		Select("COALESCE(computers.zone,'—') AS zone, COALESCE(SUM(sessions.minutes_used),0) AS minutes, COUNT(*) AS cnt, COUNT(DISTINCT computers.id) AS pcs").
+		Select("COALESCE(computers.zone,'—') AS zone, COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt, COUNT(DISTINCT computers.id) AS pcs").
 		Joins("JOIN computers ON computers.id = sessions.computer_id").
 		Where("sessions.started_at >= ? AND sessions.started_at < ?", p.From, p.To).
 		Group("zone").Order("minutes DESC").Scan(&zoneRows)
@@ -919,7 +928,7 @@ func handleReportLoad(c *gin.Context) {
 		Cnt     int64
 	}
 	countedSessions().
-		Select("computers.name AS name, COALESCE(computers.zone,'—') AS zone, COALESCE(SUM(sessions.minutes_used),0) AS minutes, COUNT(*) AS cnt").
+		Select("computers.name AS name, COALESCE(computers.zone,'—') AS zone, COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt").
 		Joins("JOIN computers ON computers.id = sessions.computer_id").
 		Where("sessions.started_at >= ? AND sessions.started_at < ?", p.From, p.To).
 		Group("computers.name, computers.zone").Order("minutes DESC").Scan(&pcRows)
@@ -1001,13 +1010,17 @@ func handleReportStaff(c *gin.Context) {
 		}
 	}
 
-	var sess []models.Session
-	db.Select("id, started_at, minutes_used").Where(sessionCounted).
-		Where("started_at >= ? AND started_at < ?", p.From, p.To).Find(&sess)
+	// З4-и3: идущие сессии — «на сейчас», как в загрузке и сводке смены
+	var sess []struct {
+		StartedAt time.Time
+		Minutes   int64
+	}
+	countedSessions().Select("sessions.started_at, "+sessionMinutes+" AS minutes").
+		Where("started_at >= ? AND started_at < ?", p.From, p.To).Scan(&sess)
 	for _, s := range sess {
 		b := get(shiftOf(s.StartedAt))
 		b.sessions++
-		b.minutes += int64(s.MinutesUsed)
+		b.minutes += s.Minutes
 	}
 
 	byShift := make([]gin.H, 0, len(buckets))

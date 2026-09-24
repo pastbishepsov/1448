@@ -87,17 +87,19 @@ func handleAdminStatsShift(c *gin.Context) {
 	unpaidPLN += kUnpaid.Sum
 	unpaidCount += kUnpaid.Cnt
 
-	// сессии: начатые в окне; часы — по завершённым в окне (начисления
-	// привязаны к завершению, активные ещё не отыграли своё)
-	var sessStarted int64 // З4-и1: снятая посадка — не сессия
+	// сессии и «наиграно» — начатые в окне, как в отчётах (З4-и3, №16): идущая
+	// сессия — «на сейчас» (sessionMinutes), ночная через report_hour — в сутках
+	// начала. Раньше часы брались по завершённым в окне: идущие давали 0, а
+	// ночная сессия попадала в сводку следующего дня. Снятая посадка — не
+	// сессия (З4-и1).
+	var sess struct {
+		Started int64
+		Minutes int64
+	}
 	countedSessions().
-		Where("started_at >= ? AND started_at < ?", from, to).Count(&sessStarted)
-	var minutes int64
-	db.Model(&models.Session{}).
-		Select("COALESCE(SUM(minutes_used),0)").
-		Where("status = ? AND ended_at >= ? AND ended_at < ?",
-			models.SessionStatusCompleted, from, to).
-		Scan(&minutes)
+		Select("COUNT(*) AS started, COALESCE(SUM("+sessionMinutes+"),0) AS minutes").
+		Where("started_at >= ? AND started_at < ?", from, to).Scan(&sess)
+	sessStarted, minutes := sess.Started, sess.Minutes
 
 	var newGuests int64
 	db.Model(&models.User{}).
