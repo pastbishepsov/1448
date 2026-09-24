@@ -472,15 +472,16 @@ func handleReportMoney(c *gin.Context) {
 		topGoods = append(topGoods, gin.H{"name": r.Name, "revenue_pln": r.Pln, "items": r.Items})
 	}
 
-	// потери: всё, что ушло со склада корректировкой, а не через кассу
+	// потери: всё, что ушло со склада корректировкой, а не через кассу. З6-и2:
+	// по цене в момент движения (stock_moves.price_pln), а не по нынешней —
+	// перецена позиции прошлые потери не переписывает.
 	var loss struct {
 		Units int64
 		Pln   float64
 		Moves int64
 	}
 	db.Model(&models.StockMove{}).
-		Select("COALESCE(-SUM(stock_moves.delta),0) AS units, COUNT(*) AS moves, COALESCE(-SUM(stock_moves.delta * goods.price_pln),0) AS pln").
-		Joins("JOIN goods ON goods.id = stock_moves.good_id").
+		Select("COALESCE(-SUM(stock_moves.delta),0) AS units, COUNT(*) AS moves, COALESCE(-SUM(stock_moves.delta * stock_moves.price_pln),0) AS pln").
 		Where("stock_moves.created_at >= ? AND stock_moves.created_at < ? AND stock_moves.reason = ? AND stock_moves.delta < 0",
 			p.From, p.To, "adjust").Scan(&loss)
 

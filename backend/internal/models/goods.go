@@ -87,6 +87,9 @@ type StockMove struct {
 	SaleID    *uuid.UUID `json:"sale_id,omitempty"    gorm:"type:uuid"`
 	CreatedBy *uuid.UUID `json:"created_by,omitempty" gorm:"type:uuid"`
 	CreatedAt time.Time  `json:"created_at"`
+	// З6-и2 (миграция 069): цена единицы в момент движения — «Потери» считаются
+	// по ней, перецена позиции прошлые движения не переписывает.
+	PricePLN float64 `json:"price_pln" gorm:"type:decimal(8,2);not null;default:0"`
 }
 
 func (m *StockMove) BeforeCreate(tx *gorm.DB) error {

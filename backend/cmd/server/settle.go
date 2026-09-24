@@ -343,7 +343,7 @@ func handleAdminKitchenOrderCreate(c *gin.Context) {
 			return err
 		}
 		if err := tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty,
-			Reason: "order", Note: "заказ кухни от стойки", CreatedBy: &adminID}).Error; err != nil {
+			Reason: "order", Note: "заказ кухни от стойки", CreatedBy: &adminID, PricePLN: g.PricePLN}).Error; err != nil {
 			return err
 		}
 		if sale == nil {

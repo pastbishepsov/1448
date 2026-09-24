@@ -65,6 +65,7 @@ var goodErrors = map[string]string{
 	"good_inactive":  "Позиция выключена — включи её в ценнике",
 	"out_of_stock":   "На складе не хватает",
 	"has_sales":      "По позиции уже были продажи — её нельзя удалить, только выключить",
+	"has_history":    "У позиции есть история склада или остаток — удалить нельзя, выключи её: история и «Потери» останутся",
 	"already_void":   "Продажа уже отменена",
 	"not_yours":      "Чужую продажу отменяет владелец",
 	"too_old":        "Продажа не с текущей смены — отменяет владелец",
@@ -184,7 +185,7 @@ func handleAdminGoodCreate(c *gin.Context) {
 		}
 		if stock > 0 {
 			return tx.Create(&models.StockMove{ClubID: club.ID, GoodID: g.ID, Delta: stock,
-				Reason: "supply", Note: "начальный остаток", CreatedBy: &adminID}).Error
+				Reason: "supply", Note: "начальный остаток", CreatedBy: &adminID, PricePLN: g.PricePLN}).Error
 		}
 		return nil
 	})
@@ -290,7 +291,21 @@ func handleAdminGoodDelete(c *gin.Context) {
 		goodFail(c, http.StatusConflict, "has_sales")
 		return
 	}
+	// З6-и2 (№31): удаление уносило остаток и все движения склада, и «Потери»
+	// за прошлые дни менялись задним числом. Удаляется только позиция без
+	// движений и с нулевым остатком; остальное — выключить. База держит то же
+	// правило (ON DELETE RESTRICT, миграция 069) — и на гонке с приходом.
+	var moves int64
+	db.Model(&models.StockMove{}).Where("good_id = ?", g.ID).Count(&moves)
+	if moves > 0 || g.Stock != 0 {
+		goodFail(c, http.StatusConflict, "has_history")
+		return
+	}
 	if err := db.Delete(&g).Error; err != nil {
+		if strings.Contains(err.Error(), "23503") { // нарушение внешнего ключа: движение успело появиться
+			goodFail(c, http.StatusConflict, "has_history")
+			return
+		}
 		goodFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
@@ -354,7 +369,7 @@ func handleAdminGoodStock(c *gin.Context) {
 			return errNegativeStock
 		}
 		return tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: req.Delta,
-			Reason: req.Reason, Note: note, CreatedBy: &adminID}).Error
+			Reason: req.Reason, Note: note, CreatedBy: &adminID, PricePLN: g.PricePLN}).Error
 	})
 	if errors.Is(err, errNegativeStock) {
 		goodFail(c, http.StatusConflict, "negative_stock")
@@ -398,7 +413,7 @@ func handleAdminGoodMoves(c *gin.Context) {
 			who = nick[m.CreatedBy.String()]
 		}
 		out = append(out, gin.H{"created_at": m.CreatedAt, "delta": m.Delta,
-			"reason": m.Reason, "note": m.Note, "admin": who})
+			"reason": m.Reason, "note": m.Note, "admin": who, "price_pln": m.PricePLN})
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "moves": out})
 }
@@ -612,7 +627,7 @@ func handleAdminSaleCreate(c *gin.Context) {
 			}
 			saleID := sales[i].ID
 			if err := tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -sales[i].Qty,
-				Reason: "sale", SaleID: &saleID, CreatedBy: &adminID}).Error; err != nil {
+				Reason: "sale", SaleID: &saleID, CreatedBy: &adminID, PricePLN: sales[i].PricePLN}).Error; err != nil {
 				return err
 			}
 		}
@@ -815,7 +830,7 @@ func voidSaleTx(tx *gorm.DB, sale *models.Sale, adminID uuid.UUID, now time.Time
 	}
 	saleID := sale.ID
 	return tx.Create(&models.StockMove{ClubID: sale.ClubID, GoodID: *sale.GoodID, Delta: sale.Qty,
-		Reason: "void", Note: "отмена продажи", SaleID: &saleID, CreatedBy: &adminID}).Error
+		Reason: "void", Note: "отмена продажи", SaleID: &saleID, CreatedBy: &adminID, PricePLN: sale.PricePLN}).Error
 }
 
 // isKitchenSale — продажа рассчитала заказ кухни (З6-и1): её отмена не

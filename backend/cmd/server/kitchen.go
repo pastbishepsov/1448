@@ -207,7 +207,7 @@ func handleMyKitchenOrderCreate(c *gin.Context) {
 			return err
 		}
 		return tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty,
-			Reason: "order", Note: "заказ кухни"}).Error
+			Reason: "order", Note: "заказ кухни", PricePLN: g.PricePLN}).Error
 	})
 	if err == errOutOfStock {
 		goodFail(c, http.StatusConflict, "out_of_stock")
@@ -283,7 +283,7 @@ func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID
 				return err
 			}
 			if err := tx.Create(&models.StockMove{ClubID: o.ClubID, GoodID: *o.GoodID, Delta: o.Qty,
-				Reason: "void", Note: "отмена заказа кухни", CreatedBy: adminID}).Error; err != nil {
+				Reason: "void", Note: "отмена заказа кухни", CreatedBy: adminID, PricePLN: o.PricePLN}).Error; err != nil {
 				return err
 			}
 		}
