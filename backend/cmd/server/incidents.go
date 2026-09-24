@@ -155,7 +155,7 @@ func applyCompensation(inc *models.Incident, cp compensation, adminID uuid.UUID,
 		if cp.Minutes > 0 {
 			if compZone != nil {
 				ref := inc.ID
-				grant := grantFor(uid, compZone, cp.Minutes, models.MinuteGrantCompensation, &ref, &adminID)
+				grant := grantFor(uid, compZone, cp.Minutes, compZone.RatePLN, models.MinuteGrantCompensation, &ref, &adminID)
 				if err := tx.Create(&grant).Error; err != nil {
 					return err
 				}

@@ -158,7 +158,7 @@ func handleAdminRedeemCoins(c *gin.Context) {
 			return err
 		}
 		refID := rec.ID
-		grant := grantFor(user.ID, zone, rec.Minutes, models.MinuteGrantRedeem, &refID, &adminID)
+		grant := grantFor(user.ID, zone, rec.Minutes, rate, models.MinuteGrantRedeem, &refID, &adminID)
 		return tx.Create(&grant).Error
 	})
 	if err == errNotEnoughCoins {
@@ -297,6 +297,12 @@ func handleCoinRedeemVoid(c *gin.Context) {
 		if coinsReturned <= 0 {
 			return nil
 		}
+		// З5-и2: вернувшееся — на самой выдаче: «Погашено» в отчёте «Монеты»
+		// уменьшается ровно на него, а не на всю выдачу (отыгранное погашено).
+		if err := tx.Model(&models.CoinRedemption{}).Where("id = ?", rec.ID).
+			UpdateColumn("coins_returned", coinsReturned).Error; err != nil {
+			return err
+		}
 		return tx.Model(&models.User{}).Where("id = ?", rec.UserID).
 			UpdateColumn("coins_balance", gorm.Expr("coins_balance + ?", coinsReturned)).Error
 	})
@@ -321,8 +327,8 @@ type coinsAgg struct {
 	Play         int64   `json:"play"`      // накапало за игру
 	Cases        int64   `json:"cases"`     // выпало из кейсов
 	Issued       int64   `json:"issued"`    // всего выдано
-	Redeemed     int64   `json:"redeemed"`  // погашено временем
-	Minutes      int64   `json:"minutes"`   // сколько минут отдано
+	Redeemed     int64   `json:"redeemed"`  // погашено временем (за вычетом вернувшегося при отмене)
+	Minutes      int64   `json:"minutes"`   // сколько минут отдано (отыгранная часть отменённых — тоже)
 	GivenPLN     float64 `json:"given_pln"` // во сколько это обошлось клубу
 	Burned       int64   `json:"burned"`    // сгорело у неактивных (В4-3)
 	BurnedGuests int64   `json:"burned_guests"`
@@ -346,9 +352,16 @@ func aggCoins(p period) coinsAgg {
 		Minutes int64
 		Pln     float64
 	}
+	// З5-и2 (№10): отменённая выдача — не ноль, а выдача минус вернувшееся
+	// (монеты возвращаются пропорционально неотыгранному): отыгранная часть
+	// погашена и отдана временем. Раньше отмена выбрасывала выдачу целиком, и
+	// «на руках = выпущено − погашено − сгорело − потрачено» расходилось на
+	// отыгранное. Минуты и злотые — той же долей, что монеты.
 	db.Model(&models.CoinRedemption{}).
-		Select("COALESCE(SUM(coins),0) AS coins, COALESCE(SUM(minutes),0) AS minutes, COALESCE(SUM(value_pln),0) AS pln").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Scan(&red)
+		Select(`COALESCE(SUM(coins - coins_returned),0) AS coins,
+		        COALESCE(SUM(ROUND(minutes * (coins - coins_returned)::numeric / NULLIF(coins, 0))),0) AS minutes,
+		        COALESCE(SUM(value_pln * (coins - coins_returned) / NULLIF(coins, 0)),0) AS pln`).
+		Where("created_at >= ? AND created_at < ?", p.From, p.To).Scan(&red)
 	a.Redeemed, a.Minutes, a.GivenPLN = red.Coins, red.Minutes, math.Round(red.Pln*100)/100
 
 	// В4-3: сгорание у неактивных — вторая причина, по которой обязательства
@@ -388,30 +401,37 @@ func handleReportCoins(c *gin.Context) {
 	db.Model(&models.User{}).Select("COALESCE(SUM(coins_balance),0)").Scan(&onHand)
 	// Ж2: выданные и ещё не отыгранные минуты — обязательство клуба временем,
 	// по обеим таблицам: пул без зоны (coin_minutes) и зонные гранты.
+	// З5-и2: и в злотых — зонные гранты по своему тарифу (rate_pln, снимок при
+	// выдаче), старый пул без зоны — по клубному тарифу: он годен везде.
 	var owedPool, owedZoned int64
+	var owedZonedPLN float64
 	db.Model(&models.User{}).Select("COALESCE(SUM(coin_minutes),0)").Scan(&owedPool)
 	db.Model(&models.MinuteGrant{}).Select("COALESCE(SUM(minutes_left),0)").Scan(&owedZoned)
 	var owedZones []struct {
 		ZoneName string
 		Minutes  int64
+		Pln      float64
 	}
-	db.Model(&models.MinuteGrant{}).Select("COALESCE(MAX(zone_name),'') AS zone_name, COALESCE(SUM(minutes_left),0) AS minutes").
+	db.Model(&models.MinuteGrant{}).Select("COALESCE(MAX(zone_name),'') AS zone_name, COALESCE(SUM(minutes_left),0) AS minutes, " +
+		"COALESCE(SUM(minutes_left * rate_pln / 60.0),0) AS pln").
 		Where("minutes_left > 0").Group("zone_id").Order("MAX(zone_name)").Scan(&owedZones)
 	owedRows := make([]gin.H, 0, len(owedZones))
 	for _, z := range owedZones {
-		owedRows = append(owedRows, gin.H{"zone": z.ZoneName, "minutes": z.Minutes})
+		owedZonedPLN += z.Pln
+		owedRows = append(owedRows, gin.H{"zone": z.ZoneName, "minutes": z.Minutes, "value_pln": round2(z.Pln)})
 	}
+	clubRate := 0.0
+	club, _ := defaultClub()
+	if club != nil {
+		clubRate = club.BaseRatePLN
+	}
+	owedPoolPLN := float64(owedPool) * clubRate / 60
 
 	// сколько монет капает за час игры и какая это доля цены часа — та самая
 	// цифра, ради которой владелец и просил конвертер
 	perMin := settingInt64("coins_per_min", coinsPerMinute)
 	var zones []models.Zone
 	db.Order("sort, name").Find(&zones)
-	club, _ := defaultClub()
-	clubRate := 0.0
-	if club != nil {
-		clubRate = club.BaseRatePLN
-	}
 	rows := make([]gin.H, 0, len(zones)+1)
 	addZone := func(name string, rate float64) {
 		hour := coinsForMinutes(60, rate, sr)
@@ -442,7 +462,7 @@ func handleReportCoins(c *gin.Context) {
 	for _, r := range recent {
 		items = append(items, gin.H{"id": r.ID, "created_at": r.CreatedAt, "nickname": nick[r.UserID.String()],
 			"zone": r.ZoneName, "minutes": r.Minutes, "coins": r.Coins, "value_pln": r.ValuePLN,
-			"voided": r.VoidedAt != nil})
+			"voided": r.VoidedAt != nil, "coins_returned": r.CoinsReturned})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -459,7 +479,8 @@ func handleReportCoins(c *gin.Context) {
 			"value_pln": coinValuePLN(onHand, sr),
 		},
 		// Ж2: минуты, которые клуб ещё должен временем
-		"minutes_owed": gin.H{"total": owedPool + owedZoned, "pool": owedPool, "zoned": owedZoned, "by_zone": owedRows},
+		"minutes_owed": gin.H{"total": owedPool + owedZoned, "pool": owedPool, "zoned": owedZoned, "by_zone": owedRows,
+			"value_pln": round2(owedZonedPLN + owedPoolPLN), "pool_value_pln": round2(owedPoolPLN), "club_rate_pln": clubRate},
 		"rates":       gin.H{"spend": sr, "buy": settingInt64("coins_per_pln", coinsPerPLN), "per_min": perMin},
 		"converter":   rows,
 		"redemptions": items,

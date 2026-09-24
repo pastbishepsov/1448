@@ -5356,18 +5356,19 @@ function paintCoins(d){
        ${repKpi('Это обязательств на', fmtPLN(oh.value_pln) + ' zł', undefined,
                 {title:'по курсу погашения ' + r.spend + ' монет за 1 zł — столько клуб отдаст временем'})}
        ${repKpi('Выпущено за период', (t.issued||0).toLocaleString('ru-RU'), k.issued, {was:(w.issued||0).toLocaleString('ru-RU')})}
-       ${repKpi('Погашено за период', (t.redeemed||0).toLocaleString('ru-RU'), k.redeemed, {was:(w.redeemed||0).toLocaleString('ru-RU')})}
-       ${repKpi('Должны временем', packHM((d.minutes_owed||{}).total || 0), undefined,
-                {title:'выданные за монеты и компенсации минуты, ещё не отыгранные (Ж2): по зонам — '
-                       + (((d.minutes_owed||{}).by_zone||[]).map(z => (z.zone || 'без зоны') + ' ' + z.minutes + ' мин').join(', ') || 'нет')
-                       + ' · старый запас без зоны — ' + ((d.minutes_owed||{}).pool || 0) + ' мин'})}
+       ${repKpi('Погашено за период', (t.redeemed||0).toLocaleString('ru-RU'), k.redeemed,
+                {title:'за вычетом монет, вернувшихся при отмене выдачи: отыгранная часть отменённой выдачи погашена', was:(w.redeemed||0).toLocaleString('ru-RU')})}
+       ${repKpi('Должны временем', packHM((d.minutes_owed||{}).total || 0) + ' · ' + fmtPLN((d.minutes_owed||{}).value_pln) + ' zł', undefined,
+                {title:'выданные за монеты и компенсации минуты, ещё не отыгранные (Ж2), по тарифу, по которому выданы: по зонам — '
+                       + (((d.minutes_owed||{}).by_zone||[]).map(z => (z.zone || 'без зоны') + ' ' + z.minutes + ' мин (' + fmtPLN(z.value_pln) + ' zł)').join(', ') || 'нет')
+                       + ' · старый запас без зоны — ' + ((d.minutes_owed||{}).pool || 0) + ' мин (' + fmtPLN((d.minutes_owed||{}).pool_value_pln) + ' zł по клубному тарифу)'})}
      </div>
      <div class="kpis">
        ${repKpi('За пополнения', (t.deposits||0).toLocaleString('ru-RU'), undefined, {title:'куплено гостями за злотые, курс ' + r.buy + ' монет за 1 zł'})}
        ${repKpi('За игру', (t.play||0).toLocaleString('ru-RU'), undefined, {title:r.per_min + ' монет за минуту'})}
        ${repKpi('Из кейсов', (t.cases||0).toLocaleString('ru-RU'))}
        ${repKpi('Отдано временем', fmtPLN(t.given_pln) + ' zł', k.given_pln,
-                {title:(t.minutes||0) + ' минут игры', was:fmtPLN(w.given_pln) + ' zł'})}
+                {title:(t.minutes||0) + ' минут игры; у отменённых выдач — только отыгранная часть', was:fmtPLN(w.given_pln) + ' zł'})}
      </div>
      <div class="kpis">
        ${repKpi('Сгорело у неактивных', (t.burned||0).toLocaleString('ru-RU'), k.burned,
@@ -5389,7 +5390,7 @@ function paintCoins(d){
         `<tr${x.voided ? ' style="opacity:.45"' : ''}><td class="muted">${fmtTime(x.created_at)}</td>
          <td><b>${esc(x.nickname||'—')}</b></td>
          <td class="muted">${x.zone ? esc(x.zone) : 'клубный тариф'}</td><td>${x.minutes}</td>
-         <td>${x.coins}${x.voided ? ' <span class="muted">— отменена</span>' : ''}</td>
+         <td>${x.coins}${x.voided ? ' <span class="muted">— отменена, вернулось ' + (x.coins_returned || 0) + '</span>' : ''}</td>
          <td>${fmtPLN(x.value_pln)} zł</td>
          <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoidRedeem(this,'${x.id}')">Отменить</button>`}</td></tr>`),
         'За период монеты никто не гасил')}`;

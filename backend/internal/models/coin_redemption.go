@@ -27,6 +27,10 @@ type CoinRedemption struct {
 	// строка остаётся в истории — как у отменённой продажи товара.
 	VoidedAt *time.Time `json:"voided_at,omitempty"`
 	VoidedBy *uuid.UUID `json:"voided_by,omitempty" gorm:"type:uuid"`
+	// З5-и2 (миграция 068): сколько монет вернулось при отмене — пропорционально
+	// неотыгранному остатку. Погашено = Coins − CoinsReturned; отмены до 068 —
+	// все монеты (Д3).
+	CoinsReturned int64 `json:"coins_returned" gorm:"not null;default:0"`
 }
 
 func (r *CoinRedemption) BeforeCreate(tx *gorm.DB) error {

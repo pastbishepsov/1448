@@ -118,10 +118,11 @@ func splitMinuteSpend(delta, grantAvail int, coinAvail int64) (useGrant, useCoin
 }
 
 // grantFor — новая строка гранта (без записи): зона и имя — снимком.
-func grantFor(userID uuid.UUID, zone *models.Zone, minutes int, source string, refID *uuid.UUID, by *uuid.UUID) models.MinuteGrant {
+func grantFor(userID uuid.UUID, zone *models.Zone, minutes int, ratePLN float64, source string, refID *uuid.UUID, by *uuid.UUID) models.MinuteGrant {
 	g := models.MinuteGrant{
 		UserID: userID, MinutesTotal: minutes, MinutesLeft: minutes,
 		Source: source, RefID: refID, CreatedBy: by,
+		RatePLN: ratePLN, // З5-и2: «должны временем» — в злотых по этому тарифу
 	}
 	if zone != nil {
 		zid := zone.ID

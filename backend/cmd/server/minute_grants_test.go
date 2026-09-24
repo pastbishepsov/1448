@@ -39,13 +39,13 @@ func TestSplitMinuteSpend(t *testing.T) {
 func TestGrantFor(t *testing.T) {
 	uid, aid, ref := uuid.New(), uuid.New(), uuid.New()
 	z := models.Zone{ID: uuid.New(), Name: "VIP", RatePLN: 30}
-	g := grantFor(uid, &z, 60, models.MinuteGrantRedeem, &ref, &aid)
+	g := grantFor(uid, &z, 60, 30, models.MinuteGrantRedeem, &ref, &aid)
 	if g.ZoneID == nil || *g.ZoneID != z.ID || g.ZoneName != "VIP" || g.MinutesLeft != 60 || g.MinutesTotal != 60 ||
-		g.Source != "redeem" || g.RefID == nil || *g.RefID != ref {
+		g.Source != "redeem" || g.RefID == nil || *g.RefID != ref || g.RatePLN != 30 {
 		t.Errorf("грант с зоной собран неверно: %+v", g)
 	}
-	g2 := grantFor(uid, nil, 15, models.MinuteGrantCompensation, nil, nil)
-	if g2.ZoneID != nil || g2.ZoneName != "" || g2.MinutesLeft != 15 || g2.Source != "compensation" {
+	g2 := grantFor(uid, nil, 15, 23, models.MinuteGrantCompensation, nil, nil)
+	if g2.ZoneID != nil || g2.ZoneName != "" || g2.MinutesLeft != 15 || g2.Source != "compensation" || g2.RatePLN != 23 {
 		t.Errorf("грант без зоны собран неверно: %+v", g2)
 	}
 }

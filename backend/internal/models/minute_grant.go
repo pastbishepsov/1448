@@ -29,6 +29,9 @@ type MinuteGrant struct {
 	RefID        *uuid.UUID `json:"ref_id,omitempty" gorm:"type:uuid"`
 	CreatedBy    *uuid.UUID `json:"created_by,omitempty" gorm:"type:uuid"`
 	CreatedAt    time.Time  `json:"created_at"`
+	// З5-и2 (миграция 068): тариф выданных минут, zł/ч — по нему «должны
+	// временем» считается в злотых. Выдача — тариф выдачи, компенсация — зоны.
+	RatePLN float64 `json:"rate_pln" gorm:"type:decimal(8,2);not null;default:0"`
 }
 
 func (g *MinuteGrant) BeforeCreate(tx *gorm.DB) error {
