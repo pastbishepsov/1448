@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -43,7 +44,8 @@ func main() {
 	// ночная скидка таланта night_mode считались со сдвигом на 2 часа: скидка
 	// «22:00–07:59» реально действовала утром, а не ночью. Все расчёты в коде
 	// идут от time.Now().Location(), поэтому одна эта строка выравнивает их
-	// разом — и с TimeZone=Europe/Warsaw в DSN.
+	// разом. Дни и часы в SQL отчётов считает база — ей тот же пояс ставит
+	// withClubTimeZone при подключении (З2-и1).
 	time.Local = clubLocation
 	log.Printf("Часовой пояс клуба: %s", clubLocation)
 
@@ -69,16 +71,33 @@ func main() {
 	}
 
 	// ── Подключение к PostgreSQL ────────────────────────────────────────────
+	// З2-и1 (OWNER.md, №4): пояс клуба — и соединению с базой. Отчёты делят
+	// время на дни (::date) и часы (EXTRACT) в поясе СЕССИИ, а он по умолчанию
+	// Etc/UTC и у postgres:16-alpine, и у Railway: утро пропадало из графика
+	// дня, пик по часам съезжал на 2 часа.
+	clubTZ := clubLocation.String()
+	if clubTZ == "Local" { // CLUB_TZ не распознан: базе такой пояс не назвать
+		log.Fatalf("CLUB_TZ=%q — такого часового пояса нет; нужен, например, Europe/Warsaw", os.Getenv("CLUB_TZ"))
+	}
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		dsn = buildDSN()
 	}
 	var err error
-	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err = gorm.Open(postgres.Open(withClubTimeZone(dsn, clubTZ)), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Не удалось подключиться к БД: %v", err)
 	}
-	log.Println("Подключение к PostgreSQL установлено")
+	var dbTZ string
+	if err := db.Raw("SHOW TimeZone").Scan(&dbTZ).Error; err != nil {
+		log.Fatalf("База не ответила, в каком она часовом поясе: %v", err)
+	}
+	if !strings.EqualFold(dbTZ, clubTZ) {
+		log.Fatalf("База считает время в поясе %s, а клуб живёт в %s — отчёты по дням и часам соврут. "+
+			"В строке подключения (DATABASE_URL) задан другой пояс: уберите из неё timezone/TimeZone "+
+			"или поставьте %s.", dbTZ, clubTZ, clubTZ)
+	}
+	log.Printf("Подключение к PostgreSQL установлено, часовой пояс соединения: %s", dbTZ)
 
 	// ── WebSocket Hub (PC Shell) ────────────────────────────────────────────
 	hub = websocket.NewHub()
@@ -832,6 +851,43 @@ func buildDSN() string {
 	pass := getenv("POSTGRES_PASSWORD", "change_me_in_production")
 	name := getenv("POSTGRES_DB", "1448_db")
 	return "host=" + host + " port=" + port + " user=" + user +
-		" password=" + pass + " dbname=" + name +
-		" sslmode=disable TimeZone=Europe/Warsaw"
+		" password=" + pass + " dbname=" + name + " sslmode=disable" // пояс добавит withClubTimeZone
+}
+
+// withClubTimeZone — строка подключения с поясом клуба (З2-и1, чистая, тест):
+// URL получает параметр timezone, key=value — ещё одну пару. Пояс в строке уже
+// есть (timezone, TimeZone, time_zone) — она не меняется: верен ли он, скажет
+// SHOW TimeZone сразу после подключения. Имя пояса — как есть, без %2F: драйвер
+// gorm берёт его из строки сырым и сам зовёт time.LoadLocation.
+func withClubTimeZone(dsn, tz string) string {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		u, err := url.Parse(dsn)
+		if err != nil {
+			return dsn // что не так с адресом, скажет драйвер
+		}
+		for k := range u.Query() {
+			if dsnTimeZoneKey(k) {
+				return dsn
+			}
+		}
+		sep := "?"
+		switch {
+		case strings.HasSuffix(dsn, "?") || strings.HasSuffix(dsn, "&"):
+			sep = ""
+		case u.RawQuery != "":
+			sep = "&"
+		}
+		return dsn + sep + "timezone=" + tz
+	}
+	for _, f := range strings.Fields(dsn) {
+		if k, _, ok := strings.Cut(f, "="); ok && dsnTimeZoneKey(k) {
+			return dsn
+		}
+	}
+	return strings.TrimSpace(dsn + " timezone=" + tz)
+}
+
+func dsnTimeZoneKey(k string) bool {
+	k = strings.ToLower(strings.TrimSpace(k))
+	return k == "timezone" || k == "time_zone"
 }

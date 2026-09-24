@@ -157,19 +157,23 @@ const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinu
   try {
     await page.evaluate(() => nav('hall'));
     await sleep(1500);
+    // тосты — списком (трек З, З2-и1): живое событие очереди обновляет раздел, и тост лимитера
+    // «Слишком много запросов» ложился поверх «в очереди — №1», хотя гость в очередь уже встал
+    await page.evaluate(() => { window.__toasts = []; const t = toast; toast = (msg, ...a) => { __toasts.push(String(msg)); return t(msg, ...a); }; });
     await page.fill('#wlNick', '+48 500 120 028');
     await page.press('#wlNick', 'Enter');
     await sleep(1500);
-    const wl1 = await page.evaluate(() => ({ list: document.getElementById('wlList').textContent.replace(/\s+/g, ' '), toast: document.getElementById('toast').textContent, inp: document.getElementById('wlNick').value }));
+    const wl1 = await page.evaluate(() => ({ list: document.getElementById('wlList').textContent.replace(/\s+/g, ' '), toast: __toasts.join(' | '), inp: document.getElementById('wlNick').value }));
     check('очередь по телефону: Guest28 в списке, тост «⏳ Guest28 в очереди — №1», поле очищено', /Guest28/.test(wl1.list) && /Guest28 в очереди — №1/.test(wl1.toast) && wl1.inp === '', JSON.stringify(wl1));
     await page.fill('#wlNick', 'Guest2');
     await page.press('#wlNick', 'Enter');
     await sleep(1500);
     const wlCands = await page.evaluate(() => [...document.querySelectorAll('#wlCands .cands button b')].map(b => b.textContent));
     check('очередь «Guest2» → выбор кандидатов под полем (2–5)', wlCands.length >= 2 && wlCands.length <= 5, wlCands.join(', '));
+    await page.evaluate(() => { __toasts = []; });
     await page.click('#wlCands .cands button:has-text("Guest27")');
     await sleep(1500);
-    const wl2 = await page.evaluate(() => ({ list: document.getElementById('wlList').textContent.replace(/\s+/g, ' '), cands: document.getElementById('wlCands').innerHTML.length, toast: document.getElementById('toast').textContent }));
+    const wl2 = await page.evaluate(() => ({ list: document.getElementById('wlList').textContent.replace(/\s+/g, ' '), cands: document.getElementById('wlCands').innerHTML.length, toast: __toasts.join(' | ') }));
     check('выбор Guest27 → в очереди №2, кандидаты убраны', /Guest27/.test(wl2.list) && wl2.cands === 0 && /Guest27 в очереди — №2/.test(wl2.toast), JSON.stringify(wl2));
   } finally {
     if (freeIds.length) psql(`UPDATE computers SET status='available' WHERE id IN (${freeIds.map(i => `'${i}'`).join(',')})`);

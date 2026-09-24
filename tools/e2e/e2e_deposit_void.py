@@ -124,7 +124,11 @@ check(f"overview.revenue_today = итог отчёта «Деньги» за с�
 loss = rm2.get("losses", {})
 check("losses: отыграно по ошибочным депозитам ≥ 38 zł, отмен ≥ 5", float(loss.get("unrecovered_pln", 0)) >= 38 and int(loss.get("deposit_voids", 0)) >= 5, f"{loss}")
 s, cr = api("GET", "/admin/reports/coins?preset=today", None, ot)
-dbc = sql("SELECT COALESCE(SUM(coins_granted + bonus_coins - coins_taken),0) FROM deposits WHERE created_at >= (SELECT date_trunc('day', now()) + interval '8 hours')")
+# начало клубных суток — по часам клуба и report_hour, как у сервера: сессия psql стенда живёт в UTC,
+# и прежнее «date_trunc('day', now()) + 8 ч» давало 10:00 по Варшаве (трек З, З2-и1)
+rh = "make_interval(hours => COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')::int)"
+dbc = sql(f"SELECT COALESCE(SUM(coins_granted + bonus_coins - coins_taken),0) FROM deposits WHERE created_at >= "
+          f"((((now() AT TIME ZONE 'Europe/Warsaw') - {rh})::date + {rh}) AT TIME ZONE 'Europe/Warsaw')")
 check("reports/coins: монеты за депозиты = выдано − забрано при отмене", s == 200 and int(cr["totals"]["deposits"]) == int(float(dbc)), f"{cr.get('totals', {}).get('deposits')} vs {dbc}")
 s, au = api("GET", "/admin/audit", None, a1)
 kinds = [x.get("kind") for x in au.get("items", [])]
