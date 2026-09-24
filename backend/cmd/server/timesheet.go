@@ -484,6 +484,10 @@ func handleWorkDelete(c *gin.Context) {
 //
 // Кнопка «пришёл» остаётся (IV.2): вход бывает и до фактического начала
 // работы, и человек может открыть смену руками, если система его не узнала.
+//
+// З3-и1 (OWNER.md, №19): смену открывает только вход в админку (client:
+// "admin" в теле /auth/login). Киоск и PWA входят тем же /auth/login, и админ,
+// зашедший из дома в PWA в 09:00, становился «на смене» до ухода в 24:00.
 
 // openWorkOnLogin — открыть запись табеля при входе, если её ещё нет.
 // Молча ничего не делает, когда открывать нечего: вход — не то место, где
@@ -516,7 +520,7 @@ func openWorkOnLogin(user *models.User, now time.Time) (opened bool, autoClosedP
 	}
 	entry := models.WorkEntry{
 		ClubID: club.ID, UserID: user.ID, Date: day, StartedAt: now,
-		CreatedBy: &user.ID, Note: "открыта входом в систему",
+		CreatedBy: &user.ID, Note: "открыта входом в админку",
 	}
 	if sh != nil {
 		entry.ShiftID = &sh.ID
@@ -529,6 +533,6 @@ func openWorkOnLogin(user *models.User, now time.Time) (opened bool, autoClosedP
 	if sh != nil {
 		name = sh.Name
 	}
-	logAdminActionAs(user.ID, "work_start", nil, "вход в систему"+shiftSuffix(name))
+	logAdminActionAs(user.ID, "work_start", nil, "вход в админку"+shiftSuffix(name))
 	return true, autoClosedPrev
 }

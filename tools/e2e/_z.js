@@ -36,11 +36,12 @@ async function call(method, path, body, token) {
   let data; try { data = JSON.parse(text || '{}'); } catch (e) { data = { _text: text.slice(0, 300) }; }
   return { status: r.status, data };
 }
-const login = (nick, password) => call('POST', '/auth/login', { login: nick, password: password || passwordOf(nick) });
+// вход как есть; extra — поля тела (client: 'admin' — вход админки, он открывает смену, З3-и1)
+const login = (nick, password, extra = {}) => call('POST', '/auth/login', { login: nick, password: password || passwordOf(nick), ...extra });
 const cache = {};
 async function tok(nick, fresh) {
   if (fresh || !cache[nick]) {
-    const r = await login(nick);
+    const r = await login(nick, undefined, { client: 'admin' }); // как админка: вход открывает админу смену (З3-и1)
     if (r.status !== 200) throw new Error(`вход ${nick}: ${r.status} ${JSON.stringify(r.data)}`);
     cache[nick] = r.data.access_token;
   }

@@ -85,10 +85,11 @@ def _exp(token):
 
 def tokens(nick, password=None, fresh=False):
     """Пара токенов из кэша процесса; нет, истекает через минуту или fresh — вход заново.
-    Вход админа открывает ему смену (Е3-и1) — поэтому кэш, а не вход на каждый вызов."""
+    Входит как админка (client="admin"): такой вход открывает админу смену (Е3-и1, З3-и1) — поэтому
+    кэш, а не вход на каждый вызов. Вход киоска или PWA (без client) — через login()."""
     t = _cache.get(nick)
     if fresh or not t or t["exp"] - time.time() < 60:
-        s, d = login(nick, password)
+        s, d = login(nick, password, client="admin")
         if s != 200:
             raise SystemExit(f"вход {nick}: {s} {J(d)}")
         t = _cache[nick] = {"access": d["access_token"], "refresh": d["refresh_token"], "exp": _exp(d["access_token"])}

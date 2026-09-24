@@ -433,6 +433,9 @@ type registerRequest struct {
 type loginRequest struct {
 	Login    string `json:"login"    binding:"required"` // nickname или email
 	Password string `json:"password" binding:"required"`
+	// З3-и1 (№19): кто входит — "admin" шлёт админка; киоск и PWA не шлют ничего.
+	// Смену открывает только вход в админку: вход из дома в PWA часов не рождает.
+	Client string `json:"client"`
 }
 
 type authResponse struct {
@@ -540,8 +543,10 @@ func handleLogin(c *gin.Context) {
 	}
 
 	db.Model(&user).Update("last_active_at", time.Now())
-	checkBirthdayGift(user.ID)         // Г8-и4: вдруг сегодня день рождения — подарок при входе
-	openWorkOnLogin(&user, time.Now()) // Е3-и1 (Р8): смена админа начинается входом
+	checkBirthdayGift(user.ID) // Г8-и4: вдруг сегодня день рождения — подарок при входе
+	if req.Client == "admin" {
+		openWorkOnLogin(&user, time.Now()) // Е3-и1 (Р8), З3-и1: смену открывает вход в админку
+	}
 	writeAuth(c, http.StatusOK, &user)
 }
 
