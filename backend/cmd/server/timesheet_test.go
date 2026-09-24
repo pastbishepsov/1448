@@ -71,6 +71,22 @@ func TestShiftEndAtFromDB(t *testing.T) {
 	}
 }
 
+// З3-и3 (№21): отказ «пересекается» называет запись, с которой пересеклись.
+func TestOverlapMessage(t *testing.T) {
+	at := func(d, h, m int) time.Time { return time.Date(2026, 9, d, h, m, 0, 0, time.UTC) }
+	end := at(20, 13, 0)
+	if got := overlapMessage(&models.WorkEntry{StartedAt: at(20, 9, 0), EndedAt: &end}); !contains(got, "20.09 09:00–13:00") {
+		t.Errorf("дневная: %q", got)
+	}
+	night := at(21, 2, 0)
+	if got := overlapMessage(&models.WorkEntry{StartedAt: at(20, 22, 0), EndedAt: &night}); !contains(got, "20.09 22:00–21.09 02:00") {
+		t.Errorf("ночная — с датой конца: %q", got)
+	}
+	if got := overlapMessage(&models.WorkEntry{StartedAt: at(24, 10, 0)}); !contains(got, "открытой сменой") || !contains(got, "с 24.09 10:00") {
+		t.Errorf("открытая: %q", got)
+	}
+}
+
 func TestParseHM(t *testing.T) {
 	cases := []struct {
 		in   string

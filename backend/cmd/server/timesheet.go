@@ -168,6 +168,10 @@ func handleWorkStart(c *gin.Context) {
 		entry.ShiftID = &sh.ID
 	}
 	if err := db.Create(&entry).Error; err != nil {
+		if isDuplicate(err) { // З3-и3: два «Я пришёл» разом — вторую открытую запись не пускает индекс
+			c.JSON(http.StatusConflict, gin.H{"code": "already_open", "message": "Ты уже на смене — сначала отметь уход"})
+			return
+		}
 		respondDBError(c, err)
 		return
 	}
@@ -367,6 +371,47 @@ var workErrors = map[string]string{
 	"bad_time":  "Время — в формате ЧЧ:ММ",
 	"need_time": "Нужны начало и конец",
 	"too_long":  "Смена длиннее суток — проверь время",
+	"not_staff": "Табель ведётся только на персонал: у этого ника нет ни роли, ни кадровой карточки",
+}
+
+// workTargetOK — кому владелец ведёт табель руками (З3-и3, №21; Д12): персоналу
+// или бывшему персоналу с кадровой карточкой — дописать последнюю смену
+// уволенного. Гость табеля не получает: раньше запись на него молча проходила.
+func workTargetOK(u *models.User) bool {
+	if roleIsStaff(string(u.Role)) {
+		return true
+	}
+	var n int64
+	db.Model(&models.StaffProfile{}).Where("user_id = ?", u.ID).Count(&n)
+	return n > 0
+}
+
+// workOverlap — запись того же человека, с которой пересекается [start, end), или
+// nil (З3-и3). Открытая запись тянется до бесконечности — человек ещё на смене;
+// встык — не пересечение; except — сама правимая запись.
+func workOverlap(userID uuid.UUID, start, end time.Time, except *uuid.UUID) *models.WorkEntry {
+	q := db.Where("user_id = ? AND started_at < ? AND COALESCE(ended_at, 'infinity'::timestamptz) > ?", userID, end, start)
+	if except != nil {
+		q = q.Where("id <> ?", *except)
+	}
+	var w models.WorkEntry
+	if q.Order("started_at").First(&w).Error != nil {
+		return nil
+	}
+	return &w
+}
+
+// overlapMessage — отказ с указанием, с какой записью пересеклись (чистая, тест).
+func overlapMessage(w *models.WorkEntry) string {
+	from := w.StartedAt.Format("02.01 15:04")
+	if w.EndedAt == nil {
+		return "Время пересекается с открытой сменой этого человека: с " + from
+	}
+	to := w.EndedAt.Format("15:04")
+	if w.EndedAt.Format("2006-01-02") != w.StartedAt.Format("2006-01-02") {
+		to = w.EndedAt.Format("02.01 15:04")
+	}
+	return "Время пересекается с другой записью этого человека: " + from + "–" + to
 }
 
 // composeWorkTimes — из даты и «ЧЧ:ММ» собрать моменты начала и конца.
@@ -381,7 +426,9 @@ func composeWorkTimes(day time.Time, startMin, endMin int) (time.Time, time.Time
 	return start, end
 }
 
-// POST /admin/work — добавить запись табеля руками (owner).
+// POST /admin/work — добавить запись табеля руками (owner). З3-и3: только
+// персоналу или бывшему персоналу с карточкой (Д12) и без пересечений с другими
+// записями того же человека.
 func handleWorkCreate(c *gin.Context) {
 	var req workRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -391,6 +438,10 @@ func handleWorkCreate(c *gin.Context) {
 	var user models.User
 	if err := db.First(&user, "nickname = ?", strings.TrimSpace(req.Nickname)).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Сотрудник с таким ником не найден"})
+		return
+	}
+	if !workTargetOK(&user) {
+		c.JSON(http.StatusConflict, gin.H{"code": "not_staff", "message": workErrors["not_staff"]})
 		return
 	}
 	day, ok := parseDateOpt(req.Date)
@@ -410,6 +461,10 @@ func handleWorkCreate(c *gin.Context) {
 		return
 	}
 	start, end := composeWorkTimes(*day, sm, em)
+	if other := workOverlap(user.ID, start, end, nil); other != nil {
+		c.JSON(http.StatusConflict, gin.H{"code": "overlap", "message": overlapMessage(other)})
+		return
+	}
 	admin, _ := uuid.Parse(c.GetString("user_id"))
 	entry := models.WorkEntry{
 		ClubID: club.ID, UserID: user.ID, Date: *day, StartedAt: start, EndedAt: &end,
@@ -429,7 +484,8 @@ func handleWorkCreate(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"entry": workOut(&entry, "")})
 }
 
-// PATCH /admin/work/:id — исправить запись табеля (owner).
+// PATCH /admin/work/:id — исправить запись табеля (owner). З3-и3: без
+// пересечений с другими записями того же человека.
 func handleWorkUpdate(c *gin.Context) {
 	var w models.WorkEntry
 	if err := db.First(&w, "id = ?", c.Param("id")).Error; err != nil {
@@ -439,6 +495,11 @@ func handleWorkUpdate(c *gin.Context) {
 	var req workRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Не разобрал запись"})
+		return
+	}
+	var owner models.User // чья запись — ник из тела цель не меняет
+	if db.First(&owner, "id = ?", w.UserID).Error != nil || !workTargetOK(&owner) {
+		c.JSON(http.StatusConflict, gin.H{"code": "not_staff", "message": workErrors["not_staff"]})
 		return
 	}
 	sm, ok1 := parseHM(req.Start)
@@ -457,6 +518,10 @@ func handleWorkUpdate(c *gin.Context) {
 		day = *d
 	}
 	start, end := composeWorkTimes(day, sm, em)
+	if other := workOverlap(w.UserID, start, end, &w.ID); other != nil {
+		c.JSON(http.StatusConflict, gin.H{"code": "overlap", "message": overlapMessage(other)})
+		return
+	}
 	admin, _ := uuid.Parse(c.GetString("user_id"))
 	mins := workMinutes(start, end)
 	if err := db.Model(&models.WorkEntry{}).Where("id = ?", w.ID).Updates(map[string]any{
