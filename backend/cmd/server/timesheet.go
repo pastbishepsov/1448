@@ -271,20 +271,36 @@ func handleWorkMe(c *gin.Context) {
 
 // ── Табель владельца ──────────────────────────────────────────────────
 
-// factByUser — факт за период: минуты и число смен по каждому сотруднику.
-func factByUser(p period) map[string][2]int64 {
+// workFact — факт табеля за период по человеку (З3-и2, OWNER.md №20 «а»).
+// Платим по подтверждённому: уход отметил сам человек или запись поправил
+// владелец. Автозакрытая запись (ушёл, не отметившись, — часы поставлены по
+// графику) в выплату не входит и показывается отдельно, пока владелец её не
+// поправит. Смена — день с подтверждёнными минутами: «ушёл — пришёл» днём
+// раньше давал две записи и две ставки за смену.
+type workFact struct {
+	Minutes     int64 // подтверждённые минуты
+	Shifts      int64 // дни с подтверждёнными минутами
+	AutoMinutes int64 // автозакрытые минуты — вне выплаты
+	AutoEntries int64 // автозакрытых записей
+}
+
+// factByUser — факт за период по каждому сотруднику.
+func factByUser(p period) map[string]workFact {
 	var rows []struct {
-		UserID string
-		Mins   int64
-		Cnt    int64
+		UserID                        string
+		Mins, Days, AutoMins, AutoCnt int64
 	}
 	db.Model(&models.WorkEntry{}).
-		Select("user_id, COALESCE(SUM(minutes),0) AS mins, COUNT(*) AS cnt").
+		Select(`user_id,
+			COALESCE(SUM(minutes) FILTER (WHERE NOT auto_closed), 0) AS mins,
+			COUNT(DISTINCT date) FILTER (WHERE NOT auto_closed AND minutes > 0) AS days,
+			COALESCE(SUM(minutes) FILTER (WHERE auto_closed), 0) AS auto_mins,
+			COUNT(*) FILTER (WHERE auto_closed) AS auto_cnt`).
 		Where("date >= ? AND date <= ?", p.FromDay, p.ToDay).
 		Group("user_id").Scan(&rows)
-	out := make(map[string][2]int64, len(rows))
+	out := make(map[string]workFact, len(rows))
 	for _, r := range rows {
-		out[r.UserID] = [2]int64{r.Mins, r.Cnt}
+		out[r.UserID] = workFact{Minutes: r.Mins, Shifts: r.Days, AutoMinutes: r.AutoMins, AutoEntries: r.AutoCnt}
 	}
 	return out
 }

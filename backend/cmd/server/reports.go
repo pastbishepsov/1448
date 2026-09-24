@@ -1060,8 +1060,10 @@ func handleReportStaff(c *gin.Context) {
 	type person struct {
 		shifts   int64
 		schedMin int64
-		factMin  int64 // В3-4: факт из табеля
-		factCnt  int64
+		factMin  int64 // В3-4: факт из табеля; З3-и2 — подтверждённый
+		factCnt  int64 // З3-и2: дни с подтверждёнными минутами
+		autoMin  int64 // З3-и2: автозакрытые минуты — вне выплаты
+		autoCnt  int64
 		revenue  float64 // пополнения + товары
 		deposits int64
 		sales    int64
@@ -1120,10 +1122,11 @@ func handleReportStaff(c *gin.Context) {
 		who(r.AdminID).grants = r.Cnt
 	}
 
-	// факт из табеля (В3-4): без него ставка из кадровой карточки бесполезна
+	// факт из табеля (В3-4): без него ставка из кадровой карточки бесполезна;
+	// З3-и2 — к выплате только подтверждённое, автозакрытое отдельно
 	for id, v := range factByUser(p) {
 		w := who(id)
-		w.factMin, w.factCnt = v[0], v[1]
+		w.factMin, w.factCnt, w.autoMin, w.autoCnt = v.Minutes, v.Shifts, v.AutoMinutes, v.AutoEntries
 	}
 
 	ids := make([]string, 0, len(people))
@@ -1146,6 +1149,10 @@ func handleReportStaff(c *gin.Context) {
 			"fact_hours": math.Round(float64(w.factMin)/60*10) / 10, "fact_shifts": w.factCnt,
 			"revenue_pln": math.Round(w.revenue*100) / 100, "deposits": w.deposits, "sales": w.sales,
 			"actions": w.actions + w.grants + w.sales,
+		}
+		if w.autoCnt > 0 { // З3-и2: не подтверждены — в выплату не вошли
+			row["auto_closed_hours"] = math.Round(float64(w.autoMin)/60*10) / 10
+			row["auto_closed_entries"] = w.autoCnt
 		}
 		if card, ok := cards[id]; ok {
 			amount, kind := payoutFor(card.RateType, card.RateAmount, w.factMin, w.factCnt)

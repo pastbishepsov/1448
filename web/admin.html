@@ -5324,7 +5324,8 @@ function paintStaff(d){
          <td>${repHours(x.scheduled_hours)} · <b>${repHours(x.fact_hours ?? 0)}</b></td>
          <td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits} · ${x.sales}</td>
          <td>${x.payout_pln === undefined ? '<span class="muted" title="в карточке не задана ставка">—</span>'
-              : fmtPLN(x.payout_pln) + ' zł' + (x.payout_kind === 'month' ? ' <span class="muted">оклад</span>' : '')}</td></tr>`),
+              : fmtPLN(x.payout_pln) + ' zł' + (x.payout_kind === 'month' ? ' <span class="muted">оклад</span>' : '')}${x.auto_closed_hours > 0
+              ? `<div class="muted" title="Человек не отметил уход — часы поставлены по графику. Поправь запись в табеле, и они войдут в выплату">+ ${repHours(x.auto_closed_hours)} не подтверждены (автозакрытие)</div>` : ''}</td></tr>`), // З3-и2: платим по подтверждённым
         'В этом периоде никто не работал')}`;
 }
 
