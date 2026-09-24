@@ -250,7 +250,10 @@ row = sql(f"SELECT diff_grosz || '|' || skipped::text || '|' || (work_entry_id I
 check("shift_closeouts: diff −2000 гр, skipped=false, work_entry_id, note", row == "-2000|false|true|сдал Ане", row)
 staff1 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
 new_msgs = staff1[len(staff0):] if len(staff1) > len(staff0) else [m for m in staff1 if m not in staff0]
-check("владельцу в канал персонала: сообщение от admin2 с «расхождение −20.00 zł» и «Передал смену: сдал Ане»", any(m["nickname"] == "admin2" and "расхождение −20.00 zł" in m["text"] and "сдал Ане" in m["text"] for m in new_msgs), json.dumps([m['text'] for m in new_msgs], ensure_ascii=False)[:300])
+# трек З, З1-и2 (Д4): деньги — служебной строкой «только владельцу», заметка — от admin2 всем
+check("владельцу в канал персонала: служебная строка «admin2 … расхождение −20.00 zł» и заметка admin2 «Передал смену: сдал Ане»",
+      any(m.get("kind") == "system" and m.get("visible_to") == "owner" and "admin2" in m["text"] and "расхождение −20.00 zł" in m["text"] for m in new_msgs)
+      and any(m.get("nickname") == "admin2" and m["text"] == "Передал смену: сдал Ане" for m in new_msgs), json.dumps([m['text'] for m in new_msgs], ensure_ascii=False)[:300])
 sh = api("GET", "/admin/stats/shift", None, ot)[1]
 co_sh = [c for c in sh.get("closeouts", []) if c["nickname"] == "admin2"]
 check("сводка смены: closeouts содержит admin2 с diff_pln −20", co_sh and near(co_sh[-1]["diff_pln"], -20) and near(co_sh[-1]["counted_pln"], pv2["expected_pln"] - 20), json.dumps(co_sh[-1] if co_sh else sh.get('closeouts'), ensure_ascii=False)[:200])

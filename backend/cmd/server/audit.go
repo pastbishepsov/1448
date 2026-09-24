@@ -54,7 +54,7 @@ func logLoginFailed(u *models.User, n int, ip string) {
 // GET /admin/audit — лента событий: источники (начисления, депозиты и их
 // отмены, продажи и их отмены, admin_actions) сливаются по времени.
 // Роли (Б1-и4, решение №3): owner видит всё; admin — текущие клубные сутки и
-// без owner-событий (settings_update, staff_*).
+// без owner-событий (settings_update, staff_*, login_failed, shift_close).
 //
 // Ж3-и3 (№14, №22): параметры и слияние.
 //
@@ -125,9 +125,10 @@ func handleAdminAudit(c *gin.Context) {
 		}
 		return q.Order(col + " DESC").Limit(limit)
 	}
+	// З1-и2 (Д4): shift_close — суммы сдачи кассы, их видит только владелец
 	hiddenFromAdmin := func(action string) bool {
-		return !ownerView &&
-			(action == "settings_update" || action == "login_failed" || strings.HasPrefix(action, "staff_"))
+		return !ownerView && (action == "settings_update" || action == "login_failed" ||
+			action == "shift_close" || strings.HasPrefix(action, "staff_"))
 	}
 
 	type item struct {

@@ -140,7 +140,7 @@ who)` → `{status, data}`; `sql`, `rows`, `uid`, `check`, `atEnd`, `crash`; `do
 
 | спринты | гости |
 |---|---|
-| З0–З1 | Guest31, Guest32 (`e2e_z0_stand`, `e2e_z0_role`, `pw_z0_loginform` — Guest31; `e2e_z0_login`, `e2e_z0_cases` — Guest32) |
+| З0–З1 | Guest31, Guest32 (`e2e_z0_stand`, `e2e_z0_role`, `pw_z0_loginform`, `e2e_z1_cash` — Guest31; `e2e_z0_login`, `e2e_z0_cases`, `e2e_z1_channel`, `pw_z1_channel` — Guest32) |
 | З2–З3 | Guest33 + временные сотрудники |
 | З4 | Guest34, Guest35 |
 | З5 | Guest36, Guest37 |
@@ -160,7 +160,7 @@ who)` → `{status, data}`; `sql`, `rows`, `uid`, `check`, `atEnd`, `crash`; `do
 
 Временные сотрудники — `z<N>adm` (N — спринт; если их в спринте несколько — своё окончание:
 `z0std` у проверки стенда, `z0role` и `z0live` у проверок роли, `z0adm` у входа, `z0case` у
-кейсов), их заводит сама проверка через `hire_temp` / `hireTemp`. Удалить аккаунт нельзя (на нём журналы), поэтому повторный прогон
+кейсов, `z1ch` и `z1cw` у канала персонала), их заводит сама проверка через `hire_temp` / `hireTemp`. Удалить аккаунт нельзя (на нём журналы), поэтому повторный прогон
 возвращает того же человека: роль admin, пароль как у admin1, карточка без увольнения.
 
 ### Правила трека З

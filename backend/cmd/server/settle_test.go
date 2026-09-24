@@ -61,35 +61,35 @@ func TestSaleMethodOK(t *testing.T) {
 	}
 }
 
-// Ж6-и4: расхождение и текст владельцу.
+// Ж6-и4: расхождение и текст владельцу. З1-и2: денежная строка — от системы,
+// с ником сдавшего и без заметки; заметка — отдельно, без денег.
 func TestCloseoutMessage(t *testing.T) {
 	counted := func(g int64) *int64 { return &g }
 	cases := []struct {
 		name     string
 		expected int64
 		counted  *int64
-		note     string
 		wantSub  string
-		wantNone bool
 	}{
-		{"сошлось — строка с суммой (З1-и1)", 50000, counted(50000), "", "касса сошлась — в ящике 500.00 zł", false},
-		{"недостача", 50000, counted(48000), "", "расхождение −20.00 zł", false},
-		{"излишек", 50000, counted(50500), "", "расхождение +5.00 zł", false},
-		{"без пересчёта", 50000, nil, "", "без пересчёта кассы (по операциям должно быть 500.00 zł)", false},
-		{"заметка добавляется", 50000, counted(48000), "сдал Ане", "Передал смену: сдал Ане", false},
-		{"сошлось с заметкой — заметка тоже", 50000, counted(50000), "всё ок", "Передал смену: всё ок", false},
+		{"сошлось — строка с суммой (З1-и1)", 50000, counted(50000), "🧮 admin2 сдал смену: касса сошлась — в ящике 500.00 zł"},
+		{"недостача", 50000, counted(48000), "в ящике 480.00 zł, должно быть 500.00 zł — расхождение −20.00 zł"},
+		{"излишек", 50000, counted(50500), "расхождение +5.00 zł"},
+		{"без пересчёта", 50000, nil, "🧮 admin2 сдал смену без пересчёта кассы (по операциям должно быть 500.00 zł)"},
 	}
 	for _, tc := range cases {
-		got := closeoutMessage(tc.expected, tc.counted, tc.note)
-		if tc.wantNone {
-			if got != "" {
-				t.Errorf("%s: ожидалось пусто, получили %q", tc.name, got)
-			}
-			continue
+		got := closeoutMessage("admin2", tc.expected, tc.counted)
+		if !contains(got, tc.wantSub) || contains(got, "Передал смену") {
+			t.Errorf("%s: %q — ждали %q и без заметки", tc.name, got, tc.wantSub)
 		}
-		if got == "" || !contains(got, tc.wantSub) {
-			t.Errorf("%s: %q не содержит %q", tc.name, got, tc.wantSub)
-		}
+	}
+	if got := closeoutMessage("", 100, nil); !contains(got, "🧮 Сотрудник сдал смену") {
+		t.Errorf("без ника: %q", got)
+	}
+	if got := closeoutNote("  сдал Ане  "); got != "Передал смену: сдал Ане" {
+		t.Errorf("заметка: %q", got)
+	}
+	if got := closeoutNote("   "); got != "" {
+		t.Errorf("пустая заметка — без сообщения, получили %q", got)
 	}
 	if d := closeoutDiff(50000, 48000); d != -2000 {
 		t.Errorf("closeoutDiff = %d, ожидалось -2000", d)

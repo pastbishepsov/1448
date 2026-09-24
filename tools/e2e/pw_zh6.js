@@ -138,14 +138,17 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   const diffTxt = await page.evaluate(() => ({ diff: document.getElementById('coDiff').textContent, danger: document.getElementById('coSubmit').classList.contains('danger') }));
   check('ввод на 20 меньше → «Недостача −20,00 zł — уйдёт владельцу», кнопка красная', /Недостача −20,00 zł/.test(diffTxt.diff) && diffTxt.danger, JSON.stringify(diffTxt));
   await page.fill('#coNote', 'сдал смену Ане');
-  const staffBefore = (await j(API + '/admin/staff-chat', { headers: ho })).messages.length;
+  const staffBefore = new Set((await j(API + '/admin/staff-chat', { headers: ho })).messages.map(m => m.id));
   await page.click('#coSubmit'); await sleep(200);
   await page.click('#drawerBody button:has-text("Ещё раз — сдать смену")');
   await sleep(1800);
   const closed = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, chip: document.getElementById('shiftTxt').textContent, open: document.getElementById('drawer').classList.contains('open') }));
-  const staffAfter = (await j(API + '/admin/staff-chat', { headers: ho })).messages;
+  const staffAfter = (await j(API + '/admin/staff-chat', { headers: ho })).messages.filter(m => !staffBefore.has(m.id));
   check('сдача смены: тост «Смена закрыта · … · расхождение −20,00 zł — владелец увидит», чип «смена не открыта», шторка закрыта', /Смена закрыта/.test(closed.toast) && /расхождение −20,00 zł/.test(closed.toast) && /не открыта/.test(closed.chip) && !closed.open, JSON.stringify(closed));
-  check('владельцу в канал персонала: «расхождение −20.00 zł … Передал смену: сдал смену Ане»', staffAfter.length === staffBefore + 1 && /расхождение −20\.00 zł/.test(staffAfter[staffAfter.length - 1].text) && /сдал смену Ане/.test(staffAfter[staffAfter.length - 1].text), (staffAfter[staffAfter.length - 1] || {}).text);
+  // трек З, З1-и2 (Д4): заметка — от admin1 всем, деньги — служебной строкой «только владельцу»
+  check('владельцу в канал персонала: заметка «Передал смену: сдал смену Ане» и служебная строка с «расхождение −20.00 zł»', staffAfter.length === 2
+    && staffAfter[0].kind === 'text' && staffAfter[0].text === 'Передал смену: сдал смену Ане'
+    && staffAfter[1].kind === 'system' && staffAfter[1].visible_to === 'owner' && /расхождение −20\.00 zł/.test(staffAfter[1].text), JSON.stringify(staffAfter.map(m => m.text)));
   // владелец: сводка смены и табель
   await j(API + '/admin/work/start', { method: 'POST', headers: h, body: '{}' }); // admin1 обратно на смену (стенд)
   const page2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });

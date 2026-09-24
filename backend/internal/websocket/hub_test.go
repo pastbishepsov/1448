@@ -225,3 +225,56 @@ func TestDropAdminClosesOnlyThatUser(t *testing.T) {
 		t.Fatalf("DropAdmin без каналов вернул %d", n)
 	}
 }
+
+// З1-и2 (№59): событие строки «только владельцу» уходит только в каналы из
+// списка; пустой список — никому, nil — всем.
+func TestAdminBroadcastToOnlyListed(t *testing.T) {
+	h := NewHub()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = h.ServeAdmin(w, r, r.URL.Query().Get("u"))
+	}))
+	defer srv.Close()
+	dial := func(u string) *websocket.Conn {
+		c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/?u="+u, nil)
+		if err != nil {
+			t.Fatalf("канал %s: %v", u, err)
+		}
+		return c
+	}
+	owner, admin := dial("owner"), dial("admin")
+	defer owner.Close()
+	defer admin.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		h.adminsMu.Lock()
+		n := len(h.admins)
+		h.adminsMu.Unlock()
+		if n == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("хаб видит %d админок, ждали 2", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	h.AdminBroadcastTo("secret", map[string]any{"a": 1}, map[string]bool{"owner": true})
+	h.AdminBroadcastTo("nobody", map[string]any{"a": 2}, map[string]bool{})
+	h.AdminBroadcast("public", map[string]any{"a": 3})
+	read := func(c *websocket.Conn) string {
+		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, msg, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("чтение: %v", err)
+		}
+		return string(msg)
+	}
+	if got := read(owner); !strings.Contains(got, `"secret"`) {
+		t.Fatalf("владелец первым получил %s, ждали secret", got)
+	}
+	if got := read(owner); !strings.Contains(got, `"public"`) {
+		t.Fatalf("владелец вторым получил %s, ждали public", got)
+	}
+	if got := read(admin); !strings.Contains(got, `"public"`) {
+		t.Fatalf("админ получил %s — событие не из его списка", got)
+	}
+}

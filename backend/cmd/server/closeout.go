@@ -16,6 +16,11 @@ package main
 // вовсе. Теперь окно — от начала записи табеля (или от прошлой сдачи этого
 // админа, если она позже) до «сейчас», дата сдачи — дата записи табеля.
 //
+// З1-и2 (№59, Д4): деньги сдачи — должно, пересчитано, расхождение — уходят в
+// канал служебной строкой «только владельцу»; заметка «передал смену» — от
+// сдавшего, её видят все. Строка журнала shift_close с суммами — тоже только
+// владельцу (audit.go).
+//
 // Ожидаемая наличность (только method=cash, живые деньги у стойки):
 //   + депозиты, созданные админом в клубные сутки и не отменённые
 //   + продажи (бар и расчёты кухни) с paid_at в сутках, деньги принял админ,
@@ -28,6 +33,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -144,15 +150,20 @@ func closeoutWindow(adminID uuid.UUID, entry *models.WorkEntry, now time.Time) (
 // closeoutDiff — расхождение (чистая, тест): пересчитано минус ожидалось.
 func closeoutDiff(expected, counted int64) int64 { return counted - expected }
 
-// closeoutMessage — текст владельцу в канал персонала (чистая, тест). З1-и1:
-// «сошлось» тоже строка с суммой — иначе оно неотличимо от «вбил ожидаемую цифру».
-func closeoutMessage(expected int64, counted *int64, note string) string {
+// closeoutMessage — денежная строка сдачи для владельца (чистая, тест). З1-и1:
+// «сошлось» тоже строка с суммой — иначе оно неотличимо от «вбил ожидаемую
+// цифру». З1-и2: пишет система, поэтому в тексте — кто сдавал; заметки здесь
+// нет, она уходит всем отдельно (closeoutNote).
+func closeoutMessage(nick string, expected int64, counted *int64) string {
+	if nick == "" {
+		nick = "Сотрудник"
+	}
 	var b strings.Builder
 	switch {
 	case counted == nil:
-		fmt.Fprintf(&b, "🧮 Сдал смену без пересчёта кассы (по операциям должно быть %.2f zł)", models.PLNFromGrosz(expected))
+		fmt.Fprintf(&b, "🧮 %s сдал смену без пересчёта кассы (по операциям должно быть %.2f zł)", nick, models.PLNFromGrosz(expected))
 	case closeoutDiff(expected, *counted) == 0:
-		fmt.Fprintf(&b, "🧮 Сдал смену: касса сошлась — в ящике %.2f zł", models.PLNFromGrosz(*counted))
+		fmt.Fprintf(&b, "🧮 %s сдал смену: касса сошлась — в ящике %.2f zł", nick, models.PLNFromGrosz(*counted))
 	default:
 		d := closeoutDiff(expected, *counted)
 		sign := "−"
@@ -162,13 +173,18 @@ func closeoutMessage(expected int64, counted *int64, note string) string {
 		if d < 0 {
 			d = -d
 		}
-		fmt.Fprintf(&b, "🧮 Сдал смену: в ящике %.2f zł, должно быть %.2f zł — расхождение %s%.2f zł",
-			models.PLNFromGrosz(*counted), models.PLNFromGrosz(expected), sign, models.PLNFromGrosz(d))
-	}
-	if n := strings.TrimSpace(note); n != "" {
-		b.WriteString(". Передал смену: " + n)
+		fmt.Fprintf(&b, "🧮 %s сдал смену: в ящике %.2f zł, должно быть %.2f zł — расхождение %s%.2f zł",
+			nick, models.PLNFromGrosz(*counted), models.PLNFromGrosz(expected), sign, models.PLNFromGrosz(d))
 	}
 	return b.String()
+}
+
+// closeoutNote — заметка «передал смену» для всех (чистая, тест); пустая — "".
+func closeoutNote(note string) string {
+	if n := strings.TrimSpace(note); n != "" {
+		return "Передал смену: " + n
+	}
+	return ""
 }
 
 func closeoutOut(co *models.ShiftCloseout) gin.H {
@@ -246,16 +262,18 @@ func recordCloseout(c *gin.Context, adminID uuid.UUID, entry *models.WorkEntry, 
 	if co.Note != "" {
 		details += " · " + co.Note
 	}
-	logAdminAction(c, "shift_close", nil, details)
+	logAdminAction(c, "shift_close", nil, details) // З1-и2: строку видит только владелец (hiddenFromAdmin)
 
-	// владельцу — в канал персонала, от имени сдавшего (это его отчёт о смене)
-	if msg := closeoutMessage(co.ExpectedGrosz, co.CountedGrosz, co.Note); msg != "" {
-		m := models.StaffMessage{ClubID: club.ID, AuthorID: adminID, Role: c.GetString("user_role"), Text: msg}
-		if err := db.Create(&m).Error; err == nil {
-			db.Model(&models.User{}).Where("id = ?", adminID).Update("staff_chat_read_at", m.CreatedAt)
-			hub.AdminBroadcast("staff_chat", map[string]any{"kind": "message", "author_id": adminID.String(), "role": m.Role, "closeout": true})
+	// З1-и2 (Д4): заметка — от сдавшего, всем; деньги — служебной строкой только
+	// владельцу. Заметка первой: у владельца внизу ленты остаётся строка с деньгами.
+	if note := closeoutNote(co.Note); note != "" {
+		m := models.StaffMessage{ClubID: club.ID, AuthorID: &adminID, Role: c.GetString("user_role"), Text: note}
+		if err := postStaffMessage(&m, map[string]any{"closeout": true}); err != nil {
+			log.Printf("сдача кассы: заметка в канал не записалась: %v", err)
 		}
 	}
+	nick := nicknamesByID([]string{adminID.String()})[adminID.String()]
+	postSystem(closeoutMessage(nick, co.ExpectedGrosz, co.CountedGrosz), true, map[string]any{"closeout": true})
 	return &co
 }
 

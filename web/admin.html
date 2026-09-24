@@ -283,6 +283,9 @@
   .scmsg.mine{margin-left:auto; background:rgba(255,39,64,.10); border-color:rgba(255,39,64,.28)}
   .scmsg .who{font-size:11px; color:var(--dim); margin-bottom:3px}
   .scmsg .who b{color:var(--txt)}
+  /* З1-и2: служебная строка — от системы, по центру ленты; «видит только владелец» — золотом */
+  .scmsg.sys{max-width:92%; margin-left:auto; margin-right:auto; background:rgba(251,191,36,.07); border-color:rgba(251,191,36,.28)}
+  .scmsg .scown{color:var(--gold); font-weight:700}
   .scwrap{display:flex; flex-direction:column; max-height:52vh; overflow:auto; padding-right:2px}
   .faqq{width:100%; text-align:left; background:var(--card2); border:1px solid var(--line);
         border-radius:11px; padding:10px 12px; margin-bottom:6px; color:var(--txt);
@@ -1451,7 +1454,7 @@ let ws = null, wsOpen = false, wsRetry = null, refDeb = null;
 let feed = []; // последние события для ленты Зала (кап 30)
 const FEED_ICON = {session_start:'clock', session_end:'power', shell_online:'monitor',
                    shell_offline:'monitor', deposit:'coins', booking:'cal', ban:'ban', chat:'bell',
-                   grant:'xp', waitlist:'clock', shifts:'cal'};
+                   grant:'xp', waitlist:'clock', shifts:'cal', staff_chat:'chat'};
 
 function setPolling(ms){
   if (refreshIv) clearInterval(refreshIv);
@@ -1561,6 +1564,9 @@ function feedLine(m){
       return 'сессия обновлена';
     }
     case 'pc_release': return (d.computer || pcName(d.computer_id)) + ' освобождён — был занят без сессии'; // Ж4-и3
+    case 'staff_chat': return 'канал персонала: ' + (d.kind === 'system' // З1-и2: было сырое «staff_chat»
+      ? 'служебное сообщение' + (d.visible_to === 'owner' ? ' — только владельцу' : '')
+      : (d.nickname || (d.role === 'owner' ? 'владелец' : 'админ')) + (d.closeout ? ' передал смену' : ' написал'));
     case 'package': {
       if (d.kind === 'issue') return 'выдан пакет минут';
       return 'пакеты обновлены';
@@ -1613,7 +1619,9 @@ function handleLiveEvent(m){
     const d = m.data || {};
     loadStaffChat(true);
     if (!drawerIsStaffChat && me && d.author_id !== me.id){
-      toast((d.role === 'owner' ? '👑 Владелец' : '💬 Свой') + ' написал в канал персонала');
+      toast(d.kind === 'system' // З1-и2: служебное — от системы; «только владельцу» до админа не доходит вовсе
+        ? '🧮 Служебное в канале персонала' + (d.visible_to === 'owner' ? ' — видишь только ты' : '')
+        : (d.role === 'owner' ? '👑 Владелец' : '💬 Свой') + ' написал в канал персонала');
     }
   }
   if (m.type === 'chat'){ // Б2/Б3: вызов/сообщение — колокол, тост, плитка, открытый тред
@@ -1670,11 +1678,22 @@ async function openStaffChat(){
   catch(e){}
 }
 
+/* З1-и2 (№59, Д4): служебные строки пишет сервер — автора нет, «Система»; строку с меткой
+   «видит только владелец» (деньги сдачи кассы) сервер админу не отдаёт вовсе — метка
+   здесь для самого владельца, чтобы он знал, чего смена не видит. */
+function staffMsgHTML(m){
+  const own = m.visible_to === 'owner' ? ' · <span class="scown">видит только владелец</span>' : '';
+  if (m.kind === 'system') return `<div class="scmsg sys" data-id="${esc(m.id)}">
+        <div class="who"><b>Система</b>${own} · ${fmtTime(m.created_at)}</div>
+        ${esc(m.text)}</div>`;
+  return `<div class="scmsg${m.author_id === (me && me.id) ? ' mine' : ''}" data-id="${esc(m.id)}">
+        <div class="who"><b>${esc(m.nickname || '—')}</b> · ${esc(m.role === 'owner' ? 'владелец' : 'админ')}${own} · ${fmtTime(m.created_at)}</div>
+        ${esc(m.text)}</div>`;
+}
+
 function paintStaffChat(){
   const rows = staffMsgs.length
-    ? staffMsgs.map(m => `<div class="scmsg${m.author_id === (me && me.id) ? ' mine' : ''}">
-        <div class="who"><b>${esc(m.nickname || '—')}</b> · ${esc(m.role === 'owner' ? 'владелец' : 'админ')} · ${fmtTime(m.created_at)}</div>
-        ${esc(m.text)}</div>`).join('')
+    ? staffMsgs.map(staffMsgHTML).join('')
     : `<div class="muted" style="padding:8px 0">Пусто. Здесь спрашивают у владельца то, что не решается по инструкции — ответ увидит вся смена.</div>`;
   const body = `<div class="scwrap" id="scWrap">${rows}</div>
     <div class="chrow" style="margin-top:10px">
@@ -1683,7 +1702,8 @@ function paintStaffChat(){
         onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))sendStaffMsg()"></textarea>
       <button class="btn mini" onclick="sendStaffMsg()"><span data-ic="check"></span>Отправить</button>
     </div>
-    <div class="muted" style="margin-top:6px">Ctrl+Enter — отправить. Канал общий: сообщение видят все, кто работает у стойки.</div>`;
+    <div class="muted" style="margin-top:6px">Ctrl+Enter — отправить. Канал общий: сообщение видят все, кто работает у стойки.${isOwner()
+      ? ' Строки с меткой «видит только владелец» — деньги сдачи кассы — админам не показываются.' : ''}</div>`;
   openDrawer('Спросить владельца', body);
   const w = document.getElementById('scWrap');
   if (w) w.scrollTop = w.scrollHeight; // свежее — внизу, как в любом чате
@@ -5682,7 +5702,7 @@ function paintMyShift(){
                      onclick="armButton(this, 'Ещё раз — сдать смену', () => shiftStop(false))"><span data-ic="out"></span>Сдать смену</button>
              <button class="btn ghost" style="width:100%; justify-content:center"
                      onclick="armButton(this, 'Точно без пересчёта?', () => shiftStop(true))">Уйти без пересчёта</button>
-             <div class="muted">Уход закрывает запись табеля — по ней считается зарплата. Итог сдачи увидит владелец — и когда сошлось, и когда нет.</div>
+             <div class="muted">Уход закрывает запись табеля — по ней считается зарплата. Итог сдачи увидит только владелец — и когда сошлось, и когда нет; заметку — вся смена в канале персонала.</div>
            </div>`}`
         : `<div class="muted" style="margin-top:12px">Смена открывается сама, когда ты входишь в систему. Если её нет, а ты работаешь — открой руками.</div>
            <button class="btn" style="width:100%; justify-content:center; margin-top:8px"
@@ -5692,7 +5712,7 @@ function paintMyShift(){
 function coDiffText(diff){
   if (diff == null || isNaN(diff)) return 'Пересчитай наличные в ящике и вбей сумму — сравню с ожидаемой';
   if (diff === 0) return '✓ Касса сошлась';
-  return (diff > 0 ? 'Излишек +' : 'Недостача −') + fmtPLN(Math.abs(diff)) + ' zł — уйдёт владельцу в канал персонала';
+  return (diff > 0 ? 'Излишек +' : 'Недостача −') + fmtPLN(Math.abs(diff)) + ' zł — уйдёт только владельцу';
 }
 function coPaintDiff(){
   const cp = closeoutPrev || {};

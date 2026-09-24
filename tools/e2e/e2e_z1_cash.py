@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """З1-и1 «Касса — окно смены» (№1 «а»): «должно быть в ящике» считается от начала смены (записи
 табеля) или от прошлой сдачи этого админа, а не от начала клубных суток; сдача датируется днём своей
-смены и видна в её сводке; при «сошлось» владелец тоже получает строку — с суммой и заметкой.
+смены и видна в её сводке; при «сошлось» владелец тоже получает строку с суммой (З1-и2: служебной строкой
+«только владельцу», заметка «передал смену» — отдельным сообщением сдавшего).
 Временный сотрудник z1adm, гость Guest31. Идемпотентен: свои пополнения отменяет, z1adm уволен."""
 from _z import *
 
@@ -31,8 +32,9 @@ check("сдал 100 → сошлось, расхождение 0", s == 200 and 
 check(f"сдача датирована днём своей смены ({yday})", co.get("date") == yday, co.get("date"))
 shift = api("GET", f"/admin/stats/shift?date={yday}", None, "boss")[1]
 check("сдача видна в сводке вчерашней смены", any(c.get("id") == co.get("id") for c in shift.get("closeouts", [])), J(shift.get("closeouts"), 200))
-msg = sql(f"SELECT text FROM staff_messages WHERE author_id='{zid}' ORDER BY created_at DESC LIMIT 1")
-check("при «сошлось» владелец получил строку: сумма и заметка", "сошлась" in msg and "100.00" in msg and "всё на месте" in msg, msg)
+msg = sql("SELECT text FROM staff_messages WHERE kind='system' AND visible_to='owner' AND text LIKE '🧮 z1adm %' ORDER BY created_at DESC LIMIT 1")
+note = sql(f"SELECT text FROM staff_messages WHERE author_id='{zid}' ORDER BY created_at DESC LIMIT 1")
+check("при «сошлось» владелец получил строку с суммой, заметка — отдельно", "сошлась" in msg and "100.00" in msg and "всё на месте" in note, f"{msg} | {note}")
 
 section("две сдачи за сутки не пересекаются")
 api("POST", "/admin/work/start", {}, "z1adm")

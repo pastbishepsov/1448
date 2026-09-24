@@ -267,13 +267,23 @@ func (h *Hub) DropAdmin(userID string) int {
 // AdminBroadcast — рассылка события всем подключённым админкам (best-effort:
 // мёртвые соединения выбрасываются, ошибка никого не роняет).
 func (h *Hub) AdminBroadcast(evType string, data map[string]any) {
+	h.AdminBroadcastTo(evType, data, nil)
+}
+
+// AdminBroadcastTo — то же, но только каналам этих людей (user_id → true);
+// nil — всем. З1-и2: событие строки «только владельцу» админке не уходит —
+// иначе тост «новое в канале» выдал бы то, чего в ленте у него нет.
+func (h *Hub) AdminBroadcastTo(evType string, data map[string]any, only map[string]bool) {
 	msg, err := json.Marshal(AdminEvent{Type: evType, At: time.Now(), Data: data})
 	if err != nil {
 		return
 	}
 	h.adminsMu.Lock()
 	defer h.adminsMu.Unlock()
-	for conn := range h.admins {
+	for conn, uid := range h.admins {
+		if only != nil && !only[uid] {
+			continue
+		}
 		// Дедлайн обязателен: AdminBroadcast зовётся из Run(), и запись в
 		// «уснувшую» админку (закрыли крышку ноутбука) без него блокируется
 		// навсегда, останавливая весь хаб и все хендлеры (ревью 26.08).
