@@ -47,6 +47,7 @@ func main() {
 	// разом. Дни и часы в SQL отчётов считает база — ей тот же пояс ставит
 	// withClubTimeZone при подключении (З2-и1).
 	time.Local = clubLocation
+	models.ClubLocation = clubLocation // З2-и2: колонки date из базы — полночь клуба (models.ClubDay)
 	log.Printf("Часовой пояс клуба: %s", clubLocation)
 
 	jwtSecret = []byte(getenv("JWT_SECRET", devJWTSecret))

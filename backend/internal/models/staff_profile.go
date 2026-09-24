@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // StaffProfile — кадровая карточка сотрудника (миграция 025, В3-этап 2).
@@ -21,6 +22,14 @@ type StaffProfile struct {
 	Note        string     `json:"note"         gorm:"not null;default:''"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// AfterFind — даты найма и увольнения: полночь клуба, а не UTC (З2-и2, ClubDay):
+// иначе «уволен сегодня» выходил раньше «нанят сегодня».
+func (p *StaffProfile) AfterFind(tx *gorm.DB) error {
+	clubDayPtr(p.HiredAt)
+	clubDayPtr(p.DismissedAt)
+	return nil
 }
 
 func (StaffProfile) TableName() string { return "staff_profiles" }

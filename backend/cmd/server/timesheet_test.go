@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
 func TestWorkMinutes(t *testing.T) {
@@ -33,6 +35,39 @@ func TestShiftEndAt(t *testing.T) {
 	// ночная 20:00–8:00 — уже на следующие сутки
 	if got := shiftEndAt(day, 1200, 480); got.Format("2006-01-02 15:04") != "2026-08-19 08:00" {
 		t.Errorf("ночная кончается %s, ожидалось 2026-08-19 08:00", got.Format("2006-01-02 15:04"))
+	}
+}
+
+// З2-и2 (№4): день записи табеля приходит из базы полуночью UTC. После AfterFind
+// (models.ClubDay) смена «День 08–20» кончается в 20:00 по клубу, а не в 22:00,
+// а «уволен сегодня» не раньше «нанят сегодня».
+func TestShiftEndAtFromDB(t *testing.T) {
+	warsaw, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := models.ClubLocation
+	models.ClubLocation = warsaw
+	defer func() { models.ClubLocation = old }()
+
+	fromDB := func() time.Time { return time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC) } // так pgx отдаёт date
+	w := models.WorkEntry{Date: fromDB()}
+	_ = w.AfterFind(nil)
+	if got, want := shiftEndAt(w.Date, 480, 1200), time.Date(2026, 9, 23, 20, 0, 0, 0, warsaw); !got.Equal(want) {
+		t.Errorf("смена 08–20 из базы кончается %v, ждали %v", got, want)
+	}
+	start, _ := composeWorkTimes(w.Date, 540, 1260)
+	if want := time.Date(2026, 9, 23, 9, 0, 0, 0, warsaw); !start.Equal(want) {
+		t.Errorf("правка «09:00» легла на %v, ждали %v", start, want)
+	}
+	hired := fromDB()
+	p := models.StaffProfile{HiredAt: &hired}
+	_ = p.AfterFind(nil)
+	if today := time.Date(2026, 9, 23, 0, 0, 0, 0, warsaw); today.Before(*p.HiredAt) {
+		t.Errorf("увольнение в день найма раньше найма: %v < %v", today, *p.HiredAt)
+	}
+	if got := models.ClubDay(time.Time{}); !got.IsZero() {
+		t.Errorf("пустая дата должна остаться пустой: %v", got)
 	}
 }
 

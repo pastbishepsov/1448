@@ -192,9 +192,13 @@ func pctDelta(now, prev float64) *float64 {
 	return &v
 }
 
-// dayExpr — выражение «клубные сутки» для GROUP BY по колонке ts.
+// dayExpr — выражение «клубные сутки» для GROUP BY по колонке ts. З2-и2: часы
+// отнимаются от стенных часов клуба (ts::timestamp — в поясе соединения, З2-и1),
+// а не от момента: в дни перевода часов «момент − 8 ч» уводил час у границы в
+// соседние сутки (29.03 08:30 — во вчера, 26.10 07:30 — в сегодня), тогда как
+// окно периода (makePeriod) и clubDayOf считают по стенным часам.
 func dayExpr(col string, reportHour int) string {
-	return fmt.Sprintf("(%s - INTERVAL '%d hours')::date", col, reportHour)
+	return fmt.Sprintf("(%s::timestamp - INTERVAL '%d hours')::date", col, reportHour)
 }
 
 // fillDays — ряд по дням без дыр: дни без данных дают ноль, иначе график врёт.

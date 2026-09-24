@@ -34,4 +34,10 @@ func (w *WorkEntry) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// AfterFind — день записи: полночь клуба, а не UTC (З2-и2, ClubDay).
+func (w *WorkEntry) AfterFind(tx *gorm.DB) error {
+	w.Date = ClubDay(w.Date)
+	return nil
+}
+
 func (WorkEntry) TableName() string { return "work_entries" }

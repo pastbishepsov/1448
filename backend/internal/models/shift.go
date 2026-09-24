@@ -51,4 +51,10 @@ func (a *ShiftAssignment) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// AfterFind — день смены в графике: полночь клуба, а не UTC (З2-и2, ClubDay).
+func (a *ShiftAssignment) AfterFind(tx *gorm.DB) error {
+	a.Date = ClubDay(a.Date)
+	return nil
+}
+
 func (ShiftAssignment) TableName() string { return "shift_assignments" }

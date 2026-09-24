@@ -105,3 +105,9 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+// AfterFind — день рождения: полночь клуба, а не UTC (З2-и2, ClubDay).
+func (u *User) AfterFind(tx *gorm.DB) error {
+	clubDayPtr(u.BirthDate)
+	return nil
+}

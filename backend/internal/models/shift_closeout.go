@@ -33,6 +33,12 @@ type ShiftCloseout struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
+// AfterFind — день сдачи: полночь клуба, а не UTC (З2-и2, ClubDay).
+func (s *ShiftCloseout) AfterFind(tx *gorm.DB) error {
+	s.Date = ClubDay(s.Date)
+	return nil
+}
+
 func (s *ShiftCloseout) BeforeCreate(tx *gorm.DB) error {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
