@@ -3251,7 +3251,9 @@ function uHistHtml(){
     return `<table class="hist">${rows.map(x => `<tr>
       <td class="muted">${fmtTime(x.started_at)}</td>
       <td>${esc(x.computer||'—')}</td>
-      <td>${x.status === 'active' ? '<span class="st active">идёт</span>' : x.minutes + ' мин'}</td>
+      <td>${x.status === 'active' ? '<span class="st active">идёт</span>'
+        : x.status === 'cancelled' ? '<span class="st cancelled" title="ПК не вышел на связь или посадку сняли — ничего не списано, в отчёты не входит">посадка снята</span>' // З4-и1
+        : x.minutes + ' мин'}</td>
       <td>+${x.xp_earned} XP · +${x.coins_earned}</td>
     </tr>`).join('')}</table>`;
   }

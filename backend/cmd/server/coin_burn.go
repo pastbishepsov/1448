@@ -116,7 +116,7 @@ func coinBurnScan(now time.Time) []burnRow {
 	var rows []row
 	db.Model(&models.User{}).
 		Select(`users.id, users.nickname, users.coins_balance AS coins, users.registered_at AS registered,
-		        (SELECT MAX(s.started_at) FROM sessions s WHERE s.user_id = users.id) AS last_session,
+		        (SELECT MAX(s.started_at) FROM sessions s WHERE s.user_id = users.id AND s.status <> 'cancelled') AS last_session,
 		        (SELECT MAX(b.created_at) FROM coin_burns b WHERE b.user_id = users.id) AS last_burn`).
 		Where("users.role = ? AND users.coins_balance > 0", models.UserRolePlayer).
 		Scan(&rows)
@@ -193,7 +193,7 @@ func warnBeforeBurn(now time.Time) int {
 	var rows []row
 	db.Model(&models.User{}).
 		Select(`users.id, users.coins_balance AS coins, users.registered_at AS registered,
-		        (SELECT MAX(s.started_at) FROM sessions s WHERE s.user_id = users.id) AS last_session,
+		        (SELECT MAX(s.started_at) FROM sessions s WHERE s.user_id = users.id AND s.status <> 'cancelled') AS last_session,
 		        (SELECT MAX(n.created_at) FROM notifications n
 		          WHERE n.user_id = users.id AND n.type = 'coins_burn_soon') AS last_warn`).
 		Where("users.role = ? AND users.coins_balance > 0", models.UserRolePlayer).

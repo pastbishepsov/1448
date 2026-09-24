@@ -142,7 +142,7 @@ who)` → `{status, data}`; `sql`, `rows`, `uid`, `check`, `atEnd`, `crash`; `do
 |---|---|
 | З0–З1 | Guest31, Guest32 (`e2e_z0_stand`, `e2e_z0_role`, `pw_z0_loginform`, `e2e_z1_cash` — Guest31; `e2e_z0_login`, `e2e_z0_cases`, `e2e_z1_channel`, `pw_z1_channel` — Guest32) |
 | З2–З3 | Guest33 (`e2e_z2_tz`, `e2e_z2_dates`) + временные сотрудники |
-| З4 | Guest34, Guest35 |
+| З4 | Guest34, Guest35 (`e2e_z4_sessions`; `pw_z4_card` — Guest34) |
 | З5 | Guest36, Guest37 |
 | З6 | Guest38 |
 | З8–З9 | Guest39 |

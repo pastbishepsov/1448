@@ -404,7 +404,8 @@ func handleAdminUserCard(c *gin.Context) {
 		Cnt     int64
 		Minutes int64
 	}
-	db.Model(&models.Session{}).
+	// З4-и1: снятая посадка в истории есть, в счётчике — нет
+	countedSessions().
 		Select("COUNT(*) AS cnt, COALESCE(SUM(minutes_used),0) AS minutes").
 		Where("user_id = ?", user.ID).Scan(&agg)
 	var depSum float64

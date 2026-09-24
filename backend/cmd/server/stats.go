@@ -119,8 +119,8 @@ func handleAdminStatsShift(c *gin.Context) {
 
 	// сессии: начатые в окне; часы — по завершённым в окне (начисления
 	// привязаны к завершению, активные ещё не отыграли своё)
-	var sessStarted int64
-	db.Model(&models.Session{}).
+	var sessStarted int64 // З4-и1: снятая посадка — не сессия
+	countedSessions().
 		Where("started_at >= ? AND started_at < ?", from, to).Count(&sessStarted)
 	var minutes int64
 	db.Model(&models.Session{}).
