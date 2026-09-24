@@ -4833,8 +4833,10 @@ async function sellGood(id){
 
 async function voidSale(id, quiet){
   try{
-    await api('/admin/sales/' + id + '/void', {method:'POST'});
-    if (!quiet) toast('✓ Продажа отменена — товар вернулся на склад');
+    const d = await api('/admin/sales/' + id + '/void', {method:'POST'});
+    // З6-и1: отмена расчёта кухни склад не трогает (выпитое не вернуть) — заказ снова ждёт оплаты
+    if (!quiet) toast(d && d.kitchen_unpaid ? '✓ Оплата заказа кухни отменена — заказ снова ждёт оплаты, склад не тронут'
+                                            : '✓ Продажа отменена — товар вернулся на склад');
     renderGoods();
     refresh();
   }catch(e){ toast('⚠ ' + e.message); }

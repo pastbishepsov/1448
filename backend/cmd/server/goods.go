@@ -793,6 +793,19 @@ func voidSaleTx(tx *gorm.DB, sale *models.Sale, adminID uuid.UUID, now time.Time
 			return err
 		}
 	}
+	// З6-и1 (№14, З-Р11): продажа — расчёт заказа кухни. Товар заказ списал со
+	// склада при заказе, а съеденное назад не вернуть: склад НЕ трогаем (иначе
+	// инвентаризация даст фантомную «потерю»). Отменена оплата, а не заказ —
+	// сбрасываем её, и заказ снова «ждёт оплаты»: он в долге гостя, и его можно
+	// рассчитать заново правильным способом. Кошелёк гостю вернули выше.
+	res = tx.Model(&models.KitchenOrder{}).Where("sale_id = ?", sale.ID).
+		Updates(map[string]any{"paid_at": nil, "pay_method": nil, "paid_by": nil, "sale_id": nil})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		return nil
+	}
 	if sale.GoodID == nil { // позицию успели удалить — возвращать некуда
 		return nil
 	}
@@ -803,6 +816,14 @@ func voidSaleTx(tx *gorm.DB, sale *models.Sale, adminID uuid.UUID, now time.Time
 	saleID := sale.ID
 	return tx.Create(&models.StockMove{ClubID: sale.ClubID, GoodID: *sale.GoodID, Delta: sale.Qty,
 		Reason: "void", Note: "отмена продажи", SaleID: &saleID, CreatedBy: &adminID}).Error
+}
+
+// isKitchenSale — продажа рассчитала заказ кухни (З6-и1): её отмена не
+// возвращает товар, а снова делает заказ неоплаченным.
+func isKitchenSale(saleID uuid.UUID) bool {
+	var n int64
+	db.Model(&models.KitchenOrder{}).Where("sale_id = ?", saleID).Count(&n)
+	return n > 0
 }
 
 // saleVoidAllowed — права на отмену (canVoidSale) с ответом 403; вернул false — выходить.
@@ -833,6 +854,7 @@ func handleAdminSaleVoid(c *gin.Context) {
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
+	kitchen := isKitchenSale(sale.ID) // З6-и1: до отмены — после неё связь с заказом сброшена
 	err := db.Transaction(func(tx *gorm.DB) error { return voidSaleTx(tx, &sale, adminID, now) })
 	if errors.Is(err, errAlreadyVoid) {
 		goodFail(c, http.StatusConflict, "already_void")
@@ -846,8 +868,11 @@ func handleAdminSaleVoid(c *gin.Context) {
 	if sale.PaidAt == nil {
 		payload["unpaid"] = true // долг списан вместе с товаром — денег не возвращаем
 	}
+	if kitchen {
+		payload["kitchen_unpaid"] = true // заказ кухни снова ждёт оплаты, склад не тронут
+	}
 	hub.AdminBroadcast("sale", payload)
-	c.JSON(http.StatusOK, gin.H{"voided": sale.ID, "unpaid": sale.PaidAt == nil})
+	c.JSON(http.StatusOK, gin.H{"voided": sale.ID, "unpaid": sale.PaidAt == nil, "kitchen_unpaid": kitchen})
 }
 
 // POST /admin/receipts/:id/void — Ж6-и2: отменить чек целиком — все живые
