@@ -192,8 +192,8 @@ func handleAdminOverview(c *gin.Context) {
 //
 //	filter=at_pc  — сейчас за ПК (есть активная сессия)
 //	filter=money  — с деньгами на кошельке
-//	filter=new    — аккаунт моложе недели
-//	sort=last_active|nickname|level|coins|wallet|created, dir=asc|desc
+//	filter=new    — новые: первое появление не раньше seg_new_days назад (З5-и1)
+//	sort=last_active|nickname|level|coins|wallet|created|first_seen, dir=asc|desc
 //
 // «Сейчас» (ПК и прогноз «хватит до») отдаётся картой now_at по id гостя —
 // одним запросом по активным сессиям найденных, тем же forecast.go, что в
@@ -226,7 +226,10 @@ func handleAdminUsers(c *gin.Context) {
 	case "money":
 		q = q.Where("wallet_grosz > 0")
 	case "new":
-		q = q.Where("created_at >= ?", now.Add(-7*24*time.Hour))
+		// З5-и1 (З-Р10): новые на «сейчас» — первое появление (первая засчитанная
+		// сессия, без сессий — регистрация, Д2) не раньше seg_new_days суток
+		// назад, как в отчётах; «аккаунт моложе недели» ушёл
+		q = q.Where(firstSeenSQL+" >= ?", newSince(now))
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_filter", "message": "filter: at_pc, money или new"})
 		return
@@ -234,7 +237,7 @@ func handleAdminUsers(c *gin.Context) {
 	col, sortKey, dir, ok := usersOrder(c.Query("sort"), c.Query("dir"))
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_sort",
-			"message": "sort: last_active, nickname, level, coins, wallet или created; dir: asc или desc"})
+			"message": "sort: last_active, nickname, level, coins, wallet, created или first_seen; dir: asc или desc"})
 		return
 	}
 	q = q.Order(col + " " + strings.ToUpper(dir))
@@ -246,7 +249,11 @@ func handleAdminUsers(c *gin.Context) {
 		respondDBError(c, err)
 		return
 	}
-	resp := gin.H{"count": len(users), "users": users, "role": role, "filter": filter, "sort": sortKey, "dir": dir}
+	resp := gin.H{"count": len(users), "users": users, "role": role, "filter": filter, "sort": sortKey, "dir": dir,
+		"new_days": segNewDays()} // З5-и1: подпись чипа «Новые за N дней»
+	if filter == "new" && len(users) > 0 {
+		resp["first_seen"] = firstSeenOf(users) // колонка «Впервые»
+	}
 	if nowAt := usersNowAt(users, now); len(nowAt) > 0 {
 		resp["now_at"] = nowAt
 	}
@@ -274,6 +281,25 @@ var usersSortCols = map[string]string{
 	"coins":       "coins_balance",
 	"wallet":      "wallet_grosz",
 	"created":     "created_at",
+	"first_seen":  firstSeenSQL, // З5-и1: первое появление (Д2)
+}
+
+// firstSeenOf — первое появление гостей картой id → момент (Д2, З5-и1).
+func firstSeenOf(users []models.User) map[string]time.Time {
+	ids := make([]string, 0, len(users))
+	for i := range users {
+		ids = append(ids, users[i].ID.String())
+	}
+	var rows []struct {
+		ID        string
+		FirstSeen time.Time
+	}
+	db.Model(&models.User{}).Select("id, "+firstSeenSQL+" AS first_seen").Where("id IN ?", ids).Scan(&rows)
+	out := make(map[string]time.Time, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.FirstSeen
+	}
+	return out
 }
 
 // usersOrder — разобрать sort/dir (чистая, тест). Пусто — свежие сверху, как

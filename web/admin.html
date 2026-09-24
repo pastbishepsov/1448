@@ -668,7 +668,7 @@
             <button class="on" data-f="" onclick="uFilterSet('',this)">Все</button>
             <button data-f="at_pc" onclick="uFilterSet('at_pc',this)">Сейчас за ПК</button>
             <button data-f="money" onclick="uFilterSet('money',this)">С деньгами</button>
-            <button data-f="new" onclick="uFilterSet('new',this)">Новые за неделю</button>
+            <button data-f="new" id="uFilterNew" onclick="uFilterSet('new',this)" title="первый визит — не раньше чем за столько дней, сколько задано в «Экономике»; без визитов — по регистрации">Новые</button>
           </div>
           <span class="muted" id="uCount"></span>
         </div>
@@ -900,7 +900,7 @@
           <input id="set_casecap" class="input" type="number" min="0" max="1000">
           <label class="muted" for="set_rhour">Час границы клубных суток — сводка смены (0–23)</label>
           <input id="set_rhour" class="input" type="number" min="0" max="23">
-          <label class="muted" for="set_segnew">Сегмент «новые»: окно первого визита, дней</label>
+          <label class="muted" for="set_segnew">Сегмент «новые»: первый визит не раньше стольких дней до конца периода — отчёт «Гости», сводка смены, фильтр у стойки</label>
           <input id="set_segnew" class="input" type="number" min="1" max="365">
           <label class="muted" for="set_seglost">Сегмент «пропавшие»: дней без визита</label>
           <input id="set_seglost" class="input" type="number" min="2" max="730">
@@ -3400,12 +3400,12 @@ async function unbanNow(id, nick){
    персонал — в «Персонале»); фильтры и сортировка — параметры сервера, он
    же отдаёт «Сейчас» (now_at: ПК и «хватит до») тем же прогнозом, что шторки. */
 let userQuery = '', userFilter = '', userSort = 'last_active', userDir = '', userSortTouched = false;
-const USER_SORT_TITLES = {nickname:'Ник', level:'LVL', wallet:'Кошелёк', coins:'Монеты', last_active:'Был активен', created:'Аккаунт с'};
+const USER_SORT_TITLES = {nickname:'Ник', level:'LVL', wallet:'Кошелёк', coins:'Монеты', last_active:'Был активен', created:'Аккаунт с', first_seen:'Впервые'};
 function uFilterSet(f, btn){
   userFilter = f;
   if (btn) segOn(btn);
-  // «новые за неделю» читаются по дате регистрации — пока админ сам не выбрал сортировку
-  if (!userSortTouched){ userSort = f === 'new' ? 'created' : 'last_active'; userDir = ''; }
+  // З5-и1: «новые» читаются по первому появлению — пока админ сам не выбрал сортировку
+  if (!userSortTouched){ userSort = f === 'new' ? 'first_seen' : 'last_active'; userDir = ''; }
   renderUsersTable();
 }
 function uSortSet(k){
@@ -3425,18 +3425,22 @@ async function renderUsersTable(){
   if (userSort !== 'last_active' || userDir) qs.set('sort', userSort);
   if (userDir) qs.set('dir', userDir);
   const d = await api('/admin/users' + (qs.toString() ? '?' + qs.toString() : ''));
+  // З5-и1: окно «новых» — настройка владельца; первое появление — первая сессия, без сессий — регистрация
+  const nd = repPlural(d.new_days || 14, 'день', 'дня', 'дней'), fsOf = u => (d.first_seen || {})[u.id] || u.registered_at;
+  const nb = document.getElementById('uFilterNew');
+  if (nb) nb.textContent = 'Новые за ' + nd;
   const mt = d.matched || {}; // Е0-и5б: id → чем гость совпал с запросом
   const na = d.now_at || {};  // Ж5-и3: id → {computer, until, minutes_left, waiting, paused}
   const cnt = document.getElementById('uCount');
   if (cnt) cnt.textContent = d.users.length ? (d.users.length >= 100 ? 'первые 100' : d.users.length + (userFilter || userQuery ? ' по фильтру' : '')) : '';
-  const FILTER_EMPTY = {at_pc:'Сейчас за ПК никого нет', money:'Гостей с деньгами на кошельке нет', new:'За неделю новых гостей не появилось'};
+  const FILTER_EMPTY = {at_pc:'Сейчас за ПК никого нет', money:'Гостей с деньгами на кошельке нет', new:'За ' + nd + ' новых гостей не появилось'};
   setHTML('usersTable', d.users.length === 0
     ? (userQuery
       ? '<div class="empty"><span data-ic="search"></span>По запросу «' + esc(userQuery) + '» никого' + (userFilter ? ' по этому фильтру' : '') + ' — ищем по нику, телефону и имени</div>'
       : userFilter
       ? '<div class="empty"><span data-ic="users"></span>' + FILTER_EMPTY[userFilter] + '</div>'
       : '<div class="empty"><span data-ic="users"></span>Гостей ещё нет — первый появится после регистрации на гостевом экране</div>')
-    : `<table><tr>${uTh('nickname','Ник')}${uTh('level','LVL')}${uTh('wallet','Кошелёк')}<th>Сейчас</th><th>Телефон</th>${uTh('coins','Монеты')}<th>Статус</th>${uTh(userFilter === 'new' ? 'created' : 'last_active', userFilter === 'new' ? 'Аккаунт с' : 'Был активен')}<th></th></tr>
+    : `<table><tr>${uTh('nickname','Ник')}${uTh('level','LVL')}${uTh('wallet','Кошелёк')}<th>Сейчас</th><th>Телефон</th>${uTh('coins','Монеты')}<th>Статус</th>${uTh(userFilter === 'new' ? 'first_seen' : 'last_active', userFilter === 'new' ? 'Впервые' : 'Был активен')}<th></th></tr>
   ${d.users.map(u => `<tr onclick="openUserDrawer('${u.id}')" style="cursor:pointer">
     <td><b>${esc(u.nickname)}</b>${mt[u.id] ? `<span class="mchip">${esc(mt[u.id])}</span>` : ''}</td>
     <td>${u.level}</td>
@@ -3445,7 +3449,7 @@ async function renderUsersTable(){
     <td class="muted">${u.phone ? esc(u.phone) : '—'}</td>
     <td>${(u.coins_balance||0).toLocaleString('ru-RU')}</td>
     <td><span class="st ${u.status}">${u.status}</span></td>
-    <td class="muted">${userFilter === 'new' ? fmtDate(u.created_at) + ' ' + hhmm(u.created_at) : fmtTime(u.last_active_at)}</td>
+    <td class="muted">${userFilter === 'new' ? fmtDate(fsOf(u)) + ' ' + hhmm(fsOf(u)) : fmtTime(u.last_active_at)}</td>
     <td>${u.role === 'player' && u.status !== 'banned'
         ? `<button class="btn mini" onclick="event.stopPropagation(); openUserDrawer('${u.id}','deposit')"><span data-ic="coins"></span>Депозит</button>`
         : ''}</td>
@@ -4345,7 +4349,7 @@ async function renderShift(){
        <div class="kpi">Депозитов <b>${d.revenue.deposits}</b></div>
        <div class="kpi">Сессий <b>${d.sessions.started}</b></div>
        <div class="kpi">Наиграно <b>${shiftHours(d.sessions.minutes)}</b></div>
-       <div class="kpi">Новые гости <b>${d.new_guests}</b></div>
+       <div class="kpi" title="играли в эту смену, первый визит — не раньше чем за ${repPlural(d.new_days || 14, 'день', 'дня', 'дней')} до её конца">Новые гости <b>${d.new_guests}</b></div>
        <div class="kpi">Брони <b>+${d.bookings.created}${d.bookings.cancelled ? ' / −' + d.bookings.cancelled : ''}</b></div>
        <div class="kpi" title="баны · ремонты · вызовы админа">Инциденты <b>${d.incidents.bans + d.incidents.repairs + d.incidents.calls}</b></div>
        ${d.revenue.unpaid ? `<div class="kpi" title="выдано в долг за смену и ещё не рассчитано (бар + кухня) — не выручка">В долг <b style="color:var(--orange)">${fmtPLN(d.revenue.unpaid_pln||0)} zł</b></div>` : ''}`;
@@ -5251,7 +5255,7 @@ function paintGuests(d){
        ${repKpi('Сессий на гостя', t.avg_sessions)}
      </div>
      <div class="kpis">
-       ${repKpi('Новые', t.new, k.new, {title:'первый в жизни визит попал в этот период', was:w.new})}
+       ${repKpi('Новые', t.new, k.new, {title:'играли в этом периоде, первый визит — не раньше чем за ' + repPlural(th.new_days || 14, 'день', 'дня', 'дней') + ' до его конца', was:w.new})}
        ${repKpi('Вернувшиеся', t.returning, k.returning, {title:'пришли после паузы ' + th.lost_days + ' дн и дольше', was:w.returning})}
        ${repKpi('Удержание', (d.retention_pct === null || d.retention_pct === undefined ? '—' : d.retention_pct + '%'), undefined,
                 {title:'доля гостей прошлого периода, пришедших и в этом'})}

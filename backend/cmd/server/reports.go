@@ -55,6 +55,36 @@ func guestSessions() *gorm.DB {
 // в другой.
 const sessionMinutes = "CASE WHEN sessions.status = 'active' THEN sessions.billed_minutes ELSE sessions.minutes_used END"
 
+// ── «Новый гость» (З5-и1, OWNER.md №11, З-Р10, Д2) ─────────────────────
+//
+// Первое появление гостя — его первая засчитанная сессия, а если сессий нет —
+// регистрация (Д2: новичок из PWA виден в фильтре «новые» у стойки, но не в
+// отчётах — в них только те, кто играл). Новый на момент T — появился не
+// раньше seg_new_days суток до T: T — конец периода в отчёте «Гости», конец
+// смены в сводке, «сейчас» в фильтре у стойки. Раньше определений было три
+// (первая сессия в окне отчёта, регистрация за смену, «аккаунт моложе
+// недели»), а seg_new_days ни на что не влиял.
+
+// firstSeenSQL — первое появление гостя строки users (SQL-выражение).
+const firstSeenSQL = "COALESCE((SELECT MIN(fs.started_at) FROM sessions fs WHERE fs.user_id = users.id AND fs.status <> 'cancelled'), users.registered_at)"
+
+// segNewDays — окно «новых», суток (настройка владельца в «Экономике»).
+func segNewDays() int { return int(settingInt64("seg_new_days", 14)) }
+
+// newSince — с какого момента первое появление ещё делает гостя новым на момент t.
+func newSince(t time.Time) time.Time { return t.AddDate(0, 0, -segNewDays()) }
+
+// newGuestsIn — сколько гостей, игравших в окне [from, to), новые на момент to:
+// их первая засчитанная сессия не раньше seg_new_days до to.
+func newGuestsIn(from, to time.Time) int64 {
+	var ids []string
+	guestSessions().Group("sessions.user_id").
+		Having("MIN(sessions.started_at) >= ? AND bool_or(sessions.started_at >= ? AND sessions.started_at < ?)",
+			newSince(to), from, to).
+		Pluck("sessions.user_id", &ids)
+	return int64(len(ids))
+}
+
 // ── Период ────────────────────────────────────────────────────────────
 
 const maxPeriodDays = 730 // два года: защита от отчёта «за всё время» на проде
@@ -593,21 +623,6 @@ func activeUsers(p period) map[string][2]int64 {
 	return out
 }
 
-// firstSessionIn — у кого первая в жизни сессия попала в окно (новые гости).
-func firstSessionIn(p period) map[string]time.Time {
-	var rows []struct {
-		UserID  string
-		FirstAt time.Time
-	}
-	guestSessions().Select("sessions.user_id, MIN(sessions.started_at) AS first_at").
-		Group("sessions.user_id").Having("MIN(sessions.started_at) >= ? AND MIN(sessions.started_at) < ?", p.From, p.To).Scan(&rows)
-	out := make(map[string]time.Time, len(rows))
-	for _, r := range rows {
-		out[r.UserID] = r.FirstAt
-	}
-	return out
-}
-
 func aggGuests(p period, lostDays int) (guestsAgg, map[string][2]int64) {
 	act := activeUsers(p)
 	var a guestsAgg
@@ -620,8 +635,7 @@ func aggGuests(p period, lostDays int) (guestsAgg, map[string][2]int64) {
 	if a.Unique > 0 {
 		a.AvgSessions = math.Round(float64(a.Sessions)/float64(a.Unique)*10) / 10
 	}
-	newbies := firstSessionIn(p)
-	a.New = int64(len(newbies))
+	a.New = newGuestsIn(p.From, p.To) // З5-и1: новые на конец периода
 
 	// вернувшиеся: играли в окне, а до этого пропадали на lost_days и дольше
 	var lastBefore []struct {
@@ -646,7 +660,7 @@ func handleReportGuests(c *gin.Context) {
 		return
 	}
 	lostDays := int(settingInt64("seg_lost_days", 21))
-	newDays := int(settingInt64("seg_new_days", 14))
+	newDays := segNewDays()
 
 	cur, act := aggGuests(p, lostDays)
 	old, prevAct := aggGuests(prev, lostDays)

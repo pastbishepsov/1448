@@ -119,10 +119,10 @@ const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinu
   await sleep(1200);
   const asc = await page.evaluate(() => ({ vals: [...document.querySelectorAll('#usersTable tr')].slice(1).map(r => parseFloat(r.children[2].textContent.replace(',', '.'))), th: document.querySelector('#usersTable th.on').textContent.trim() }));
   check('второй клик — по возрастанию, стрелка ↑', asc.vals.every((v, i, a) => i === 0 || a[i - 1] <= v) && /Кошелёк ↑/.test(asc.th), asc.th);
-  await page.click('#uFilters button:has-text("Новые за неделю")');
+  await page.click('#uFilters button[data-f="new"]');
   await sleep(1200);
-  const fresh = await page.evaluate(() => ({ th: [...document.querySelectorAll('#usersTable th')].map(t => t.textContent.trim()), f: userFilter, sort: userSort }));
-  check('чип «Новые за неделю»: заголовок «Аккаунт с», сортировка админа (кошелёк) сохранилась', fresh.f === 'new' && fresh.th.some(t => t.startsWith('Аккаунт с')) && fresh.sort === 'wallet', JSON.stringify(fresh));
+  const fresh = await page.evaluate(() => ({ th: [...document.querySelectorAll('#usersTable th')].map(t => t.textContent.trim()), f: userFilter, sort: userSort, chip: document.querySelector('#uFilters button[data-f="new"]').textContent }));
+  check('чип «Новые за N дней» (З5-и1): заголовок «Впервые», сортировка админа (кошелёк) сохранилась', fresh.f === 'new' && /^Новые за \d+ д/.test(fresh.chip) && fresh.th.some(t => t.startsWith('Впервые')) && fresh.sort === 'wallet', JSON.stringify(fresh));
   await page.click('#uFilters button:has-text("Все")');
   await sleep(800);
 

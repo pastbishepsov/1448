@@ -67,7 +67,7 @@ def reset():
         + (" AND id NOT IN (" + ",".join(f"'{i}'" for i in maint_before) + ")" if maint_before else ""))
     # кошельки правим напрямую — и чистим их журнал: инвариант «сумма журнала = баланс» (e2e_deposit_void) не должен ломаться от тестовых данных
     sql(f"UPDATE users SET wallet_grosz=3000, coin_minutes=0, coins_balance=5000, created_at=now() - interval '1 day' WHERE id='{g29}'")
-    sql(f"UPDATE users SET wallet_grosz=0, created_at=now() - interval '10 days' WHERE id='{g28}'")
+    sql(f"UPDATE users SET wallet_grosz=0, created_at=now() - interval '10 days', registered_at=now() - interval '400 days' WHERE id='{g28}'")  # З5-и1: без визитов «новизна» — по регистрации
     sql(f"DELETE FROM wallet_transactions WHERE user_id IN ('{g29}','{g28}')")  # Guest27 (e2e_deposit_void) не трогаем
     sql(f"DELETE FROM minute_grants WHERE user_id='{g29}'")
     sql(f"UPDATE waitlist SET status='removed', resolved_at=now() WHERE status='waiting' AND user_id IN ('{g29}','{g28}','{g27}')")
@@ -176,8 +176,11 @@ ids = {u["id"] for u in m["users"]}
 check("filter=money: все с деньгами, Guest29 (30 zł) есть, Guest28 (0) нет", all(u["wallet_grosz"] > 0 for u in m["users"]) and g29 in ids and g28 not in ids, f"{m['count']}")
 n = api("GET", "/admin/users?filter=new", None, a1)[1]
 ids = {u["id"] for u in n["users"]}
-week_ago = now() - dt.timedelta(days=7)
-check("filter=new: Guest29 (вчера) есть, Guest28 (10 дней) нет, все моложе недели", g29 in ids and g28 not in ids and all(ts(u["created_at"]) >= week_ago - dt.timedelta(minutes=1) for u in n["users"]), f"{n['count']}")
+nd = n.get("new_days", 14)  # З5-и1 (З-Р10): новые — первое появление (первая сессия, без сессий — регистрация) не раньше seg_new_days назад
+stale = sql(f"SELECT count(*) FROM users WHERE id IN ({','.join(repr(i) for i in ids) or 'NULL'}) AND COALESCE((SELECT MIN(s.started_at) FROM sessions s "
+            f"WHERE s.user_id = users.id AND s.status <> 'cancelled'), users.registered_at) < now() - interval '{nd} days'")
+check(f"filter=new: Guest29 (сессия сегодня) есть, Guest28 (без визитов, регистрация 400 дней назад) нет, у всех первое появление не раньше {nd} дней",
+      g29 in ids and g28 not in ids and stale == "0" and set(n.get("first_seen", {})) == ids, f"{n['count']} · давних {stale}")
 w = api("GET", "/admin/users?sort=wallet", None, a1)[1]
 vals = [u["wallet_grosz"] for u in w["users"]]
 check("sort=wallet: по убыванию (dir по умолчанию desc)", vals == sorted(vals, reverse=True) and w.get("dir") == "desc", str(vals[:5]))

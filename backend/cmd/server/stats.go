@@ -101,10 +101,11 @@ func handleAdminStatsShift(c *gin.Context) {
 		Where("started_at >= ? AND started_at < ?", from, to).Scan(&sess)
 	sessStarted, minutes := sess.Started, sess.Minutes
 
-	var newGuests int64
-	db.Model(&models.User{}).
-		Where("role = ? AND registered_at >= ? AND registered_at < ?",
-			models.UserRolePlayer, from, to).Count(&newGuests)
+	// З5-и1 (З-Р10): новые — игравшие в эту смену, чьё первое появление не
+	// раньше seg_new_days до её конца, тем же определением, что отчёт «Гости».
+	// Раньше — регистрации за смену: сводка и отчёт за один день расходились,
+	// а гость, зарегистрированный в PWA накануне, новым не был нигде.
+	newGuests := newGuestsIn(from, to)
 
 	var bkCreated, bkCancelled int64
 	db.Model(&models.Booking{}).
@@ -189,6 +190,7 @@ func handleAdminStatsShift(c *gin.Context) {
 			"unpaid_pln": roundPLN(unpaidPLN), "unpaid": unpaidCount},
 		"sessions":   gin.H{"started": sessStarted, "minutes": minutes},
 		"new_guests": newGuests,
+		"new_days":   segNewDays(), // З5-и1: окно «новых» — в подпись KPI
 		"bookings":   gin.H{"created": bkCreated, "cancelled": bkCancelled},
 		"incidents":  gin.H{"bans": bans, "repairs": repairs, "calls": calls},
 		"closeouts":  closeoutsForDay(key), // Ж6-и4: сдачи касс за смену — ожидалось / пересчитано / расхождение

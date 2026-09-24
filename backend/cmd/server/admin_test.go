@@ -132,6 +132,7 @@ func TestUsersOrder(t *testing.T) {
 		{"кошелёк — с большего", "wallet", "", "wallet_grosz", "desc", true},
 		{"монеты вверх — как просили", "coins", "asc", "coins_balance", "asc", true},
 		{"дата регистрации", "created", "desc", "created_at", "desc", true},
+		{"первое появление (З5-и1) — свежие сверху", "first_seen", "", firstSeenSQL, "desc", true},
 		{"уровень", "level", "", "level", "desc", true},
 		{"столбец вне списка", "password_hash", "", "", "", false},
 		{"инъекция в столбце", "nickname; DROP TABLE users", "", "", "", false},
