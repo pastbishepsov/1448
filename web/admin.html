@@ -4321,6 +4321,8 @@ async function submitBooking(forceId){
 /* ── Статистика владельца (А5): выручка, загрузка, топ гостей ── */
 // Деньги всегда с двумя знаками: по умолчанию 50 печаталось как «50» (ревью 26.08).
 function fmtPLN(v){ return (+v || 0).toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+// З4-и2: из чего сложилась выручка — те же поля у итога, дня, смены, человека и сводки смены
+function moneyParts(x){ return 'пополнения ' + fmtPLN(x.deposits_pln) + ' · товары ' + fmtPLN(x.goods_pln) + ' · пакеты ' + fmtPLN(x.packs_pln) + ' zł'; }
 function lblDate(d){ return d ? d.date.slice(8,10)+'.'+d.date.slice(5,7) : ''; }
 
 /* ── Б10-и1: сводка смены — «как прошёл день» одним экраном (внизу «Отчётов»).
@@ -4337,8 +4339,9 @@ async function renderShift(){
       d.date + ' · с ' + d.report_hour + ':00';
     const m = d.revenue.by_method || {};
     document.getElementById('shiftKpis').innerHTML =
-      `<div class="kpi" title="нал ${fmtPLN(m.cash||0)} · карта ${fmtPLN(m.card||0)} · BLIK ${fmtPLN(m.blik||0)}">Выручка <b>${fmtPLN(d.revenue.total_pln)} zł</b></div>
-       <div class="kpi" title="пополнения ${fmtPLN(d.revenue.deposits_pln||0)} zł · товары ${fmtPLN(d.revenue.goods_pln||0)} zł">Товары <b>${fmtPLN(d.revenue.goods_pln||0)} zł</b></div>
+      `<div class="kpi" title="${moneyParts(d.revenue)} · нал ${fmtPLN(m.cash||0)} · карта ${fmtPLN(m.card||0)} · BLIK ${fmtPLN(m.blik||0)} — те же цифры, что в отчёте «Деньги» за этот день">Выручка <b>${fmtPLN(d.revenue.total_pln)} zł</b></div>
+       <div class="kpi">Товары <b>${fmtPLN(d.revenue.goods_pln||0)} zł</b></div>
+       <div class="kpi" title="${d.revenue.packs || 0} шт за живые деньги; с кошелька — не выручка, те деньги пришли пополнением">Пакеты <b>${fmtPLN(d.revenue.packs_pln||0)} zł</b></div>
        <div class="kpi">Депозитов <b>${d.revenue.deposits}</b></div>
        <div class="kpi">Сессий <b>${d.sessions.started}</b></div>
        <div class="kpi">Наиграно <b>${shiftHours(d.sessions.minutes)}</b></div>
@@ -5223,17 +5226,17 @@ function paintMoney(d){
      </div>
      <div class="sect">Выручка по дням</div>
      ${repChart(days, x => x.value,
-        x => repDate(x.date) + ' · ' + fmtPLN(x.value) + ' zł (пополнения ' + fmtPLN(x.deposits_pln)
-             + ' · товары ' + fmtPLN(x.goods_pln) + ')',
+        x => repDate(x.date) + ' · ' + fmtPLN(x.value) + ' zł (' + moneyParts(x) + ')',
         [repDate(d.period.from)], [repDate(d.period.to)])}
      <div class="sect">Что покупают</div>
      ${repTable(['Позиция','Выручка','Штук'], (d.top_goods||[]).map(g =>
         `<tr><td><b>${esc(g.name)}</b></td><td>${fmtPLN(g.revenue_pln)} zł</td><td>${g.items}</td></tr>`),
         'За этот период товары не продавали')}
      <div class="sect">Кто оформлял</div>
-     ${repTable(['Сотрудник','Выручка','Депозитов','Товаров'], (d.by_admin||[]).map(a =>
-        `<tr><td><b>${esc(a.nickname||'—')}</b></td><td>${fmtPLN(a.revenue_pln)} zł</td>
-         <td>${a.deposits}</td><td>${a.sales} · ${fmtPLN(a.goods_pln)} zł</td></tr>`),
+     ${repTable(['Сотрудник','Выручка','Депозитов','Товаров','Пакетов'], (d.by_admin||[]).map(a =>
+        `<tr><td><b>${esc(a.nickname||'—')}</b></td><td title="${moneyParts(a)}">${fmtPLN(a.revenue_pln)} zł</td>
+         <td>${a.deposits} · ${fmtPLN(a.deposits_pln)} zł</td><td>${a.sales} · ${fmtPLN(a.goods_pln)} zł</td>
+         <td>${a.packs || 0} · ${fmtPLN(a.packs_pln)} zł</td></tr>`),
         'За этот период денег не принимали')}`;
 }
 
@@ -5307,24 +5310,26 @@ function paintStaff(d){
   const t = d.totals, k = d.delta, w = d.prev || {};
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
-       ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln, {was:fmtPLN(w.revenue_pln) + ' zł'})}
+       ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln, {title:moneyParts(t), was:fmtPLN(w.revenue_pln) + ' zł'})}
        ${repKpi('Из них товары', fmtPLN(t.goods_pln) + ' zł', undefined, {was:fmtPLN(w.goods_pln) + ' zł'})}
+       ${repKpi('Из них пакеты', fmtPLN(t.packs_pln) + ' zł', undefined, {title:(t.packs || 0) + ' шт за живые деньги', was:fmtPLN(w.packs_pln) + ' zł'})}
        ${repKpi('Людей в деле', t.people)}
        ${repKpi('Смен в графике', t.assignments)}
      </div>
      <div class="sect">Что принесла каждая смена</div>
-     ${repTable(['Смена','Выручка','Пополнения','Товары','Сессий','Наиграно'], (d.by_shift||[]).map(x =>
+     ${repTable(['Смена','Выручка','Пополнения','Товары','Пакеты','Сессий','Наиграно'], (d.by_shift||[]).map(x =>
         `<tr><td><b>${esc(x.shift)}</b></td><td>${fmtPLN(x.revenue_pln)} zł</td>
          <td>${fmtPLN(x.deposits_pln)} zł · ${x.deposits}</td>
          <td>${fmtPLN(x.goods_pln)} zł · ${x.sales}</td>
+         <td>${fmtPLN(x.packs_pln)} zł · ${x.packs || 0}</td>
          <td>${x.sessions}</td><td>${repHours(x.hours)}</td></tr>`),
         'Смен нет — заведи шаблоны в «Персонале»')}
      <div class="sect">Люди</div>
-     ${repTable(['Сотрудник','Смен план · факт','Часов план · факт','Выручка','Депозитов · продаж','К выплате'], (d.by_person||[]).map(x =>
+     ${repTable(['Сотрудник','Смен план · факт','Часов план · факт','Выручка','Депозитов · продаж · пакетов','К выплате'], (d.by_person||[]).map(x =>
         `<tr><td><b>${esc(x.nickname||'—')}</b>${x.position ? `<div class="muted">${esc(x.position)}</div>` : ''}</td>
          <td>${x.shifts} · <b>${x.fact_shifts ?? 0}</b></td>
          <td>${repHours(x.scheduled_hours)} · <b>${repHours(x.fact_hours ?? 0)}</b></td>
-         <td>${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits} · ${x.sales}</td>
+         <td title="${moneyParts(x)}">${fmtPLN(x.revenue_pln)} zł</td><td>${x.deposits} · ${x.sales} · ${x.packs || 0}</td>
          <td>${x.payout_pln === undefined ? '<span class="muted" title="в карточке не задана ставка">—</span>'
               : fmtPLN(x.payout_pln) + ' zł' + (x.payout_kind === 'month' ? ' <span class="muted">оклад</span>' : '')}${x.auto_closed_hours > 0
               ? `<div class="muted" title="Человек не отметил уход — часы поставлены по графику. Поправь запись в табеле, и они войдут в выплату">+ ${repHours(x.auto_closed_hours)} не подтверждены (автозакрытие)</div>` : ''}</td></tr>`), // З3-и2: платим по подтверждённым

@@ -234,7 +234,7 @@ func fillDays(p period, byDay map[string][2]float64) []gin.H {
 // ── Разрез «Деньги» ───────────────────────────────────────────────────
 
 type moneyAgg struct {
-	Revenue     float64 `json:"revenue_pln"` // итого: пополнения + товары
+	Revenue     float64 `json:"revenue_pln"` // итого: пополнения + товары + пакеты
 	DepositsPLN float64 `json:"deposits_pln"`
 	Deposits    int64   `json:"deposits"`
 	GoodsPLN    float64 `json:"goods_pln"`
@@ -252,85 +252,122 @@ type moneyAgg struct {
 	Blik     float64 `json:"blik_pln"`
 }
 
-// aggMoney — деньги за период. Выручка клуба = пополнения + продажи товаров
-// (решение основателя 2026-08-18); отменённые продажи в выручку не идут.
+// ── З-Р4: одна выручка ──
+//
+// Выручка клуба — пополнения + товары + пакеты времени (решение основателя):
+// без отменённых и без оплат кошельком (Г-Р7: те злотые клуб получил
+// пополнением). Правило записано здесь один раз, и из этих строк считаются
+// итог (aggMoney), шапка, сводка смены, ряд по дням, «Кто оформлял»,
+// «Персонал → по сменам» и «по людям» — поэтому суммы разрезов сходятся с
+// итогом. З4-и2 (№5): пакеты были в итоге и шапке, но не в разрезах и не в
+// сводке смены — Σ дней, Σ смен и сводка расходились с итогом на цену пакетов.
+
+// moneySource — один канал живых денег.
+type moneySource struct {
+	table  string
+	at     string // момент денег: товар — по расчёту у стойки (Ж6), а не по выдаче
+	pln    string // сумма
+	by     string // кто принял деньги
+	filter string // что в канале не выручка
+}
+
+const (
+	moneyDeposit = iota // пополнения
+	moneyGood           // товары и кухня
+	moneyPack           // пакеты времени (Е2-и6)
+)
+
+var moneySources = [...]moneySource{
+	moneyDeposit: {"deposits", "created_at", "amount_pln", "created_by", "voided_at IS NULL"}, // Ж1: отменённый — не выручка
+	moneyGood: {"sales", "paid_at", "total_pln", "COALESCE(paid_by, created_by)",
+		"voided_at IS NULL AND method <> 'wallet'"}, // Р7 (Г7): кошельком — погашение обязательства, не выручка
+	moneyPack: {"user_packages", "created_at", "price_pln", "created_by",
+		"voided_at IS NULL AND method <> 'wallet'"},
+}
+
+// in — выручечные строки канала в окне [from, to).
+func (s moneySource) in(from, to time.Time) *gorm.DB {
+	return db.Table(s.table).Where(s.at+" >= ? AND "+s.at+" < ? AND "+s.filter, from, to)
+}
+
+// moneySplit — деньги строки разреза по каналам: суммы и число операций.
+type moneySplit struct {
+	PLN [3]float64
+	Cnt [3]int64
+}
+
+// total — выручка строки: все три канала.
+func (m *moneySplit) total() float64 {
+	return round2(m.PLN[moneyDeposit] + m.PLN[moneyGood] + m.PLN[moneyPack])
+}
+
+// out — выручка строки и из чего она сложилась (подсказки в админке).
+func (m *moneySplit) out(row gin.H) gin.H {
+	row["revenue_pln"] = m.total()
+	row["deposits_pln"], row["deposits"] = round2(m.PLN[moneyDeposit]), m.Cnt[moneyDeposit]
+	row["goods_pln"], row["sales"] = round2(m.PLN[moneyGood]), m.Cnt[moneyGood]
+	row["packs_pln"], row["packs"] = round2(m.PLN[moneyPack]), m.Cnt[moneyPack]
+	return row
+}
+
+// moneyBy — выручка окна, разложенная по ключу: key(s) — SQL-выражение над
+// колонками канала s (день, автор, способ оплаты), текстом.
+func moneyBy(from, to time.Time, key func(s moneySource) string) map[string]*moneySplit {
+	out := map[string]*moneySplit{}
+	for kind, s := range moneySources {
+		var rows []struct {
+			K   string
+			Pln float64
+			Cnt int64
+		}
+		k := key(s)
+		s.in(from, to).Select(k + " AS k, COALESCE(SUM(" + s.pln + "),0) AS pln, COUNT(*) AS cnt").Group(k).Scan(&rows)
+		for _, r := range rows {
+			if out[r.K] == nil {
+				out[r.K] = &moneySplit{}
+			}
+			out[r.K].PLN[kind] += r.Pln
+			out[r.K].Cnt[kind] += r.Cnt
+		}
+	}
+	return out
+}
+
+// moneyByAuthor — кто принял деньги: id сотрудника текстом, "" — строки без автора.
+func moneyByAuthor(from, to time.Time) map[string]*moneySplit {
+	return moneyBy(from, to, func(s moneySource) string { return "COALESCE(CAST(" + s.by + " AS text), '')" })
+}
+
+// aggMoney — деньги за период: выручка, её каналы и способы оплаты (те же
+// строки moneySources, что у всех разрезов).
 func aggMoney(p period) moneyAgg {
 	var a moneyAgg
-	var head struct {
-		Revenue  float64
-		Deposits int64
-		Guests   int64
+	var all moneySplit
+	for method, m := range moneyBy(p.From, p.To, func(moneySource) string { return "method" }) {
+		for k := range m.PLN {
+			all.PLN[k] += m.PLN[k]
+			all.Cnt[k] += m.Cnt[k]
+		}
+		switch method { // пакеты — третий канал живых денег у стойки (Е2-и6)
+		case "cash":
+			a.Cash = m.total()
+		case "card":
+			a.Card = m.total()
+		case "blik":
+			a.Blik = m.total()
+		}
 	}
-	db.Model(&models.Deposit{}).
-		Select("COALESCE(SUM(amount_pln),0) AS revenue, COUNT(*) AS deposits, COUNT(DISTINCT user_id) AS guests").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Scan(&head) // Ж1: отменённый — не выручка
-	a.DepositsPLN, a.Deposits, a.Guests = head.Revenue, head.Deposits, head.Guests
+	a.Revenue = all.total()
+	a.DepositsPLN, a.Deposits = round2(all.PLN[moneyDeposit]), all.Cnt[moneyDeposit]
+	a.GoodsPLN, a.GoodsSales = round2(all.PLN[moneyGood]), all.Cnt[moneyGood]
+	a.PacksPLN, a.Packs = round2(all.PLN[moneyPack]), all.Cnt[moneyPack]
 	if a.Deposits > 0 {
 		a.AvgCheck = math.Round(a.DepositsPLN/float64(a.Deposits)*100) / 100
 	}
-
-	var goods struct {
-		Pln   float64
-		Cnt   int64
-		Items int64
-	}
-	// Р7 (Г7): продажи «кошельком» — погашение обязательства, НЕ выручка.
-	// Ж6 (Ж-Р8): деньги считаются по paid_at — продажа в долг попадает в
-	// выручку в момент расчёта у стойки, а не когда товар выдали.
-	db.Model(&models.Sale{}).
-		Select("COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt, COALESCE(SUM(qty),0) AS items").
-		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Scan(&goods)
-	a.GoodsPLN, a.GoodsSales, a.GoodsItems = goods.Pln, goods.Cnt, goods.Items
-
-	// Е2-и6: пакеты времени. Кошельком оплаченные в выручку НЕ идут (Г-Р7) —
-	// эти деньги клуб уже записал при пополнении; отменённые тоже.
-	var packs struct {
-		Pln float64
-		Cnt int64
-		Min int64
-	}
-	db.Model(&models.UserPackage{}).
-		Select("COALESCE(SUM(price_pln),0) AS pln, COUNT(*) AS cnt, COALESCE(SUM(minutes_total),0) AS min").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
-		Scan(&packs)
-	a.PacksPLN, a.Packs, a.PackMin = packs.Pln, packs.Cnt, packs.Min
-
-	a.Revenue = math.Round((a.DepositsPLN+a.GoodsPLN+a.PacksPLN)*100) / 100
-
-	// разбивка по способам оплаты — по обоим каналам сразу
-	add := func(method string, pln float64) {
-		switch method {
-		case "cash":
-			a.Cash += pln
-		case "card":
-			a.Card += pln
-		case "blik":
-			a.Blik += pln
-		}
-	}
-	var rows []struct {
-		Method string
-		Pln    float64
-	}
-	db.Model(&models.Deposit{}).Select("method, COALESCE(SUM(amount_pln),0) AS pln").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Group("method").Scan(&rows)
-	for _, r := range rows {
-		add(r.Method, r.Pln)
-	}
-	rows = nil
-	db.Model(&models.Sale{}).Select("method, COALESCE(SUM(total_pln),0) AS pln").
-		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
-		Group("method").Scan(&rows)
-	for _, r := range rows {
-		add(r.Method, r.Pln)
-	}
-	rows = nil // Е2-и6: пакеты — третий канал живых денег у стойки
-	db.Model(&models.UserPackage{}).Select("method, COALESCE(SUM(price_pln),0) AS pln").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
-		Group("method").Scan(&rows)
-	for _, r := range rows {
-		add(r.Method, r.Pln)
-	}
+	// кто платил и сколько штук и минут продано
+	moneySources[moneyDeposit].in(p.From, p.To).Select("COUNT(DISTINCT user_id)").Scan(&a.Guests)
+	moneySources[moneyGood].in(p.From, p.To).Select("COALESCE(SUM(qty),0)").Scan(&a.GoodsItems)
+	moneySources[moneyPack].in(p.From, p.To).Select("COALESCE(SUM(minutes_total),0)").Scan(&a.PackMin)
 	return a
 }
 
@@ -342,97 +379,36 @@ func handleReportMoney(c *gin.Context) {
 	}
 	cur, old := aggMoney(p), aggMoney(prev)
 
-	// ряд по дням: столбик = пополнения + товары, в подсказке разбивка
-	type dayRow struct {
-		deposits float64
-		goods    float64
-		count    int64
-	}
-	perDay := map[string]*dayRow{}
-	get := func(k string) *dayRow {
-		if perDay[k] == nil {
-			perDay[k] = &dayRow{}
-		}
-		return perDay[k]
-	}
-	var rows []struct {
-		D   time.Time
-		Pln float64
-		Cnt int64
-	}
-	db.Model(&models.Deposit{}).
-		Select(dayExpr("created_at", reportHour)+" AS d, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).
-		Group("d").Order("d").Scan(&rows)
-	for _, r := range rows {
-		v := get(r.D.Format("2006-01-02"))
-		v.deposits, v.count = r.Pln, r.Cnt
-	}
-	rows = nil
-	db.Model(&models.Sale{}).
-		Select(dayExpr("paid_at", reportHour)+" AS d, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
-		Group("d").Order("d").Scan(&rows)
-	for _, r := range rows {
-		v := get(r.D.Format("2006-01-02"))
-		v.goods, v.count = r.Pln, v.count+r.Cnt
-	}
+	// ряд по дням: столбик — выручка дня, в подсказке — из чего она (З4-и2: и пакеты)
+	perDay := moneyBy(p.From, p.To, func(s moneySource) string {
+		return "to_char(" + dayExpr(s.at, reportHour) + ", 'YYYY-MM-DD')"
+	})
 	days := make([]gin.H, 0, p.Days)
 	for d := p.FromDay; !d.After(p.ToDay); d = d.AddDate(0, 0, 1) {
 		key := d.Format("2006-01-02")
 		v := perDay[key]
 		if v == nil {
-			v = &dayRow{}
+			v = &moneySplit{}
 		}
-		days = append(days, gin.H{"date": key, "value": math.Round((v.deposits+v.goods)*100) / 100,
-			"deposits_pln": v.deposits, "goods_pln": v.goods, "count": v.count})
+		days = append(days, gin.H{"date": key, "value": v.total(),
+			"deposits_pln": round2(v.PLN[moneyDeposit]), "goods_pln": round2(v.PLN[moneyGood]),
+			"packs_pln": round2(v.PLN[moneyPack]), "count": v.Cnt[moneyDeposit] + v.Cnt[moneyGood] + v.Cnt[moneyPack]})
 	}
 
-	var admRows []struct {
-		AdminID string
-		Pln     float64
-		Cnt     int64
-	}
-	db.Model(&models.Deposit{}).
-		Select("created_by AS admin_id, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND created_by IS NOT NULL AND voided_at IS NULL", p.From, p.To).
-		Group("created_by").Scan(&admRows)
-	type byAdminRow struct {
-		deposits float64
-		cnt      int64
-		goods    float64
-		sales    int64
-	}
-	admins := map[string]*byAdminRow{}
-	getAdmin := func(id string) *byAdminRow {
-		if admins[id] == nil {
-			admins[id] = &byAdminRow{}
+	// «Кто оформлял» — кто принял деньги: пополнение, товар (по расчёту) или
+	// пакет. Строки без автора — одной строкой «—»: без неё Σ по людям не
+	// сошлась бы с кассой (нал + карта + BLIK).
+	byAuthor := moneyByAuthor(p.From, p.To)
+	ids := make([]string, 0, len(byAuthor))
+	for id := range byAuthor {
+		if id != "" {
+			ids = append(ids, id)
 		}
-		return admins[id]
-	}
-	for _, r := range admRows {
-		a := getAdmin(r.AdminID)
-		a.deposits, a.cnt = r.Pln, r.Cnt
-	}
-	admRows = nil
-	db.Model(&models.Sale{}).
-		Select("COALESCE(paid_by, created_by) AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
-		Group("COALESCE(paid_by, created_by)").Scan(&admRows)
-	for _, r := range admRows {
-		a := getAdmin(r.AdminID)
-		a.goods, a.sales = r.Pln, r.Cnt
-	}
-	ids := make([]string, 0, len(admins))
-	for id := range admins {
-		ids = append(ids, id)
 	}
 	nick := nicknamesByID(ids)
-	byAdmin := make([]gin.H, 0, len(admins))
-	for id, a := range admins {
-		byAdmin = append(byAdmin, gin.H{"nickname": nick[id],
-			"revenue_pln": math.Round((a.deposits+a.goods)*100) / 100,
-			"deposits":    a.cnt, "goods_pln": a.goods, "sales": a.sales})
+	byAdmin := make([]gin.H, 0, len(byAuthor))
+	for id, m := range byAuthor {
+		byAdmin = append(byAdmin, m.out(gin.H{"nickname": nick[id]}))
 	}
 	sort.Slice(byAdmin, func(i, j int) bool {
 		return byAdmin[i]["revenue_pln"].(float64) > byAdmin[j]["revenue_pln"].(float64)
@@ -986,10 +962,7 @@ func handleReportStaff(c *gin.Context) {
 
 	// выручка и сессии по сменам: момент операции раскладываем по шаблонам
 	type bucket struct {
-		revenue  float64 // пополнения
-		deposits int64
-		goods    float64 // продажи товаров
-		sales    int64
+		money    moneySplit // пополнения, товары и пакеты (З4-и2)
 		sessions int64
 		minutes  int64
 	}
@@ -1014,20 +987,18 @@ func handleReportStaff(c *gin.Context) {
 		return outside
 	}
 
-	var deps []models.Deposit
-	db.Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", p.From, p.To).Find(&deps)
-	for _, d := range deps {
-		b := get(shiftOf(d.CreatedAt))
-		b.revenue += d.AmountPLN
-		b.deposits++
-	}
-
-	var sales []models.Sale
-	db.Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).Find(&sales)
-	for _, sl := range sales {
-		b := get(shiftOf(*sl.PaidAt)) // Ж6: деньги — по моменту расчёта
-		b.goods += sl.TotalPLN
-		b.sales++
+	// З-Р4: те же строки, что итог — Σ смен сходится с KPI «Выручка» над таблицей
+	for kind, src := range moneySources {
+		var rows []struct {
+			At  time.Time
+			Pln float64
+		}
+		src.in(p.From, p.To).Select(src.at + " AS at, " + src.pln + " AS pln").Scan(&rows)
+		for _, r := range rows {
+			b := get(shiftOf(r.At)) // Ж6: товар — по моменту расчёта
+			b.money.PLN[kind] += r.Pln
+			b.money.Cnt[kind]++
+		}
 	}
 
 	var sess []models.Session
@@ -1046,14 +1017,11 @@ func handleReportStaff(c *gin.Context) {
 			b = &bucket{}
 		}
 		avg := 0.0
-		if b.deposits > 0 {
-			avg = math.Round(b.revenue/float64(b.deposits)*100) / 100
+		if n := b.money.Cnt[moneyDeposit]; n > 0 {
+			avg = math.Round(b.money.PLN[moneyDeposit]/float64(n)*100) / 100
 		}
-		byShift = append(byShift, gin.H{"shift": name,
-			"revenue_pln":  math.Round((b.revenue+b.goods)*100) / 100,
-			"deposits_pln": b.revenue, "deposits": b.deposits,
-			"goods_pln": b.goods, "sales": b.sales,
-			"sessions": b.sessions, "hours": math.Round(float64(b.minutes)/60*10) / 10, "avg_check_pln": avg})
+		byShift = append(byShift, b.money.out(gin.H{"shift": name,
+			"sessions": b.sessions, "hours": math.Round(float64(b.minutes)/60*10) / 10, "avg_check_pln": avg}))
 	}
 	for _, s := range shifts {
 		if s.Active {
@@ -1082,9 +1050,7 @@ func handleReportStaff(c *gin.Context) {
 		factCnt  int64 // З3-и2: дни с подтверждёнными минутами
 		autoMin  int64 // З3-и2: автозакрытые минуты — вне выплаты
 		autoCnt  int64
-		revenue  float64 // пополнения + товары
-		deposits int64
-		sales    int64
+		money    moneySplit // что принял: пополнения, товары, пакеты (З4-и2)
 		actions  int64
 		grants   int64
 	}
@@ -1100,28 +1066,10 @@ func handleReportStaff(c *gin.Context) {
 		w.shifts++
 		w.schedMin += int64(shiftLen[a.ShiftID.String()])
 	}
-	var depRows []struct {
-		AdminID string
-		Pln     float64
-		Cnt     int64
-	}
-	db.Model(&models.Deposit{}).
-		Select("created_by AS admin_id, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND created_by IS NOT NULL AND voided_at IS NULL", p.From, p.To).
-		Group("created_by").Scan(&depRows)
-	for _, r := range depRows {
-		w := who(r.AdminID)
-		w.revenue, w.deposits = r.Pln, r.Cnt
-	}
-	depRows = nil
-	db.Model(&models.Sale{}).
-		Select("COALESCE(paid_by, created_by) AS admin_id, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> 'wallet'", p.From, p.To).
-		Group("COALESCE(paid_by, created_by)").Scan(&depRows)
-	for _, r := range depRows {
-		w := who(r.AdminID)
-		w.revenue += r.Pln
-		w.sales = r.Cnt
+	for id, m := range moneyByAuthor(p.From, p.To) {
+		if id != "" { // строки без автора — не человек; они видны в «Кто оформлял»
+			who(id).money = *m
+		}
 	}
 	var actRows []struct {
 		AdminID string
@@ -1161,13 +1109,12 @@ func handleReportStaff(c *gin.Context) {
 	}
 	byPerson := make([]gin.H, 0, len(people))
 	for id, w := range people {
-		row := gin.H{
+		row := w.money.out(gin.H{
 			"nickname": nick[id], "role": roles[id],
 			"shifts": w.shifts, "scheduled_hours": math.Round(float64(w.schedMin)/60*10) / 10,
 			"fact_hours": math.Round(float64(w.factMin)/60*10) / 10, "fact_shifts": w.factCnt,
-			"revenue_pln": math.Round(w.revenue*100) / 100, "deposits": w.deposits, "sales": w.sales,
-			"actions": w.actions + w.grants + w.sales,
-		}
+			"actions": w.actions + w.grants + w.money.Cnt[moneyGood],
+		})
 		if w.autoCnt > 0 { // З3-и2: не подтверждены — в выплату не вошли
 			row["auto_closed_hours"] = math.Round(float64(w.autoMin)/60*10) / 10
 			row["auto_closed_entries"] = w.autoCnt
@@ -1191,9 +1138,11 @@ func handleReportStaff(c *gin.Context) {
 	curMoney, oldMoney := aggMoney(p), aggMoney(prev)
 	c.JSON(http.StatusOK, gin.H{
 		"period": p.out(), "prev_period": prev.out(),
-		"totals": gin.H{"revenue_pln": curMoney.Revenue, "deposits": curMoney.Deposits,
-			"goods_pln": curMoney.GoodsPLN, "people": len(people), "assignments": len(asg)},
-		"prev":      gin.H{"revenue_pln": oldMoney.Revenue, "deposits": oldMoney.Deposits, "goods_pln": oldMoney.GoodsPLN},
+		"totals": gin.H{"revenue_pln": curMoney.Revenue, "deposits": curMoney.Deposits, "deposits_pln": curMoney.DepositsPLN,
+			"goods_pln": curMoney.GoodsPLN, "packs_pln": curMoney.PacksPLN, "packs": curMoney.Packs,
+			"people": len(people), "assignments": len(asg)},
+		"prev": gin.H{"revenue_pln": oldMoney.Revenue, "deposits": oldMoney.Deposits, "goods_pln": oldMoney.GoodsPLN,
+			"packs_pln": oldMoney.PacksPLN},
 		"delta":     gin.H{"revenue_pln": pctDelta(curMoney.Revenue, oldMoney.Revenue)},
 		"by_shift":  byShift,
 		"by_person": byPerson,

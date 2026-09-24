@@ -33,8 +33,11 @@ func shiftWindow(dateStr string, reportHour int, now time.Time) (from, to time.T
 		}
 		day = d
 	}
-	from = day.Add(time.Duration(reportHour) * time.Hour)
-	return from, from.Add(24 * time.Hour), day.Format("2006-01-02"), true
+	// З4-и2: окно — по стенным часам клуба, как у отчётов и шапки (makePeriod):
+	// «полночь + 8 ч» в дни перевода часов — это 07:00 (25.10) или 09:00 (28.03),
+	// и сводка смены, потолки и отмены жили бы в другом окне, чем отчёт «Деньги».
+	p := makePeriod(day, day, reportHour, "")
+	return p.From, p.To, day.Format("2006-01-02"), true
 }
 
 // GET /admin/stats/shift?date=YYYY-MM-DD — сводка смены (owner, Б10-и1).
@@ -49,45 +52,13 @@ func handleAdminStatsShift(c *gin.Context) {
 		return
 	}
 
-	// выручка по методам оплаты
-	var depRows []struct {
-		Method string
-		Pln    float64
-		Cnt    int64
-	}
-	db.Model(&models.Deposit{}).
-		Select("method, COALESCE(SUM(amount_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND voided_at IS NULL", from, to). // Ж1: отменённый — не выручка
-		Group("method").Scan(&depRows)
-	byMethod := gin.H{"cash": 0.0, "card": 0.0, "blik": 0.0}
-	var depPLN float64
-	var depCount int64
-	for _, r := range depRows {
-		byMethod[r.Method] = r.Pln
-		depPLN += r.Pln
-		depCount += r.Cnt
-	}
-
-	// продажи товаров (В2) — вторая половина выручки смены.
-	// Р7: продажи «кошельком» в кассу НЕ идут — эти деньги уже посчитаны
-	// депозитом, которым гость пополнял кошелёк. Считать их второй раз значит
-	// показать владельцу выручку больше, чем реально в кассе (ревью 26.08:
-	// /admin/sales и aggMoney это правило соблюдают, сводка смены — нет).
-	// Ж6 (Ж-Р8): деньги по paid_at — долг «при выходе» ложится в смену расчёта.
-	depRows = nil
-	db.Model(&models.Sale{}).
-		Select("method, COALESCE(SUM(total_pln),0) AS pln, COUNT(*) AS cnt").
-		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method <> ?", from, to, "wallet").
-		Group("method").Scan(&depRows)
-	var goodsPLN float64
-	var saleCount int64
-	for _, r := range depRows {
-		if v, ok := byMethod[r.Method].(float64); ok {
-			byMethod[r.Method] = v + r.Pln
-		}
-		goodsPLN += r.Pln
-		saleCount += r.Cnt
-	}
+	// З4-и2 (З-Р4): выручка смены — та же функция, что шапка и отчёт «Деньги»
+	// (aggMoney): пополнения + товары + пакеты, без отменённых и без оплат
+	// кошельком (Р7: те деньги пришли депозитом); пакеты — и в разбивке по
+	// способам. Раньше сводка складывала только пополнения и товары и
+	// расходилась с шапкой на цену пакетов. Товар — по paid_at (Ж6).
+	money := aggMoney(period{From: from, To: to})
+	byMethod := gin.H{"cash": money.Cash, "card": money.Card, "blik": money.Blik}
 	// Кошельковые продажи показываем отдельной строкой — как оборот, не выручку.
 	var walletPLN float64
 	var walletCount int64
@@ -98,8 +69,7 @@ func handleAdminStatsShift(c *gin.Context) {
 	db.Model(&models.Sale{}).
 		Where("paid_at >= ? AND paid_at < ? AND voided_at IS NULL AND method = ?", from, to, "wallet").
 		Count(&walletCount)
-	saleCount += walletCount
-	totalPLN := depPLN + goodsPLN
+	saleCount := money.GoodsSales + walletCount
 	// Ж6: долг, выданный в эту смену и ещё не рассчитанный — не выручка, но
 	// владелец должен видеть, сколько «висит» (бар + кухня)
 	var unpaidPLN float64
@@ -208,8 +178,9 @@ func handleAdminStatsShift(c *gin.Context) {
 			"off_schedule": offSchedule, // работал, а смены в графике нет
 			"no_show":      noShow,      // стоял в графике, а табеля нет
 		},
-		"revenue": gin.H{"total_pln": totalPLN, "by_method": byMethod, "deposits": depCount,
-			"deposits_pln": depPLN, "goods_pln": goodsPLN, "sales": saleCount,
+		"revenue": gin.H{"total_pln": money.Revenue, "by_method": byMethod, "deposits": money.Deposits,
+			"deposits_pln": money.DepositsPLN, "goods_pln": money.GoodsPLN, "sales": saleCount,
+			"packs_pln": money.PacksPLN, "packs": money.Packs, // З4-и2: пакеты за живые деньги
 			// оборот кошельком — уже учтён в депозитах, в total_pln не входит
 			"wallet_pln": walletPLN, "wallet_sales": walletCount,
 			// Ж6: выдано в долг за смену и ещё не рассчитано (бар + кухня) — не выручка

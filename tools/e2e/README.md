@@ -142,7 +142,7 @@ who)` → `{status, data}`; `sql`, `rows`, `uid`, `check`, `atEnd`, `crash`; `do
 |---|---|
 | З0–З1 | Guest31, Guest32 (`e2e_z0_stand`, `e2e_z0_role`, `pw_z0_loginform`, `e2e_z1_cash` — Guest31; `e2e_z0_login`, `e2e_z0_cases`, `e2e_z1_channel`, `pw_z1_channel` — Guest32) |
 | З2–З3 | Guest33 (`e2e_z2_tz`, `e2e_z2_dates`) + временные сотрудники |
-| З4 | Guest34, Guest35 (`e2e_z4_sessions`; `pw_z4_card` — Guest34) |
+| З4 | Guest34, Guest35 (`e2e_z4_sessions`; `pw_z4_card` — Guest34; `e2e_z4_revenue`, `pw_z4_revenue` — Guest35) + временные сотрудники |
 | З5 | Guest36, Guest37 |
 | З6 | Guest38 |
 | З8–З9 | Guest39 |
@@ -160,7 +160,7 @@ who)` → `{status, data}`; `sql`, `rows`, `uid`, `check`, `atEnd`, `crash`; `do
 
 Временные сотрудники — `z<N>adm` (N — спринт; если их в спринте несколько — своё окончание:
 `z0std` у проверки стенда, `z0role` и `z0live` у проверок роли, `z0adm` у входа, `z0case` у
-кейсов, `z1ch` и `z1cw` у канала персонала, `z2hire` и `z2shift` у дат, `z3in` и `z3feed` у входа, `z3pay` и `z3payw` у выплаты, `z3man` и `z3ex` у ручного табеля), их заводит сама проверка через `hire_temp` / `hireTemp`. Удалить аккаунт нельзя (на нём журналы), поэтому повторный прогон
+кейсов, `z1ch` и `z1cw` у канала персонала, `z2hire` и `z2shift` у дат, `z3in` и `z3feed` у входа, `z3pay` и `z3payw` у выплаты, `z3man` и `z3ex` у ручного табеля, `z4pack` и `z4packw` у выручки), их заводит сама проверка через `hire_temp` / `hireTemp`. Удалить аккаунт нельзя (на нём журналы), поэтому повторный прогон
 возвращает того же человека: роль admin, пароль как у admin1, карточка без увольнения.
 
 ### Правила трека З

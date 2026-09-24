@@ -38,3 +38,27 @@ func TestShiftWindow(t *testing.T) {
 		}
 	}
 }
+
+// З4-и2: окно смены — по стенным часам клуба, как у отчётов и шапки
+// (makePeriod). «Полночь + 8 ч» в дни перевода часов — это 07:00 (25.10) или
+// 09:00 (28.03): сводка смены жила бы в другом окне, чем отчёт «Деньги», а
+// 25.10 в 07:30 «сейчас» не попадало бы ни в одну смену.
+func TestShiftWindowПереводЧасов(t *testing.T) {
+	loc, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Skip("нет tzdata — пропускаем проверку перевода часов")
+	}
+	for _, date := range []string{"2026-10-24", "2026-10-25", "2027-03-27", "2027-03-28"} {
+		day, _ := time.ParseInLocation("2006-01-02", date, loc)
+		from, to, key, ok := shiftWindow(date, 8, day)
+		p := makePeriod(day, day, 8, "")
+		if !ok || key != date || !from.Equal(p.From) || !to.Equal(p.To) || from.Hour() != 8 || to.In(loc).Hour() != 8 {
+			t.Errorf("%s: окно [%v, %v), ожидалось [%v, %v) — с 08:00 до 08:00 по часам клуба", date, from, to, p.From, p.To)
+		}
+	}
+	now := time.Date(2026, 10, 25, 7, 30, 0, 0, loc) // уже зимнее время, до границы суток
+	from, to, key, _ := shiftWindow("", 8, now)
+	if key != "2026-10-24" || now.Before(from) || !now.Before(to) {
+		t.Errorf("25.10 07:30: смена %s, окно [%v, %v) — «сейчас» должно быть внутри смены 24.10", key, from, to)
+	}
+}
