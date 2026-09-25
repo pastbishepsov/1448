@@ -251,8 +251,8 @@ func validateCatalogFields(f *catalogFields, full bool) (code, msg string) {
 			return "bad_cover", m
 		}
 	}
-	if f.Sort != nil && (*f.Sort < -10000 || *f.Sort > 10000) {
-		return "bad_sort", "Порядок — от -10000 до 10000"
+	if !validSort(f.Sort) {
+		return "bad_sort", sortMessage
 	}
 	if _, ok, m := normalizeArgs(f.Args); !ok {
 		return "bad_args", m
@@ -474,6 +474,10 @@ func handleAdminCatalogSort(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужно поле sort (целое)"})
+		return
+	}
+	if !validSort(req.Sort) { // З6-и3: 3·10⁹ падало на int4 базы ошибкой сервера
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_sort", "message": sortMessage})
 		return
 	}
 	if err := db.Model(&app).Update("sort", *req.Sort).Error; err != nil {

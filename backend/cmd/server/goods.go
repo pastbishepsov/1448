@@ -27,6 +27,9 @@ import (
 // errNegativeStock — остаток увели в минус параллельной корректировкой (ревью 26.08).
 var errNegativeStock = errors.New("negative_stock")
 
+// errStockLimit — параллельный приход поднял бы остаток выше maxStockQty (З6-и3).
+var errStockLimit = errors.New("stock_limit")
+
 const (
 	maxGoodPrice = 10000.0 // цена позиции, zł
 	maxSaleQty   = 99
@@ -41,7 +44,7 @@ func validateGood(name, category string, price float64, lowStock int) (bool, str
 	if len([]rune(strings.TrimSpace(category))) > 32 {
 		return false, "bad_category"
 	}
-	if price <= 0 || price > maxGoodPrice {
+	if !validatePLN(price, maxGoodPrice) { // З6-и3: не меньше 0,01 и два знака, как в базе
 		return false, "bad_price"
 	}
 	if lowStock < 0 || lowStock > 100000 {
@@ -51,24 +54,29 @@ func validateGood(name, category string, price float64, lowStock int) (bool, str
 }
 
 var goodErrors = map[string]string{
-	"bad_name":       "Название: 1–64 символа",
-	"bad_category":   "Категория: до 32 символов",
-	"bad_price":      fmt.Sprintf("Цена — от 0.01 до %.0f zł", maxGoodPrice),
-	"bad_low":        "Порог «заканчивается» — неотрицательное число",
+	"bad_name":        "Название: 1–64 символа",
+	"bad_category":    "Категория: до 32 символов",
+	"bad_price":       fmt.Sprintf("Цена — от 0.01 до %.0f zł, не больше двух знаков после запятой", maxGoodPrice),
+	"bad_sort":        sortMessage,
+	"bad_stock":       fmt.Sprintf("Остаток — от 0 до %d штук", maxStockQty),
+	"bad_delta":       fmt.Sprintf("Количество — от 1 до %d штук, приход — только плюсом", maxStockQty),
+	"stock_limit":     fmt.Sprintf("На складе стало бы больше %d штук — проверь количество", maxStockQty),
+	"bad_note":        fmt.Sprintf("Примечание — до %d символов", maxStockNote),
+	"bad_low":         "Порог «заканчивается» — неотрицательное число",
 	"bad_description": fmt.Sprintf("Описание — до %d символов", maxGoodDescription),
-	"bad_qty":        fmt.Sprintf("Количество — от 1 до %d", maxSaleQty),
-	"too_many_items": fmt.Sprintf("В чеке — до %d позиций", maxReceiptItems),
-	"bad_method":     "Оплата: наличные, карта, BLIK — или «при выходе» гостю за ПК",
-	"bad_reason":     "Причина движения: supply или adjust",
-	"need_note":      "У корректировки должна быть причина — её увидит владелец",
-	"negative_stock": "Остаток ушёл бы в минус",
-	"good_inactive":  "Позиция выключена — включи её в ценнике",
-	"out_of_stock":   "На складе не хватает",
-	"has_sales":      "По позиции уже были продажи — её нельзя удалить, только выключить",
-	"has_history":    "У позиции есть история склада или остаток — удалить нельзя, выключи её: история и «Потери» останутся",
-	"already_void":   "Продажа уже отменена",
-	"not_yours":      "Чужую продажу отменяет владелец",
-	"too_old":        "Продажа не с текущей смены — отменяет владелец",
+	"bad_qty":         fmt.Sprintf("Количество — от 1 до %d", maxSaleQty),
+	"too_many_items":  fmt.Sprintf("В чеке — до %d позиций", maxReceiptItems),
+	"bad_method":      "Оплата: наличные, карта, BLIK — или «при выходе» гостю за ПК",
+	"bad_reason":      "Причина движения: supply или adjust",
+	"need_note":       "У корректировки должна быть причина — её увидит владелец",
+	"negative_stock":  "Остаток ушёл бы в минус",
+	"good_inactive":   "Позиция выключена — включи её в ценнике",
+	"out_of_stock":    "На складе не хватает",
+	"has_sales":       "По позиции уже были продажи — её нельзя удалить, только выключить",
+	"has_history":     "У позиции есть история склада или остаток — удалить нельзя, выключи её: история и «Потери» останутся",
+	"already_void":    "Продажа уже отменена",
+	"not_yours":       "Чужую продажу отменяет владелец",
+	"too_old":         "Продажа не с текущей смены — отменяет владелец",
 }
 
 func goodFail(c *gin.Context, status int, code string) {
@@ -115,7 +123,7 @@ func handleAdminGoods(c *gin.Context) {
 
 type goodRequest struct {
 	Name        string   `json:"name"`
-	Category    string   `json:"category"`
+	Category    *string  `json:"category"`    // З6-и3: указатель — пустая строка очищает категорию
 	Description *string  `json:"description"` // Г7: карточка для гостевой кухни
 	PricePLN    *float64 `json:"price_pln"`
 	Stock       *int     `json:"stock"`
@@ -142,10 +150,19 @@ func handleAdminGoodCreate(c *gin.Context) {
 	if req.LowStock != nil {
 		low = *req.LowStock
 	}
-	if ok, code := validateGood(req.Name, req.Category, price, low); !ok {
+	category := ""
+	if req.Category != nil {
+		category = strings.TrimSpace(*req.Category)
+	}
+	if ok, code := validateGood(req.Name, category, price, low); !ok {
 		goodFail(c, http.StatusBadRequest, code)
 		return
 	}
+	if !validSort(req.Sort) {
+		goodFail(c, http.StatusBadRequest, "bad_sort")
+		return
+	}
+	price = round2(price) // хвост float (0,1 + 0,2) — в ответе то же, что в базе
 	club, ok := defaultClub()
 	if !ok {
 		goodFail(c, http.StatusConflict, "no_club")
@@ -159,9 +176,13 @@ func handleAdminGoodCreate(c *gin.Context) {
 		goodFail(c, http.StatusBadRequest, "negative_stock")
 		return
 	}
+	if stock > maxStockQty {
+		goodFail(c, http.StatusBadRequest, "bad_stock")
+		return
+	}
 	g := models.Good{
 		ClubID: club.ID, Name: strings.TrimSpace(req.Name),
-		Category: strings.TrimSpace(req.Category), PricePLN: price,
+		Category: category, PricePLN: price,
 		Stock: stock, LowStock: low, Active: true,
 	}
 	if req.Description != nil {
@@ -218,8 +239,8 @@ func handleAdminGoodUpdate(c *gin.Context) {
 	if strings.TrimSpace(req.Name) != "" {
 		name = strings.TrimSpace(req.Name)
 	}
-	if req.Category != "" {
-		category = strings.TrimSpace(req.Category)
+	if req.Category != nil { // З6-и3: "" очищает; поле не прислано — категория как была
+		category = strings.TrimSpace(*req.Category)
 	}
 	if req.PricePLN != nil {
 		price = *req.PricePLN
@@ -231,6 +252,11 @@ func handleAdminGoodUpdate(c *gin.Context) {
 		goodFail(c, http.StatusBadRequest, code)
 		return
 	}
+	if !validSort(req.Sort) {
+		goodFail(c, http.StatusBadRequest, "bad_sort")
+		return
+	}
+	price = round2(price)
 	changes := []string{}
 	if name != g.Name {
 		changes = append(changes, g.Name+" → "+name)
@@ -238,7 +264,9 @@ func handleAdminGoodUpdate(c *gin.Context) {
 	if price != g.PricePLN {
 		changes = append(changes, fmt.Sprintf("цена %.2f → %.2f zł", g.PricePLN, price))
 	}
-	if category != g.Category {
+	if category != g.Category && category == "" {
+		changes = append(changes, "категория убрана")
+	} else if category != g.Category {
 		changes = append(changes, "категория: "+category)
 	}
 	if low != g.LowStock {
@@ -337,7 +365,9 @@ func handleAdminGoodStock(c *gin.Context) {
 		goodFail(c, http.StatusBadRequest, "bad_reason")
 		return
 	}
-	if req.Delta == 0 {
+	// З6-и3: количество — в пределах ±maxStockQty (3·10⁹ падало на int4 базы
+	// ошибкой сервера), примечание — до maxStockNote символов (З-Р36).
+	if req.Delta == 0 || req.Delta > maxStockQty || req.Delta < -maxStockQty {
 		goodFail(c, http.StatusBadRequest, "bad_delta")
 		return
 	}
@@ -350,8 +380,16 @@ func handleAdminGoodStock(c *gin.Context) {
 		goodFail(c, http.StatusBadRequest, "need_note")
 		return
 	}
+	if len([]rune(note)) > maxStockNote {
+		goodFail(c, http.StatusBadRequest, "bad_note")
+		return
+	}
 	if g.Stock+req.Delta < 0 {
 		goodFail(c, http.StatusConflict, "negative_stock")
+		return
+	}
+	if req.Delta > 0 && g.Stock+req.Delta > maxStockQty {
+		goodFail(c, http.StatusConflict, "stock_limit")
 		return
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
@@ -359,11 +397,15 @@ func handleAdminGoodStock(c *gin.Context) {
 		// CAS: проверка «не уйдём в минус» выше сделана вне транзакции, и два
 		// одновременных списания уводили склад в минус, раздувая «потери» в
 		// отчёте (ревью 26.08).
+		// Потолок остатка (З6-и3) — в том же условии: списание он не держит, приход — да.
 		res := tx.Model(&models.Good{}).
-			Where("id = ? AND stock + ? >= 0", g.ID, req.Delta).
+			Where("id = ? AND stock + ? >= 0 AND (? < 0 OR stock + ? <= ?)", g.ID, req.Delta, req.Delta, req.Delta, maxStockQty).
 			UpdateColumn("stock", gorm.Expr("stock + ?", req.Delta))
 		if res.Error != nil {
 			return res.Error
+		}
+		if res.RowsAffected == 0 && req.Delta > 0 {
+			return errStockLimit
 		}
 		if res.RowsAffected == 0 {
 			return errNegativeStock
@@ -373,6 +415,10 @@ func handleAdminGoodStock(c *gin.Context) {
 	})
 	if errors.Is(err, errNegativeStock) {
 		goodFail(c, http.StatusConflict, "negative_stock")
+		return
+	}
+	if errors.Is(err, errStockLimit) {
+		goodFail(c, http.StatusConflict, "stock_limit")
 		return
 	}
 	if err != nil {

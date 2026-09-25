@@ -27,7 +27,7 @@ func validateZone(name string, rate float64) (bool, string) {
 	if n == "" || len([]rune(n)) > 32 {
 		return false, "bad_name"
 	}
-	if rate <= 0 || rate > maxZoneRate {
+	if !validatePLN(rate, maxZoneRate) { // З6-и3: 0,004 падало на CHECK базы, 1,005 молча становилось 1,01
 		return false, "bad_rate"
 	}
 	return true, ""
@@ -35,7 +35,8 @@ func validateZone(name string, rate float64) (bool, string) {
 
 var zoneErrors = map[string]string{
 	"bad_name":       "Название зоны — 1–32 символа",
-	"bad_rate":       fmt.Sprintf("Цена часа — от 0.01 до %.0f zł", maxZoneRate),
+	"bad_rate":       fmt.Sprintf("Цена часа — от 0.01 до %.0f zł, не больше двух знаков после запятой", maxZoneRate),
+	"bad_sort":       sortMessage,
 	"already_exists": "Зона с таким названием уже есть",
 	"has_computers":  "В зоне есть компьютеры — сначала перенеси их в другую",
 	// Е2-и1: пакеты привязаны к зоне (Р10), и у гостей на руках купленные
@@ -127,6 +128,11 @@ func handleAdminZoneCreate(c *gin.Context) {
 		zoneFail(c, http.StatusBadRequest, code)
 		return
 	}
+	if !validSort(req.Sort) {
+		zoneFail(c, http.StatusBadRequest, "bad_sort")
+		return
+	}
+	rate = round2(rate) // хвост float (0,1 + 0,2) — в ответе то же, что в базе
 	club, ok := defaultClub()
 	if !ok {
 		zoneFail(c, http.StatusConflict, "no_club")
@@ -172,6 +178,11 @@ func handleAdminZoneUpdate(c *gin.Context) {
 		zoneFail(c, http.StatusBadRequest, code)
 		return
 	}
+	if !validSort(req.Sort) {
+		zoneFail(c, http.StatusBadRequest, "bad_sort")
+		return
+	}
+	rate = round2(rate)
 	changes := []string{}
 	if name != z.Name {
 		changes = append(changes, z.Name+" → "+name)

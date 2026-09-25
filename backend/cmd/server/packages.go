@@ -39,7 +39,8 @@ var packageErrors = map[string]string{
 	"invalid_request": "Не разобрал запрос",
 	"bad_name":        "Название: 1–64 символа",
 	"bad_minutes":     fmt.Sprintf("Минуты — от 1 до %d", maxPackageMinutes),
-	"bad_price":       fmt.Sprintf("Цена — от 0.01 до %d zł", maxPackagePrice),
+	"bad_price":       fmt.Sprintf("Цена — от 0.01 до %d zł, не больше двух знаков после запятой", maxPackagePrice),
+	"bad_sort":        sortMessage,
 	"bad_days":        fmt.Sprintf("Срок — от 0 (бессрочно) до %d дней", maxPackageDays),
 	"zone_required":   "У пакета должна быть зона: час VIP и час STANDARD стоят по-разному",
 	"zone_not_found":  "Зона не найдена",
@@ -77,7 +78,7 @@ func validatePackage(name string, minutes int, price float64, days int) (bool, s
 	if minutes <= 0 || minutes > maxPackageMinutes {
 		return false, "bad_minutes"
 	}
-	if price <= 0 || price > maxPackagePrice {
+	if !validatePLN(price, maxPackagePrice) { // З6-и3: не меньше 0,01 и два знака, как в базе
 		return false, "bad_price"
 	}
 	if days < 0 || days > maxPackageDays {
@@ -184,6 +185,11 @@ func handleAdminPackageCreate(c *gin.Context) {
 		packFail(c, http.StatusBadRequest, code)
 		return
 	}
+	if !validSort(req.Sort) {
+		packFail(c, http.StatusBadRequest, "bad_sort")
+		return
+	}
+	price = round2(price) // хвост float (0,1 + 0,2) — в ответе то же, что в базе
 	zone, code := packageZone(req.ZoneID)
 	if code != "" {
 		status := http.StatusBadRequest
@@ -248,6 +254,11 @@ func handleAdminPackageUpdate(c *gin.Context) {
 		packFail(c, http.StatusBadRequest, code)
 		return
 	}
+	if !validSort(req.Sort) {
+		packFail(c, http.StatusBadRequest, "bad_sort")
+		return
+	}
+	price = round2(price)
 	zones := zoneIndex()
 	zone := zones[p.ZoneID]
 	if strings.TrimSpace(req.ZoneID) != "" {

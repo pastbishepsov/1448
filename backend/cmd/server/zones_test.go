@@ -17,6 +17,8 @@ func TestValidateZone(t *testing.T) {
 		{"нулевая цена", "VIP", 0, "bad_rate"},
 		{"отрицательная цена", "VIP", -5, "bad_rate"},
 		{"опечатка в три нуля", "VIP", 23000, "bad_rate"},
+		{"меньше копейки (З6-и3)", "VIP", 0.004, "bad_rate"},
+		{"три знака после запятой (З6-и3)", "VIP", 1.005, "bad_rate"},
 	}
 	for _, tc := range cases {
 		_, code := validateZone(tc.zone, tc.rate)

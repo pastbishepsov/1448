@@ -121,6 +121,10 @@ func handleAdminShiftCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": shiftTemplateErrors[code]})
 		return
 	}
+	if !validSort(&req.Sort) { // З6-и3: 3·10⁹ падало на int4 базы ошибкой сервера
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_sort", "message": sortMessage})
+		return
+	}
 	club, ok := defaultClub()
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "club_missing", "message": "Клуб не найден"})
@@ -163,6 +167,10 @@ func handleAdminShiftUpdate(c *gin.Context) {
 	}
 	if req.DaysMask != nil {
 		s.DaysMask = *req.DaysMask
+	}
+	if !validSort(&req.Sort) { // З6-и3
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_sort", "message": sortMessage})
+		return
 	}
 	if req.Sort != 0 {
 		s.Sort = req.Sort
