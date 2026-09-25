@@ -145,6 +145,7 @@ who)` → `{status, data}`; `sql`, `rows`, `uid`, `check`, `atEnd`, `crash`; `do
 | З4 | Guest34, Guest35 (`e2e_z4_sessions`; `pw_z4_card` — Guest34; `e2e_z4_revenue`, `pw_z4_revenue`, `e2e_z4_played` — Guest35) + временные сотрудники |
 | З5 | Guest36, Guest37 (`e2e_z5_new`; `pw_z5_new` — Guest36; `e2e_z5_coins`, `pw_z5_coins` — Guest37) |
 | З6 | Guest38 (`e2e_z6_kitchen`, `pw_z6_kitchen`); `e2e_z6_goods` — выключенные позиции «z6 бой» и «z6 с остатком», живут между прогонами; `e2e_z6_validate` — временные зона «z6 проверка», её пакет и товар «z6 проверка …», убираются в конце |
+| З7 | гости не нужны; `e2e_z7_settings`, `pw_z7_settings` — таблица `settings` в конце как была (те же строки и значения) |
 | З8–З9 | Guest39 |
 | З10 | Guest40 |
 | З11 | Guest41, Guest42 |

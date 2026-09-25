@@ -7,9 +7,13 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -96,42 +100,53 @@ var settingBounds = map[string][2]int64{
 	"pack_warn_days":            {0, 30},   // Е2-и5: за сколько дней сказать, что пакет сгорает; 0 = молчать
 }
 
+// settingDefaults — значение каждой числовой настройки, пока у неё нет строки
+// в settings. Ключи — те же, что в settingBounds (тест в settings_test.go):
+// новая настройка — строка здесь, строка там и поле в «Экономике».
+var settingDefaults = map[string]int64{
+	"xp_per_min":                xpPerMinute,
+	"coins_per_min":             coinsPerMinute,
+	"coins_per_pln":             coinsPerPLN,
+	"admin_day_xp_cap":          0,
+	"admin_day_deposit_cap_pln": 0,
+	"admin_day_comp_cap_pln":    0, // Ж0-и2
+	"admin_day_comp_cap_min":    0, // Ж0-и2
+	"admin_day_case_cap":        0, // З0-и4
+	"report_hour":               8,
+	"seg_new_days":              14,
+	"seg_lost_days":             21,
+	"coins_per_pln_spend":       coinsPerPLNSpend,
+	"coin_spend_max_min":        coinSpendMaxMin,
+	"coin_idle_days":            coinIdleDays,
+	"coin_burn_pct_week":        coinBurnPctWeek,
+	"coin_burn_warn_days":       coinBurnWarnDays,
+	"min_start_minutes":         minStartMinutesDef,
+	"pack_warn_days":            packWarnDaysDef, // Е2-и5
+	"zero_grace_min":            zeroGraceMinDef,
+	"pause_limit_min":           pauseLimitMinDef,
+	"afk_stop_min":              afkStopMinDef,
+	"booking_buffer_min":        bookingBufferMinDef,
+	"booking_lock_min":          bookingLockMinDef,
+	"booking_min_level":         bookingMinLevelDef,
+	"max_active_bookings":       maxActiveBookingsDef,
+	"no_show_min":               noShowMinDef,
+	"streak_freeze_cost":        streakFreezeCostDef,
+	"streak_freeze_max":         streakFreezeMaxDef,
+	"streak_freeze_max_row":     streakFreezeMaxRowDef,
+	"birthday_case_tier":        1,
+	"ready_wait_min":            readyWaitMinDef,
+	"mouse_dpi":                 mouseDPIDef,   // С2-и1
+	"mousepad_cm":               mousepadCmDef, // С4-и3
+}
+
+// currentSettings — действующие значения: строка из settings или значение по
+// умолчанию. Из неё же PUT берёт «было» (З7-и1).
 func currentSettings() gin.H {
-	return gin.H{
-		"xp_per_min":                settingInt64("xp_per_min", xpPerMinute),
-		"coins_per_min":             settingInt64("coins_per_min", coinsPerMinute),
-		"coins_per_pln":             settingInt64("coins_per_pln", coinsPerPLN),
-		"admin_day_xp_cap":          settingInt64("admin_day_xp_cap", 0),
-		"admin_day_deposit_cap_pln": settingInt64("admin_day_deposit_cap_pln", 0),
-		"admin_day_comp_cap_pln":    settingInt64("admin_day_comp_cap_pln", 0), // Ж0-и2
-		"admin_day_comp_cap_min":    settingInt64("admin_day_comp_cap_min", 0), // Ж0-и2
-		"admin_day_case_cap":        settingInt64("admin_day_case_cap", 0),     // З0-и4
-		"report_hour":               settingInt64("report_hour", 8),
-		"seg_new_days":              settingInt64("seg_new_days", 14),
-		"seg_lost_days":             settingInt64("seg_lost_days", 21),
-		"coins_per_pln_spend":       settingInt64("coins_per_pln_spend", coinsPerPLNSpend),
-		"coin_spend_max_min":        settingInt64("coin_spend_max_min", coinSpendMaxMin),
-		"coin_idle_days":            settingInt64("coin_idle_days", coinIdleDays),
-		"coin_burn_pct_week":        settingInt64("coin_burn_pct_week", coinBurnPctWeek),
-		"coin_burn_warn_days":       settingInt64("coin_burn_warn_days", coinBurnWarnDays),
-		"min_start_minutes":         settingInt64("min_start_minutes", minStartMinutesDef),
-		"pack_warn_days":            settingInt64("pack_warn_days", packWarnDaysDef), // Е2-и5
-		"zero_grace_min":            settingInt64("zero_grace_min", zeroGraceMinDef),
-		"pause_limit_min":           settingInt64("pause_limit_min", pauseLimitMinDef),
-		"afk_stop_min":              settingInt64("afk_stop_min", afkStopMinDef),
-		"booking_buffer_min":        settingInt64("booking_buffer_min", bookingBufferMinDef),
-		"booking_lock_min":          settingInt64("booking_lock_min", bookingLockMinDef),
-		"booking_min_level":         settingInt64("booking_min_level", bookingMinLevelDef),
-		"max_active_bookings":       settingInt64("max_active_bookings", maxActiveBookingsDef),
-		"no_show_min":               settingInt64("no_show_min", noShowMinDef),
-		"streak_freeze_cost":        settingInt64("streak_freeze_cost", streakFreezeCostDef),
-		"streak_freeze_max":         settingInt64("streak_freeze_max", streakFreezeMaxDef),
-		"streak_freeze_max_row":     settingInt64("streak_freeze_max_row", streakFreezeMaxRowDef),
-		"birthday_case_tier":        settingInt64("birthday_case_tier", 1),
-		"ready_wait_min":            settingInt64("ready_wait_min", readyWaitMinDef),
-		"mouse_dpi":                 settingInt64("mouse_dpi", mouseDPIDef), // С2-и1
-		"mousepad_cm":               settingInt64("mousepad_cm", mousepadCmDef), // С4-и3
+	out := gin.H{}
+	for key, def := range settingDefaults {
+		out[key] = settingInt64(key, def)
 	}
+	return out
 }
 
 // GET /admin/settings — текущая экономика (owner).
@@ -140,6 +155,13 @@ func handleAdminSettingsGet(c *gin.Context) {
 }
 
 // PUT /admin/settings — обновить значения (owner). Изменения — в аудит.
+//
+// З7-и1 (№41; из №40): «было» — действующее значение из currentSettings(), в
+// том числе значение по умолчанию у настройки без строки в settings. Раньше у
+// такой настройки «было» не находилось, и «Сохранить» без правок писал её в
+// журнал «изменённой» и без стрелки. Значение, равное действующему, не пишется
+// ни в базу, ни в журнал. Все строки — одной транзакцией: сбой на середине не
+// оставляет часть настроек сохранённой.
 func handleAdminSettingsPut(c *gin.Context) {
 	var req map[string]int64
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -158,34 +180,44 @@ func handleAdminSettingsPut(c *gin.Context) {
 			return
 		}
 	}
-	changes := ""
-	for key, val := range req {
-		old := settingInt64(key, -1)
-		if old == val {
-			continue
-		}
-		strVal := strconv.FormatInt(val, 10)
-		var existing models.Setting
-		if err := db.First(&existing, "key = ?", key).Error; err == nil {
-			if err := db.Model(&existing).Update("value", strVal).Error; err != nil {
-				respondDBError(c, err)
-				return
+	keys, changes := settingChanges(currentSettings(), req)
+	if len(keys) > 0 {
+		err := db.Transaction(func(tx *gorm.DB) error {
+			for _, key := range keys {
+				row := models.Setting{Key: key, Value: strconv.FormatInt(req[key], 10)}
+				if err := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "key"}},
+					DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+				}).Create(&row).Error; err != nil {
+					return err
+				}
 			}
-		} else if err := db.Create(&models.Setting{Key: key, Value: strVal}).Error; err != nil {
+			return nil
+		})
+		if err != nil {
 			respondDBError(c, err)
 			return
 		}
-		if changes != "" {
-			changes += ", "
-		}
-		if old >= 0 {
-			changes += fmt.Sprintf("%s: %d→%d", key, old, val)
-		} else {
-			changes += fmt.Sprintf("%s: %d", key, val)
-		}
-	}
-	if changes != "" {
-		logAdminAction(c, "settings_update", nil, changes)
+		logAdminAction(c, "settings_update", nil, strings.Join(changes, ", "))
 	}
 	c.JSON(http.StatusOK, gin.H{"settings": currentSettings()})
+}
+
+// settingChanges — что из запроса действительно меняется: ключи по алфавиту и
+// строки журнала «ключ: было→стало». Чистая функция (тест).
+func settingChanges(was gin.H, req map[string]int64) (keys, changes []string) {
+	all := make([]string, 0, len(req))
+	for key := range req {
+		all = append(all, key)
+	}
+	sort.Strings(all)
+	for _, key := range all {
+		old, _ := was[key].(int64)
+		if old == req[key] {
+			continue
+		}
+		keys = append(keys, key)
+		changes = append(changes, fmt.Sprintf("%s: %d→%d", key, old, req[key]))
+	}
+	return keys, changes
 }

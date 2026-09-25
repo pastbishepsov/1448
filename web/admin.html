@@ -369,6 +369,22 @@
      съедает первый экран; переключатель остаётся в «Журнале» */
   @media (max-width:640px){ #repDens{display:none} }
   .uform label{font-size:12px; font-weight:700; margin-bottom:-4px}
+  /* З7-и1 (№41): «Экономика» карточками по смыслу — колонками, чтобы короткие карточки
+     не оставляли дыр рядом с длинными; строка сохранения прилипает к низу экрана */
+  .setgrid{columns:3 320px; column-gap:12px}
+  .setcard{break-inside:avoid; background:var(--card); border:1px solid var(--hair); border-radius:12px;
+    padding:13px 14px 14px; margin:0 0 12px; display:flex; flex-direction:column; gap:8px}
+  .setcard h4{margin:0; font-size:14px}
+  .setcard .why{font-size:12px; line-height:1.4; color:var(--dim); margin:-3px 0 3px}
+  .setcard label{font-size:12px; font-weight:700; color:var(--dim); margin-bottom:-3px}
+  .setcard .input{width:100%; padding:9px 12px; font-size:14px}
+  .setcard .input.changed{border-color:var(--acc); box-shadow:0 0 0 1px rgba(255,39,64,.28)}
+  .setwarn{font-size:12px; line-height:1.4; color:var(--orange); background:rgba(251,146,60,.08);
+    border:1px solid rgba(251,146,60,.32); border-radius:9px; padding:8px 10px}
+  .setbar{position:sticky; bottom:8px; z-index:4; display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    background:rgba(15,15,18,.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--hair); border-radius:12px; padding:9px 12px}
+  .setbar.dirty{border-color:rgba(255,39,64,.45)}
 
   /* ── А8: схема зала — позиционная сетка и редактор ── */
   .hallgridwrap{overflow-x:auto; padding-bottom:4px}
@@ -871,72 +887,16 @@
 
       <section id="s-settings" class="hidden">
         <div class="sect">Экономика клуба</div>
-        <div class="uform" style="max-width:420px; margin-top:0">
-          <label class="muted" for="set_xp">XP за минуту игры</label>
-          <input id="set_xp" class="input" type="number" min="1" max="1000">
-          <label class="muted" for="set_coins">Монет за минуту игры</label>
-          <input id="set_coins" class="input" type="number" min="0" max="1000">
-          <label class="muted" for="set_rate">Кэшбек-монеты за 1 zł пополнения (деньги идут в кошелёк отдельно)</label>
-          <input id="set_rate" class="input" type="number" min="1" max="100">
-          <label class="muted" for="set_spend">Монет за 1 zł при списании — курс погашения</label>
-          <input id="set_spend" class="input" type="number" min="1" max="1000">
-          <label class="muted" for="set_spendcap">Потолок минут за одну выдачу (0 — без лимита, так и стоит)</label>
-          <input id="set_spendcap" class="input" type="number" min="0" max="1440">
-          <label class="muted" for="set_idle">Монеты не трогаем, пока гость не играет, дней</label>
-          <input id="set_idle" class="input" type="number" min="0" max="3650">
-          <label class="muted" for="set_burnpct">Потом сгорает в неделю, % (0 — не жечь)</label>
-          <input id="set_burnpct" class="input" type="number" min="0" max="100">
-          <label class="muted" for="set_burnwarn">Предупредить гостя за столько дней до начала</label>
-          <input id="set_burnwarn" class="input" type="number" min="0" max="365">
-          <label class="muted" for="set_xpcap">Дневной лимит XP-начислений на админа (0 — без лимита)</label>
-          <input id="set_xpcap" class="input" type="number" min="0" max="10000000">
-          <label class="muted" for="set_depcap">Дневной лимит депозитов на админа, zł (0 — без лимита)</label>
-          <input id="set_depcap" class="input" type="number" min="0" max="1000000">
-          <label class="muted" for="set_compcap">Дневной лимит компенсаций по проблемам на админа, zł (0 — без лимита; владелец не ограничен)</label>
-          <input id="set_compcap" class="input" type="number" min="0" max="1000000">
-          <label class="muted" for="set_compcapmin">Дневной лимит компенсаций минутами на админа (0 — без лимита)</label>
-          <input id="set_compcapmin" class="input" type="number" min="0" max="100000">
-          <label class="muted" for="set_casecap">Кейсов в день на админа, штук (0 — без лимита; владелец не ограничен)</label>
-          <input id="set_casecap" class="input" type="number" min="0" max="1000">
-          <label class="muted" for="set_rhour">Час границы клубных суток — сводка смены (0–23)</label>
-          <input id="set_rhour" class="input" type="number" min="0" max="23">
-          <label class="muted" for="set_segnew">Сегмент «новые»: первый визит не раньше стольких дней до конца периода — отчёт «Гости», сводка смены, фильтр у стойки</label>
-          <input id="set_segnew" class="input" type="number" min="1" max="365">
-          <label class="muted" for="set_seglost">Сегмент «пропавшие»: дней без визита</label>
-          <input id="set_seglost" class="input" type="number" min="2" max="730">
-          <label class="muted" for="set_minstart">Порог старта: кошелёк должен покрывать минут (0 — пускать всех)</label>
-          <input id="set_minstart" class="input" type="number" min="0" max="1440">
-          <label class="muted" for="set_grace">Ноль кошелька: грейс до автозавершения, мин</label>
-          <input id="set_grace" class="input" type="number" min="0" max="60">
-          <label class="muted" for="set_pause">Лимит паузы на сессию, мин (0 — пауза выключена)</label>
-          <input id="set_pause" class="input" type="number" min="0" max="240">
-          <label class="muted" for="set_afk">AFK: минут простоя до автопаузы/завершения (0 — выкл)</label>
-          <input id="set_afk" class="input" type="number" min="0" max="240">
-          <label class="muted" for="set_mousedpi">Мышь клуба: DPI (0 — не задан; задан — сенса гостя пересчитывается под неё, cm/360 тот же)</label>
-          <input id="set_mousedpi" class="input" type="number" min="0" max="32000" step="50">
-          <label class="muted" for="set_mousepad">Коврик клуба: ширина, см (0 — не задана; эталон длины для замера DPI свайпом в студии сенсы, иначе гостю предложат лист A4)</label>
-          <input id="set_mousepad" class="input" type="number" min="0" max="200">
-          <label class="muted" for="set_bkbuf">Бронь: буфер посадки до чужой брони, мин</label>
-          <input id="set_bkbuf" class="input" type="number" min="0" max="240">
-          <label class="muted" for="set_bklock">Бронь: за сколько минут ПК придержан под гостя</label>
-          <input id="set_bklock" class="input" type="number" min="0" max="120">
-          <label class="muted" for="set_bkminlvl">Бронь открыта с уровня (0 — всем)</label>
-          <input id="set_bkminlvl" class="input" type="number" min="0" max="100">
-          <label class="muted" for="set_bkmax">Живых броней на гостя (0 — без лимита)</label>
-          <input id="set_bkmax" class="input" type="number" min="0" max="20">
-          <label class="muted" for="set_noshow">No-show: минут от начала брони до сгорания (0 — выкл)</label>
-          <input id="set_noshow" class="input" type="number" min="0" max="120">
-          <label class="muted" for="set_frzcost">Заморозка стрика: цена в монетах (0 — механика выкл)</label>
-          <input id="set_frzcost" class="input" type="number" min="0" max="100000">
-          <label class="muted" for="set_frzmax">Заморозок в запасе у гостя</label>
-          <input id="set_frzmax" class="input" type="number" min="0" max="10">
-          <label class="muted" for="set_frzrow">Сколько дней подряд прикрывает заморозка</label>
-          <input id="set_frzrow" class="input" type="number" min="1" max="7">
-          <label class="muted" for="set_bday">ДР-подарок: кейс имениннику (0 — выкл, 1 — light … 5 — gods; раз в год)</label>
-          <input id="set_bday" class="input" type="number" min="0" max="5">
-          <button class="btn" style="width:100%; justify-content:center" onclick="saveSettings()"><span data-ic="save"></span>Сохранить</button>
-          <div class="muted">Действует на новые начисления сразу; изменение попадает в журнал. Лимиты не касаются владельца</div>
+        <!-- З7-и1 (№41): карточки по смыслу строит renderSettings из SETTINGS_GROUPS -->
+        <div id="setWrap">
+          <div class="setgrid" id="setGrid"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+          <div class="setbar" id="setBar">
+            <button class="btn" id="setSave" onclick="saveSettings(this)"><span data-ic="save"></span>Сохранить</button>
+            <button class="btn ghost hidden" id="setUndo" onclick="paintSettings()">Вернуть как было</button>
+            <span class="muted" id="setHint">Правок нет</span>
+          </div>
         </div>
+        <div class="muted" style="margin-top:8px">Действует сразу после сохранения; каждая правка попадает в журнал строкой «было → стало». Лимиты персонала владельца не касаются.</div>
 
         <!-- В4-этап 5: зона стала сущностью со своей ценой часа -->
         <div class="sect">Зоны и цена часа</div>
@@ -6293,88 +6253,119 @@ function armZoneDelete(btn, id){
   });
 }
 
-/* ── Настройки экономики (А5, только owner) ── */
+/* ── Настройки экономики (А5, только owner) ──
+   З7-и1 (№41): карточки по смыслу из одного списка — [ключ, id поля, подпись, от, до, шаг].
+   id полей прежние (на них опираются проверки), границы — те же, что settingBounds на
+   сервере. «Алерты» (З22-и1) и «Бухгалтерия» встанут сюда же своими карточками. */
+const SETTINGS_GROUPS = [
+  {t:'Монеты и XP', why:'Сколько гость получает за игру и пополнение, по какому курсу монеты меняются на минуты и когда тают.', f:[
+    ['xp_per_min', 'set_xp', 'XP за минуту игры', 1, 1000],
+    ['coins_per_min', 'set_coins', 'Монет за минуту игры', 0, 1000],
+    ['coins_per_pln', 'set_rate', 'Кэшбек-монеты за 1 zł пополнения (деньги идут в кошелёк отдельно)', 1, 100],
+    ['coins_per_pln_spend', 'set_spend', 'Монет за 1 zł при списании — курс погашения', 1, 1000],
+    ['coin_spend_max_min', 'set_spendcap', 'Потолок минут за одну выдачу (0 — без лимита)', 0, 1440],
+    ['coin_idle_days', 'set_idle', 'Монеты не трогаем, пока гость не играет, дней', 0, 3650],
+    ['coin_burn_pct_week', 'set_burnpct', 'Потом сгорает в неделю, % (0 — не жечь)', 0, 100],
+    ['coin_burn_warn_days', 'set_burnwarn', 'Предупредить гостя за столько дней до начала', 0, 365]]},
+  {t:'Лимиты персонала', why:'Дневные потолки на каждого админа в клубные сутки; 0 — без лимита. Владельца они не касаются.', f:[
+    ['admin_day_xp_cap', 'set_xpcap', 'XP-начисления в день на админа', 0, 10000000],
+    ['admin_day_deposit_cap_pln', 'set_depcap', 'Депозиты в день на админа, zł', 0, 1000000],
+    ['admin_day_comp_cap_pln', 'set_compcap', 'Компенсации по проблемам в день на админа, zł', 0, 1000000],
+    ['admin_day_comp_cap_min', 'set_compcapmin', 'Компенсации минутами в день на админа', 0, 100000],
+    ['admin_day_case_cap', 'set_casecap', 'Кейсов в день на админа, штук', 0, 1000]]},
+  {t:'Клубные сутки и сегменты', why:'Где кончаются одни клубные сутки и начинаются другие — для сводки смены и отчётов; кого считать новым гостем, а кого пропавшим.', f:[
+    ['report_hour', 'set_rhour', 'Час границы клубных суток (0–23)', 0, 23],
+    ['seg_new_days', 'set_segnew', '«Новые»: первый визит не раньше стольких дней до конца периода — отчёт «Гости», сводка смены, фильтр у стойки', 1, 365],
+    ['seg_lost_days', 'set_seglost', '«Пропавшие»: дней без визита', 2, 730]]},
+  {t:'Сессия у ПК', why:'Правила игры за компьютером: с каким кошельком пускать, сколько ждать на нуле, пауза и простой.', f:[
+    ['min_start_minutes', 'set_minstart', 'Порог старта: кошелёк должен покрывать минут (0 — пускать всех)', 0, 1440],
+    ['zero_grace_min', 'set_grace', 'Ноль кошелька: минут до автозавершения', 0, 60],
+    ['pause_limit_min', 'set_pause', 'Лимит паузы на сессию, мин (0 — пауза выключена)', 0, 240],
+    ['afk_stop_min', 'set_afk', 'AFK: минут простоя до автопаузы или завершения (0 — выкл)', 0, 240]]},
+  {t:'Брони', why:'Кто может бронировать и как бронь держит ПК у стойки.', f:[
+    ['booking_buffer_min', 'set_bkbuf', 'Буфер посадки до чужой брони, мин', 0, 240],
+    ['booking_lock_min', 'set_bklock', 'За сколько минут ПК придержан под гостя', 0, 120],
+    ['booking_min_level', 'set_bkminlvl', 'Бронь открыта с уровня (0 — всем)', 0, 100],
+    ['max_active_bookings', 'set_bkmax', 'Живых броней на гостя (0 — без лимита)', 0, 20],
+    ['no_show_min', 'set_noshow', 'No-show: минут от начала брони до сгорания (0 — выкл)', 0, 120]]},
+  {t:'Стрики и ДР', why:'Заморозки стрика за монеты и подарок имениннику раз в год.', f:[
+    ['streak_freeze_cost', 'set_frzcost', 'Заморозка стрика: цена в монетах (0 — механика выкл)', 0, 100000],
+    ['streak_freeze_max', 'set_frzmax', 'Заморозок в запасе у гостя', 0, 10],
+    ['streak_freeze_max_row', 'set_frzrow', 'Сколько дней подряд прикрывает заморозка', 1, 7],
+    ['birthday_case_tier', 'set_bday', 'ДР-подарок: кейс имениннику (0 — выкл, 1 — light … 5 — gods)', 0, 5]]},
+  {t:'Мышь и коврик', why:'Железо зала для студии сенсы: под эту мышь пересчитывается сенса гостя, коврик — эталон длины для замера DPI.', f:[
+    ['mouse_dpi', 'set_mousedpi', 'DPI мыши клуба (0 — не задан; задан — сенса гостя пересчитывается под неё, cm/360 тот же)', 0, 32000, 50],
+    ['mousepad_cm', 'set_mousepad', 'Ширина коврика, см (0 — не задана; тогда гостю предложат лист A4)', 0, 200]]},
+];
+const SETTINGS_SAVE_HTML = '<span data-ic="save"></span>Сохранить';
+let settingsLoaded = {}; // значения с сервера — правка сравнивается с ними
+const settingsFields = () => SETTINGS_GROUPS.flatMap(g => g.f.map(([key, id, label, min, max, step]) => [key, id, label, min, max, step || 0, g.t]));
+
 async function renderSettings(){
   renderZones();    // В4-5: цены зон живут здесь же, в «Экономике»
   renderPackages(); // Е2-и4: и пакеты времени — там же, это тот же прайс
   renderBoardBox(); // Ж8-и3: табло зала — токен и ссылка
   try{
     const d = await api('/admin/settings');
-    document.getElementById('set_xp').value = d.settings.xp_per_min;
-    document.getElementById('set_coins').value = d.settings.coins_per_min;
-    document.getElementById('set_rate').value = d.settings.coins_per_pln;
-    document.getElementById('set_spend').value = d.settings.coins_per_pln_spend;
-    document.getElementById('set_spendcap').value = d.settings.coin_spend_max_min;
-    document.getElementById('set_idle').value = d.settings.coin_idle_days;
-    document.getElementById('set_burnpct').value = d.settings.coin_burn_pct_week;
-    document.getElementById('set_burnwarn').value = d.settings.coin_burn_warn_days;
-    document.getElementById('set_xpcap').value = d.settings.admin_day_xp_cap;
-    document.getElementById('set_depcap').value = d.settings.admin_day_deposit_cap_pln;
-    document.getElementById('set_compcap').value = d.settings.admin_day_comp_cap_pln ?? 0; // Ж0-и2 (Ж-Р2)
-    document.getElementById('set_compcapmin').value = d.settings.admin_day_comp_cap_min ?? 0;
-    document.getElementById('set_casecap').value = d.settings.admin_day_case_cap ?? 0; // З0-и4
-    document.getElementById('set_rhour').value = d.settings.report_hour;
-    document.getElementById('set_segnew').value = d.settings.seg_new_days;
-    document.getElementById('set_seglost').value = d.settings.seg_lost_days;
-    document.getElementById('set_minstart').value = d.settings.min_start_minutes;
-    document.getElementById('set_grace').value = d.settings.zero_grace_min;
-    document.getElementById('set_pause').value = d.settings.pause_limit_min;
-    document.getElementById('set_afk').value = d.settings.afk_stop_min;
-    document.getElementById('set_mousedpi').value = d.settings.mouse_dpi ?? 0; // С2-и1 (SENS.md)
-    document.getElementById('set_mousepad').value = d.settings.mousepad_cm ?? 0; // С4-и3 (SENS.md)
-    document.getElementById('set_bkbuf').value = d.settings.booking_buffer_min;
-    document.getElementById('set_bklock').value = d.settings.booking_lock_min;
-    document.getElementById('set_bkminlvl').value = d.settings.booking_min_level;
-    document.getElementById('set_bkmax').value = d.settings.max_active_bookings;
-    document.getElementById('set_noshow').value = d.settings.no_show_min;
-    document.getElementById('set_frzcost').value = d.settings.streak_freeze_cost;
-    document.getElementById('set_frzmax').value = d.settings.streak_freeze_max;
-    document.getElementById('set_frzrow').value = d.settings.streak_freeze_max_row;
-    document.getElementById('set_bday').value = d.settings.birthday_case_tier;
+    settingsLoaded = d.settings || {};
+    paintSettings();
   }catch(e){ toast('⚠ ' + e.message); }
 }
-async function saveSettings(){
-  const body = {
-    xp_per_min: parseInt(document.getElementById('set_xp').value),
-    coins_per_min: parseInt(document.getElementById('set_coins').value),
-    coins_per_pln: parseInt(document.getElementById('set_rate').value),
-    coins_per_pln_spend: parseInt(document.getElementById('set_spend').value),
-    coin_spend_max_min: parseInt(document.getElementById('set_spendcap').value),
-    coin_idle_days: parseInt(document.getElementById('set_idle').value),
-    coin_burn_pct_week: parseInt(document.getElementById('set_burnpct').value),
-    coin_burn_warn_days: parseInt(document.getElementById('set_burnwarn').value),
-    admin_day_xp_cap: parseInt(document.getElementById('set_xpcap').value),
-    admin_day_deposit_cap_pln: parseInt(document.getElementById('set_depcap').value),
-    admin_day_comp_cap_pln: parseInt(document.getElementById('set_compcap').value), // Ж0-и2
-    admin_day_comp_cap_min: parseInt(document.getElementById('set_compcapmin').value),
-    admin_day_case_cap: parseInt(document.getElementById('set_casecap').value), // З0-и4
-    report_hour: parseInt(document.getElementById('set_rhour').value),
-    seg_new_days: parseInt(document.getElementById('set_segnew').value),
-    seg_lost_days: parseInt(document.getElementById('set_seglost').value),
-    min_start_minutes: parseInt(document.getElementById('set_minstart').value),
-    zero_grace_min: parseInt(document.getElementById('set_grace').value),
-    pause_limit_min: parseInt(document.getElementById('set_pause').value),
-    afk_stop_min: parseInt(document.getElementById('set_afk').value),
-    mouse_dpi: parseInt(document.getElementById('set_mousedpi').value) || 0, // С2-и1
-    mousepad_cm: parseInt(document.getElementById('set_mousepad').value) || 0, // С4-и3
-    booking_buffer_min: parseInt(document.getElementById('set_bkbuf').value),
-    booking_lock_min: parseInt(document.getElementById('set_bklock').value),
-    booking_min_level: parseInt(document.getElementById('set_bkminlvl').value),
-    max_active_bookings: parseInt(document.getElementById('set_bkmax').value),
-    no_show_min: parseInt(document.getElementById('set_noshow').value),
-    streak_freeze_cost: parseInt(document.getElementById('set_frzcost').value),
-    streak_freeze_max: parseInt(document.getElementById('set_frzmax').value),
-    streak_freeze_max_row: parseInt(document.getElementById('set_frzrow').value),
-    birthday_case_tier: parseInt(document.getElementById('set_bday').value),
-  };
-  for (const k in body){
-    if (!Number.isInteger(body[k]) || body[k] < 0){ toast('⚠ Нужны целые неотрицательные числа'); return; }
+function paintSettings(){
+  document.getElementById('setGrid').innerHTML = SETTINGS_GROUPS.map(g => `<div class="setcard">
+    <h4>${esc(g.t)}</h4><div class="why">${esc(g.why)}</div>
+    ${g.f.map(([key, id, label, min, max, step]) => `<label for="${id}">${esc(label)}</label>
+      <input id="${id}" class="input" type="number" min="${min}" max="${max}"${step ? ` step="${step}"` : ''} value="${esc(settingsLoaded[key] ?? '')}" oninput="settingsDirty()">
+      ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>` : ''}`).join('')}
+  </div>`).join('');
+  settingsDirty();
+}
+// что изменилось против сервера: {ключ: число}; пустое поле — NaN, его не пропустит проверка
+function settingsChanged(){
+  const out = {};
+  for (const [key, id] of settingsFields()){
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const v = el.value.trim() === '' ? NaN : Number(el.value);
+    if (v !== Number(settingsLoaded[key])) out[key] = v;
   }
-  try{
-    await api('/admin/settings', {method:'PUT', body:JSON.stringify(body)});
-    toast('✓ Настройки сохранены — действуют на новые начисления');
-    renderSettings();
-  }catch(e){ toast('⚠ ' + e.message); }
+  return out;
+}
+function settingsDirty(){
+  const ch = settingsChanged(), cards = [];
+  for (const [key, id, , , , , card] of settingsFields()){
+    const on = key in ch;
+    document.getElementById(id)?.classList.toggle('changed', on);
+    if (on && !cards.includes(card)) cards.push(card);
+  }
+  const n = Object.keys(ch).length;
+  setText('setHint', n ? `Изменено: ${n} — ${cards.join(', ')}` : 'Правок нет');
+  document.getElementById('setBar').classList.toggle('dirty', n > 0);
+  document.getElementById('setUndo').classList.toggle('hidden', n === 0);
+  document.getElementById('setRhourWarn')?.classList.toggle('hidden', !('report_hour' in ch));
+}
+async function saveSettings(btn){
+  const ch = settingsChanged(), n = Object.keys(ch).length;
+  if (!n){ toast('Правок нет — сохранять нечего'); return; }
+  for (const [key, id, label, min, max] of settingsFields()){
+    if (key in ch && !(Number.isInteger(ch[key]) && ch[key] >= min && ch[key] <= max)){
+      toast(`⚠ ${label}: целое от ${min} до ${max}`);
+      document.getElementById(id).focus();
+      return;
+    }
+  }
+  const go = async () => {
+    if (btn){ clearTimeout(btn._t); btn.dataset.armed = ''; btn.innerHTML = SETTINGS_SAVE_HTML; mountIcons(btn); }
+    try{
+      const d = await api('/admin/settings', {method:'PUT', body:JSON.stringify(ch)});
+      settingsLoaded = d.settings || settingsLoaded;
+      paintSettings();
+      toast(`✓ Сохранено настроек: ${n} — в журнале «было → стало»`);
+    }catch(e){ toast('⚠ ' + e.message); }
+  };
+  // граница суток переписывает прошлые отчёты — сохраняем со взводом
+  if ('report_hour' in ch && btn) armButton(btn, '<span data-ic="save"></span>Ещё раз — сдвинуть границу суток', go);
+  else go();
 }
 
 /* Ж8-и3 (Ж-Р12): табло зала. Токен выпускает сервер — «1234» у входа не секрет;
