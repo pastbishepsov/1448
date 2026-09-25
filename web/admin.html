@@ -363,7 +363,10 @@
        background:rgba(255,255,255,.05); color:var(--dim); white-space:nowrap}
   .dlt.up{color:var(--green); background:rgba(52,211,153,.13)}
   .dlt.dn{color:var(--acc3); background:rgba(255,39,64,.13)}
-  .input[type=date]{color-scheme:dark; min-width:148px; padding:7px 10px}
+  /* З7-и2 (№42): дата — «дд.мм.гггг» в текстовом поле (как у брони, Ж7-и3), кривая — оранжевой рамкой */
+  .dfield{font-variant-numeric:tabular-nums}
+  .segs .dfield, .toolrow .dfield{width:130px; min-width:0; padding:7px 10px}
+  .dfield.bad{border-color:var(--orange); box-shadow:0 0 0 1px rgba(251,146,60,.35)}
   #repLabel{font-size:12px}
   /* на телефоне владельца плотность таблиц не нужна — панель периода и так
      съедает первый экран; переключатель остаётся в «Журнале» */
@@ -779,7 +782,7 @@
           <input id="audQ" class="input" placeholder="Ник гостя или админа…" autocomplete="off" style="min-width:200px">
           <!-- Ж3-и3: владелец смотрит любой день клубных суток; админ — только текущие -->
           <div class="segs ownerOnly hidden" title="Клубные сутки — от часа отчёта">
-            <input id="audDay" class="input" type="date" style="min-width:150px" onchange="audDaySet(this.value)">
+            <input id="audDay" class="input dfield" placeholder="дд.мм.гггг" maxlength="10" inputmode="numeric" autocomplete="off" aria-label="День журнала" oninput="dateClean(this)" onchange="audDayTyped(this)">
             <button id="audAllDays" class="on" onclick="audDaySet('')">Все дни</button>
           </div>
           <div class="segs" title="Плотность таблиц">
@@ -808,9 +811,9 @@
         </div>
         <div class="toolrow">
           <div class="segs" style="align-items:center">
-            <input id="repFrom" class="input" type="date" aria-label="Начало периода">
+            <input id="repFrom" class="input dfield" placeholder="дд.мм.гггг" maxlength="10" inputmode="numeric" autocomplete="off" aria-label="Начало периода" oninput="dateClean(this)" onchange="dateMark(this)" onkeydown="if(event.key==='Enter')repCustom()">
             <span class="muted" style="align-self:center">—</span>
-            <input id="repTo" class="input" type="date" aria-label="Конец периода">
+            <input id="repTo" class="input dfield" placeholder="дд.мм.гггг" maxlength="10" inputmode="numeric" autocomplete="off" aria-label="Конец периода" oninput="dateClean(this)" onchange="dateMark(this)" onkeydown="if(event.key==='Enter')repCustom()">
             <button class="btn ghost mini" onclick="repCustom()"><span data-ic="chart"></span>Показать</button>
           </div>
           <div class="segs" id="repDens" title="Плотность таблиц">
@@ -3950,8 +3953,14 @@ function audDaySet(v){
   audDay = v || '';
   const all = document.getElementById('audAllDays'), inp = document.getElementById('audDay');
   if (all) all.classList.toggle('on', !audDay);
-  if (inp && !audDay) inp.value = '';
+  if (inp){ inp.value = audDay ? ruDate(audDay) : ''; inp.classList.remove('bad'); }
   renderAudit();
+}
+// З7-и2: день набирают «дд.мм.гггг»; кривой — подсветка, журнал остаётся на прежнем дне
+function audDayTyped(el){
+  const iso = dateIso(el);
+  if (iso === null){ dateMark(el); return; }
+  audDaySet(iso);
 }
 function audMerge(items, append){
   const seen = new Set(audData.map(x => x.id));
@@ -3997,7 +4006,7 @@ async function renderAudit(useCache){
 function paintAudit(){
   const q = audQ.toLowerCase();
   const rows = audData.filter(x => !q || (x.nickname||'').toLowerCase().includes(q) || (x.admin||'').toLowerCase().includes(q));
-  const dayNote = audDay && isOwner() ? `<div class="muted" style="margin-bottom:8px">Клубные сутки ${esc(audDay)} — от часа отчёта до следующего</div>` : '';
+  const dayNote = audDay && isOwner() ? `<div class="muted" style="margin-bottom:8px">Клубные сутки ${esc(ruDate(audDay))} — от часа отчёта до следующего</div>` : '';
   setHTML('auditTable', rows.length === 0
     ? dayNote + (audData.length === 0
       ? '<div class="empty"><span data-ic="scroll"></span>Журнал пуст — действия персонала будут записываться сюда</div>'
@@ -5044,7 +5053,10 @@ function repPreset(p, btn){
   renderReports();
 }
 function repCustom(){
-  const f = document.getElementById('repFrom').value, t = document.getElementById('repTo').value;
+  const f = dateOf('repFrom', 'Начало периода');
+  if (f === null) return;
+  const t = dateOf('repTo', 'Конец периода');
+  if (t === null) return;
   if (!f){ toast('⚠ Укажи дату начала'); return; }
   if (t && t < f){ toast('⚠ Конец периода раньше начала'); return; }
   repPeriod = {from:f, to:t || f};
@@ -5116,8 +5128,10 @@ async function renderReports(){
     document.getElementById('repLabel').textContent =
       repDate(p.from) + ' — ' + repDate(p.to) + ' · ' + repPlural(p.days, 'день', 'дня', 'дней') +
       ' · сравнение с ' + repDate(pv.from) + ' — ' + repDate(pv.to);
-    document.getElementById('repFrom').value = p.from;
-    document.getElementById('repTo').value = p.to;
+    for (const [id, v] of [['repFrom', p.from], ['repTo', p.to]]){
+      const el = document.getElementById(id);
+      el.value = ruDate(v); el.classList.remove('bad');
+    }
     ({money:paintMoney, guests:paintGuests, load:paintLoad, staff:paintStaff, coins:paintCoins})[repTab](d);
     if (repTab === 'coins') loadBurnPreview();
     mountIcons(body);
@@ -5399,6 +5413,27 @@ function mondayOf(d){
   const x = new Date(d); x.setHours(12, 0, 0, 0);
   x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
   return x;
+}
+/* З7-и2 (№42): поле даты владельца — «дд.мм.гггг» независимо от языка системы, как у брони
+   (Ж7-и3): разбор — parseRuDate, наружу — ISO. type="date" показывал порядок ОС — на
+   английской Windows мм/дд/гггг. */
+const DATE_FIELD = 'class="input dfield" placeholder="дд.мм.гггг" maxlength="10" inputmode="numeric" autocomplete="off" oninput="dateClean(this)" onchange="dateMark(this)"';
+// '' — пусто, null — не дата, иначе ГГГГ-ММ-ДД
+function dateIso(el){
+  const v = ((el && el.value) || '').trim();
+  if (!v) return '';
+  const d = parseRuDate(v);
+  return d ? isoDate(d) : null;
+}
+// пока набирают — без подсветки; кривая дата видна, когда поле отпустили или жмут «Сохранить»
+function dateMark(el){ el.classList.toggle('bad', dateIso(el) === null); }
+function dateClean(el){ el.classList.remove('bad'); }
+// дата поля для запроса: ISO или ''; кривая — подсветка, фокус, тост и null
+function dateOf(id, label){
+  const el = document.getElementById(id);
+  const v = dateIso(el);
+  if (v === null){ el.classList.add('bad'); el.focus(); toast('⚠ ' + label + ': дата в виде дд.мм.гггг'); }
+  return v;
 }
 function isoDate(d){
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -5806,7 +5841,7 @@ function tsEdit(id){
     ${isNew ? `<label class="muted" style="margin-bottom:-6px">Сотрудник</label>
       <input id="ts_nick" class="input" placeholder="ник" autocomplete="off">` : ''}
     <label class="muted" style="margin-bottom:-6px">Дата смены (день её начала)</label>
-    <input id="ts_date" class="input" type="date" value="${isNew ? today : e.date}">
+    <input id="ts_date" ${DATE_FIELD} value="${ruDate(isNew ? today : e.date)}">
     <div style="display:flex; gap:8px">
       <div style="flex:1">
         <label class="muted" style="margin-bottom:-6px">Пришёл</label>
@@ -5828,7 +5863,10 @@ function tsEdit(id){
 }
 async function tsSave(id){
   const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
-  const body = {date: v('ts_date'), start: v('ts_start'), end: v('ts_end'), note: v('ts_note')};
+  const date = dateOf('ts_date', 'Дата смены');
+  if (date === null) return;
+  if (!date){ toast('⚠ Нужна дата смены'); return; }
+  const body = {date, start: v('ts_start'), end: v('ts_end'), note: v('ts_note')};
   if (!id) body.nickname = v('ts_nick');
   if (!id && !body.nickname){ toast('⚠ Нужен ник сотрудника'); return; }
   if (!body.start || !body.end){ toast('⚠ Нужны время прихода и ухода'); return; }
@@ -5885,7 +5923,7 @@ function hireDrawer(){
     <label class="muted" style="margin-bottom:-6px">Должность</label>
     <input id="hr_pos" class="input" placeholder="администратор">
     <label class="muted" style="margin-bottom:-6px">Работает с</label>
-    <input id="hr_hired" class="input" type="date" value="${today}">
+    <input id="hr_hired" ${DATE_FIELD} value="${ruDate(today)}">
     <label class="muted" style="margin-bottom:-6px">Оплата</label>
     <div style="display:flex; gap:8px; flex-wrap:wrap">
       <select id="hr_ratetype" class="input" style="flex:1; min-width:130px" onchange="hrRateSync()">
@@ -5909,10 +5947,12 @@ function hrRateSync(){
 async function doHire(){
   const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
   const rateType = v('hr_ratetype');
+  const hired = dateOf('hr_hired', 'Работает с');
+  if (hired === null) return;
   const body = {
     nickname: v('hr_nick'), password: v('hr_pass'),
     full_name: v('hr_name'), phone: v('hr_phone'), position: v('hr_pos'),
-    hired_at: v('hr_hired'), rate_type: rateType,
+    hired_at: hired, rate_type: rateType,
     rate_amount: rateType === 'none' ? 0 : parseFloat(v('hr_rate') || '0'),
   };
   if (!body.nickname || !body.password){ toast('⚠ Нужны ник и пароль'); return; }
@@ -5930,7 +5970,7 @@ function dismissDrawer(id, nick){
   openDrawer('Увольнение · ' + nick, `
   <div class="uform">
     <label class="muted" style="margin-bottom:-6px">Последний рабочий день</label>
-    <input id="dm_date" class="input" type="date" value="${today}">
+    <input id="dm_date" ${DATE_FIELD} value="${ruDate(today)}">
     <label class="muted" style="margin-bottom:-6px">Причина — для себя, в журнал</label>
     <input id="dm_reason" class="input" placeholder="напр. ушёл учиться">
     <div class="muted">Аккаунт останется гостевым: история смен и сессий не пропадёт, человек сможет приходить играть. Со всех смен начиная с завтра снимется автоматически.</div>
@@ -5941,7 +5981,9 @@ function dismissDrawer(id, nick){
   </div>`);
 }
 async function doDismiss(id, nick){
-  const body = {date: document.getElementById('dm_date').value,
+  const date = dateOf('dm_date', 'Последний рабочий день');
+  if (date === null) return;
+  const body = {date,
                 reason: document.getElementById('dm_reason').value.trim()};
   try{
     const d = await api('/admin/staff/' + id + '/dismiss', {method:'POST', body:JSON.stringify(body)});
@@ -5971,7 +6013,7 @@ async function staffCard(id){
       <label class="muted" style="margin-bottom:-6px">Должность</label>
       <input id="sc_pos" class="input" placeholder="администратор, старший смены" value="${esc(p.position||'')}">
       <label class="muted" style="margin-bottom:-6px">Работает с</label>
-      <input id="sc_hired" class="input" type="date" value="${p.hired_at||''}">
+      <input id="sc_hired" ${DATE_FIELD} value="${ruDate(p.hired_at||'')}">
       <label class="muted" style="margin-bottom:-6px">Оплата</label>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <select id="sc_ratetype" class="input" style="flex:1; min-width:130px" onchange="scRateSync()">
@@ -6007,9 +6049,11 @@ function scRateSync(){
 async function saveStaffCard(id){
   const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
   const rateType = v('sc_ratetype');
+  const hired = dateOf('sc_hired', 'Работает с');
+  if (hired === null) return;
   const body = {
     full_name: v('sc_name'), phone: v('sc_phone'), position: v('sc_pos'),
-    hired_at: v('sc_hired'), rate_type: rateType,
+    hired_at: hired, rate_type: rateType,
     rate_amount: rateType === 'none' ? 0 : parseFloat(v('sc_rate') || '0'),
     note: v('sc_note'),
   };
