@@ -99,4 +99,11 @@ func TestIsBookingOverlapErr(t *testing.T) {
 	if isBookingOverlapErr(errors.New("duplicate key value violates unique constraint (SQLSTATE 23505)")) {
 		t.Error("UNIQUE спутан с EXCLUDE")
 	}
+	// З7-и5: встречные записи брони ждали друг друга — база сняла одну; это та же гонка за слот
+	if !isBookingOverlapErr(errors.New("ERROR: deadlock detected (SQLSTATE 40P01)")) {
+		t.Error("взаимная блокировка встречных броней не распознана — гость получит 500 вместо «слот заняли»")
+	}
+	if isBookingOverlapErr(errors.New("ERROR: could not serialize access due to concurrent update (SQLSTATE 40001)")) {
+		t.Error("сбой сериализации (40001) — не пересечение броней")
+	}
 }

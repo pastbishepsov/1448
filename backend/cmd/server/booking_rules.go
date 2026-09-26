@@ -242,13 +242,19 @@ func bookingGuestChecks(user *models.User, start time.Time, durationMin int, now
 
 // isBookingOverlapErr — ограничение bookings_no_overlap (миграция 061,
 // SQLSTATE 23P01): два запроса успели пройти проверку в коде, победил один.
+// З7-и5: та же гонка может кончиться и взаимной блокировкой (40P01). EXCLUDE
+// сверяет пересечение уже после записи, и две встречные записи ждут друг друга,
+// пока база не снимет одну. Запись брони — один оператор, и ждать его может
+// только встречная запись брони на тот же ПК, так что 40P01 здесь значит одно:
+// слот взял встречный запрос. Раньше это было 500 «не получилось сохранить».
 func isBookingOverlapErr(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "bookings_no_overlap") || strings.Contains(msg, "23P01") ||
-		strings.Contains(msg, "exclusion constraint")
+		strings.Contains(msg, "exclusion constraint") ||
+		strings.Contains(msg, "40P01") || strings.Contains(msg, "deadlock detected")
 }
 
 const slotBusyRaceMessage = "Этот ПК только что забронировали на это время — выбери другой ПК или время"

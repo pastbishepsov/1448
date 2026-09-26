@@ -2,7 +2,9 @@
 """Ж6 «Касса» (Ж-Р8, №16, 17, 26, 32): постоплата товаров как кухня, долг гостя = кухня + бар,
 «Рассчитать» одной операцией, корзина/чек с receipt_id, заказ кухни от стойки, закрытие смены с
 пересчётом наличных. Живой e2e против стенда с моком агента.
-Идемпотентен: сессии Guest29 снимает, продажи/заказы отменяет или рассчитывает, смену admin2 закрывает."""
+Идемпотентен: сессии Guest29 снимает, продажи/заказы отменяет или рассчитывает, смену admin2 закрывает.
+На долгоживущем стенде не ломается (З7-и5): товар под проверку докладывает сама приходом, новые сообщения канала
+персонала ищет по id — канал отдаёт последние 100."""
 import os, json, subprocess, sys, time, os, urllib.request, urllib.error, datetime as dt
 
 from _env import API, BASE, HOST, PORT, DB, SRV_LOG, MOCK_AGENT, agent_log  # стенд задаётся окружением, см. README
@@ -51,8 +53,16 @@ g29 = sql("SELECT id FROM users WHERE nickname='Guest29'"); g28 = sql("SELECT id
 adm2 = sql("SELECT id FROM users WHERE nickname='admin2'")
 pcs = {p["name"]: p for p in api("GET", "/admin/computers", None, a1)[1]["computers"]}
 P9 = pcs["PC-09"]
+# трек З, З7-и5: товар под проверку докладывает сама — приходом, как на стойке. Каждый прогон съедает
+# несколько штук насовсем (расчёт долга — настоящая продажа), и на долгоживущем стенде остатка переставало
+# хватать: проверка падала на «нужно ≥3 позиции с остатком ≥6», хотя касса была ни при чём
+act = [x for x in api("GET", "/admin/goods", None, a1)[1]["goods"] if x["active"]]
+assert len(act) >= 3, "нужно ≥3 активных позиции на стенде"
+for x in act[:3]:
+    if x["stock"] < 30:
+        s, d = api("POST", f"/admin/goods/{x['id']}/stock", {"delta": 30 - x["stock"], "reason": "supply", "note": "e2e_zh6: приход под проверку"}, ot)
+        assert s == 200, f"приход {x['name']}: {s} {d}"
 goods = [x for x in api("GET", "/admin/goods", None, a1)[1]["goods"] if x["active"] and x["stock"] >= 6]
-assert len(goods) >= 3, "нужно ≥3 позиции с остатком ≥6 на стенде"
 GA, GB, GC = goods[0], goods[1], goods[2]
 stock = lambda gid: int(sql(f"SELECT stock FROM goods WHERE id='{gid}'"))
 wallet = lambda uid: int(sql(f"SELECT wallet_grosz FROM users WHERE id='{uid}'"))
@@ -74,6 +84,11 @@ def revenue_today():
 def sales_today(tok=a1):
     return api("GET", "/admin/sales", None, tok)[1]
 def card_stats(uid): return api("GET", f"/admin/users/{uid}", None, a1)[1]["stats"]
+def fresh(after, before):
+    """новые сообщения канала персонала — по id, а не по длине списка: канал отдаёт последние 100, и на
+    долгоживущем стенде длина перестаёт расти (трек З, З7-и5)"""
+    seen = {m["id"] for m in before}
+    return [m for m in after if m["id"] not in seen]
 
 # ── A: постоплата (и1) ──
 s, d = api("POST", "/admin/sales", {"good_id": GA["id"], "method": "later", "guest_id": g29}, a1)
@@ -249,7 +264,7 @@ check("уход с пересчётом (−20) → 200: closeout.expected = pre
 row = sql(f"SELECT diff_grosz || '|' || skipped::text || '|' || (work_entry_id IS NOT NULL)::text || '|' || note FROM shift_closeouts WHERE user_id='{adm2}' ORDER BY created_at DESC LIMIT 1")
 check("shift_closeouts: diff −2000 гр, skipped=false, work_entry_id, note", row == "-2000|false|true|сдал Ане", row)
 staff1 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
-new_msgs = staff1[len(staff0):] if len(staff1) > len(staff0) else [m for m in staff1 if m not in staff0]
+new_msgs = fresh(staff1, staff0)
 # трек З, З1-и2 (Д4): деньги — служебной строкой «только владельцу», заметка — от admin2 всем
 check("владельцу в канал персонала: служебная строка «admin2 … расхождение −20.00 zł» и заметка admin2 «Передал смену: сдал Ане»",
       any(m.get("kind") == "system" and m.get("visible_to") == "owner" and "admin2" in m["text"] and "расхождение −20.00 zł" in m["text"] for m in new_msgs)
@@ -269,7 +284,7 @@ s, d = api("POST", "/admin/work/stop", {}, a2)
 co = d.get("closeout") or {}
 check("уход без тела → closeout.skipped=true, counted нет", s == 200 and co.get("skipped") is True and "counted_pln" not in co, f"{s} {json.dumps(co, ensure_ascii=False)[:160]}")
 staff3 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
-check("владельцу: «Сдал смену без пересчёта кассы»", any("без пересчёта кассы" in m["text"] for m in staff3[len(staff2):]), json.dumps([m['text'] for m in staff3[len(staff2):]], ensure_ascii=False)[:200])
+check("владельцу: «Сдал смену без пересчёта кассы»", any("без пересчёта кассы" in m["text"] for m in fresh(staff3, staff2)), json.dumps([m['text'] for m in fresh(staff3, staff2)], ensure_ascii=False)[:200])
 # касса сошлась — владельцу строка с суммой (трек З, З1-и1, №1 «а»: раньше молчали — «сошлось»
 # было неотличимо от «вбил ожидаемую цифру»)
 api("POST", "/admin/work/start", {}, a2)
@@ -278,7 +293,7 @@ staff4 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
 s, d = api("POST", "/admin/work/stop", {"counted_pln": pv3["expected_pln"]}, a2)
 staff5 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
 check("касса сошлась → diff 0, владельцу строка «касса сошлась»", s == 200 and near(d["closeout"]["diff_pln"], 0)
-      and any("касса сошлась" in m["text"] for m in staff5[len(staff4):]), f"{s} {d.get('closeout', {}).get('diff_pln')} {json.dumps([m['text'] for m in staff5[len(staff4):]], ensure_ascii=False)[:160]}")
+      and any("касса сошлась" in m["text"] for m in fresh(staff5, staff4)), f"{s} {d.get('closeout', {}).get('diff_pln')} {json.dumps([m['text'] for m in fresh(staff5, staff4)], ensure_ascii=False)[:160]}")
 s, d = api("POST", "/admin/work/stop", {"counted_pln": -5}, a2)
 check("stop без открытой смены / отрицательная сумма → 400 или 409", s in (400, 409), f"{s} {d.get('code')}")
 api("POST", "/admin/work/start", {}, a2)
