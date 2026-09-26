@@ -4870,7 +4870,9 @@ function paintSales(d){
   setText('salesTotal', (d.date || '') + ' · ' + fmtPLN(d.total_pln || 0) + ' zł' +
     (d.wallet_pln ? ' · кошельком: ' + fmtPLN(d.wallet_pln) + ' zł (не выручка)' : '') +
     (d.unpaid ? ' · в долг: ' + fmtPLN(d.unpaid_pln || 0) + ' zł (' + d.unpaid + ', не выручка)' : '') +
-    (d.voided ? ' · отменено: ' + d.voided : ''));
+    (d.voided ? ' · отменено: ' + d.voided : '') +
+    // З8-и4: итог — по всем продажам суток, а список — последние 300 строк
+    (d.total_count > (d.sales || []).length ? ' · в списке последние ' + (d.sales || []).length + ' из ' + d.total_count : ''));
   const rows = d.sales || [];
   salesCache = rows; lastSalesResp = d;
   // группировка по чеку: позиции одного receipt_id — одна строка (сумма, состав), раскрывается кликом

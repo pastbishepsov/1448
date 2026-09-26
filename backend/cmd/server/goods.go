@@ -756,6 +756,16 @@ func roundPLN(v float64) float64 {
 	return float64(int64(v*100+0.5)) / 100
 }
 
+// salesFeedLimit — сколько последних строк отдаёт лента продаж смены; итоги
+// ленты — по всему окну суток (З8-и4).
+const salesFeedLimit = 300
+
+// salesFeedWhere — окно ленты (Ж6, Ж-Р8): проданное в окне И рассчитанное в
+// окне (долг вчерашней смены, закрытый сегодня, — сегодняшние деньги), а
+// неоплаченный долг висит в ленте любого дня, пока гость не рассчитается (как
+// «ждут оплаты» у кухни).
+const salesFeedWhere = "(created_at >= ? AND created_at < ?) OR (paid_at >= ? AND paid_at < ?) OR (paid_at IS NULL AND voided_at IS NULL)"
+
 // GET /admin/sales?date=YYYY-MM-DD — лента продаж (staff).
 // Роли, решение №3 трека Б: admin видит только текущие клубные сутки,
 // owner листает любой день.
@@ -769,14 +779,27 @@ func handleAdminSales(c *gin.Context) {
 	if c.GetString("user_role") != string(models.UserRoleOwner) {
 		from, to, key, _ = shiftWindow("", reportHour, time.Now())
 	}
-	// Ж6 (Ж-Р8): лента смены — проданное в окне И рассчитанное в окне (долг
-	// вчерашней смены, закрытый сегодня, — сегодняшние деньги), а неоплаченный
-	// долг висит в ленте любого дня, пока гость не рассчитается (как «ждут
-	// оплаты» у кухни). В выручку идут только строки с paid_at в окне.
 	var sales []models.Sale
-	db.Where("(created_at >= ? AND created_at < ?) OR (paid_at >= ? AND paid_at < ?) OR (paid_at IS NULL AND voided_at IS NULL)",
-		from, to, from, to).
-		Order("created_at DESC").Limit(300).Find(&sales)
+	db.Where(salesFeedWhere, from, to, from, to).
+		Order("created_at DESC").Limit(salesFeedLimit).Find(&sales)
+
+	// З8-и4: итоги — по всему окну одним запросом, а не по строкам списка: в
+	// загруженный день новая строка вытесняла из трёхсот старую оплаченную, и
+	// «продажи смены» занижались. В выручку идёт только оплаченное в окне
+	// (продано сегодня, рассчитано в другие сутки — деньги не этой смены),
+	// кухня кошельком — отдельно (Г7/Р7: не выручка).
+	var sum struct {
+		N, Voided, Unpaid        int64
+		Total, Wallet, UnpaidPln float64
+	}
+	paid := "voided_at IS NULL AND paid_at >= ? AND paid_at < ?"
+	db.Model(&models.Sale{}).
+		Select("COUNT(*) AS n, COUNT(*) FILTER (WHERE voided_at IS NOT NULL) AS voided, "+
+			"COUNT(*) FILTER (WHERE voided_at IS NULL AND paid_at IS NULL) AS unpaid, "+
+			"COALESCE(SUM(total_pln) FILTER (WHERE voided_at IS NULL AND paid_at IS NULL), 0) AS unpaid_pln, "+
+			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method <> 'wallet'), 0) AS total, "+
+			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method = 'wallet'), 0) AS wallet", from, to, from, to).
+		Where(salesFeedWhere, from, to, from, to).Scan(&sum)
 
 	ids := make([]string, 0, len(sales)*2)
 	for _, s := range sales {
@@ -787,27 +810,12 @@ func handleAdminSales(c *gin.Context) {
 	}
 	nick := nicknamesByID(ids)
 	out := make([]gin.H, 0, len(sales))
-	total, walletTotal, unpaidTotal, voided, unpaid := 0.0, 0.0, 0.0, 0, 0
 	for i := range sales {
-		s := &sales[i]
-		out = append(out, saleOut(s, nick))
-		switch {
-		case s.VoidedAt != nil:
-			voided++
-		case s.PaidAt == nil:
-			unpaid++
-			unpaidTotal += s.TotalPLN
-		case s.PaidAt.Before(from) || !s.PaidAt.Before(to):
-			// продано сегодня, рассчитано в другие сутки — деньги не этой смены
-		case s.Method == "wallet": // Г7/Р7: кухня кошельком — не выручка
-			walletTotal += s.TotalPLN
-		default:
-			total += s.TotalPLN
-		}
+		out = append(out, saleOut(&sales[i], nick))
 	}
-	c.JSON(http.StatusOK, gin.H{"date": key, "count": len(out), "sales": out,
-		"total_pln": roundPLN(total), "wallet_pln": roundPLN(walletTotal), "voided": voided,
-		"unpaid": unpaid, "unpaid_pln": roundPLN(unpaidTotal)})
+	c.JSON(http.StatusOK, gin.H{"date": key, "count": len(out), "total_count": sum.N, "sales": out,
+		"total_pln": roundPLN(sum.Total), "wallet_pln": roundPLN(sum.Wallet), "voided": sum.Voided,
+		"unpaid": sum.Unpaid, "unpaid_pln": roundPLN(sum.UnpaidPln)})
 }
 
 // canVoidSale — чистая (тест в goods_test.go): владелец отменяет любую продажу,
