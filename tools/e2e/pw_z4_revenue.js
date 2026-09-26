@@ -13,7 +13,7 @@ const z = require('./_z');
 
   const page = await z.openAdmin('boss');
   await z.nav(page, 'stats'); // «Деньги» за 7 дней: сегодня — последний столбик
-  const bar = await page.evaluate(() => { const b = [...document.querySelectorAll('#repBody .bars .bar')].pop(); return b ? b.title : null; });
+  const bar = await page.evaluate(() => { const b = [...document.querySelectorAll('#repBody .bars .bar')].pop(); return b ? (b.dataset.tip || b.title) : null; }); // З7-и4: подсказка — data-tip
   z.check('подсказка столбика сегодня: «… · пакеты 50,00 zł»', /пополнения .* · товары .* · пакеты 50,00 zł/.test(bar || ''), bar);
   const row = nick => page.evaluate(n => {
     const tr = [...document.querySelectorAll('#repBody tr')].find(t => t.cells[0] && t.cells[0].textContent.trim().startsWith(n));

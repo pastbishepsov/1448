@@ -339,12 +339,37 @@
   .tp-meta span{font-size:10.5px; color:var(--dim)}
 
   /* ── А5: столбики статистики, подписи формы настроек ── */
-  .bars{display:flex; align-items:flex-end; gap:4px; height:130px; background:var(--panel);
-        border:1px solid var(--hair); border-radius:14px; padding:14px 14px 10px}
-  .bars .bar{flex:1; min-height:2px; background:rgba(255,39,64,.5); border-radius:3px 3px 0 0;
-             transition:background .15s}
-  .bars .bar:hover{background:var(--acc)}
-  .barlabels{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin:6px 6px 0}
+  /* З7-и4 (№44): столбики с осью и числами. Одна серия — один цвет: акцент (контраст с панелью
+     5:1; прежний полупрозрачный — 2:1). Столбик не толще 24 px, скруглён сверху, растёт от нуля;
+     сетка — волосяные линии; число — у самого высокого и у последнего столбика, остальное — в
+     подсказке и в «Числа таблицей». */
+  .chart{margin:0 0 4px}
+  .chart .plot{position:relative; height:170px; background:var(--panel); border:1px solid var(--hair);
+    border-radius:14px; padding:22px 14px 0 58px}
+  .chart .ygrid{position:absolute; left:58px; right:14px; top:22px; bottom:0; pointer-events:none}
+  .chart .yt{position:absolute; left:0; right:0; border-top:1px solid var(--hair)}
+  .chart .yt span{position:absolute; right:calc(100% + 8px); top:-8px; font-size:11px; color:var(--dim);
+    font-variant-numeric:tabular-nums; white-space:nowrap}
+  .chart .bars{position:relative; display:grid; height:100%; outline:none}
+  .chart .bars:focus-visible{outline:2px solid var(--acc); outline-offset:4px; border-radius:6px}
+  .chart .bar{position:relative; height:100%; display:flex; align-items:flex-end; justify-content:center}
+  .chart .bar i{display:block; width:min(24px, calc(100% - 2px)); background:var(--acc); border-radius:4px 4px 0 0;
+    transition:background .12s}
+  .chart .bar.on i{background:var(--acc3)}
+  .chart .vl{position:absolute; left:50%; transform:translateX(-50%); font-size:11.5px; font-weight:700; color:var(--txt);
+    white-space:nowrap; font-variant-numeric:tabular-nums; pointer-events:none}
+  .chart .vl.l{left:0; transform:none}
+  .chart .vl.r{left:auto; right:0; transform:none}
+  .chart .xax{display:grid; margin:6px 14px 0 58px; font-size:11px; color:var(--dim)}
+  .chart .xax span{display:flex; justify-content:center; white-space:nowrap}
+  .chart .chtable{margin-top:6px}
+  .chart .chtable summary{cursor:pointer; font-size:12px; color:var(--dim); width:max-content}
+  .chart .chtable summary:hover{color:var(--txt)}
+  .chart .chtable .tablewrap{margin-top:6px}
+  .chtip{position:fixed; z-index:70; pointer-events:none; max-width:min(440px, calc(100vw - 16px)); background:rgba(20,20,23,.97);
+    border:1px solid var(--hair); border-radius:10px; padding:7px 10px; font-size:12px; color:var(--dim);
+    box-shadow:0 10px 28px rgba(0,0,0,.5)}
+  .chtip b{display:block; color:var(--txt); font-size:15px; font-variant-numeric:tabular-nums}
   /* В2: плитки товаров — продажа в один тап у стойки */
   .gtiles{display:flex; flex-wrap:wrap; gap:10px; margin:2px 0 10px}
   .gtile{background:var(--card); border:1px solid var(--hair); border-radius:12px; padding:10px 14px;
@@ -5098,14 +5123,88 @@ function repKpi(label, value, delta, opt){
 }
 /* График-столбики. Период целиком без данных рисуем не пустой коробкой,
    а честной заглушкой — иначе владелец решит, что отчёт сломался. */
-function repChart(items, valueOf, titleOf, fromLbl, toLbl){
-  const max = Math.max(...items.map(valueOf), 0);
-  if (!items.length || max === 0) return repEmpty('За этот период данных нет');
-  const gap = items.length > 180 ? 0 : items.length > 60 ? 1 : 4;
-  return `<div class="bars" style="gap:${gap}px">${items.map(x =>
-      `<div class="bar" style="height:${Math.max(2, Math.round(valueOf(x)/max*100))}%" title="${titleOf(x)}"></div>`).join('')}</div>
-    <div class="barlabels">${(fromLbl || []).concat(toLbl || []).map(l => '<span>' + l + '</span>').join('')}</div>`;
+/* З7-и4 (№44): столбики с осью и числами. o: name — что на графике; value(x) — число; fmt(v) — число
+   у столбика; full(v) — число в подсказке и таблице; tick(v) — деление оси, unit — единица у
+   верхнего; date(x) — какой это столбик; more(x) — из чего число; x(x, i, n) — подпись под
+   столбиком или ''; cols — заголовки «Числа таблицей»; last: false — не подписывать последний
+   столбик (у часов суток он не «сегодня»). */
+function repChart(items, o){
+  const vals = items.map(o.value), n = items.length;
+  const max = Math.max(...vals, 0);
+  if (!n || max === 0) return repEmpty('За этот период данных нет');
+  const step = repNiceStep(max / 3), k = Math.ceil(max / step - 1e-9), top = k * step;
+  const ticks = Array.from({length: k + 1}, (_, i) => i * step);
+  const iMax = vals.indexOf(max), lab = new Set([iMax]);
+  // и последний день — если он не ноль и не толкается подписью с самым высоким (при узких столбиках нужен запас)
+  if (o.last !== false && vals[n - 1] > 0 && n - 1 - iMax >= Math.max(1, Math.ceil(n * 60 / 700))) lab.add(n - 1);
+  const h = v => (v / top * 100).toFixed(2);
+  const cols = `grid-template-columns:repeat(${n},minmax(0,1fr))`;
+  return `<figure class="chart">
+    <div class="plot">
+      <div class="ygrid">${ticks.map((v, i) => `<div class="yt" style="bottom:${h(v)}%"><span>${esc(o.tick(v) + (i === k && o.unit ? ' ' + o.unit : ''))}</span></div>`).join('')}</div>
+      <div class="bars" style="${cols}" tabindex="0" aria-label="${esc(o.name)} — стрелки ← → по столбикам">${items.map((x, i) => {
+        const v = vals[i], d = o.date(x), f = o.full(v), m = o.more ? o.more(x) : '';
+        return `<div class="bar" data-v="${v}" data-date="${esc(d)}" data-full="${esc(f)}" data-more="${esc(m)}" data-tip="${esc(d + ' · ' + f + (m ? ' · ' + m : ''))}">`
+          + (v > 0 ? `<i style="height:max(2px, ${h(v)}%)"></i>` : '')
+          // у крайнего узкого столбика число прижимается внутрь графика, у широкого — стоит по центру
+          + (lab.has(i) ? `<span class="vl${n > 12 && i === n - 1 ? ' r' : n > 12 && i === 0 ? ' l' : ''}" style="bottom:calc(${h(v)}% + 4px)">${esc(o.fmt(v))}</span>` : '')
+          + '</div>'; }).join('')}</div>
+    </div>
+    <div class="xax" style="${cols}">${items.map((x, i) => `<span>${esc(o.x(x, i, n))}</span>`).join('')}</div>
+    <details class="chtable"><summary>Числа таблицей</summary><div class="tablewrap"><table>
+      <thead><tr>${o.cols.map(c => '<th>' + esc(c) + '</th>').join('')}</tr></thead>
+      <tbody>${items.map((x, i) => `<tr><td>${esc(o.date(x))}</td><td>${esc(o.full(vals[i]))}</td>${o.more ? `<td class="muted">${esc(o.more(x))}</td>` : ''}</tr>`).join('')}</tbody>
+    </table></div></details>
+  </figure>`;
 }
+// круглый шаг оси: 1, 2, 2,5 или 5 × 10ⁿ — не меньше raw
+function repNiceStep(raw){
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  return [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= raw - 1e-12);
+}
+// подпись дня под столбиком: не больше 12 на график, последний день — всегда
+function repDayTick(x, i, n){ return (n - 1 - i) % Math.ceil(n / 12) === 0 ? repDate(x.date) : ''; }
+const repTickPLN = v => v.toLocaleString('ru-RU', {maximumFractionDigits: 2});
+const repTickH = v => v.toLocaleString('ru-RU', {maximumFractionDigits: 1});
+/* подсказка столбика — одна на страницу: наведение мыши и клавиатура (Tab встаёт на график
+   целиком, ← → Home End ходят по столбикам). Текст — через textContent. */
+function chTip(bar){
+  let t = document.getElementById('chtip');
+  if (!bar){ if (t) t.classList.add('hidden'); document.querySelectorAll('.chart .bar.on').forEach(b => b.classList.remove('on')); return; }
+  if (!t){ t = document.createElement('div'); t.id = 'chtip'; t.className = 'chtip hidden'; t.setAttribute('role', 'tooltip'); document.body.appendChild(t); }
+  document.querySelectorAll('.chart .bar.on').forEach(b => b.classList.remove('on'));
+  bar.classList.add('on');
+  const lines = [['b', bar.dataset.full], ['div', bar.dataset.date], ['div', bar.dataset.more]].filter(([, v]) => v);
+  t.replaceChildren(...lines.map(([tag, v]) => { const e = document.createElement(tag); e.textContent = v; return e; }));
+  t.classList.remove('hidden');
+  const r = bar.getBoundingClientRect(), p = bar.parentElement.getBoundingClientRect();
+  let y = p.top - t.offsetHeight - 8;
+  if (y < 8) y = p.bottom + 8;
+  t.style.left = Math.max(8, Math.min(r.left + r.width / 2 - t.offsetWidth / 2, innerWidth - t.offsetWidth - 8)) + 'px';
+  t.style.top = y + 'px';
+}
+document.addEventListener('pointerover', e => { const b = e.target.closest && e.target.closest('.chart .bar'); if (b) chTip(b); });
+document.addEventListener('pointerout', e => {
+  const g = e.target.closest && e.target.closest('.chart .bars');
+  if (g && !(e.relatedTarget && g.contains(e.relatedTarget)) && document.activeElement !== g) chTip(null);
+});
+document.addEventListener('focusin', e => {
+  if (!(e.target.matches && e.target.matches('.chart .bars'))) return;
+  const bars = e.target.querySelectorAll('.bar');
+  chTip(bars[e.target.dataset.k !== undefined ? +e.target.dataset.k : bars.length - 1]);
+});
+document.addEventListener('focusout', e => { if (e.target.matches && e.target.matches('.chart .bars')) chTip(null); });
+document.addEventListener('keydown', e => {
+  const g = e.target.matches && e.target.matches('.chart .bars') ? e.target : null;
+  if (!g || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  const bars = g.querySelectorAll('.bar'), n = bars.length;
+  let k = g.dataset.k !== undefined ? +g.dataset.k : n - 1;
+  k = e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : Math.max(0, Math.min(n - 1, k + (e.key === 'ArrowLeft' ? -1 : 1)));
+  g.dataset.k = k;
+  chTip(bars[k]);
+  e.preventDefault();
+});
+document.addEventListener('scroll', () => { const t = document.getElementById('chtip'); if (t && !t.classList.contains('hidden')) chTip(null); }, true);
 function repEmpty(text){ return `<div class="empty"><span data-ic="chart"></span>${text}</div>`; }
 /* Е2-и6: минуты словами. «10 800 мин» владелец в уме в часы не переводит,
    а именно часами он и думает о зале. */
@@ -5208,9 +5307,9 @@ function paintMoney(d){
        ${repKpi('Открытых сейчас', ic.open || 0, undefined, {title:'ждут решения админа — «Журнал → Проблемы»'})}
      </div>
      <div class="sect">Выручка по дням</div>
-     ${repChart(days, x => x.value,
-        x => repDate(x.date) + ' · ' + fmtPLN(x.value) + ' zł (' + moneyParts(x) + ')',
-        [repDate(d.period.from)], [repDate(d.period.to)])}
+     ${repChart(days, {name:'Выручка по дням', value:x => x.value, unit:'zł', tick:repTickPLN,
+        fmt:v => (v >= 100 ? Math.round(v).toLocaleString('ru-RU') : fmtPLN(v)) + ' zł', full:v => fmtPLN(v) + ' zł',
+        date:x => repDate(x.date), more:x => moneyParts(x), x:repDayTick, cols:['День', 'Выручка', 'Из чего']})}
      <div class="sect">Что покупают</div>
      ${repTable(['Позиция','Выручка','Штук'], (d.top_goods||[]).map(g =>
         `<tr><td><b>${esc(g.name)}</b></td><td>${fmtPLN(g.revenue_pln)} zł</td><td>${g.items}</td></tr>`),
@@ -5274,11 +5373,13 @@ function paintLoad(d){
        ${repKpi('Средняя сессия', t.avg_minutes + ' мин', k.avg_minutes, {was:w.avg_minutes + ' мин'})}
      </div>
      <div class="sect">Часы игры по дням</div>
-     ${repChart(days, x => x.value, x => repDate(x.date) + ' · ' + repHours(x.value) + ' · сессий: ' + x.count,
-                [repDate(d.period.from)], [repDate(d.period.to)])}
+     ${repChart(days, {name:'Часы игры по дням', value:x => x.value, unit:'ч', tick:repTickH, fmt:repHours, full:repHours,
+        date:x => repDate(x.date), more:x => repPlural(x.count, 'сессия', 'сессии', 'сессий'), x:repDayTick,
+        cols:['День', 'Наиграно', 'Сессий']})}
      <div class="sect">Загрузка по часам суток${d.peak_hour >= 0 ? ' · пик в ' + d.peak_hour + ':00' : ''}</div>
-     ${repChart(hours, x => x.hours, x => x.hour + ':00 · ' + repHours(x.hours) + ' · сессий: ' + x.sessions,
-                ['0:00','6:00','12:00'], ['18:00','23:00'])}
+     ${repChart(hours, {name:'Загрузка по часам суток', value:x => x.hours, unit:'ч', tick:repTickH, fmt:repHours, full:repHours,
+        date:x => x.hour + ':00', more:x => repPlural(x.sessions, 'сессия', 'сессии', 'сессий'),
+        x:(x, i) => i % 3 === 0 ? x.hour + ':00' : '', cols:['Час', 'Наиграно', 'Сессий'], last:false})}
      <div class="sect">Зоны</div>
      ${repTable(['Зона','ПК','Наиграно','Сессий','Занятость'], (d.zones||[]).map(z =>
         `<tr><td><b>${esc(z.zone)}</b></td><td>${z.computers}</td><td>${repHours(z.hours)}</td>
