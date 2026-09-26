@@ -28,7 +28,10 @@ package main
 // «Из них провёл ты» — справка тем же счётом по операциям одного человека.
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -174,4 +177,228 @@ func drawerStartMessage(nick string, counted int64) string {
 	}
 	return fmt.Sprintf("🧮 Ящик: начальный остаток %.2f zł, пересчитал %s — дальше касса считает ящик от этой суммы",
 		models.PLNFromGrosz(counted), nick)
+}
+
+// ── З8-и2: инкассация и коррекция ─────────────────────────────────────────
+//
+// Инкассация (№64 «б») — деньги вынули из ящика в банк или сейф: вносит админ
+// (обязательно с заметкой «по чьему указанию», Д11) или владелец; за админа
+// владельцу — служебная строка в канал. Коррекция «в ящике сейчас N zł» —
+// только владелец и с причиной: ожидаемое становится N, в событии — названная
+// сумма и поправка к ожидаемому. Отменяет событие только владелец; строка
+// остаётся с пометкой. Инкассацию в журнале видят и админы — деньги ушли из их
+// ящика; коррекцию и отмену — только владелец (audit.go).
+
+const (
+	maxCashPLN  = 1_000_000 // как у пересчёта при сдаче
+	maxCashNote = 200
+)
+
+var errNoDrawer = errors.New("no_drawer")
+
+var cashEventErrors = map[string]string{
+	"invalid_request": "Нужны вид события, сумма и заметка",
+	"bad_kind":        "Вид события: collect — инкассация, correct — коррекция",
+	"bad_amount":      "Сумма — от 0,01 до 1 000 000 zł, не больше двух знаков после запятой",
+	"bad_stated":      "Сколько в ящике — от 0 до 1 000 000 zł, не больше двух знаков после запятой",
+	"bad_dest":        "Куда: bank — в банк, safe — в сейф",
+	"need_note":       "Напиши, по чьему указанию — без этого инкассация не запишется",
+	"need_reason":     "У коррекции нужна причина",
+	"bad_note":        "Заметка — до 200 символов",
+	"owner_only":      "Коррекцию остатка делает владелец",
+	"no_drawer":       "Ящика ещё нет — начальный остаток задаст первая сдача с пересчётом",
+	"no_club":         "Клуб не настроен",
+	"event_not_found": "Событие ящика не найдено",
+	"already_void":    "Событие уже отменено",
+	"db_error":        "Не удалось записать — попробуй ещё раз",
+}
+
+func cashFail(c *gin.Context, status int, code string) {
+	c.JSON(status, gin.H{"code": code, "message": cashEventErrors[code]})
+}
+
+type cashEventRequest struct {
+	Kind      string   `json:"kind"`
+	AmountPLN *float64 `json:"amount_pln"` // инкассация: сколько вынули
+	StatedPLN *float64 `json:"stated_pln"` // коррекция: сколько в ящике сейчас
+	Dest      string   `json:"dest"`       // инкассация: bank | safe
+	Note      string   `json:"note"`
+}
+
+// checkCashEvent — что не так с событием ящика (чистая, тест); "" — можно писать.
+func checkCashEvent(req cashEventRequest, owner bool) string {
+	note := strings.TrimSpace(req.Note)
+	switch req.Kind {
+	case models.CashEventCollect:
+		if req.AmountPLN == nil || !validatePLN(*req.AmountPLN, maxCashPLN) {
+			return "bad_amount"
+		}
+		if req.Dest != "bank" && req.Dest != "safe" {
+			return "bad_dest"
+		}
+		if !owner && note == "" {
+			return "need_note"
+		}
+	case models.CashEventCorrect:
+		if !owner {
+			return "owner_only"
+		}
+		if req.StatedPLN == nil || !(*req.StatedPLN == 0 || validatePLN(*req.StatedPLN, maxCashPLN)) {
+			return "bad_stated"
+		}
+		if note == "" {
+			return "need_reason"
+		}
+	default:
+		return "bad_kind"
+	}
+	if len([]rune(note)) > maxCashNote {
+		return "bad_note"
+	}
+	return ""
+}
+
+var cashDestRU = map[string]string{"bank": "в банк", "safe": "в сейф"}
+
+// cashEventWhat — суть события без вида (чистая, тест): «300.00 zł в сейф» или
+// «в ящике 250.00 zł (поправка -150.00)». Вид уже назван меткой строки журнала.
+func cashEventWhat(e *models.CashEvent) string {
+	if e.Kind == models.CashEventCorrect && e.StatedGrosz != nil {
+		return fmt.Sprintf("в ящике %.2f zł (поправка %+.2f)", models.PLNFromGrosz(*e.StatedGrosz), models.PLNFromGrosz(e.AmountGrosz))
+	}
+	what := fmt.Sprintf("%.2f zł", models.PLNFromGrosz(e.AmountGrosz))
+	if e.Dest != nil {
+		what += " " + cashDestRU[*e.Dest]
+	}
+	return what
+}
+
+// cashEventText — событие словами с видом и заметкой (чистая, тест): строка
+// журнала об отмене — там вид события метка не называет.
+func cashEventText(e *models.CashEvent) string {
+	kind := "инкассация "
+	if e.Kind == models.CashEventCorrect {
+		kind = "коррекция: "
+	}
+	return kind + cashEventWhat(e) + noteSuffix(e.Note)
+}
+
+// cashCollectLine — служебная строка владельцу об инкассации админа (чистая, тест).
+func cashCollectLine(nick string, e *models.CashEvent) string {
+	if nick == "" {
+		nick = "Сотрудник"
+	}
+	line := "🧮 " + nick + ": инкассация " + cashEventWhat(e)
+	if e.Note != "" {
+		line += " — «" + e.Note + "»"
+	}
+	return line
+}
+
+func cashEventOut(e *models.CashEvent) gin.H {
+	row := gin.H{"id": e.ID, "kind": e.Kind, "amount_pln": models.PLNFromGrosz(e.AmountGrosz), "note": e.Note,
+		"created_at": e.CreatedAt, "created_by": e.CreatedBy}
+	if e.Dest != nil {
+		row["dest"] = *e.Dest
+	}
+	if e.StatedGrosz != nil {
+		row["stated_pln"] = models.PLNFromGrosz(*e.StatedGrosz)
+	}
+	if e.VoidedAt != nil {
+		row["voided_at"], row["voided_by"] = e.VoidedAt, e.VoidedBy
+	}
+	return row
+}
+
+// drawerNowOut — «должно быть» сейчас: ответ ручек ящика, чтобы экран не
+// переспрашивал.
+func drawerNowOut(h gin.H) gin.H {
+	st := drawerAt(db, time.Now())
+	h["expected_pln"], h["baseline"] = models.PLNFromGrosz(st.Expected), st.Point == nil
+	return h
+}
+
+// POST /admin/cash/events — инкассация (staff) или коррекция остатка (owner).
+// Коррекция считает поправку к ожидаемому под тем же замком, что и сдачи.
+func handleCashEventCreate(c *gin.Context) {
+	var req cashEventRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		cashFail(c, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	owner := c.GetString("user_role") == string(models.UserRoleOwner)
+	if code := checkCashEvent(req, owner); code != "" {
+		status := http.StatusBadRequest
+		if code == "owner_only" {
+			status = http.StatusForbidden
+		}
+		cashFail(c, status, code)
+		return
+	}
+	club, ok := defaultClub()
+	if !ok {
+		cashFail(c, http.StatusConflict, "no_club")
+		return
+	}
+	adminID, _ := uuid.Parse(c.GetString("user_id"))
+	ev := models.CashEvent{ClubID: club.ID, Kind: req.Kind, Note: strings.TrimSpace(req.Note), CreatedBy: &adminID}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", drawerLock).Error; err != nil {
+			return err
+		}
+		ev.CreatedAt = time.Now()
+		if req.Kind == models.CashEventCorrect {
+			st := drawerAt(tx, ev.CreatedAt)
+			if st.Point == nil {
+				return errNoDrawer
+			}
+			stated := models.GroszFromPLN(*req.StatedPLN)
+			ev.StatedGrosz, ev.AmountGrosz = &stated, stated-st.Expected
+		} else {
+			dest := req.Dest
+			ev.Dest, ev.AmountGrosz = &dest, models.GroszFromPLN(*req.AmountPLN)
+		}
+		return tx.Create(&ev).Error
+	})
+	if errors.Is(err, errNoDrawer) {
+		cashFail(c, http.StatusConflict, "no_drawer")
+		return
+	}
+	if err != nil {
+		cashFail(c, http.StatusInternalServerError, "db_error")
+		return
+	}
+	action := "cash_collect"
+	if ev.Kind == models.CashEventCorrect {
+		action = "cash_correct"
+	}
+	logAdminAction(c, action, nil, cashEventWhat(&ev)+noteSuffix(ev.Note))
+	if ev.Kind == models.CashEventCollect && !owner {
+		nick := nicknamesByID([]string{adminID.String()})[adminID.String()]
+		postSystem(cashCollectLine(nick, &ev), true, map[string]any{"cash_event": true})
+	}
+	c.JSON(http.StatusCreated, drawerNowOut(gin.H{"event": cashEventOut(&ev)}))
+}
+
+// POST /admin/cash/events/:id/void — отменить ошибочное событие ящика (owner).
+// Строка остаётся с пометкой: кассовая книга покажет и её, и кто отменил.
+func handleCashEventVoid(c *gin.Context) {
+	var ev models.CashEvent
+	if err := db.First(&ev, "id = ?", c.Param("id")).Error; err != nil {
+		cashFail(c, http.StatusNotFound, "event_not_found")
+		return
+	}
+	adminID, _ := uuid.Parse(c.GetString("user_id"))
+	res := db.Model(&models.CashEvent{}).Where("id = ? AND voided_at IS NULL", ev.ID).
+		Updates(map[string]any{"voided_at": time.Now(), "voided_by": adminID})
+	if res.Error != nil {
+		cashFail(c, http.StatusInternalServerError, "db_error")
+		return
+	}
+	if res.RowsAffected == 0 {
+		cashFail(c, http.StatusConflict, "already_void")
+		return
+	}
+	logAdminAction(c, "cash_event_void", nil, "отмена: "+cashEventText(&ev))
+	c.JSON(http.StatusOK, drawerNowOut(gin.H{"voided": ev.ID}))
 }

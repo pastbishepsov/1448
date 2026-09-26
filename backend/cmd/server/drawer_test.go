@@ -85,3 +85,60 @@ func TestDrawerCloseout(t *testing.T) {
 		t.Errorf("строка владельцу: %q", line)
 	}
 }
+
+// З8-и2: инкассация — админ с заметкой «по чьему указанию» (Д11), владелец и
+// без неё; коррекция — только владелец и с причиной, в ящике от 0.
+func TestCheckCashEvent(t *testing.T) {
+	f := func(v float64) *float64 { return &v }
+	collect := func(amount *float64, dest, note string) cashEventRequest {
+		return cashEventRequest{Kind: "collect", AmountPLN: amount, Dest: dest, Note: note}
+	}
+	correct := func(stated *float64, note string) cashEventRequest {
+		return cashEventRequest{Kind: "correct", StatedPLN: stated, Note: note}
+	}
+	cases := []struct {
+		name  string
+		req   cashEventRequest
+		owner bool
+		want  string
+	}{
+		{"инкассация админа с заметкой", collect(f(300), "safe", "по указанию Ани"), false, ""},
+		{"инкассация админа без заметки", collect(f(300), "safe", "  "), false, "need_note"},
+		{"инкассация владельца без заметки", collect(f(300), "bank", ""), true, ""},
+		{"инкассация на ноль", collect(f(0), "safe", "x"), false, "bad_amount"},
+		{"инкассация без суммы", collect(nil, "safe", "x"), false, "bad_amount"},
+		{"три знака после запятой", collect(f(1.005), "safe", "x"), false, "bad_amount"},
+		{"больше миллиона", collect(f(1_000_000.01), "safe", "x"), true, "bad_amount"},
+		{"куда — в карман", collect(f(10), "pocket", "x"), false, "bad_dest"},
+		{"заметка длиннее 200", collect(f(10), "safe", strings.Repeat("я", 201)), false, "bad_note"},
+		{"коррекция админа", correct(f(250), "пересчитал"), false, "owner_only"},
+		{"коррекция владельца", correct(f(250), "пересчитал вечером"), true, ""},
+		{"в ящике ноль — можно", correct(f(0), "всё сдали в банк"), true, ""},
+		{"в ящике меньше нуля", correct(f(-1), "x"), true, "bad_stated"},
+		{"коррекция без причины", correct(f(250), ""), true, "need_reason"},
+		{"неизвестный вид", cashEventRequest{Kind: "spend", AmountPLN: f(10), Dest: "safe", Note: "x"}, true, "bad_kind"},
+	}
+	for _, tc := range cases {
+		if got := checkCashEvent(tc.req, tc.owner); got != tc.want {
+			t.Errorf("%s: %q, ожидалось %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestCashEventText(t *testing.T) {
+	safe, stated := "safe", int64(25000)
+	collect := models.CashEvent{Kind: "collect", AmountGrosz: 30000, Dest: &safe, Note: "по указанию Ани"}
+	if got := cashEventText(&collect); got != "инкассация 300.00 zł в сейф · по указанию Ани" {
+		t.Errorf("журнал инкассации: %q", got)
+	}
+	if got := cashEventWhat(&collect); got != "300.00 zł в сейф" {
+		t.Errorf("строка журнала — без вида, его называет метка: %q", got)
+	}
+	if got := cashCollectLine("admin1", &collect); got != "🧮 admin1: инкассация 300.00 zł в сейф — «по указанию Ани»" {
+		t.Errorf("строка владельцу: %q", got)
+	}
+	correct := models.CashEvent{Kind: "correct", AmountGrosz: -15000, StatedGrosz: &stated, Note: "пересчитал вечером"}
+	if got := cashEventText(&correct); got != "коррекция: в ящике 250.00 zł (поправка -150.00) · пересчитал вечером" {
+		t.Errorf("журнал коррекции: %q", got)
+	}
+}

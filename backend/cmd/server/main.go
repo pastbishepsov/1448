@@ -267,6 +267,7 @@ func main() {
 		adm.POST("/work/stop", handleWorkStop) // Ж6-и4: + {counted_pln, note} — сдача кассы
 		adm.GET("/work/me", handleWorkMe)
 		adm.GET("/work/closeout", handleWorkCloseoutPreview) // Ж6-и4: сколько должно быть в ящике
+		adm.POST("/cash/events", handleCashEventCreate)      // З8-и2: инкассация; коррекция — владелец (проверка в ручке)
 		adm.GET("/staff-chat", handleStaffChatList)          // Е6: канал админ ↔ владелец (Р7)
 		adm.POST("/staff-chat", handleStaffChatPost)
 		adm.POST("/staff-chat/read", handleStaffChatRead)
@@ -333,6 +334,7 @@ func main() {
 		own.GET("/reports/guests", handleReportGuests)
 		own.GET("/reports/load", handleReportLoad)
 		own.GET("/reports/staff", handleReportStaff)
+		own.POST("/cash/events/:id/void", handleCashEventVoid) // З8-и2: отмена события ящика
 		// Смены и график персонала (Б11): правит только owner
 		own.POST("/shifts", handleAdminShiftCreate)
 		own.PATCH("/shifts/:id", handleAdminShiftUpdate)

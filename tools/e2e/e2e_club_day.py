@@ -49,7 +49,10 @@ check(f"настройка report_hour={rh} (сейчас {hour_now}:xx) → к�
 # ── A: депозит «в 23:50» виден админу «после полуночи» тех же клубных суток ──
 s, dep = api("POST", f"/admin/users/{g}/deposit", {"amount_pln": 7, "method": "cash"}, a1)
 sql(f"UPDATE deposits SET created_at = (date_trunc('day', now() AT TIME ZONE '{TZ}') - interval '10 minutes') AT TIME ZONE '{TZ}' WHERE id='{dep['deposit_id']}'")  # вчера 23:50 по часам клуба
-s, au = api("GET", "/admin/audit?kind=deposit&limit=200", None, a1)
+# курсор — сразу после этого депозита: страница не зависит от того, сколько пополнений стенд накопил за сутки
+# (трек З, З8-и2: после десятка прогонов за день новые пополнения вытесняли его за 200-ю строку)
+cur = sql(f"SELECT to_char((created_at + interval '1 second') AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') FROM deposits WHERE id='{dep['deposit_id']}'")
+s, au = api("GET", f"/admin/audit?kind=deposit&limit=200&before={cur}", None, a1)
 ids = [x.get("id") for x in au.get("items", [])]
 check("журнал админа: депозит со вчерашних 23:50 виден (клубные сутки ещё те же)", f"deposit:{dep['deposit_id']}" in ids, f"day={au.get('day')} from={au.get('from')} n={len(ids)}")
 check("окно журнала админа начинается вчера в report_hour", str(au.get("from", "")).find(f"T{rh:02d}:00:00") > 0 and au.get("day") == str((dt.date.today() - dt.timedelta(days=1))), f"{au.get('from')} {au.get('day')}")

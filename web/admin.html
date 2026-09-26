@@ -1482,7 +1482,7 @@ function scheduleWSRetry(){
 }
 
 function pcName(id){ const pc = hallData.find(p => p.id === id); return pc ? pc.name : 'ПК'; }
-const AUD_SELF = {work_start:1, work_stop:1, shift_close:1}; // З3-и1: строки журнала «о себе» — в ленте с ником автора
+const AUD_SELF = {work_start:1, work_stop:1, shift_close:1, cash_collect:1, cash_correct:1, cash_event_void:1}; // З3-и1: строки журнала «о себе» — в ленте с ником автора; З8-и2: события ящика
 function feedLine(m){
   const d = m.data || {};
   switch (m.type){
@@ -2703,6 +2703,7 @@ function armButton(btn, armedHTML, fn){
   }
   clearTimeout(btn._t);
   btn.dataset.armed = '';
+  btn.innerHTML = btn._orig; mountIcons(btn); // З8-и2: если шторка не перерисуется (ошибка ввода) — надпись как была
   fn();
 }
 function armEndSession(btn, id, nick, startedAt){
@@ -3884,7 +3885,8 @@ const AUD_GROUPS = {
   money: ['deposit','deposit_void','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn','incident_compensate', // К8: компенсация — обязательство
           'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
           'kitchen_done','kitchen_pay','kitchen_cancel', // кухню считают у той же стойки (ревью 26.08)
-          'sale_paid','settle','kitchen_order','shift_close'], // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
+          'sale_paid','settle','kitchen_order','shift_close', // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
+          'cash_collect','cash_correct','cash_event_void'], // З8-и2: инкассация, коррекция остатка, отмена события ящика
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -3917,6 +3919,7 @@ const AUD_LABEL = {
   staff_card:'персонал: карточка',
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
   work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка', shift_close:'сдача кассы', // Ж6-и4
+  cash_collect:'касса: инкассация', cash_correct:'касса: коррекция остатка', cash_event_void:'касса: отмена события', // З8-и2
   login_failed:'вход: неверный пароль', // З0-и3: серия неудач входа персонала — только владельцу
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   coin_redeem:'монеты: время за монеты',
@@ -3949,6 +3952,7 @@ const AUD_ICON = {
   shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',
   shift_assign:'cal', shift_unassign:'out',
   sale:'box', sale_void:'cross', sale_paid:'coins', settle:'coins', shift_close:'coins', kitchen_order:'box', // Ж6
+  cash_collect:'coins', cash_correct:'wrench', cash_event_void:'cross', // З8-и2
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out',
   work_start:'clock', work_stop:'check', work_edit:'edit',
@@ -5812,7 +5816,9 @@ function paintShiftChip(){
    персонала, сводка, табель). Ящика ещё нет (первая сдача после обновления) —
    пересчитанное становится остатком на начало, расхождения нет.
    Уйти без пересчёта можно — отдельной кнопкой и с пометкой. */
-let closeoutPrev = null, closeoutCounted = '';
+let closeoutPrev = null, closeoutCounted = '', closeoutNote = '';
+// З8-и2: инкассация из «Моей смены» — форма раскрывается кнопкой, введённое переживает перерисовку
+let ccOpen = false, ccAmount = '', ccDest = 'safe', ccNote = '';
 // З1-и1: начало окна сдачи — время, а если смена началась не сегодня — ещё и дата («22.09 21:00»)
 function coFrom(iso){ const d = new Date(iso), t = new Date();
   return (d.toDateString() === t.toDateString() ? '' : String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ') + hhmm(iso); }
@@ -5862,10 +5868,24 @@ function paintMyShift(){
              <tr><td class="muted">На начало</td><td class="muted">${fmtPLN(cp.opening_pln || 0)} zł — ${coOpening(cp)}</td></tr>
              <tr><td class="muted">Из чего</td><td class="muted">${coParts(cp)}</td></tr>`}
            </table>
+           ${ccOpen ? `<div class="uform" style="margin-top:8px">
+             <div class="muted"><b>Инкассация</b> — вынуть деньги из ящика в сейф или в банк</div>
+             <input id="ccAmount" class="input" type="number" min="0.01" step="0.01" placeholder="Сколько вынул, zł" value="${esc(ccAmount)}" oninput="ccAmount=this.value">
+             <div class="segs">
+               <button class="${ccDest === 'safe' ? 'on' : ''}" onclick="ccDest='safe'; paintMyShift()">В сейф</button>
+               <button class="${ccDest === 'bank' ? 'on' : ''}" onclick="ccDest='bank'; paintMyShift()">В банк</button>
+             </div>
+             <input id="ccNote" class="input" maxlength="200" placeholder="По чьему указанию — обязательно" value="${esc(ccNote)}" oninput="ccNote=this.value">
+             <button class="btn" style="width:100%; justify-content:center" id="ccSubmit"
+                     onclick="armButton(this, ccArmText(), () => cashCollect())"><span data-ic="coins"></span>Записать инкассацию</button>
+             <button class="btn ghost" style="width:100%; justify-content:center" onclick="ccOpen=false; paintMyShift()">Не сейчас</button>
+             <div class="muted">«Должно быть в ящике» уменьшится на эту сумму; владелец увидит, кто, сколько и по чьему указанию.</div>
+           </div>`
+           : `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:8px" id="ccOpen" onclick="ccOpen=true; paintMyShift()"><span data-ic="coins"></span>Инкассация</button>`}
            <div class="uform" style="margin-top:8px">
              <input id="coCounted" class="input" type="number" min="0" step="0.01" placeholder="Пересчитано, zł" value="${esc(closeoutCounted)}" oninput="closeoutCounted=this.value; coPaintDiff()">
              <div id="coDiff" class="muted">${coDiffText(diff, counted)}</div>
-             <input id="coNote" class="input" placeholder="Передал смену: кому, что не доделано (необязательно)" maxlength="500">
+             <input id="coNote" class="input" placeholder="Передал смену: кому, что не доделано (необязательно)" maxlength="500" value="${esc(closeoutNote)}" oninput="closeoutNote=this.value">
              <button class="btn ${diff != null && diff !== 0 ? 'danger' : ''}" style="width:100%; justify-content:center" id="coSubmit"
                      onclick="armButton(this, 'Ещё раз — сдать смену', () => shiftStop(false))"><span data-ic="out"></span>Сдать смену</button>
              <button class="btn ghost" style="width:100%; justify-content:center"
@@ -5892,6 +5912,24 @@ function coPaintDiff(){
   const el = document.getElementById('coDiff'); if (el) el.textContent = coDiffText(diff, v);
   const btn = document.getElementById('coSubmit'); if (btn) btn.classList.toggle('danger', diff != null && diff !== 0);
 }
+/* З8-и2: инкассация админа — сумма, куда и по чьему указанию (Д11); больше, чем в ящике по расчёту, —
+   второе нажатие это называет. */
+function ccArmText(){
+  const cp = closeoutPrev || {}, v = parseFloat(String(ccAmount).replace(',', '.'));
+  return !cp.baseline && v > (cp.expected_pln || 0) ? 'Больше, чем в ящике по расчёту, — ещё раз' : 'Ещё раз — записать инкассацию';
+}
+async function cashCollect(){
+  const v = parseFloat(String(ccAmount).replace(',', '.'));
+  if (ccAmount === '' || isNaN(v) || v <= 0){ toast('⚠ Сколько вынул из ящика — сумма больше нуля'); return; }
+  if (!ccNote.trim()){ toast('⚠ Напиши, по чьему указанию — без этого инкассация не запишется'); return; }
+  try{
+    const d = await api('/admin/cash/events', {method:'POST', body: JSON.stringify({kind:'collect', amount_pln: Math.round(v * 100) / 100, dest: ccDest, note: ccNote.trim()})});
+    toast('✓ Инкассация ' + fmtPLN(d.event.amount_pln) + ' zł ' + (ccDest === 'bank' ? 'в банк' : 'в сейф') + ' записана'
+      + (d.baseline ? '' : ' · в ящике должно быть ' + fmtPLN(d.expected_pln) + ' zł'));
+    ccOpen = false; ccAmount = ''; ccNote = '';
+    await openMyShift();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
 async function shiftStop(skipCount){
   const body = {};
   if (!skipCount){
@@ -5900,13 +5938,12 @@ async function shiftStop(skipCount){
     if (v < 0){ toast('⚠ Наличных в ящике не бывает меньше нуля'); return; }
     body.counted_pln = Math.round(v * 100) / 100;
   }
-  const note = document.getElementById('coNote');
-  if (note && note.value.trim()) body.note = note.value.trim();
+  if (closeoutNote.trim()) body.note = closeoutNote.trim();
   try{
     const d = await api('/admin/work/stop', {method:'POST', body:JSON.stringify(body)});
     const co = d.closeout;
     toast('✓ Смена закрыта · ' + hm(d.entry.minutes) + (co ? (co.baseline ? ' · начальный остаток ящика ' + fmtPLN(co.counted_pln) + ' zł' : co.skipped ? ' · касса без пересчёта' : (co.diff_pln === 0 ? ' · касса сошлась' : ' · расхождение ' + (co.diff_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(co.diff_pln)) + ' zł — владелец увидит')) : ''));
-    closeoutPrev = null; closeoutCounted = '';
+    closeoutPrev = null; closeoutCounted = ''; closeoutNote = '';
     closeDrawer();
     await loadMyShift();
     renderMyShift();
