@@ -142,3 +142,35 @@ func TestCashEventText(t *testing.T) {
 		t.Errorf("журнал коррекции: %q", got)
 	}
 }
+
+// З8-и3: кассовая книга — дни по стенным часам клуба (в перевод часов сутки
+// 23 и 25 часов), будущих дней нет, сегодняшний обрезан «сейчас»; строка дня
+// сходится всегда: расхождения — остаток после движения.
+func TestBookWindows(t *testing.T) {
+	loc, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Skip("нет базы часовых поясов")
+	}
+	day := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, loc) }
+	now := time.Date(2026, 3, 30, 12, 0, 0, 0, loc)
+	w := bookWindows(makePeriod(day(3, 28), day(4, 2), 8, "custom"), 8, now)
+	if len(w) != 3 {
+		t.Fatalf("дней до «сейчас» (30.03 12:00): %d, ожидалось 3", len(w))
+	}
+	if h := w[0].To.Sub(w[0].From).Hours(); h != 23 {
+		t.Errorf("28.03 → 29.03 (перевод на летнее): %v ч, ожидалось 23", h)
+	}
+	if !w[0].To.Equal(w[1].From) || !w[1].To.Equal(w[2].From) {
+		t.Error("дни должны быть сшиты без щелей")
+	}
+	if !w[2].To.Equal(now) || w[2].From.Hour() != 8 {
+		t.Errorf("сегодня: с %v до «сейчас», получили %v — %v", w[2].From, w[2].From, w[2].To)
+	}
+	autumn := bookWindows(makePeriod(day(10, 24), day(10, 24), 8, "custom"), 8, time.Date(2026, 11, 1, 0, 0, 0, 0, loc))
+	if h := autumn[0].To.Sub(autumn[0].From).Hours(); h != 25 {
+		t.Errorf("24.10 → 25.10 (перевод на зимнее): %v ч, ожидалось 25", h)
+	}
+	if got := bookDiff(35000, 44000, drawerFlow{Deposits: 10000, Refunds: 500}); got != -500 {
+		t.Errorf("на начало 350 + 100 − 5 = 445, на конец 440 → расхождения −5: %d", got)
+	}
+}

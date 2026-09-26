@@ -1,7 +1,7 @@
 // З7-и3 (№43 «а», №45), браузер: в шапке владельца — кто из админов сейчас на смене, а не «смена не открыта»
 // (у владельца своей смены нет); «Я пришёл» и «Моя смена» у владельца скрыты, клик по чипу ведёт в «Персонал».
-// У админа шапка прежняя — его смена. Палитра понимает слова владельца: «касс» ведёт к сдачам кассы в «Отчётах»,
-// «зарплата», «табель», «выручка», «сдачи», «экспорт» — каждое находит, куда идти. admin1 входит через API —
+// У админа шапка прежняя — его смена. Палитра понимает слова владельца: «сдачи» ведёт к сдачам кассы в «Отчётах»
+// (З8-и3: «касс» — в «Бухгалтерию», это pw_z8_book), «зарплата», «табель», «выручка», «экспорт» — каждое находит, куда идти. admin1 входит через API —
 // вход админки сам открывает ему смену (З3-и1), так проверка знает, кто должен быть в чипе.
 const z = require('./_z');
 (async () => {
@@ -38,13 +38,13 @@ const z = require('./_z');
   await owner.keyboard.press('Escape');
   z.check('палитра владельца: у каждого слова есть куда идти — касс, сдачи, зарплата, табель, выручка, экспорт',
     Object.values(words).every(a => a.length > 0), JSON.stringify(words));
-  await pal('касс');
+  await pal('сдачи');
   await owner.screenshot({ path: `${z.OUT}/z_z7_owner_palette.png`, clip: { x: 320, y: 60, width: 800, height: 300 } });
   await owner.keyboard.press('Enter');
   await z.sleep(1500);
   const cash = await owner.evaluate(() => { const k = document.getElementById('shiftKpis'); const r = k && k.getBoundingClientRect();
     return { tab: curTab, pal: document.getElementById('pal').classList.contains('hidden'), inView: !!r && r.height > 0 && r.top >= 0 && r.top < innerHeight }; });
-  z.check('«касс» + Enter → «Отчёты», сводка смены с кассой на экране', cash.tab === 'stats' && cash.pal && cash.inView, JSON.stringify(cash));
+  z.check('«сдачи» + Enter → «Отчёты», сводка смены с кассой на экране', cash.tab === 'stats' && cash.pal && cash.inView, JSON.stringify(cash));
 
   const adm = await z.openAdmin('admin1');
   const achip = await adm.evaluate(() => document.getElementById('shiftTxt').textContent.trim());

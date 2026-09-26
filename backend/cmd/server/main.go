@@ -335,6 +335,7 @@ func main() {
 		own.GET("/reports/load", handleReportLoad)
 		own.GET("/reports/staff", handleReportStaff)
 		own.POST("/cash/events/:id/void", handleCashEventVoid) // З8-и2: отмена события ящика
+		own.GET("/cash/book", handleCashBook)                  // З8-и3: кассовая книга по клубным дням
 		// Смены и график персонала (Б11): правит только owner
 		own.POST("/shifts", handleAdminShiftCreate)
 		own.PATCH("/shifts/:id", handleAdminShiftUpdate)

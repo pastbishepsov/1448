@@ -570,6 +570,17 @@
     .tablewrap tr:first-child{display:none}
     .tablewrap td{display:inline-flex; align-items:center; border:0; padding:0; white-space:normal}
   }
+  /* З8-и3: кассовая книга — строка дня раскрывает сдачи и события; на телефоне у чисел подписи */
+  .accBook tr.accDay{cursor:pointer}
+  .accBook tr.accDet td{white-space:normal; background:var(--card); line-height:1.7}
+  .accBook .accL{display:none}
+  .accBook .accVoid .accT{text-decoration:line-through; color:var(--dim)}
+  @media (max-width:640px){
+    .accBook .accL{display:inline; color:var(--dim); margin-right:4px}
+    .accBook tr.accDet td{display:block; width:100%}
+    /* у владельца в нижней панели теперь 12 кнопок — делят ширину поровну, в 360 px влезают все */
+    .rail button{flex:1 1 0; min-width:0; padding:9px 0}
+  }
 </style>
 </head>
 <body>
@@ -651,6 +662,7 @@
       <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
       <div class="rzone zclub">Клуб</div>
       <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Отчёты"><span data-ic="chart"></span><span class="rlabel">Отчёты</span></button>
+      <button id="r-acc" class="ownerOnly hidden" onclick="nav('acc')" aria-label="Бухгалтерия"><span data-ic="coins"></span><span class="rlabel">Бухгалтерия</span></button>
       <button id="r-staff" onclick="nav('staff')" aria-label="Персонал"><span data-ic="users"></span><span class="rlabel">Персонал</span></button>
       <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Экономика"><span data-ic="gear"></span><span class="rlabel">Экономика</span></button>
       <div class="grow"></div>
@@ -913,6 +925,13 @@
         <div class="tablewrap" id="schTable"><div class="skel"></div><div class="skel"></div></div>
       </section>
 
+      <section id="s-acc" class="hidden">
+        <!-- З8-и3 (№78): «Бухгалтерия» — только владельцу; вкладки (пока одна — «Касса»):
+             ящик клуба по клубным дням, инкассации, коррекции остатка. -->
+        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="cash">Касса</button></div></div>
+        <div id="accBody"><div class="skel"></div><div class="skel"></div></div>
+      </section>
+
       <section id="s-settings" class="hidden">
         <div class="sect">Экономика клуба</div>
         <!-- З7-и1 (№41): карточки по смыслу строит renderSettings из SETTINGS_GROUPS -->
@@ -1017,8 +1036,8 @@
 
 const API = localStorage.getItem('1448_api') ||
   (location.protocol.startsWith('http') ? location.origin + '/api/v1' : 'http://localhost:8080/api/v1');
-const SECTIONS = ['hall','users','bookings','catalog','goods','kitchen','grants','stats','staff','settings'];
-const OWNER_SECTIONS = ['stats','settings']; // Б11: «Персонал» открыт admin'у read-only (график смен)
+const SECTIONS = ['hall','users','bookings','catalog','goods','kitchen','grants','stats','staff','settings','acc']; // З8-и3: «Бухгалтерия» — последней, цифры 1–9 прежние
+const OWNER_SECTIONS = ['stats','settings','acc']; // Б11: «Персонал» открыт admin'у read-only (график смен)
 let curTab = 'hall', refreshIv = null, me = null, lastSync = 0;
 
 /* ── иконки: Phosphor duotone, второй тон var(--acc) (см. DESIGN.md) ── */
@@ -1369,6 +1388,7 @@ function nav(t){
   else if (t === 'stats') renderStats();
   else if (t === 'staff') renderStaff();
   else if (t === 'settings') renderSettings();
+  else if (t === 'acc') renderAcc();
   else refresh();
 }
 
@@ -5512,6 +5532,161 @@ async function renderStats(){
   renderReports(); // В1: отчёты за период
 }
 
+/* ── З8-и3 (№78): «Бухгалтерия» → «Касса», только владельцу. Кассовая книга по клубным дням: на начало,
+   пришло (в подсказке — пополнения · товары и кухня · пакеты), возвраты, инкассации, коррекции,
+   расхождения пересчётов, на конец; строка дня раскрывает сдачи и события ящика. Инкассация, коррекция
+   остатка «в ящике сейчас N» и отмена ошибочного события — здесь же. Строка дня сходится всегда:
+   расхождения — то, что осталось после движения (сервер, cashbook.go). ── */
+let accPeriod = {preset:'d7'}, accData = null, accDay = null;
+let accCol = {amount:'', dest:'bank', note:''}, accCor = {stated:'', note:''};
+const ACC_PRESETS = [['today','Сегодня'], ['yesterday','Вчера'], ['d7','7 дней'], ['d30','30 дней'], ['month','Этот месяц'], ['prev_month','Прошлый месяц'], ['d90','90 дней']];
+const accPLN = v => v == null ? '—' : fmtPLN(v) + ' zł';
+const accSigned = v => !v ? '0,00' : (v > 0 ? '+' : '−') + fmtPLN(Math.abs(v));
+function accQuery(){ return accPeriod.preset ? 'preset=' + accPeriod.preset : 'from=' + accPeriod.from + '&to=' + accPeriod.to; }
+function accPreset(p){ accPeriod = {preset:p}; accDay = null; renderAcc(); }
+function accCustom(){
+  const f = dateOf('accFrom', 'Начало периода');
+  if (f === null) return;
+  const t = dateOf('accTo', 'Конец периода');
+  if (t === null) return;
+  if (!f){ toast('⚠ Укажи дату начала'); return; }
+  if (t && t < f){ toast('⚠ Конец периода раньше начала'); return; }
+  accPeriod = {from:f, to:t || f}; accDay = null; renderAcc();
+}
+async function renderAcc(){
+  const box = document.getElementById('accBody');
+  if (!accData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  try{ accData = await api('/admin/cash/book?' + accQuery()); }
+  catch(e){ box.innerHTML = '<div class="muted">Книга не посчиталась: ' + esc(e.message) + '</div>'; return; }
+  paintAcc();
+}
+function accToggle(date){ accDay = accDay === date ? null : date; paintAcc(); }
+function paintAcc(){
+  const box = document.getElementById('accBody');
+  const d = accData || {}, t = d.totals || {}, now = d.now || {}, per = d.period || {};
+  const days = (d.days || []).slice().reverse(); // свежий день — сверху
+  box.innerHTML = `
+    <div class="kpis">
+      <div class="kpi" title="«должно быть в ящике» — то же, что видит админ в «Моей смене»">В ящике сейчас <b id="accNow">${now.baseline ? '—' : accPLN(now.expected_pln)}</b></div>
+      <div class="kpi" title="пополнения ${fmtPLN(t.deposits_pln)} · товары и кухня ${fmtPLN(t.goods_pln)} · пакеты ${fmtPLN(t.packs_pln)}">Пришло за период <b>${accPLN(t.in_pln)}</b></div>
+      <div class="kpi" title="возвраты налом ${fmtPLN(t.refunds_pln)} · инкассации ${fmtPLN(t.collections_pln)}">Ушло за период <b>${accPLN(t.out_pln)}</b></div>
+      <div class="kpi" title="пересчёты при сдачах: пересчитанное минус ожидаемое">Расхождения <b>${accSigned(t.diff_pln)} zł</b></div>
+    </div>
+    ${now.baseline ? '<div class="muted" style="margin:-6px 0 12px">Ящик ещё не заведён: начальный остаток задаст первая сдача с пересчётом.</div>' : ''}
+    <div class="toolrow">
+      <button class="btn mini" id="accColBtn" onclick="accCollectDrawer()"><span data-ic="coins"></span>Инкассация</button>
+      <button class="btn ghost mini" id="accCorBtn" onclick="accCorrectDrawer()"><span data-ic="wrench"></span>Коррекция остатка</button>
+    </div>
+    <div class="toolrow">
+      <div class="segs" id="accPresets">${ACC_PRESETS.map(([p, n]) => `<button class="${accPeriod.preset === p ? 'on' : ''}" onclick="accPreset('${p}')">${n}</button>`).join('')}</div>
+      <div class="segs" style="align-items:center">
+        <input id="accFrom" ${DATE_FIELD} aria-label="Начало периода" value="${accPeriod.preset ? '' : ruDate(accPeriod.from)}" onkeydown="if(event.key==='Enter')accCustom()">
+        <span class="muted" style="align-self:center">—</span>
+        <input id="accTo" ${DATE_FIELD} aria-label="Конец периода" value="${accPeriod.preset ? '' : ruDate(accPeriod.to)}" onkeydown="if(event.key==='Enter')accCustom()">
+        <button class="btn ghost mini" onclick="accCustom()"><span data-ic="chart"></span>Показать</button>
+      </div>
+    </div>
+    <div class="muted" style="margin:-4px 0 12px">${per.from ? ruDate(per.from) + (per.to !== per.from ? ' — ' + ruDate(per.to) : '') : ''} · клубные сутки · нажми на день — сдачи, инкассации и коррекции</div>
+    ${days.length ? `<div class="tablewrap"><table class="accBook">
+      <tr><th>День</th><th>На начало</th><th>Пришло</th><th>Возвраты</th><th>Инкассации</th><th>Коррекции</th><th>Расхождения</th><th>На конец</th></tr>
+      ${days.map(accRow).join('')}
+    </table></div>` : '<div class="empty">За этот период дней ещё не было</div>'}`;
+  mountIcons(box);
+}
+function accRow(r){
+  const L = s => '<span class="accL">' + s + '</span>';
+  return `<tr class="accDay" data-date="${r.date}" onclick="accToggle('${r.date}')">
+    <td><b>${ruDate(r.date)}</b>${r.today ? '<span class="muted" style="margin-left:6px">сегодня</span>' : ''}</td>
+    <td>${L('на начало')}${r.opening_pln == null ? '<span class="muted" title="' + (r.baseline ? 'ящик заведён в этот день' : 'ящика ещё не было') + '">—</span>' : fmtPLN(r.opening_pln)}</td>
+    <td title="пополнения ${fmtPLN(r.deposits_pln)} · товары и кухня ${fmtPLN(r.goods_pln)} · пакеты ${fmtPLN(r.packs_pln)}">${L('пришло')}${fmtPLN(r.in_pln)}</td>
+    <td>${L('возвраты')}${r.refunds_pln ? '−' + fmtPLN(r.refunds_pln) : '0,00'}</td>
+    <td>${L('инкассации')}${r.collections_pln ? '−' + fmtPLN(r.collections_pln) : '0,00'}</td>
+    <td>${L('коррекции')}${accSigned(r.adjust_pln)}</td>
+    <td${r.diff_pln ? ' style="color:var(--orange)"' : ''}>${L('расхождения')}${accSigned(r.diff_pln)}</td>
+    <td>${L('на конец')}<b>${r.closing_pln == null ? '—' : fmtPLN(r.closing_pln)}</b></td>
+  </tr>${accDay === r.date ? `<tr class="accDet"><td colspan="8">${accDetails(r)}</td></tr>` : ''}`;
+}
+function accDetails(r){
+  const b = r.baseline;
+  const cos = (r.closeouts || []).map(c => `<div>${hhmm(c.created_at)} · <b>${esc(c.nickname || '—')}</b> — ${
+    c.baseline ? 'начальный остаток ' + fmtPLN(c.counted_pln) + ' zł'
+    : c.skipped ? 'ушёл без пересчёта, должно было быть ' + fmtPLN(c.expected_pln) + ' zł'
+    : 'должно ' + fmtPLN(c.expected_pln) + ', пересчитано ' + fmtPLN(c.counted_pln) + (c.diff_pln ? ', расхождение ' + accSigned(c.diff_pln) : ' — сошлось')}${c.note ? ' · ' + esc(c.note) : ''}</div>`).join('');
+  const evs = (r.events || []).map(e => `<div class="${e.voided_at ? 'accVoid' : ''}">${hhmm(e.created_at)} · <span class="accT"><b>${esc(e.nickname || '—')}</b> — ${
+    e.kind === 'correct' ? 'коррекция: в ящике ' + fmtPLN(e.stated_pln) + ' zł, поправка ' + accSigned(e.amount_pln)
+    : 'инкассация ' + fmtPLN(e.amount_pln) + ' zł ' + (e.dest === 'bank' ? 'в банк' : 'в сейф')}${e.note ? ' · ' + esc(e.note) : ''}</span>${e.voided_at
+    ? ' · отменил ' + esc(e.voided_by_nickname || '—') + ' ' + hhmm(e.voided_at)
+    : ` <button class="btn ghost mini" onclick="event.stopPropagation(); armButton(this, 'Точно отменить?', () => accVoid('${e.id}'))">Отменить</button>`}</div>`).join('');
+  return (b ? `<div class="muted">Ящик заведён в ${hhmm(b.at)}: начальный остаток ${fmtPLN(b.pln)} zł, пересчитал ${esc(b.by || '—')}</div>` : '')
+    + `<div class="dsub" style="margin-top:4px">Сдачи</div>${cos || '<div class="muted">сдач не было</div>'}`
+    + `<div class="dsub">Инкассации и коррекции</div>${evs || '<div class="muted">не было</div>'}`;
+}
+function accCollectDrawer(){
+  drawerUserId = null; drawerPCId = null; // шторка — книги, не гостя и не ПК: живые обновления её не перерисуют
+  openDrawer('Инкассация', `<div class="uform">
+    <div class="muted">Деньги вынули из ящика — в банк или в сейф. «Должно быть в ящике» уменьшится на эту сумму.</div>
+    <input id="acAmount" class="input" type="number" min="0.01" step="0.01" placeholder="Сколько вынули, zł" value="${esc(accCol.amount)}" oninput="accCol.amount=this.value">
+    <div class="segs">
+      <button class="${accCol.dest === 'bank' ? 'on' : ''}" onclick="accCol.dest='bank'; accCollectDrawer()">В банк</button>
+      <button class="${accCol.dest === 'safe' ? 'on' : ''}" onclick="accCol.dest='safe'; accCollectDrawer()">В сейф</button>
+    </div>
+    <input id="acNote" class="input" maxlength="200" placeholder="Заметка (необязательно)" value="${esc(accCol.note)}" oninput="accCol.note=this.value">
+    <button class="btn" style="width:100%; justify-content:center" id="acSubmit"
+            onclick="armButton(this, 'Ещё раз — записать инкассацию', () => accCollect())"><span data-ic="coins"></span>Записать инкассацию</button>
+  </div>`);
+}
+async function accCollect(){
+  const v = parseFloat(String(accCol.amount).replace(',', '.'));
+  if (accCol.amount === '' || isNaN(v) || v <= 0){ toast('⚠ Сколько вынули из ящика — сумма больше нуля'); return; }
+  try{
+    const d = await api('/admin/cash/events', {method:'POST', body: JSON.stringify({kind:'collect', amount_pln: Math.round(v * 100) / 100, dest: accCol.dest, note: accCol.note.trim()})});
+    toast('✓ Инкассация ' + fmtPLN(d.event.amount_pln) + ' zł ' + (accCol.dest === 'bank' ? 'в банк' : 'в сейф') + ' записана'
+      + (d.baseline ? '' : ' · в ящике должно быть ' + fmtPLN(d.expected_pln) + ' zł'));
+    accCol = {amount:'', dest:'bank', note:''};
+    closeDrawer();
+    renderAcc();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function accCorText(){
+  const now = (accData || {}).now || {}, v = parseFloat(String(accCor.stated).replace(',', '.'));
+  if (accCor.stated === '' || isNaN(v)) return 'Поправка появится, когда впишешь сумму';
+  const delta = Math.round((v - (now.expected_pln || 0)) * 100) / 100;
+  return delta === 0 ? 'Совпадает с расчётом — поправка 0,00 zł' : 'Поправка ' + accSigned(delta) + ' zł';
+}
+function accCorrectDrawer(){
+  const now = (accData || {}).now || {};
+  if (now.baseline){ toast('⚠ Ящик ещё не заведён — начальный остаток задаст первая сдача с пересчётом'); return; }
+  drawerUserId = null; drawerPCId = null;
+  openDrawer('Коррекция остатка', `<div class="uform">
+    <div class="muted">По расчёту в ящике сейчас <b>${fmtPLN(now.expected_pln)} zł</b>. Впиши, сколько там на самом деле: «должно быть» станет этой суммой, поправка ляжет в книгу.</div>
+    <input id="acStated" class="input" type="number" min="0" step="0.01" placeholder="Сколько в ящике на самом деле, zł" value="${esc(accCor.stated)}"
+           oninput="accCor.stated=this.value; document.getElementById('acDelta').textContent = accCorText()">
+    <div id="acDelta" class="muted">${accCorText()}</div>
+    <input id="acReason" class="input" maxlength="200" placeholder="Причина — обязательно" value="${esc(accCor.note)}" oninput="accCor.note=this.value">
+    <button class="btn" style="width:100%; justify-content:center" id="acCorSubmit"
+            onclick="armButton(this, 'Ещё раз — поправить остаток', () => accCorrect())"><span data-ic="wrench"></span>Поправить остаток</button>
+  </div>`);
+}
+async function accCorrect(){
+  const v = parseFloat(String(accCor.stated).replace(',', '.'));
+  if (accCor.stated === '' || isNaN(v) || v < 0){ toast('⚠ Сколько в ящике — сумма от нуля'); return; }
+  if (!accCor.note.trim()){ toast('⚠ У коррекции нужна причина'); return; }
+  try{
+    const d = await api('/admin/cash/events', {method:'POST', body: JSON.stringify({kind:'correct', stated_pln: Math.round(v * 100) / 100, note: accCor.note.trim()})});
+    toast('✓ Остаток поправлен: в ящике ' + fmtPLN(d.event.stated_pln) + ' zł, поправка ' + accSigned(d.event.amount_pln) + ' zł');
+    accCor = {stated:'', note:''};
+    closeDrawer();
+    renderAcc();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function accVoid(id){
+  try{
+    const d = await api('/admin/cash/events/' + id + '/void', {method:'POST'});
+    toast('✓ Событие отменено' + (d.baseline ? '' : ' · в ящике должно быть ' + fmtPLN(d.expected_pln) + ' zł'));
+    renderAcc();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
 /* ── Б11-и2: график смен в «Персонале». Сетка недели: строки — активные
    шаблоны, колонки пн–вс; admin читает, owner назначает через drawer и
    правит шаблоны. Дата ячейки = день НАЧАЛА смены (ночная — по вечеру). ── */
@@ -6828,6 +7003,7 @@ const PAL_NAV = [
   {t:'goods', name:'Товары', ic:'box'},
   {t:'grants', name:'Журнал', ic:'scroll'}, {t:'stats', name:'Отчёты', ic:'chart'},
   {t:'staff', name:'Персонал', ic:'users'}, {t:'settings', name:'Экономика', ic:'gear'},
+  {t:'acc', name:'Бухгалтерия', ic:'coins'},
 ];
 const PAL_ACTIONS = [
   {k:'seat', name:'Посадить гостя', ic:'clock', run:() => palSeat()},
@@ -6845,7 +7021,9 @@ const PAL_ACTIONS = [
    новые разделы трека (расходы, бухгалтерия, выгрузка) добавляют сюда свои. who: owner — только
    владельцу, admin — только админу. Совпадение — с начала слова или внутри, не по буквам вразброс. */
 const PAL_WORDS = [
-  {who:'owner', words:['касса', 'сдачи', 'сдача кассы', 'расхождение', 'недостача'], name:'Сдачи кассы',
+  {who:'owner', words:['касса', 'кассовая книга', 'ящик', 'инкассация', 'коррекция'], name:'Касса', // З8-и3
+   sub:'Бухгалтерия → ящик по дням, инкассации', ic:'coins', run:() => nav('acc')},
+  {who:'owner', words:['сдачи', 'сдача кассы', 'расхождение', 'недостача'], name:'Сдачи кассы',
    sub:'Отчёты → смена: кто сколько сдал', ic:'coins', run:() => palGoShift()},
   {who:'owner', words:['зарплата', 'выплата', 'к выплате', 'ставка'], name:'К выплате',
    sub:'Отчёты → Персонал', ic:'coins', run:() => palGoReport('staff')},
@@ -6855,6 +7033,8 @@ const PAL_WORDS = [
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
    sub:'Каталог → файл JSON', ic:'save', run:() => { nav('catalog'); exportCatalog(); }},
+  {who:'admin', words:['инкассация', 'в сейф', 'в банк'], name:'Инкассация', // З8-и3
+   sub:'Моя смена → вынуть из ящика', ic:'coins', run:() => { ccOpen = true; openMyShift(); }},
   {who:'admin', words:['касса', 'сдача кассы', 'сдать смену', 'уход'], name:'Сдать смену и кассу',
    sub:'Моя смена', ic:'coins', run:() => openMyShift()},
 ];
@@ -6977,7 +7157,8 @@ function palBuild(){
     if (OWNER_SECTIONS.includes(s.t) && !isOwner()) return;
     const sc = palScore(s.name, q);
     if (!sc) return;
-    items.push({sec:'Разделы', ic:s.ic, name:s.name, kbd:String(SECTIONS.indexOf(s.t) + 1), sc,
+    const k = SECTIONS.indexOf(s.t) + 1; // З8-и3: подсказка клавиши — только у 1–9, «Экономике» и «Бухгалтерии» её нет
+    items.push({sec:'Разделы', ic:s.ic, name:s.name, kbd:k <= 9 ? String(k) : '', sc,
       run:() => { palClose(); nav(s.t); }});
   });
   PAL_ACTIONS.forEach(a => {

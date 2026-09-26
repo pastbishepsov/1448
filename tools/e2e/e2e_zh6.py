@@ -4,7 +4,9 @@
 пересчётом наличных. Живой e2e против стенда с моком агента.
 Идемпотентен: сессии Guest29 снимает, продажи/заказы отменяет или рассчитывает, смену admin2 закрывает.
 На долгоживущем стенде не ломается (З7-и5): товар под проверку докладывает сама приходом, новые сообщения канала
-персонала ищет по id — канал отдаёт последние 100."""
+персонала ищет по id — канал отдаёт последние 100. Лента продаж смены отдаёт последние 300 строк и итог считает по ним
+же (З8-и3, «Найдено по дороге»): когда за сутки продаж больше, итог ленты сверяется мягче — прирост выручки проверяет
+отчёт «Деньги»."""
 import os, json, subprocess, sys, time, os, urllib.request, urllib.error, datetime as dt
 
 from _env import API, BASE, HOST, PORT, DB, SRV_LOG, MOCK_AGENT, agent_log  # стенд задаётся окружением, см. README
@@ -88,6 +90,7 @@ def revenue_today():
     return d["totals"]["goods_pln"], d["totals"]["revenue_pln"]
 def sales_today(tok=a1):
     return api("GET", "/admin/sales", None, tok)[1]
+FULL = 300  # лента продаж смены — последние 300 строк; итог — по ним же (З8-и3, «Найдено по дороге»)
 def card_stats(uid): return api("GET", f"/admin/users/{uid}", None, a1)[1]["stats"]
 def fresh(after, before):
     """новые сообщения канала персонала — по id, а не по длине списка: канал отдаёт последние 100, и на
@@ -115,9 +118,10 @@ later1 = d["sale"]["id"]; rid_later = d["receipt"]["id"]
 check("склад списан сразу (товар выдан)", stock(GA["id"]) == stockA0 - 2, f"{stock(GA['id'])} vs {stockA0 - 2}")
 goods1, rev1 = revenue_today(); st1 = sales_today()
 check("выручка не выросла: goods_pln и revenue_pln как до продажи в долг", near(goods1, goods0) and near(rev1, rev0), f"{goods0}→{goods1}")
+full1 = st1.get("count", 0) >= FULL  # полная лента: новая строка вытесняет старую, итог может только уменьшиться
 check("/admin/sales: total_pln не вырос, unpaid=1, unpaid_pln = сумма долга, строка с unpaid=true и receipt_id",
-      near(st1["total_pln"], st0["total_pln"]) and st1["unpaid"] == 1 and near(st1["unpaid_pln"], 2 * GA["price_pln"])
-      and any(x["id"] == later1 and x["unpaid"] and x.get("receipt_id") == rid_later for x in st1["sales"]), f"{st1['total_pln']} unpaid={st1.get('unpaid')}")
+      (st1["total_pln"] <= st0["total_pln"] + 0.005 if full1 else near(st1["total_pln"], st0["total_pln"])) and st1["unpaid"] == 1 and near(st1["unpaid_pln"], 2 * GA["price_pln"])
+      and any(x["id"] == later1 and x["unpaid"] and x.get("receipt_id") == rid_later for x in st1["sales"]), f"{st1['total_pln']} unpaid={st1.get('unpaid')}" + (" · лента полная (300)" if full1 else ""))
 stc = card_stats(g29)
 check("карточка: stats.unpaid_pln = бар, bar_unpaid_count 1, кухни нет", near(stc.get("unpaid_pln", 0), 2 * GA["price_pln"]) and stc.get("bar_unpaid_count") == 1 and not stc.get("kitchen_unpaid_count"), json.dumps(stc, ensure_ascii=False)[:200])
 s, d = api("GET", f"/admin/users/{g29}/debt", None, a1)
@@ -177,8 +181,9 @@ ksale = sql(f"SELECT method || '|' || postpaid::text || '|' || (paid_at IS NOT N
 check("продажа кухни создана расчётом: cash, postpaid, paid_at", ksale == "cash|true|true", ksale)
 goods3, rev3 = revenue_today(); st3 = sales_today()
 check("выручка выросла ровно на сумму расчёта (goods_pln и revenue_pln)", near(goods3, goods2 + total) and near(rev3, rev2 + total), f"{goods2}→{goods3} (+{total})")
-check("/admin/sales: total_pln +сумма, unpaid 0, строка бара уже не unpaid и postpaid", near(st3["total_pln"], st2["total_pln"] + total) and st3["unpaid"] == 0
-      and any(x["id"] == later1 and not x["unpaid"] and x["postpaid"] and x["method"] == "cash" for x in st3["sales"]), f"{st2['total_pln']}→{st3['total_pln']}")
+full3 = st3.get("count", 0) >= FULL  # полная лента: прирост сверен отчётом «Деньги» строкой выше
+check("/admin/sales: total_pln +сумма, unpaid 0, строка бара уже не unpaid и postpaid", (full3 or near(st3["total_pln"], st2["total_pln"] + total)) and st3["unpaid"] == 0
+      and any(x["id"] == later1 and not x["unpaid"] and x["postpaid"] and x["method"] == "cash" for x in st3["sales"]), f"{st2['total_pln']}→{st3['total_pln']}" + (" · лента полная (300)" if full3 else ""))
 cash_after = api("GET", "/admin/work/closeout", None, a1)[1]
 check("ожидаемое в ящике (глазами admin1) выросло на сумму расчёта налом", near(cash_after["expected_pln"], prev_cash["expected_pln"] + total) and near(cash_after["goods_pln"], prev_cash["goods_pln"] + total), f"{prev_cash['expected_pln']}→{cash_after['expected_pln']}")
 s, d = api("POST", f"/admin/users/{g29}/settle", {"method": "cash"}, a1)
