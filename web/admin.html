@@ -1186,7 +1186,8 @@ const TOUR = [
   {sel:'#bellBtn', t:'Колокол — гость зовёт',
    b:'Сюда падают вызовы с машин и сообщения. Красная точка значит, что кто-то ждёт ответа прямо сейчас.'},
   {sel:'#shiftChip', t:'Смена — открывается сама',
-   b:'Как только ты вошёл в админку, смена началась: отдельно отмечаться не нужно. Вход в киоск или приложение её не открывает. Клик покажет, сколько уже отработано, и закроет смену, когда уходишь.'},
+   b:'Как только ты вошёл в админку, смена началась: отдельно отмечаться не нужно. Вход в киоск или приложение её не открывает. Клик покажет, сколько уже отработано, и закроет смену, когда уходишь.',
+   owner:{t:'Кто на смене', b:'У владельца своей смены нет — здесь видно, кто из админов сейчас на смене: смену открывает вход в админку. Красным — по графику смена идёт, а не отметился никто. Клик откроет «Персонал» с табелем.'}},
   {sel:'#r-grants', tab:'grants', t:'Журнал — что делали у стойки',
    b:'Все действия персонала за день: депозиты, посадки, отмены, пакеты. Если спорят, что было, — ответ здесь, а не в памяти.'},
 ];
@@ -1216,8 +1217,9 @@ function tourNext(){
 }
 
 function tourPaint(){
-  const s = tourStep();
-  if (!s) return;
+  const s0 = tourStep();
+  if (!s0) return;
+  const s = isOwner() && s0.owner ? Object.assign({}, s0, s0.owner) : s0; // З7-и3: у владельца свой смысл шага
   const el = document.querySelector(s.sel);
   if (!el){ tourNext(); return; }
   const r = el.getBoundingClientRect();
@@ -1576,6 +1578,7 @@ function handleLiveEvent(m){
   // открытая карточка гостя; занятую шторку не трогаем (ревью 26.08)
   if (m.type === 'deposit' && drawerUserId && !drawerBusy()) loadUserDrawer();
   if (m.type === 'kitchen') kitBadgeLoad(); // Г7: очередь и бейдж
+  if (m.type === 'audit' && isOwner() && AUD_SELF[(m.data || {}).kind]) loadMyShift(); // З7-и3: пришёл или ушёл админ — чип владельца
   if (m.type === 'session' && m.data && m.data.kind === 'shell_timeout'){ // Ж4-и1: стойке — сигнал, что посадка не состоялась
     toast('⚠ ' + (m.data.computer || pcName(m.data.computer_id)) + ' не вышел на связь — посадка ' + (m.data.nickname || 'гостя') + ' снята, ничего не списано');
   }
@@ -5651,13 +5654,43 @@ function hm(min){ min = Math.max(0, +min || 0); return Math.floor(min/60) + ' ч
    «Персонале» (/admin/work/me) — две правды о смене развели бы людей. */
 let myShift = null, shiftTick = 0;
 async function loadMyShift(){
+  if (isOwner()) return loadOwnerShift(); // З7-и3
   try{ myShift = await api('/admin/work/me'); }
   catch(e){ myShift = null; }
   paintShiftChip();
 }
+/* З7-и3 (№43 «а»): у владельца своей смены нет — в шапке не «смена не открыта», а кто из
+   админов сейчас на смене: отметился входом в админку (открытая запись табеля). Смена по
+   графику идёт, а не отметился никто — красным: у стойки пусто. Клик — «Персонал» с табелем. */
+let ownerShift = null;
+async function loadOwnerShift(){
+  const today = new Date(), yday = new Date(Date.now() - 86400000);
+  try{
+    const [w, plan] = await Promise.all([
+      api('/admin/work?from=' + isoDate(yday) + '&to=' + isoDate(today)),
+      api('/admin/shifts/now').catch(() => ({items: []}))]);
+    ownerShift = {open: (w.entries || []).filter(e => e.open), plan: plan.items || []};
+  }catch(e){ ownerShift = null; }
+  paintShiftChip();
+}
+function paintOwnerChip(chip, txt){
+  const d = ownerShift;
+  if (!d){ chip.classList.remove('on','off'); txt.textContent = '—'; chip.title = 'Кто на смене — не загрузилось'; return; }
+  const names = [...new Set(d.open.map(e => e.nickname))];
+  const absent = [...new Set(d.plan.map(i => i.nickname))].filter(n => !names.includes(n));
+  chip.classList.toggle('on', names.length > 0);
+  chip.classList.toggle('off', !names.length && d.plan.length > 0);
+  txt.textContent = names.length ? 'на смене: ' + names.join(', ') : d.plan.length ? 'на смене никого' : 'смен сейчас нет';
+  chip.title = [
+    names.length ? 'Отметились: ' + d.open.map(e => e.nickname + ' с ' + hhmm(e.started_at)).join(', ') : 'Сейчас никто не отметился',
+    d.plan.length ? 'по графику сейчас: ' + d.plan.map(i => i.nickname + (i.shift ? ' (' + i.shift + ')' : '')).join(', ') : 'по графику сейчас смены нет',
+    absent.length ? 'по графику, но не отметились: ' + absent.join(', ') : '',
+  ].filter(Boolean).join(' · ') + '. Клик — «Персонал» с табелем';
+}
 function paintShiftChip(){
   const chip = document.getElementById('shiftChip'), txt = document.getElementById('shiftTxt');
   if (!chip || !txt) return;
+  if (isOwner()) return paintOwnerChip(chip, txt); // З7-и3
   if (!myShift){ chip.classList.remove('on','off'); txt.textContent = '—'; return; }
   const on = !!myShift.on_shift;
   chip.classList.toggle('on', on);
@@ -5681,6 +5714,7 @@ let closeoutPrev = null, closeoutCounted = '';
 function coFrom(iso){ const d = new Date(iso), t = new Date();
   return (d.toDateString() === t.toDateString() ? '' : String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ') + hhmm(iso); }
 async function openMyShift(){
+  if (isOwner()){ nav('staff'); return; } // З7-и3: у владельца своей смены нет — чип ведёт к табелю
   drawerUserId = null; drawerPCId = null;
   const on = !!(myShift && myShift.on_shift);
   if (on){ // каждый раз свежая цифра: касса меняется каждой продажей
@@ -5772,6 +5806,8 @@ async function shiftStart(){
 async function renderMyShift(){
   const box = document.getElementById('myShiftBox');
   if (!box) return;
+  box.classList.toggle('hidden', isOwner()); // З7-и3 (№43 «а»): «Я пришёл» и «Моя смена» у владельца скрыты
+  if (isOwner()){ box.innerHTML = ''; return; }
   try{
     const d = await api('/admin/work/me');
     const on = !!d.on_shift;
@@ -6646,6 +6682,44 @@ const PAL_ACTIONS = [
   {k:'chat', name:'Написать гостю', ic:'bell', pick:'user', run:(u) => openUserChat(u.id)},
   {k:'power', name:'Питание ПК', ic:'power', pick:'pc', run:(p) => { nav('hall'); openPCDrawer(p.id); }},
 ];
+/* З7-и3 (№45): слова, которыми думают о клубе. Палитра искала только по именам разделов —
+   «касса» или «зарплата» давали «Ничего не нашлось». Слово ведёт туда, где на него отвечают;
+   новые разделы трека (расходы, бухгалтерия, выгрузка) добавляют сюда свои. who: owner — только
+   владельцу, admin — только админу. Совпадение — с начала слова или внутри, не по буквам вразброс. */
+const PAL_WORDS = [
+  {who:'owner', words:['касса', 'сдачи', 'сдача кассы', 'расхождение', 'недостача'], name:'Сдачи кассы',
+   sub:'Отчёты → смена: кто сколько сдал', ic:'coins', run:() => palGoShift()},
+  {who:'owner', words:['зарплата', 'выплата', 'к выплате', 'ставка'], name:'К выплате',
+   sub:'Отчёты → Персонал', ic:'coins', run:() => palGoReport('staff')},
+  {who:'owner', words:['выручка', 'деньги', 'доход', 'оборот'], name:'Выручка',
+   sub:'Отчёты → Деньги', ic:'chart', run:() => palGoReport('money')},
+  {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
+   sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
+  {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
+   sub:'Каталог → файл JSON', ic:'save', run:() => { nav('catalog'); exportCatalog(); }},
+  {who:'admin', words:['касса', 'сдача кассы', 'сдать смену', 'уход'], name:'Сдать смену и кассу',
+   sub:'Моя смена', ic:'coins', run:() => openMyShift()},
+];
+function palGoReport(tab){
+  repTab = tab;
+  document.querySelectorAll('#repTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  nav('stats');
+}
+// сводка смены — под отчётом: ждём, пока отчёт встанет, иначе он сдвинет её с экрана
+function palGoShift(){
+  nav('stats');
+  let n = 0;
+  const t = setInterval(() => {
+    if (!document.querySelector('#repBody .skel, #shiftKpis .skel') || ++n > 40){
+      clearInterval(t);
+      document.getElementById('shDate').parentElement.scrollIntoView({block:'start'});
+    }
+  }, 100);
+}
+function palGoTimesheet(){
+  nav('staff');
+  setTimeout(() => { const el = document.getElementById('tsLabel'); if (el) el.parentElement.scrollIntoView({block:'start'}); }, 600);
+}
 let palItems = [], palSel = 0, palPickAct = null, palDeb = null;
 const pal = document.getElementById('pal'), palInp = document.getElementById('palInp'),
       palList = document.getElementById('palList');
@@ -6754,6 +6828,12 @@ function palBuild(){
     items.push({sec:'Действия', ic:a.ic, name:a.name, sc,
       sub:a.pick ? (a.pick === 'user' ? 'выбор гостя' : 'выбор ПК') : '',
       run:() => { if (a.pick){ palPickStart(a); } else { palClose(); a.run(); } }});
+  });
+  if (q) PAL_WORDS.forEach(w => { // З7-и3: слова владельца и админа
+    if (w.who === (isOwner() ? 'admin' : 'owner')) return;
+    const sc = Math.max(...w.words.map(x => { const v = palScore(x, q); return v >= 2 ? v : 0; }));
+    if (!sc) return;
+    items.push({sec:'Куда идти', ic:w.ic, name:w.name, sub:w.sub, sc, run:() => { palClose(); w.run(); }});
   });
   if (q) items.sort((a, b) => (b.sc || 0) - (a.sc || 0));
   palItems = items;
