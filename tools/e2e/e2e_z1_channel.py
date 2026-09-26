@@ -21,20 +21,23 @@ live = lambda s: [e.get("data", {}) for e in ws_read(s, 2)[0] if e.get("type") =
 
 section("сдача с недостачей: деньги — владельцу, заметка — всем")
 tok("z1ch")  # вход открывает смену (Е3-и1)
+drawer_ready("z1ch")
 deps.append(topup("Guest32", 100, method="cash", who="z1ch"))
+p = api("GET", "/admin/work/closeout", None, "z1ch")[1]  # З8-и1: должно быть — весь ящик клуба
+counted = round(p.get("expected_pln", 0) - 20, 2)
 for who in ("boss", "admin2"):
     read(who)
 seen = {who: ids(who) for who in ("boss", "admin2")}
 wsb, wsa = ws_admin(ticket("boss"))[0], ws_admin(ticket("admin2"))[0]
-s, d = api("POST", "/admin/work/stop", {"counted_pln": 80, "note": "ключи от шкафа на стойке"}, "z1ch")
-check("z1ch сдал 80 из 100 → 200, расхождение −20", s == 200 and near(d.get("closeout", {}).get("diff_pln", 0), -20), f"{s} {J(d, 200)}")
+s, d = api("POST", "/admin/work/stop", {"counted_pln": counted, "note": "ключи от шкафа на стойке"}, "z1ch")
+check("z1ch насчитал на 20 меньше, чем должно быть в ящике → 200, расхождение −20", s == 200 and near(d.get("closeout", {}).get("diff_pln", 0), -20), f"{s} {J(d, 200)}")
 eb, ea = live(wsb), live(wsa)
 wsb.close(); wsa.close()
 nb, na = fresh("boss", seen["boss"]), fresh("admin2", seen["admin2"])
 sysm = [m for m in nb if m.get("kind") == "system"]
-check("владельцу — служебное «только владельцу» без автора: кто сдал, 80 из 100, расхождение −20",
+check("владельцу — служебное «только владельцу» без автора: кто сдал, пересчитано, должно быть, расхождение −20",
       len(sysm) == 1 and sysm[0].get("visible_to") == "owner" and not sysm[0].get("author_id")
-      and all(w in sysm[0]["text"] for w in ("z1ch", "80.00", "100.00", "−20.00")), J(nb, 400))
+      and all(w in sysm[0]["text"] for w in ("z1ch", f"{counted:.2f}", f"{p.get('expected_pln', 0):.2f}", "−20.00")), J(nb, 400))
 note = [m for m in nb if m.get("author_id") == zid]
 check("заметка — отдельным сообщением от z1ch, без денег, для всех", len(note) == 1 and "ключи от шкафа на стойке" in note[0]["text"]
       and not money(note[0]) and note[0].get("kind") == "text" and note[0].get("visible_to") == "all", J(note, 300))

@@ -21,15 +21,11 @@ package main
 // сдавшего, её видят все. Строка журнала shift_close с суммами — тоже только
 // владельцу (audit.go).
 //
-// Ожидаемая наличность (только method=cash, живые деньги у стойки):
-//   + депозиты, созданные админом в клубные сутки и не отменённые
-//   + продажи (бар и расчёты кухни) с paid_at в сутках, деньги принял админ,
-//     не отменённые — Ж6: долг, закрытый сегодня, лежит в ящике сегодня
-//   + пакеты времени, проданные админом за нал в сутки, не отменённые
-//   − наличные, выданные сегодня по отменённым операциям ПРОШЛЫХ суток
-//     (отмена сегодняшней операции сама выводит её из плюса)
-// Кошельком, картой и BLIK ящик не трогают; пакеты возвращаются на кошелёк,
-// а не наличными (Е2), поэтому в минусе их нет.
+// З8-и1 (З-Р1, миграция 070): «должно быть в ящике» — ящик клуба, а не
+// наличные одного админа: остаток прошлой сдачи + всё, что пришло наличными с
+// неё, кто бы ни провёл, − наличные возвраты − инкассации ± коррекции (счёт —
+// drawer.go). Первая сдача после обновления — нулевая точка. «Из них провёл
+// ты» — справка; дата сдачи и сообщения — как в З1.
 
 import (
 	"fmt"
@@ -40,81 +36,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
-
-// cashExpectation — ожидаемая наличность и её составляющие, гроши.
-type cashExpectation struct {
-	Deposits int64
-	Goods    int64
-	Packs    int64
-	Refunds  int64
-}
-
-func (e cashExpectation) Total() int64 { return e.Deposits + e.Goods + e.Packs - e.Refunds }
-
-func (e cashExpectation) out() gin.H {
-	return gin.H{
-		"expected_pln": models.PLNFromGrosz(e.Total()),
-		"deposits_pln": models.PLNFromGrosz(e.Deposits),
-		"goods_pln":    models.PLNFromGrosz(e.Goods),
-		"packs_pln":    models.PLNFromGrosz(e.Packs),
-		"refunds_pln":  models.PLNFromGrosz(e.Refunds),
-	}
-}
-
-// expectedCash — наличность за окно [from, to): adminID пустой — по всем
-// (справочная цифра «всего за сутки»).
-func expectedCash(adminID *uuid.UUID, from, to time.Time) cashExpectation {
-	var e cashExpectation
-	var pln float64
-
-	dq := db.Model(&models.Deposit{}).Select("COALESCE(SUM(amount_pln),0)").
-		Where("method = 'cash' AND created_at >= ? AND created_at < ? AND voided_at IS NULL", from, to)
-	if adminID != nil {
-		dq = dq.Where("created_by = ?", *adminID)
-	}
-	dq.Scan(&pln)
-	e.Deposits = models.GroszFromPLN(pln)
-
-	pln = 0
-	sq := db.Model(&models.Sale{}).Select("COALESCE(SUM(total_pln),0)").
-		Where("method = 'cash' AND paid_at >= ? AND paid_at < ? AND voided_at IS NULL", from, to)
-	if adminID != nil {
-		sq = sq.Where("COALESCE(paid_by, created_by) = ?", *adminID)
-	}
-	sq.Scan(&pln)
-	e.Goods = models.GroszFromPLN(pln)
-
-	pln = 0
-	pq := db.Model(&models.UserPackage{}).Select("COALESCE(SUM(price_pln),0)").
-		Where("method = 'cash' AND created_at >= ? AND created_at < ? AND voided_at IS NULL", from, to)
-	if adminID != nil {
-		pq = pq.Where("created_by = ?", *adminID)
-	}
-	pq.Scan(&pln)
-	e.Packs = models.GroszFromPLN(pln)
-
-	// возвраты наличными по операциям прошлых суток, отменённым в этом окне
-	var refund int64
-	rq := db.Model(&models.Deposit{}).Select("COALESCE(SUM(refund_grosz),0)").
-		Where("method = 'cash' AND voided_at >= ? AND voided_at < ? AND created_at < ?", from, to, from)
-	if adminID != nil {
-		rq = rq.Where("voided_by = ?", *adminID)
-	}
-	rq.Scan(&refund)
-	e.Refunds = refund
-	pln = 0
-	rs := db.Model(&models.Sale{}).Select("COALESCE(SUM(total_pln),0)").
-		Where("method = 'cash' AND voided_at >= ? AND voided_at < ? AND paid_at IS NOT NULL AND paid_at < ?", from, to, from)
-	if adminID != nil {
-		rs = rs.Where("voided_by = ?", *adminID)
-	}
-	rs.Scan(&pln)
-	e.Refunds += models.GroszFromPLN(pln)
-	return e
-}
 
 // closeoutFrom — начало окна «должно быть в ящике» (З1-и1, чистая, тест): от
 // начала смены (записи табеля) или от прошлой сдачи этого админа, если она
@@ -132,6 +57,7 @@ func closeoutFrom(entryStart, lastCloseout *time.Time, dayStart time.Time) time.
 
 // closeoutWindow — окно сдачи для админа сейчас и дата, которой она ляжет:
 // дата записи табеля (ночная смена — вчерашняя), без смены — клубные сутки.
+// З8-и1: «должно быть» считает ящик (drawer.go) — отсюда берётся только дата.
 func closeoutWindow(adminID uuid.UUID, entry *models.WorkEntry, now time.Time) (from, day time.Time) {
 	reportHour := int(settingInt64("report_hour", 8))
 	dayStart, _, _, _ := shiftWindow("", reportHour, now)
@@ -161,7 +87,7 @@ func closeoutMessage(nick string, expected int64, counted *int64) string {
 	var b strings.Builder
 	switch {
 	case counted == nil:
-		fmt.Fprintf(&b, "🧮 %s сдал смену без пересчёта кассы (по операциям должно быть %.2f zł)", nick, models.PLNFromGrosz(expected))
+		fmt.Fprintf(&b, "🧮 %s сдал смену без пересчёта кассы (в ящике должно быть %.2f zł)", nick, models.PLNFromGrosz(expected))
 	case closeoutDiff(expected, *counted) == 0:
 		fmt.Fprintf(&b, "🧮 %s сдал смену: касса сошлась — в ящике %.2f zł", nick, models.PLNFromGrosz(*counted))
 	default:
@@ -203,12 +129,19 @@ func closeoutOut(co *models.ShiftCloseout) gin.H {
 	if co.DiffGrosz != nil {
 		row["diff_pln"] = models.PLNFromGrosz(*co.DiffGrosz)
 	}
+	row["baseline"] = co.Baseline
+	if co.OpeningGrosz != nil { // З8-и1: сдача модели ящика
+		row["opening_pln"], row["in_pln"] = models.PLNFromGrosz(*co.OpeningGrosz), models.PLNFromGrosz(co.InGrosz)
+		row["out_pln"], row["adjust_pln"] = models.PLNFromGrosz(co.OutGrosz), models.PLNFromGrosz(co.AdjustGrosz)
+		row["collections_pln"] = models.PLNFromGrosz(co.OutGrosz - co.RefundsGrosz)
+	}
 	return row
 }
 
 // GET /admin/work/closeout — «сколько должно быть в ящике» перед уходом
-// (staff, за себя): ожидаемая наличность этого админа за его смену с
-// разбивкой, и справочно — всего за то же окно по всем (З1-и1).
+// (staff): ящик клуба (З8-и1) — остаток на начало, кто и когда его оставил,
+// что пришло и ушло с тех пор; «из них провёл ты» — справкой. baseline —
+// ящика ещё нет: эта сдача — нулевая точка, ожидаемого нет.
 func handleWorkCloseoutPreview(c *gin.Context) {
 	adminID, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
@@ -217,52 +150,56 @@ func handleWorkCloseoutPreview(c *gin.Context) {
 	}
 	now := time.Now()
 	open := openEntryFor(adminID)
-	from, day := closeoutWindow(adminID, open, now)
-	mine := expectedCash(&adminID, from, now)
-	all := expectedCash(nil, from, now)
-	resp := mine.out()
-	resp["date"], resp["from"], resp["club_expected_pln"] = day.Format("2006-01-02"), from, models.PLNFromGrosz(all.Total())
-	resp["on_shift"] = open != nil
+	_, day := closeoutWindow(adminID, open, now)
+	st := drawerAt(db, now)
+	resp := st.Flow.out()
+	resp["date"], resp["on_shift"], resp["baseline"] = day.Format("2006-01-02"), open != nil, st.Point == nil
+	resp["expected_pln"] = models.PLNFromGrosz(st.Expected)
+	if p := st.Point; p != nil {
+		resp["from"], resp["opening_pln"] = p.At, models.PLNFromGrosz(p.Closing)
+		resp["opening_by"] = nicknamesByID([]string{p.By.String()})[p.By.String()]
+		resp["opening_counted"], resp["opening_baseline"] = p.Counted, p.Baseline
+		resp["mine"] = drawerFlowFor(db, &adminID, p.At, now).out()
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
 // recordCloseout — записать сдачу кассы при уходе и известить владельца.
-// countedPLN nil = ушёл без пересчёта. Возвращает запись и текст сообщения.
+// countedPLN nil = ушёл без пересчёта. З8-и1: сдачи — под замком по одной,
+// точка отсчёта и движение берутся в той же транзакции.
 func recordCloseout(c *gin.Context, adminID uuid.UUID, entry *models.WorkEntry, countedPLN *float64, note string, now time.Time) *models.ShiftCloseout {
-	from, day := closeoutWindow(adminID, entry, now) // З1-и1: окно смены, дата — день записи табеля
-	e := expectedCash(&adminID, from, now)
+	_, day := closeoutWindow(adminID, entry, now) // З1-и1: дата — день записи табеля
 	club, ok := defaultClub()
 	if !ok {
 		return nil
 	}
-	co := models.ShiftCloseout{
-		ClubID: club.ID, UserID: adminID, Date: day,
-		ExpectedGrosz: e.Total(), DepositsGrosz: e.Deposits, GoodsGrosz: e.Goods,
-		PacksGrosz: e.Packs, RefundsGrosz: e.Refunds, Note: strings.TrimSpace(note), Skipped: countedPLN == nil,
-	}
+	co := models.ShiftCloseout{ClubID: club.ID, UserID: adminID, Date: day, Note: strings.TrimSpace(note), Skipped: countedPLN == nil}
 	if entry != nil {
 		id := entry.ID
 		co.WorkEntryID = &id
 	}
+	var counted *int64
 	if countedPLN != nil {
-		counted := models.GroszFromPLN(*countedPLN)
-		diff := closeoutDiff(co.ExpectedGrosz, counted)
-		co.CountedGrosz, co.DiffGrosz = &counted, &diff
+		g := models.GroszFromPLN(*countedPLN)
+		counted = &g
 	}
-	if err := db.Create(&co).Error; err != nil {
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", drawerLock).Error; err != nil {
+			return err
+		}
+		at := time.Now() // под замком: следующая сдача начнёт ровно отсюда
+		if at.Before(now) {
+			at = now
+		}
+		drawerCloseout(&co, drawerAt(tx, at), counted)
+		co.CreatedAt = at
+		return tx.Create(&co).Error
+	})
+	if err != nil {
+		log.Printf("сдача кассы не записалась: %v", err)
 		return nil
 	}
-	details := fmt.Sprintf("касса: должно быть %.2f zł", models.PLNFromGrosz(co.ExpectedGrosz))
-	if co.CountedGrosz != nil {
-		details += fmt.Sprintf(", пересчитано %.2f zł, расхождение %+.2f zł",
-			models.PLNFromGrosz(*co.CountedGrosz), models.PLNFromGrosz(*co.DiffGrosz))
-	} else {
-		details += " · без пересчёта"
-	}
-	if co.Note != "" {
-		details += " · " + co.Note
-	}
-	logAdminAction(c, "shift_close", nil, details) // З1-и2: строку видит только владелец (hiddenFromAdmin)
+	logAdminAction(c, "shift_close", nil, closeoutDetails(&co)) // З1-и2: строку видит только владелец (hiddenFromAdmin)
 
 	// З1-и2 (Д4): заметка — от сдавшего, всем; деньги — служебной строкой только
 	// владельцу. Заметка первой: у владельца внизу ленты остаётся строка с деньгами.
@@ -273,8 +210,52 @@ func recordCloseout(c *gin.Context, adminID uuid.UUID, entry *models.WorkEntry, 
 		}
 	}
 	nick := nicknamesByID([]string{adminID.String()})[adminID.String()]
-	postSystem(closeoutMessage(nick, co.ExpectedGrosz, co.CountedGrosz), true, map[string]any{"closeout": true})
+	postSystem(closeoutOwnerLine(nick, &co), true, map[string]any{"closeout": true})
 	return &co
+}
+
+// closeoutOwnerLine — денежная строка сдачи владельцу (чистая, тест): нулевая
+// точка, сдача без ящика или обычная «сошлось / расхождение / без пересчёта».
+func closeoutOwnerLine(nick string, co *models.ShiftCloseout) string {
+	switch {
+	case co.Baseline && co.CountedGrosz != nil:
+		return drawerStartMessage(nick, *co.CountedGrosz)
+	case co.OpeningGrosz == nil:
+		if nick == "" {
+			nick = "Сотрудник"
+		}
+		return "🧮 " + nick + " сдал смену без пересчёта кассы — начального остатка ящика ещё нет, его задаст первая сдача с пересчётом"
+	}
+	return closeoutMessage(nick, co.ExpectedGrosz, co.CountedGrosz)
+}
+
+// closeoutDetails — строка журнала shift_close (чистая, тест): из чего ящик.
+func closeoutDetails(co *models.ShiftCloseout) string {
+	pln := models.PLNFromGrosz
+	var b strings.Builder
+	switch {
+	case co.Baseline && co.CountedGrosz != nil:
+		fmt.Fprintf(&b, "касса: начальный остаток ящика %.2f zł", pln(*co.CountedGrosz))
+	case co.OpeningGrosz == nil:
+		b.WriteString("касса: ящик ещё не заведён")
+	default:
+		fmt.Fprintf(&b, "касса: должно быть %.2f zł (на начало %.2f + пришло %.2f − ушло %.2f",
+			pln(co.ExpectedGrosz), pln(*co.OpeningGrosz), pln(co.InGrosz), pln(co.OutGrosz))
+		if co.AdjustGrosz != 0 {
+			fmt.Fprintf(&b, ", коррекции %+.2f", pln(co.AdjustGrosz))
+		}
+		b.WriteString(")")
+		if co.CountedGrosz != nil {
+			fmt.Fprintf(&b, ", пересчитано %.2f zł, расхождение %+.2f zł", pln(*co.CountedGrosz), pln(*co.DiffGrosz))
+		}
+	}
+	if co.CountedGrosz == nil {
+		b.WriteString(" · без пересчёта")
+	}
+	if co.Note != "" {
+		b.WriteString(" · " + co.Note)
+	}
+	return b.String()
 }
 
 // closeoutsForDay — сдачи касс за клубные сутки (сводка смены владельца).

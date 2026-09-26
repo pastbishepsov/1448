@@ -14,8 +14,15 @@ const z = require('./_z');
   for (const p of [boss, adm]) await p.evaluate(() => { // тосты страницы — в список, как их увидел бы человек
     window.__toasts = []; const t = toast; toast = (msg, ...a) => { __toasts.push(String(msg)); return t(msg, ...a); };
   });
-  const r = await z.api('POST', '/admin/work/stop', { counted_pln: 50, note: 'сдал смену Ане, касса под замком' }, 'z1cw');
-  z.check('z1cw сдал 50 из 60 → 200', r.status === 200, String(r.status));
+  // З8-и1: «должно быть» — весь ящик клуба; ящика на стенде ещё нет — заводит его z1cw сдачей на 500 zł
+  let prev = (await z.api('GET', '/admin/work/closeout', undefined, 'z1cw')).data;
+  if (prev.baseline) {
+    await z.api('POST', '/admin/work/stop', { counted_pln: 500 }, 'z1cw');
+    await z.api('POST', '/admin/work/start', {}, 'z1cw');
+    prev = (await z.api('GET', '/admin/work/closeout', undefined, 'z1cw')).data;
+  }
+  const r = await z.api('POST', '/admin/work/stop', { counted_pln: +(prev.expected_pln - 10).toFixed(2), note: 'сдал смену Ане, касса под замком' }, 'z1cw');
+  z.check('z1cw насчитал на 10 меньше, чем должно быть в ящике → 200', r.status === 200, String(r.status));
   await z.sleep(2000);
   const tb = await boss.evaluate(() => __toasts), ta = await adm.evaluate(() => __toasts);
   z.check('владельцу — тост о служебном сообщении', tb.some(t => /Служебное/.test(t)), JSON.stringify(tb));
@@ -29,7 +36,7 @@ const z = require('./_z');
   await boss.evaluate(() => openStaffChat()); await z.sleep(1200);
   const vb = await drawer(boss, before.boss);
   const sys = vb.find(m => /сдал смену/.test(m.txt) && /zł/.test(m.txt));
-  z.check('владелец: служебная строка — «Система · видит только владелец», z1cw, 50 из 60, расхождение −10',
+  z.check('владелец: служебная строка — «Система · видит только владелец», z1cw, расхождение −10',
     sys && /\bsys\b/.test(sys.cls) && /^Система · видит только владелец/.test(sys.txt) && /z1cw/.test(sys.txt) && /−10\.00 zł/.test(sys.txt), JSON.stringify(vb));
   z.check('владелец: заметка z1cw — отдельным сообщением, без денег', vb.some(m => /^z1cw · админ/.test(m.txt) && /Передал смену: сдал смену Ане/.test(m.txt) && !/zł/.test(m.txt)),
     JSON.stringify(vb));

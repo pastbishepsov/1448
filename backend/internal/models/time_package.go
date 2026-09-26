@@ -72,6 +72,9 @@ type UserPackage struct {
 	VoidedAt  *time.Time `json:"voided_at,omitempty"`
 	VoidedBy  *uuid.UUID `json:"voided_by,omitempty"  gorm:"type:uuid"`
 	CreatedAt time.Time  `json:"created_at"`
+	// З8-и1: возврат при отмене выдачи — на кошелёк или наличными из ящика
+	// (до З11 — тем же способом, что и оплата), гроши.
+	RefundGrosz int64 `json:"refund_grosz" gorm:"not null;default:0"`
 }
 
 func (p *UserPackage) BeforeCreate(tx *gorm.DB) error {

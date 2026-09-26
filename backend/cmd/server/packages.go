@@ -668,23 +668,24 @@ func handleAdminPackageVoid(c *gin.Context) {
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
 	// Деньги возвращаются только тем же путём, каким пришли: с кошелька —
-	// на кошелёк. Наличные из ящика возвращает человек, и сервер не может
-	// сделать вид, что он это сделал.
+	// на кошелёк. З8-и1: за наличные — из ящика (до З11 возврат тем же
+	// способом, что и оплата): отдаёт человек, а сумму записываем — её вычтет
+	// касса. Карта и BLIK — без суммы: возврат на терминале сервер не видит.
 	refund := int64(0)
-	if up.Method == "wallet" {
+	if up.Method == "wallet" || up.Method == "cash" {
 		refund = refundForVoid(models.GroszFromPLN(up.PricePLN), up.MinutesTotal, up.MinutesLeft)
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.UserPackage{}).
 			Where("id = ? AND voided_at IS NULL", up.ID).
-			Updates(map[string]any{"voided_at": now, "voided_by": adminID, "minutes_left": 0})
+			Updates(map[string]any{"voided_at": now, "voided_by": adminID, "minutes_left": 0, "refund_grosz": refund})
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
 			return errAlreadyVoid
 		}
-		if refund > 0 {
+		if refund > 0 && up.Method == "wallet" {
 			id := up.ID
 			_, werr := walletApply(tx, walletOp{
 				UserID: up.UserID, Kind: models.WalletTxRefund, Amount: refund,
@@ -706,13 +707,13 @@ func handleAdminPackageVoid(c *gin.Context) {
 	target := up.UserID
 	logAdminAction(c, "package_void", &target,
 		fmt.Sprintf("отмена: %s · %s · забрано %d мин из %d%s", up.Name, up.ZoneName,
-			up.MinutesLeft, up.MinutesTotal, refundSuffix(refund)))
+			up.MinutesLeft, up.MinutesTotal, refundSuffix(refund, up.Method)))
 	notifyUser(up.UserID, "package_void", map[string]any{
 		"name": up.Name, "minutes": up.MinutesLeft,
 		"refund_pln": models.PLNFromGrosz(refund),
 	})
 	c.JSON(http.StatusOK, gin.H{"voided": up.ID, "minutes_taken": up.MinutesLeft,
-		"refund_pln": models.PLNFromGrosz(refund)})
+		"refund_pln": models.PLNFromGrosz(refund), "refund_method": up.Method})
 }
 
 var errAlreadyVoid = errors.New("already_void")
@@ -744,9 +745,12 @@ func refundCoinsForVoid(coins int64, total, takenBack int) int64 {
 	return coins * int64(takenBack) / int64(total)
 }
 
-func refundSuffix(refund int64) string {
+func refundSuffix(refund int64, method string) string {
 	if refund <= 0 {
 		return ""
+	}
+	if method == "cash" { // З8-и1: отдаёт человек из ящика
+		return fmt.Sprintf(", возврат %.2f zł наличными", models.PLNFromGrosz(refund))
 	}
 	return fmt.Sprintf(", возврат %.2f zł", models.PLNFromGrosz(refund))
 }

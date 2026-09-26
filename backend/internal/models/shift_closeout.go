@@ -31,6 +31,16 @@ type ShiftCloseout struct {
 	Skipped       bool       `json:"skipped"       gorm:"not null;default:false"`
 	Note          string     `json:"note"          gorm:"not null;default:''"`
 	CreatedAt     time.Time  `json:"created_at"`
+	// З8-и1 (миграция 070): сдача — пересчёт ящика клуба, а не денег одного
+	// админа. OpeningGrosz — остаток на начало (пересчитанный прошлой сдачей;
+	// NULL — сдача до модели ящика, точкой отсчёта не служит); In/Out/Adjust —
+	// пришло, ушло (возвраты и инкассации) и коррекции за период; Baseline —
+	// нулевая точка: первая сдача с пересчётом после обновления.
+	OpeningGrosz *int64 `json:"opening_grosz,omitempty"`
+	InGrosz      int64  `json:"in_grosz"     gorm:"not null;default:0"`
+	OutGrosz     int64  `json:"out_grosz"    gorm:"not null;default:0"`
+	AdjustGrosz  int64  `json:"adjust_grosz" gorm:"not null;default:0"`
+	Baseline     bool   `json:"baseline"     gorm:"not null;default:false"`
 }
 
 // AfterFind — день сдачи: полночь клуба, а не UTC (З2-и2, ClubDay).

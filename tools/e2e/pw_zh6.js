@@ -31,6 +31,11 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   const stock = n => +psql(`SELECT stock FROM goods WHERE name='${n}'`);
   const woda0 = stock('Woda 0.5'), lays0 = stock(`Lay''s`);
 
+  // трек З, З8-и1: касса — ящик клуба; на стенде без истории ящика первая сдача — нулевая точка, а проверке нужна
+  // недостача — ящик заводит admin1 сдачей на 500 zł (вход в админку ниже снова откроет смену)
+  await j(API + '/admin/work/start', { method: 'POST', headers: h, body: '{}' });
+  if ((await j(API + '/admin/work/closeout', { headers: h })).baseline) await j(API + '/admin/work/stop', { method: 'POST', headers: h, body: JSON.stringify({ counted_pln: 500 }) });
+
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];

@@ -74,7 +74,7 @@ func TestCloseoutMessage(t *testing.T) {
 		{"сошлось — строка с суммой (З1-и1)", 50000, counted(50000), "🧮 admin2 сдал смену: касса сошлась — в ящике 500.00 zł"},
 		{"недостача", 50000, counted(48000), "в ящике 480.00 zł, должно быть 500.00 zł — расхождение −20.00 zł"},
 		{"излишек", 50000, counted(50500), "расхождение +5.00 zł"},
-		{"без пересчёта", 50000, nil, "🧮 admin2 сдал смену без пересчёта кассы (по операциям должно быть 500.00 zł)"},
+		{"без пересчёта", 50000, nil, "🧮 admin2 сдал смену без пересчёта кассы (в ящике должно быть 500.00 zł)"},
 	}
 	for _, tc := range cases {
 		got := closeoutMessage("admin2", tc.expected, tc.counted)
@@ -109,10 +109,6 @@ func TestCloseoutMessage(t *testing.T) {
 	}
 	if got := closeoutFrom(nil, nil, day); !got.Equal(day) {
 		t.Errorf("без смены — с начала клубных суток: %v", got)
-	}
-	e := cashExpectation{Deposits: 10000, Goods: 2500, Packs: 6000, Refunds: 500}
-	if e.Total() != 18000 {
-		t.Errorf("Total = %d, ожидалось 18000", e.Total())
 	}
 	_ = time.Now
 }

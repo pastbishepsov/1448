@@ -77,6 +77,11 @@ def reset():
     sql("UPDATE computers SET status='available' WHERE name='PC-09' AND id NOT IN (SELECT computer_id FROM sessions WHERE status='active')")
     sql(f"UPDATE users SET wallet_grosz=3000, coin_minutes=0 WHERE id='{g29}'"); sql(f"DELETE FROM wallet_transactions WHERE user_id='{g29}'")
 reset()
+# трек З, З8-и1: касса считает ящик клуба; на стенде без истории ящика первая сдача — нулевая точка, а проверке
+# нужны ожидаемое и расхождения — ящик заводит admin2 сдачей на 500 zł
+api("POST", "/admin/work/start", {}, a2)
+if api("GET", "/admin/work/closeout", None, a2)[1].get("baseline"):
+    api("POST", "/admin/work/stop", {"counted_pln": 500}, a2)
 
 def revenue_today():
     s, d = api("GET", "/admin/reports/money?preset=today", None, ot)
@@ -175,7 +180,7 @@ check("выручка выросла ровно на сумму расчёта (
 check("/admin/sales: total_pln +сумма, unpaid 0, строка бара уже не unpaid и postpaid", near(st3["total_pln"], st2["total_pln"] + total) and st3["unpaid"] == 0
       and any(x["id"] == later1 and not x["unpaid"] and x["postpaid"] and x["method"] == "cash" for x in st3["sales"]), f"{st2['total_pln']}→{st3['total_pln']}")
 cash_after = api("GET", "/admin/work/closeout", None, a1)[1]
-check("ожидаемая наличность admin1 выросла на сумму расчёта налом", near(cash_after["expected_pln"], prev_cash["expected_pln"] + total) and near(cash_after["goods_pln"], prev_cash["goods_pln"] + total), f"{prev_cash['expected_pln']}→{cash_after['expected_pln']}")
+check("ожидаемое в ящике (глазами admin1) выросло на сумму расчёта налом", near(cash_after["expected_pln"], prev_cash["expected_pln"] + total) and near(cash_after["goods_pln"], prev_cash["goods_pln"] + total), f"{prev_cash['expected_pln']}→{cash_after['expected_pln']}")
 s, d = api("POST", f"/admin/users/{g29}/settle", {"method": "cash"}, a1)
 check("повторный расчёт → 409 no_debt", s == 409 and d.get("code") == "no_debt", f"{s} {d.get('code')}")
 check("кошелёк гостя не тронут расчётом", wallet(g29) == w_settle, f"{wallet(g29)} vs {w_settle}")
@@ -244,18 +249,22 @@ api("POST", f"/admin/sales/{d['sale']['id']}/void", {}, a1)
 # ── C: закрытие смены с кассой (и4), admin2 ──
 api("POST", "/admin/work/start", {}, a2)  # уже открыта после логина — 409 и ладно
 pv0 = api("GET", "/admin/work/closeout", None, a2)[1]
-check("preview кассы admin2: on_shift, поля expected/deposits/goods/packs/refunds, club_expected_pln", pv0.get("on_shift") is True and all(k in pv0 for k in ("expected_pln", "deposits_pln", "goods_pln", "packs_pln", "refunds_pln", "club_expected_pln", "from")), json.dumps(pv0))
+mine1 = api("GET", "/admin/work/closeout", None, a1)[1].get("mine") or {}
+# трек З, З8-и1: предпросмотр — ящик клуба: на начало, пришло, ушло, из чего и «из них провёл ты»
+check("preview кассы admin2: on_shift, ящик — expected, opening, in/out, deposits/goods/packs/refunds, mine", pv0.get("on_shift") is True and all(k in pv0 for k in ("expected_pln", "opening_pln", "in_pln", "out_pln", "deposits_pln", "goods_pln", "packs_pln", "refunds_pln", "mine", "from")), json.dumps(pv0))
 s, dep = api("POST", f"/admin/users/{g28}/deposit", {"amount_pln": 20, "method": "cash"}, a2)
 check("admin2: депозит 20 zł налом → 201", s == 201, f"{s} {dep.get('code')}")
 s, sale2 = api("POST", "/admin/sales", {"good_id": GA["id"], "method": "cash"}, a2)
 s2, sale3 = api("POST", "/admin/sales", {"good_id": GB["id"], "method": "card"}, a2)
 pv1 = api("GET", "/admin/work/closeout", None, a2)[1]
 check("ожидаемая наличность admin2 выросла на 20 + цена A (карта не считается)", near(pv1["expected_pln"], pv0["expected_pln"] + 20 + GA["price_pln"]) and near(pv1["deposits_pln"], pv0["deposits_pln"] + 20) and near(pv1["goods_pln"], pv0["goods_pln"] + GA["price_pln"]), f"{pv0['expected_pln']}→{pv1['expected_pln']}")
-check("касса admin1 от операций admin2 не меняется", near(api("GET", "/admin/work/closeout", None, a1)[1]["expected_pln"], cash_after["expected_pln"]), "")
+pa1 = api("GET", "/admin/work/closeout", None, a1)[1]
+check("ящик один на клуб: у admin1 «должно быть» то же, что у admin2, а его «из них провёл ты» от операций admin2 не меняется",
+      near(pa1["expected_pln"], pv1["expected_pln"]) and near((pa1.get("mine") or {}).get("in_pln", -1), mine1.get("in_pln", -2)), f"{pa1['expected_pln']} / {pv1['expected_pln']}")
 # отмена своей продажи налом — из плюса уходит сама
 api("POST", f"/admin/sales/{sale2['sale']['id']}/void", {}, a2)
 pv2 = api("GET", "/admin/work/closeout", None, a2)[1]
-check("отменил свою продажу налом → ожидаемая сумма вернулась (−цена A)", near(pv2["expected_pln"], pv1["expected_pln"] - GA["price_pln"]) and near(pv2.get("refunds_pln", 0), pv0.get("refunds_pln", 0)), f"{pv1['expected_pln']}→{pv2['expected_pln']}")
+check("отменил свою продажу налом → ожидаемая сумма вернулась (−цена A), отмена — строкой «возвраты налом»", near(pv2["expected_pln"], pv1["expected_pln"] - GA["price_pln"]) and near(pv2.get("refunds_pln", 0), pv1.get("refunds_pln", 0) + GA["price_pln"]), f"{pv1['expected_pln']}→{pv2['expected_pln']}")
 staff0 = api("GET", "/admin/staff-chat", None, ot)[1]["messages"]
 s, d = api("POST", "/admin/work/stop", {"counted_pln": round(pv2["expected_pln"] - 20, 2), "note": "сдал Ане"}, a2)
 co = d.get("closeout") or {}

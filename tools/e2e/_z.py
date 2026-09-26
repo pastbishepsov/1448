@@ -17,7 +17,7 @@ from _env import API, BASE, HOST, PORT, DB, SRV_LOG, MOCK_AGENT, agent_log
 __all__ = ["API", "BASE", "DB", "SRV_LOG", "TZ", "GUEST_PASS", "STAFF_PASS", "sql", "rows", "uid", "login", "tok",
            "tokens", "password_of", "jwt_claims", "api", "J", "check", "near", "section", "at_end", "done", "club_day", "at_club", "settings",
            "set_settings", "restore_settings", "wallet", "topup", "ensure_wallet", "pcs", "seat", "end", "end_all", "free_pcs",
-           "hire_temp", "dismiss", "audit", "ws_admin", "ws_read", "agent_start", "agent_stop"]
+           "hire_temp", "dismiss", "drawer_ready", "audit", "ws_admin", "ws_read", "agent_start", "agent_stop"]
 
 TZ = "Europe/Warsaw"  # часовой пояс клуба; сессия psql может жить в UTC — время клуба только через AT TIME ZONE
 GUEST_PASS, STAFF_PASS = "Guest12345", "Admin12345"
@@ -258,6 +258,17 @@ def hire_temp(nick, keep=False, **profile):
     if not keep:
         at_end(lambda: _retire(nick))
     return uid(nick)
+
+def drawer_ready(who):
+    """Ящик заведён (З8-и1): на стенде без истории ящика первая сдача — нулевая точка, а проверке нужны
+    ожидаемое и расхождения. Тогда who (на смене) сдаёт кассу пересчётом 500 zł — это начальный остаток — и
+    снова выходит на смену. Возвращает предпросмотр кассы who."""
+    p = api("GET", "/admin/work/closeout", None, who)[1]
+    if p.get("baseline"):
+        api("POST", "/admin/work/stop", {"counted_pln": 500}, who)
+        api("POST", "/admin/work/start", {}, who)
+        p = api("GET", "/admin/work/closeout", None, who)[1]
+    return p
 
 def _retire(nick):
     """Уборка временного сотрудника: уволить и снять незакрытую запись табеля (вход открывает смену)."""

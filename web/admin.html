@@ -2928,7 +2928,7 @@ async function voidPack(id){
   try{
     const d = await api('/admin/user-packages/' + id + '/void', {method:'POST'});
     toast('✓ Выдача отменена — забрано ' + d.minutes_taken + ' мин'
-      + (d.refund_pln > 0 ? ', возврат ' + fmtPLN(d.refund_pln) + ' zł' : ''));
+      + (d.refund_pln > 0 ? (d.refund_method === 'cash' ? ' · верни гостю ' + fmtPLN(d.refund_pln) + ' zł наличными' : ', возврат ' + fmtPLN(d.refund_pln) + ' zł') : ''));
     await loadUserPacks();
     await loadUserDrawer();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -4375,9 +4375,9 @@ function paintShiftCloseouts(list){
     ${list.map(c => `<tr>
       <td><b>${esc(c.nickname)}</b></td>
       <td class="muted">${hhmm(c.created_at)}</td>
-      <td title="пополнения ${fmtPLN(c.deposits_pln)} · товары ${fmtPLN(c.goods_pln)} · пакеты ${fmtPLN(c.packs_pln)}${c.refunds_pln > 0 ? ' · возвраты −' + fmtPLN(c.refunds_pln) : ''}">${fmtPLN(c.expected_pln)} zł</td>
+      <td title="${c.opening_pln != null ? 'на начало ' + fmtPLN(c.opening_pln) + ' · ' : ''}пополнения ${fmtPLN(c.deposits_pln)} · товары ${fmtPLN(c.goods_pln)} · пакеты ${fmtPLN(c.packs_pln)}${c.refunds_pln > 0 ? ' · возвраты −' + fmtPLN(c.refunds_pln) : ''}${c.collections_pln > 0 ? ' · инкассации −' + fmtPLN(c.collections_pln) : ''}">${fmtPLN(c.expected_pln)} zł</td>
       <td>${c.skipped ? '<span style="color:var(--orange)">без пересчёта</span>' : fmtPLN(c.counted_pln) + ' zł'}</td>
-      <td>${c.skipped ? '—' : (c.diff_pln === 0 ? '<span class="muted">сошлось</span>' : `<b style="color:var(--orange)">${c.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(c.diff_pln))} zł</b>`)}</td>
+      <td>${c.skipped ? '—' : c.baseline ? '<span class="muted">начальный остаток</span>' : (c.diff_pln === 0 ? '<span class="muted">сошлось</span>' : `<b style="color:var(--orange)">${c.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(c.diff_pln))} zł</b>`)}</td>
       <td class="muted">${esc(c.note || '')}</td>
     </tr>`).join('')}</table></div>`;
   mountIcons(box);
@@ -5806,14 +5806,29 @@ function paintShiftChip(){
 
 /* Шторка «Моя смена»: показать факт и дать закрыть её одной кнопкой.
    Уход — arm-паттерн: закрытая по ошибке смена стоит человеку часов. */
-/* Ж6-и4 (№32): уход = сдача кассы. Сервер говорит, сколько наличных должно
-   быть в ящике по операциям этого админа за его смену (З1-и1); админ вбивает
-   пересчитанное, разница уходит владельцу (канал персонала, сводка, табель).
+/* Ж6-и4 (№32): уход = сдача кассы. З8-и1: сервер считает ящик клуба — на начало
+   (что оставила прошлая сдача) + пришло − ушло, кто бы ни проводил; «из них провёл
+   ты» — справкой. Админ вбивает пересчитанное, разница уходит владельцу (канал
+   персонала, сводка, табель). Ящика ещё нет (первая сдача после обновления) —
+   пересчитанное становится остатком на начало, расхождения нет.
    Уйти без пересчёта можно — отдельной кнопкой и с пометкой. */
 let closeoutPrev = null, closeoutCounted = '';
 // З1-и1: начало окна сдачи — время, а если смена началась не сегодня — ещё и дата («22.09 21:00»)
 function coFrom(iso){ const d = new Date(iso), t = new Date();
   return (d.toDateString() === t.toDateString() ? '' : String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ') + hhmm(iso); }
+function coOpening(cp){
+  const by = '<b>' + esc(cp.opening_by || '—') + '</b>', when = cp.from ? ' ' + coFrom(cp.from) : '';
+  if (cp.opening_baseline) return 'начальный остаток, пересчитал ' + by + when;
+  return cp.opening_counted ? 'пересчитал ' + by + ' при сдаче' + when : 'по расчёту — ' + by + ' сдал смену без пересчёта' + when;
+}
+function coParts(cp){
+  const m = cp.mine;
+  return 'пополнения ' + fmtPLN(cp.deposits_pln || 0) + ' · товары и кухня ' + fmtPLN(cp.goods_pln || 0) + ' · пакеты ' + fmtPLN(cp.packs_pln || 0)
+    + (cp.refunds_pln > 0 ? ' · минус возвраты налом ' + fmtPLN(cp.refunds_pln) : '')
+    + (cp.collections_pln > 0 ? ' · минус инкассации ' + fmtPLN(cp.collections_pln) : '')
+    + (cp.adjust_pln ? ' · коррекции ' + (cp.adjust_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(cp.adjust_pln)) : '')
+    + (m ? ' · из них провёл ты: +' + fmtPLN(m.in_pln || 0) + (m.out_pln > 0 ? ' / −' + fmtPLN(m.out_pln) : '') : '');
+}
 async function openMyShift(){
   if (isOwner()){ nav('staff'); return; } // З7-и3: у владельца своей смены нет — чип ведёт к табелю
   drawerUserId = null; drawerPCId = null;
@@ -5827,7 +5842,7 @@ function paintMyShift(){
   const on = !!(myShift && myShift.on_shift);
   const cp = closeoutPrev || {};
   const counted = closeoutCounted === '' ? null : Math.round(parseFloat(String(closeoutCounted).replace(',', '.')) * 100) / 100;
-  const diff = counted == null || isNaN(counted) ? null : Math.round((counted - (cp.expected_pln || 0)) * 100) / 100;
+  const diff = cp.baseline || counted == null || isNaN(counted) ? null : Math.round((counted - (cp.expected_pln || 0)) * 100) / 100;
   const body = !myShift
     ? '<div class="muted">Табель не отвечает — попробуй обновить страницу</div>'
     : `<table class="kv">
@@ -5841,13 +5856,15 @@ function paintMyShift(){
       ${on
         ? `<div class="dsub">Сдача кассы</div>
            ${cp.error ? `<div class="muted">Касса не посчиталась: ${esc(cp.error)}</div>` : `
-           <table class="kv">
-             <tr><td class="muted">В ящике должно быть</td><td><b id="coExpected">${fmtPLN(cp.expected_pln || 0)} zł</b> <span class="muted">— наличные по твоим операциям за смену с ${cp.from ? coFrom(cp.from) : '—'}</span></td></tr>
-             <tr><td class="muted">Из чего</td><td class="muted">пополнения ${fmtPLN(cp.deposits_pln || 0)} · товары и кухня ${fmtPLN(cp.goods_pln || 0)} · пакеты ${fmtPLN(cp.packs_pln || 0)}${cp.refunds_pln > 0 ? ' · минус возвраты налом ' + fmtPLN(cp.refunds_pln) : ''}${cp.club_expected_pln != null && Math.abs(cp.club_expected_pln - (cp.expected_pln || 0)) >= 0.01 ? ' · всего за смену по всем: ' + fmtPLN(cp.club_expected_pln) : ''}</td></tr>
+           <table class="kv">${cp.baseline
+             ? `<tr><td class="muted">Ящик</td><td><b>первая сдача после обновления</b> <span class="muted">— пересчитай весь ящик: сумма станет остатком на начало, расхождения не будет</span></td></tr>`
+             : `<tr><td class="muted">В ящике должно быть</td><td><b id="coExpected">${fmtPLN(cp.expected_pln || 0)} zł</b> <span class="muted">— весь ящик клуба, кто бы ни проводил</span></td></tr>
+             <tr><td class="muted">На начало</td><td class="muted">${fmtPLN(cp.opening_pln || 0)} zł — ${coOpening(cp)}</td></tr>
+             <tr><td class="muted">Из чего</td><td class="muted">${coParts(cp)}</td></tr>`}
            </table>
            <div class="uform" style="margin-top:8px">
              <input id="coCounted" class="input" type="number" min="0" step="0.01" placeholder="Пересчитано, zł" value="${esc(closeoutCounted)}" oninput="closeoutCounted=this.value; coPaintDiff()">
-             <div id="coDiff" class="muted">${coDiffText(diff)}</div>
+             <div id="coDiff" class="muted">${coDiffText(diff, counted)}</div>
              <input id="coNote" class="input" placeholder="Передал смену: кому, что не доделано (необязательно)" maxlength="500">
              <button class="btn ${diff != null && diff !== 0 ? 'danger' : ''}" style="width:100%; justify-content:center" id="coSubmit"
                      onclick="armButton(this, 'Ещё раз — сдать смену', () => shiftStop(false))"><span data-ic="out"></span>Сдать смену</button>
@@ -5860,7 +5877,10 @@ function paintMyShift(){
                    onclick="shiftStart()"><span data-ic="check"></span>Я пришёл</button>`}`;
   openDrawer('Моя смена', body);
 }
-function coDiffText(diff){
+function coDiffText(diff, counted){
+  if ((closeoutPrev || {}).baseline) return counted == null || isNaN(counted) // З8-и1: нулевая точка
+    ? 'Пересчитай весь ящик и вбей сумму — она станет начальным остатком'
+    : 'Начальный остаток ящика: ' + fmtPLN(counted) + ' zł — расхождения нет';
   if (diff == null || isNaN(diff)) return 'Пересчитай наличные в ящике и вбей сумму — сравню с ожидаемой';
   if (diff === 0) return '✓ Касса сошлась';
   return (diff > 0 ? 'Излишек +' : 'Недостача −') + fmtPLN(Math.abs(diff)) + ' zł — уйдёт только владельцу';
@@ -5868,8 +5888,8 @@ function coDiffText(diff){
 function coPaintDiff(){
   const cp = closeoutPrev || {};
   const v = closeoutCounted === '' ? null : Math.round(parseFloat(String(closeoutCounted).replace(',', '.')) * 100) / 100;
-  const diff = v == null || isNaN(v) ? null : Math.round((v - (cp.expected_pln || 0)) * 100) / 100;
-  const el = document.getElementById('coDiff'); if (el) el.textContent = coDiffText(diff);
+  const diff = cp.baseline || v == null || isNaN(v) ? null : Math.round((v - (cp.expected_pln || 0)) * 100) / 100;
+  const el = document.getElementById('coDiff'); if (el) el.textContent = coDiffText(diff, v);
   const btn = document.getElementById('coSubmit'); if (btn) btn.classList.toggle('danger', diff != null && diff !== 0);
 }
 async function shiftStop(skipCount){
@@ -5885,7 +5905,7 @@ async function shiftStop(skipCount){
   try{
     const d = await api('/admin/work/stop', {method:'POST', body:JSON.stringify(body)});
     const co = d.closeout;
-    toast('✓ Смена закрыта · ' + hm(d.entry.minutes) + (co ? (co.skipped ? ' · касса без пересчёта' : (co.diff_pln === 0 ? ' · касса сошлась' : ' · расхождение ' + (co.diff_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(co.diff_pln)) + ' zł — владелец увидит')) : ''));
+    toast('✓ Смена закрыта · ' + hm(d.entry.minutes) + (co ? (co.baseline ? ' · начальный остаток ящика ' + fmtPLN(co.counted_pln) + ' zł' : co.skipped ? ' · касса без пересчёта' : (co.diff_pln === 0 ? ' · касса сошлась' : ' · расхождение ' + (co.diff_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(co.diff_pln)) + ' zł — владелец увидит')) : ''));
     closeoutPrev = null; closeoutCounted = '';
     closeDrawer();
     await loadMyShift();
@@ -5957,7 +5977,7 @@ async function renderTimesheet(){
         <td><b>${esc(e.nickname||'—')}</b></td>
         <td class="muted">${e.shift ? esc(e.shift) : 'вне смены'}</td>
         <td>${hhmm(e.started_at)} — ${e.open ? 'ещё на смене' : hhmm(e.ended_at)}</td>
-        <td>${e.open ? '—' : hm(e.minutes)}${e.auto_closed ? ' <span class="muted">· не отметил уход</span>' : ''}${e.closeout ? (e.closeout.skipped ? ' <span style="color:var(--orange)" title="ушёл без пересчёта кассы">· касса не считана</span>' : (e.closeout.diff_pln === 0 ? ' <span class="muted" title="касса сошлась: ' + fmtPLN(e.closeout.expected_pln) + ' zł">· касса ✓</span>' : ` <span style="color:var(--orange)" title="должно быть ${fmtPLN(e.closeout.expected_pln)} zł, пересчитано ${fmtPLN(e.closeout.counted_pln)} zł">· касса ${e.closeout.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(e.closeout.diff_pln))} zł</span>`)) : ''}</td>
+        <td>${e.open ? '—' : hm(e.minutes)}${e.auto_closed ? ' <span class="muted">· не отметил уход</span>' : ''}${e.closeout ? (e.closeout.skipped ? ' <span style="color:var(--orange)" title="ушёл без пересчёта кассы">· касса не считана</span>' : e.closeout.baseline ? ' <span class="muted" title="первая сдача после обновления — пересчитанное стало остатком ящика: ' + fmtPLN(e.closeout.counted_pln) + ' zł">· касса: начальный остаток</span>' : (e.closeout.diff_pln === 0 ? ' <span class="muted" title="касса сошлась: ' + fmtPLN(e.closeout.expected_pln) + ' zł">· касса ✓</span>' : ` <span style="color:var(--orange)" title="должно быть ${fmtPLN(e.closeout.expected_pln)} zł, пересчитано ${fmtPLN(e.closeout.counted_pln)} zł">· касса ${e.closeout.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(e.closeout.diff_pln))} zł</span>`)) : ''}</td>
         <td style="white-space:nowrap">
           <button class="btn ghost mini" onclick="tsEdit('${e.id}')"><span data-ic="edit"></span></button>
           <button class="btn ghost mini danger" onclick="armTsDelete(this,'${e.id}')">✕</button>
