@@ -581,6 +581,15 @@
     /* у владельца в нижней панели теперь 12 кнопок — делят ширину поровну, в 360 px влезают все */
     .rail button{flex:1 1 0; min-width:0; padding:9px 0}
   }
+  /* З9-и2: расходы — строка открывает шторку; сторно — бледно, сумма зачёркнута; итоги по категориям — плашками */
+  .expList tr.expRow{cursor:pointer}
+  .expList tr.expOff td{color:var(--dim)}
+  .expList tr.expOff td.expSum{text-decoration:line-through}
+  .expList .expL{display:none}
+  .expCats{display:flex; flex-wrap:wrap; gap:6px 8px; margin:0 0 12px}
+  .expCats span{border:1px solid var(--hair); border-radius:99px; padding:4px 11px; font-size:13px}
+  #efPhotoBox img{max-width:100%; max-height:260px; border-radius:10px; display:block; margin-top:6px; cursor:zoom-in}
+  @media (max-width:640px){ .expList .expL{display:inline; color:var(--dim); margin-right:4px} }
 </style>
 </head>
 <body>
@@ -928,7 +937,7 @@
       <section id="s-acc" class="hidden">
         <!-- З8-и3 (№78): «Бухгалтерия» — только владельцу; вкладки (пока одна — «Касса»):
              ящик клуба по клубным дням, инкассации, коррекции остатка. -->
-        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="cash">Касса</button></div></div>
+        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button></div></div>
         <div id="accBody"><div class="skel"></div><div class="skel"></div></div>
       </section>
 
@@ -3906,7 +3915,8 @@ const AUD_GROUPS = {
           'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
           'kitchen_done','kitchen_pay','kitchen_cancel', // кухню считают у той же стойки (ревью 26.08)
           'sale_paid','settle','kitchen_order','shift_close', // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
-          'cash_collect','cash_correct','cash_event_void'], // З8-и2: инкассация, коррекция остатка, отмена события ящика
+          'cash_collect','cash_correct','cash_event_void', // З8-и2: инкассация, коррекция остатка, отмена события ящика
+          'expense_create','expense_update','expense_storno'], // З9-и2: расходы (видит только владелец)
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -3940,6 +3950,7 @@ const AUD_LABEL = {
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
   work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка', shift_close:'сдача кассы', // Ж6-и4
   cash_collect:'касса: инкассация', cash_correct:'касса: коррекция остатка', cash_event_void:'касса: отмена события', // З8-и2
+  expense_create:'расход: внесён', expense_update:'расход: правка', expense_storno:'расход: сторно', counterparty_create:'контрагент: новый', // З9-и2
   login_failed:'вход: неверный пароль', // З0-и3: серия неудач входа персонала — только владельцу
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   coin_redeem:'монеты: время за монеты',
@@ -3973,6 +3984,7 @@ const AUD_ICON = {
   shift_assign:'cal', shift_unassign:'out',
   sale:'box', sale_void:'cross', sale_paid:'coins', settle:'coins', shift_close:'coins', kitchen_order:'box', // Ж6
   cash_collect:'coins', cash_correct:'wrench', cash_event_void:'cross', // З8-и2
+  expense_create:'coins', expense_update:'edit', expense_storno:'cross', counterparty_create:'users', // З9-и2
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out',
   work_start:'clock', work_stop:'check', work_edit:'edit',
@@ -5562,6 +5574,8 @@ function accCustom(){
   accPeriod = {from:f, to:t || f}; accDay = null; renderAcc();
 }
 async function renderAcc(){
+  document.querySelectorAll('#accTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === accTab)); // З9-и2
+  if (accTab === 'exp') return renderExp();
   const box = document.getElementById('accBody');
   if (!accData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
   try{ accData = await api('/admin/cash/book?' + accQuery()); }
@@ -5692,6 +5706,236 @@ async function accVoid(id){
     const d = await api('/admin/cash/events/' + id + '/void', {method:'POST'});
     toast('✓ Событие отменено' + (d.baseline ? '' : ' · в ящике должно быть ' + fmtPLN(d.expected_pln) + ' zł'));
     renderAcc();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* ── З9-и2 (№65): «Бухгалтерия» → «Расходы», только владельцу. Период (по дню операции) и фильтры — категория и
+   способ; итоги без сторно — всего и по категориям; список, свежий день сверху, сторно — бледно и с причиной.
+   Шторка расхода: дата, категория, контрагент (нового нет в справочнике — заведётся при записи), сумма брутто и
+   VAT, способ, оплачен, документ, заметка, фото документа (браузер сжимает до 500 КБ; показывается только
+   владельцу — по токену, не ссылкой). Правка — там же, удаления нет — сторно с причиной. Сервер — expenses.go. ── */
+let accTab = (() => { try{ return localStorage.getItem('1448a_acctab') === 'exp' ? 'exp' : 'cash'; }catch(e){ return 'cash'; } })();
+function accTabSet(t){
+  accTab = t;
+  try{ localStorage.setItem('1448a_acctab', t); }catch(e){}
+  renderAcc();
+}
+function accGo(t){ accTab = t; try{ localStorage.setItem('1448a_acctab', t); }catch(e){} nav('acc'); }
+let expPeriod = {preset:'month'}, expData = null, expCats = null, expCps = null, expFilt = {category:'', method:''}, expForm = null;
+const EXP_METHODS = [['till','Из кассы'], ['bank','Банк'], ['card','Карта'], ['owner','Личные деньги владельца']];
+const EXP_METHOD_RU = Object.fromEntries(EXP_METHODS);
+const EXP_PRESETS = ACC_PRESETS.concat([['year','Год']]);
+function expQuery(){
+  let q = expPeriod.preset ? 'preset=' + expPeriod.preset : 'from=' + expPeriod.from + '&to=' + expPeriod.to;
+  if (expFilt.category) q += '&category_id=' + expFilt.category;
+  if (expFilt.method) q += '&method=' + expFilt.method;
+  return q;
+}
+async function expRefs(){ // справочники — один раз; новый контрагент дописывается сам
+  if (!expCats) expCats = (await api('/admin/expense-categories')).categories || [];
+  if (!expCps) expCps = (await api('/admin/counterparties')).counterparties || [];
+}
+async function renderExp(){
+  const box = document.getElementById('accBody');
+  if (!expData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  try{ await expRefs(); expData = await api('/admin/expenses?' + expQuery()); }
+  catch(e){ box.innerHTML = '<div class="muted">Расходы не загрузились: ' + esc(e.message) + '</div>'; return; }
+  paintExp();
+}
+function expPreset(p){ expPeriod = {preset:p}; renderExp(); }
+function expCustom(){
+  const f = dateOf('expFrom', 'Начало периода');
+  if (f === null) return;
+  const t = dateOf('expTo', 'Конец периода');
+  if (t === null) return;
+  if (!f){ toast('⚠ Укажи дату начала'); return; }
+  if (t && t < f){ toast('⚠ Конец периода раньше начала'); return; }
+  expPeriod = {from:f, to:t || f}; renderExp();
+}
+function paintExp(){
+  const box = document.getElementById('accBody'), d = expData || {}, t = d.totals || {}, per = d.period || {};
+  const cats = (d.by_category || []).slice().sort((a, b) => b.amount_pln - a.amount_pln);
+  const list = d.expenses || [], cur = expCats.filter(c => !c.hidden || c.id === expFilt.category);
+  box.innerHTML = `
+    <div class="kpis">
+      <div class="kpi">Расходы за период <b id="expTotal">${fmtPLN(t.amount_pln)} zł</b></div>
+      <div class="kpi">из них VAT <b>${fmtPLN(t.vat_pln)} zł</b></div>
+      <div class="kpi">без VAT <b>${fmtPLN(t.net_pln)} zł</b></div>
+      <div class="kpi">Записей <b>${t.count || 0}</b></div>
+    </div>
+    <div class="toolrow">
+      <button class="btn mini" id="expNewBtn" onclick="expOpen('')"><span data-ic="plus"></span>Внести расход</button>
+      <select id="expCat" class="input" style="width:auto" aria-label="Категория" onchange="expFilt.category=this.value; renderExp()">
+        <option value="">Все категории</option>${cur.map(c => `<option value="${c.id}"${expFilt.category === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+      <select id="expMethod" class="input" style="width:auto" aria-label="Способ" onchange="expFilt.method=this.value; renderExp()">
+        <option value="">Все способы</option>${EXP_METHODS.map(([k, n]) => `<option value="${k}"${expFilt.method === k ? ' selected' : ''}>${n}</option>`).join('')}</select>
+    </div>
+    <div class="toolrow">
+      <div class="segs" id="expPresets">${EXP_PRESETS.map(([p, n]) => `<button class="${expPeriod.preset === p ? 'on' : ''}" onclick="expPreset('${p}')">${n}</button>`).join('')}</div>
+      <div class="segs" style="align-items:center">
+        <input id="expFrom" ${DATE_FIELD} aria-label="Начало периода" value="${expPeriod.preset ? '' : ruDate(expPeriod.from)}" onkeydown="if(event.key==='Enter')expCustom()">
+        <span class="muted" style="align-self:center">—</span>
+        <input id="expTo" ${DATE_FIELD} aria-label="Конец периода" value="${expPeriod.preset ? '' : ruDate(expPeriod.to)}" onkeydown="if(event.key==='Enter')expCustom()">
+        <button class="btn ghost mini" onclick="expCustom()"><span data-ic="chart"></span>Показать</button>
+      </div>
+    </div>
+    <div class="muted" style="margin:-4px 0 12px">${per.from ? ruDate(per.from) + (per.to !== per.from ? ' — ' + ruDate(per.to) : '') : ''} · по дню операции · сторнированные — бледные, в итоги не входят · нажми на строку — правка и сторно</div>
+    ${cats.length ? `<div class="expCats">${cats.map(c => `<span>${esc(c.category)} <b>${fmtPLN(c.amount_pln)} zł</b> · ${c.count}</span>`).join('')}</div>` : ''}
+    ${list.length ? `<div class="tablewrap"><table class="expList">
+      <tr><th>Дата</th><th>Категория</th><th>Контрагент</th><th>Документ</th><th>Способ</th><th>Сумма</th><th>VAT</th><th>Заметка</th></tr>
+      ${list.map(expRow).join('')}
+    </table></div>` : '<div class="empty">За этот период расходов нет — «Внести расход» добавит первый</div>'}`;
+  mountIcons(box);
+}
+function expRow(e){
+  const off = !!e.storno_at, L = s => '<span class="expL">' + s + '</span>';
+  return `<tr class="expRow${off ? ' expOff' : ''}" data-id="${e.id}" onclick="expOpen('${e.id}')">
+    <td>${ruDate(e.op_date)}</td>
+    <td><b>${esc(e.category || '—')}</b></td>
+    <td>${esc(e.counterparty || '—')}</td>
+    <td>${esc(e.doc_no || '—')}${e.has_photo ? ' <span title="есть фото документа">📎</span>' : ''}</td>
+    <td>${EXP_METHOD_RU[e.method] || esc(e.method)}${e.paid ? '' : ' <span style="color:var(--orange)">· не оплачен</span>'}</td>
+    <td class="expSum">${L('сумма')}<b>${fmtPLN(e.amount_pln)}</b></td>
+    <td class="expSum">${L('VAT')}${fmtPLN(e.vat_pln)}</td>
+    <td style="white-space:normal">${off ? 'сторно: «' + esc(e.storno_reason) + '» · ' + esc(e.storno_by || '—') : esc(e.note || '')}</td>
+  </tr>`;
+}
+async function expOpen(id){
+  try{ await expRefs(); }catch(e){ toast('⚠ ' + e.message); return; }
+  const e = id ? ((expData || {}).expenses || []).find(x => x.id === id) : null;
+  if (id && !e) return;
+  expForm = e ? {id:e.id, date:ruDate(e.op_date), category:e.category_id, counterparty:e.counterparty || '', amount:String(e.amount_pln),
+      vat:e.vat_pln ? String(e.vat_pln) : '', method:e.method, paid:e.paid, doc:e.doc_no || '', note:e.note || '', storno:e.storno_at ? e : null, photo:e.has_photo}
+    : {id:'', date:ruDate(isoDate(new Date())), category:'', counterparty:'', amount:'', vat:'', method:'bank', paid:true, doc:'', note:'', storno:null, photo:false};
+  expPaint();
+}
+function expNet(){
+  const a = parseFloat(String(document.getElementById('efAmount').value).replace(',', '.')), v = parseFloat(String(document.getElementById('efVat').value || '0').replace(',', '.'));
+  document.getElementById('efNet').textContent = a > 0 ? 'без VAT: ' + fmtPLN(Math.round((a - (v || 0)) * 100) / 100) + ' zł' : 'без VAT: —';
+}
+function expPaint(){
+  const f = expForm, cats = expCats.filter(c => !c.hidden || c.id === f.category), e = f.storno;
+  drawerUserId = null; drawerPCId = null; // шторка — бухгалтерии, живые обновления её не перерисуют
+  const photo = f.photo ? `<div class="dsub">Фото документа</div><div id="efPhotoBox" class="muted">загружаю…</div>` : '';
+  if (e){ // сторнированный — только посмотреть
+    openDrawer('Расход — сторно', `<div class="uform">
+      <div><b>${esc(e.category)}</b> · ${fmtPLN(e.amount_pln)} zł${e.vat_pln ? ' (VAT ' + fmtPLN(e.vat_pln) + ')' : ''} · ${EXP_METHOD_RU[e.method] || e.method} · ${ruDate(e.op_date)}</div>
+      <div class="muted">${esc(e.counterparty || 'без контрагента')}${e.doc_no ? ' · ' + esc(e.doc_no) : ''}${e.note ? ' · ' + esc(e.note) : ''}</div>
+      <div style="color:var(--orange)">Сторнирован ${ruDate(String(e.storno_at).slice(0, 10))} · ${esc(e.storno_by || '—')}: «${esc(e.storno_reason)}»</div>
+      <div class="muted">Сторнированный расход не правится и в итоги не входит — если нужен, внеси новый.</div>
+      ${photo}</div>`);
+    if (f.photo) expPhotoShow(f.id);
+    return;
+  }
+  openDrawer(f.id ? 'Расход' : 'Новый расход', `<div class="uform">
+    <input id="efDate" ${DATE_FIELD} aria-label="Дата операции" value="${esc(f.date)}">
+    <select id="efCat" class="input" aria-label="Категория"><option value="">— категория —</option>${cats.map(c => `<option value="${c.id}"${f.category === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    <input id="efCp" class="input" list="efCpList" maxlength="128" placeholder="Контрагент — необязательно; нового заведу при записи" value="${esc(f.counterparty)}">
+    <datalist id="efCpList">${expCps.filter(c => !c.hidden).map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+    <div style="display:flex; gap:8px">
+      <input id="efAmount" class="input" type="number" min="0.01" step="0.01" placeholder="Сумма брутто, zł" value="${esc(f.amount)}" oninput="expNet()">
+      <input id="efVat" class="input" type="number" min="0" step="0.01" placeholder="VAT, zł" value="${esc(f.vat)}" oninput="expNet()">
+    </div>
+    <div id="efNet" class="muted">без VAT: —</div>
+    <div class="segs" id="efMethod">${EXP_METHODS.map(([k, n]) => `<button class="${f.method === k ? 'on' : ''}" onclick="expForm.method='${k}'; segOn(this)">${n}</button>`).join('')}</div>
+    <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="efPaid" type="checkbox"${f.paid ? ' checked' : ''}> оплачен</label>
+    <input id="efDoc" class="input" maxlength="64" placeholder="Номер документа — FV 12/09/2026" value="${esc(f.doc)}">
+    <input id="efNote" class="input" maxlength="500" placeholder="Заметка" value="${esc(f.note)}">
+    ${photo}
+    <label class="muted">${f.photo ? 'Заменить фото документа' : 'Фото документа — необязательно'}<input id="efPhoto" class="input" type="file" accept="image/*" style="margin-top:4px"></label>
+    <button class="btn" style="width:100%; justify-content:center" id="efSave" onclick="expSave()"><span data-ic="save"></span>${f.id ? 'Сохранить' : 'Внести расход'}</button>
+    ${f.id ? `<div class="dsub">Сторно</div>
+    <input id="efReason" class="input" maxlength="200" placeholder="Причина сторно — обязательно">
+    <button class="btn ghost" style="width:100%; justify-content:center" id="efStorno" onclick="armButton(this, 'Ещё раз — сторнировать', () => expStorno())"><span data-ic="cross"></span>Сторнировать</button>
+    <div class="muted">Удаления нет: строка останется бледной, с причиной, и уйдёт из итогов.</div>` : ''}
+  </div>`);
+  expNet();
+  if (f.photo) expPhotoShow(f.id);
+}
+// контрагент по имени: есть в справочнике — его id, нет — заводим (409 «уже есть» — берём тот id); '' — без контрагента
+async function expCounterparty(name){
+  if (!name) return '';
+  const hit = expCps.find(c => c.name.toLowerCase() === name.toLowerCase());
+  if (hit) return hit.id;
+  try{
+    const d = await api('/admin/counterparties', {method:'POST', body: JSON.stringify({name})});
+    expCps.push(d.counterparty);
+    return d.counterparty.id;
+  }catch(e){
+    if (e.code === 'counterparty_exists' && e.data && e.data.id){ expCps = null; return e.data.id; }
+    throw e;
+  }
+}
+async function expSave(){
+  const f = expForm, btn = document.getElementById('efSave');
+  const date = dateOf('efDate', 'Дата операции');
+  if (date === null) return;
+  if (!date){ toast('⚠ Укажи дату операции'); return; }
+  const cat = document.getElementById('efCat').value;
+  if (!cat){ toast('⚠ Выбери категорию'); return; }
+  const amount = parseFloat(String(document.getElementById('efAmount').value).replace(',', '.'));
+  if (!(amount > 0)){ toast('⚠ Сумма брутто — больше нуля'); return; }
+  const vatRaw = String(document.getElementById('efVat').value).trim(), vat = vatRaw === '' ? 0 : parseFloat(vatRaw.replace(',', '.'));
+  if (isNaN(vat) || vat < 0 || vat > amount){ toast('⚠ VAT — от 0 до суммы брутто'); return; }
+  const file = document.getElementById('efPhoto').files[0];
+  btn.disabled = true;
+  try{
+    const body = {op_date: date, category_id: cat, counterparty_id: await expCounterparty(document.getElementById('efCp').value.trim()),
+      amount_pln: Math.round(amount * 100) / 100, vat_pln: Math.round(vat * 100) / 100, method: f.method,
+      paid: document.getElementById('efPaid').checked, doc_no: document.getElementById('efDoc').value.trim(), note: document.getElementById('efNote').value.trim()};
+    const d = f.id ? await api('/admin/expenses/' + f.id, {method:'PATCH', body: JSON.stringify(body)})
+                   : await api('/admin/expenses', {method:'POST', body: JSON.stringify(body)});
+    let ph = '';
+    if (file){ await expPhotoUpload(d.expense.id, file); ph = ' · фото документа приложено'; }
+    toast(f.id ? (d.changed || file ? '✓ Расход поправлен' + ph : 'Изменений нет')
+               : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category + ph);
+    closeDrawer();
+    renderExp();
+  }catch(e){ toast('⚠ ' + e.message); }
+  finally{ if (btn.isConnected) btn.disabled = false; }
+}
+// фото документа: браузер сжимает до ≤500 КБ (чем крупнее снимок, тем сильнее), сервер принимает JPEG
+async function expPhotoUpload(id, file){
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('это не картинка')); i.src = URL.createObjectURL(file); });
+  let blob = null;
+  for (const [side, q] of [[1800, .85], [1600, .75], [1400, .65], [1200, .55], [1000, .5]]){
+    const k = Math.min(1, side / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+    cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    blob = await new Promise(res => cv.toBlob(res, 'image/jpeg', q));
+    if (blob && blob.size <= 500 * 1024) break;
+  }
+  const r = await fetch(API + '/admin/expenses/' + id + '/photo', {method:'PUT', headers:{'Content-Type':'image/jpeg', 'Authorization':'Bearer ' + tokens().a}, body: blob});
+  if (!r.ok){ const e = await r.json().catch(() => ({})); throw new Error('расход записан, а фото — нет: ' + (e.message || r.status)); }
+}
+async function expPhotoShow(id){
+  const box = document.getElementById('efPhotoBox');
+  try{
+    const r = await fetch(API + '/admin/expenses/' + id + '/photo', {headers:{'Authorization':'Bearer ' + tokens().a}});
+    if (!r.ok) throw new Error(r.status);
+    const url = URL.createObjectURL(await r.blob());
+    if (box) box.innerHTML = `<img src="${url}" alt="фото документа" onclick="window.open(this.src)">`
+      + (expForm && !expForm.storno ? `<button class="btn ghost mini" style="margin-top:6px" onclick="expPhotoDel('${id}')"><span data-ic="cross"></span>Убрать фото</button>` : '');
+    if (box) mountIcons(box);
+  }catch(e){ if (box) box.textContent = 'фото не загрузилось'; }
+}
+async function expPhotoDel(id){
+  try{
+    await api('/admin/expenses/' + id + '/photo', {method:'DELETE'});
+    toast('✓ Фото убрано');
+    expForm.photo = false;
+    renderExp();
+    expPaint();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function expStorno(){
+  const reason = document.getElementById('efReason').value.trim();
+  if (!reason){ toast('⚠ У сторно нужна причина'); return; }
+  try{
+    await api('/admin/expenses/' + expForm.id + '/storno', {method:'POST', body: JSON.stringify({reason})});
+    toast('✓ Расход сторнирован — строка осталась, в итоги не входит');
+    closeDrawer();
+    renderExp();
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
@@ -7030,7 +7274,9 @@ const PAL_ACTIONS = [
    владельцу, admin — только админу. Совпадение — с начала слова или внутри, не по буквам вразброс. */
 const PAL_WORDS = [
   {who:'owner', words:['касса', 'кассовая книга', 'ящик', 'инкассация', 'коррекция'], name:'Касса', // З8-и3
-   sub:'Бухгалтерия → ящик по дням, инкассации', ic:'coins', run:() => nav('acc')},
+   sub:'Бухгалтерия → ящик по дням, инкассации', ic:'coins', run:() => accGo('cash')},
+  {who:'owner', words:['расход', 'расходы', 'аренда', 'коммуналка', 'контрагент', 'счёт', 'фактура'], name:'Расходы', // З9-и2
+   sub:'Бухгалтерия → расходы за период, внести расход', ic:'coins', run:() => accGo('exp')},
   {who:'owner', words:['сдачи', 'сдача кассы', 'расхождение', 'недостача'], name:'Сдачи кассы',
    sub:'Отчёты → смена: кто сколько сдал', ic:'coins', run:() => palGoShift()},
   {who:'owner', words:['зарплата', 'выплата', 'к выплате', 'ставка'], name:'К выплате',
