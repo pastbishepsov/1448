@@ -93,11 +93,20 @@ func handleCashBook(c *gin.Context) {
 
 	var closeouts []models.ShiftCloseout
 	var events []models.CashEvent
+	var tills []models.Expense // З9-и3а: расходы из кассы — по моменту, когда ушли из ящика
 	if len(wins) > 0 {
 		from, to := wins[0].From, wins[len(wins)-1].To
 		db.Where("created_at >= ? AND created_at < ?", from, to).Order("created_at").Find(&closeouts)
 		db.Where("created_at >= ? AND created_at < ?", from, to).Order("created_at").Find(&events)
+		expenseQ().Where("drawer_at >= ? AND drawer_at < ? AND storno_at IS NULL", from, to).Order("drawer_at").Find(&tills)
 	}
+	explained := map[uuid.UUID]int64{} // сдача → расходы, внесённые позже и объяснившие её расхождение
+	for i := range tills {
+		if x := tills[i].ExplainsCloseout; x != nil {
+			explained[*x] += tills[i].GrossGrosz
+		}
+	}
+	catNames := categoryNames()
 	ids := []string{}
 	for i := range closeouts {
 		ids = append(ids, closeouts[i].UserID.String())
@@ -139,6 +148,9 @@ func handleCashBook(c *gin.Context) {
 			}
 			r := closeoutOut(co)
 			r["nickname"] = nick[co.UserID.String()]
+			if x := explained[co.ID]; x > 0 {
+				r["explained_pln"] = models.PLNFromGrosz(x)
+			}
 			dayCO = append(dayCO, r)
 			if start == nil && opening == nil && co.OpeningGrosz != nil {
 				start = co
@@ -157,7 +169,20 @@ func handleCashBook(c *gin.Context) {
 			}
 			dayEv = append(dayEv, r)
 		}
-		row["closeouts"], row["events"] = dayCO, dayEv
+		dayExp := []gin.H{}
+		for i := range tills {
+			e := &tills[i]
+			if e.DrawerAt.Before(w.From) || !e.DrawerAt.Before(w.To) {
+				continue
+			}
+			r := gin.H{"id": e.ID, "category": catNames[e.CategoryID.String()], "amount_pln": models.PLNFromGrosz(e.GrossGrosz),
+				"note": e.Note, "doc_no": e.DocNo, "op_date": e.OpDate.Format("2006-01-02"), "created_at": e.CreatedAt, "drawer_at": e.DrawerAt}
+			if e.ExplainsCloseout != nil {
+				r["explains_closeout"] = *e.ExplainsCloseout
+			}
+			dayExp = append(dayExp, r)
+		}
+		row["closeouts"], row["events"], row["expenses"] = dayCO, dayEv, dayExp
 
 		var diff int64
 		switch {
@@ -176,6 +201,7 @@ func handleCashBook(c *gin.Context) {
 		total.Packs += f.Packs
 		total.Refunds += f.Refunds
 		total.Collections += f.Collections
+		total.Expenses += f.Expenses
 		total.Adjust += f.Adjust
 		totalDiff += diff
 		opening, last = closing, closing

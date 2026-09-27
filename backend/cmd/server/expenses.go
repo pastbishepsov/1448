@@ -328,6 +328,119 @@ func applyExpenseIDs(req expenseRequest, e *models.Expense) string {
 	return ""
 }
 
+// ── З9-и3а: расход из кассы в ящике (решение основателя 27.09) ──
+
+// tillPoint — сдача модели ящика для tillPlace: когда и пересчитали ли
+// (начальный остаток — тоже пересчёт).
+type tillPoint struct {
+	At      time.Time
+	Counted bool
+}
+
+// tillPlace — где расход «из кассы» ложится в ящик (чистая, тест). from/to —
+// клубные сутки дня операции; anchor — когда расход внесён (при правке способа
+// или дня — момент первой записи, «как если бы так и внесли»; при отметке
+// «оплачен» — сейчас); now — сейчас; points — сдачи модели ящика до now, по
+// возрастанию. Кто нехватку увидел — тот её и объясняет:
+//   - сутки операции на момент записи ещё шли (или впереди) — деньги ушли тогда:
+//     с тех пор не пересчитывали — ящик уменьшается сейчас (при записи это и
+//     есть «должно быть меньше сразу»); пересчитали — объяснён первый пересчёт
+//     после записи;
+//   - сутки прошли — задним числом: берём последнюю сдачу тех суток, нет её —
+//     первую после них; сдали без пересчёта — первый пересчёт после неё (без
+//     пересчёта «должно быть» переносится как было); пересчёта нет — сейчас.
+//
+// Объяснённый пересчёт — второе значение (номер в points): расход ложится
+// в миг перед ним, его расхождение уменьшается, текущий ящик не меняется.
+func tillPlace(from, to, anchor, now time.Time, points []tillPoint) (time.Time, int) {
+	pick := -1
+	for i, p := range points {
+		if !p.At.Before(now) {
+			break
+		}
+		if anchor.Before(to) { // сутки ещё шли: первая сдача после записи
+			if !p.At.Before(anchor) {
+				pick = i
+				break
+			}
+			continue
+		}
+		if p.At.Before(from) {
+			continue
+		}
+		if p.At.Before(to) {
+			pick = i // последняя сдача суток операции
+			continue
+		}
+		if pick < 0 {
+			pick = i // первая сдача после них
+		}
+		break
+	}
+	for ; pick >= 0 && pick < len(points) && points[pick].At.Before(now); pick++ {
+		if points[pick].Counted {
+			return points[pick].At.Add(-time.Microsecond), pick
+		}
+	}
+	return now, -1
+}
+
+func tillPaid(e *models.Expense) bool { return e.Method == models.ExpenseTill && e.Paid }
+
+// placeTill — поставить расход в ящик (под замком ящика): drawer_at и какую
+// сдачу объясняет. Не из кассы или не оплачен — ящик не трогает. anchor — как
+// у tillPlace.
+func placeTill(tx *gorm.DB, e *models.Expense, anchor time.Time) {
+	e.DrawerAt, e.ExplainsCloseout = nil, nil
+	if !tillPaid(e) {
+		return
+	}
+	rh, d := int(settingInt64("report_hour", 8)), e.OpDate
+	from := time.Date(d.Year(), d.Month(), d.Day(), rh, 0, 0, 0, time.Local)
+	to := time.Date(d.Year(), d.Month(), d.Day()+1, rh, 0, 0, 0, time.Local)
+	now := time.Now()
+	since := from
+	if anchor.Before(since) {
+		since = anchor
+	}
+	var cos []models.ShiftCloseout
+	tx.Select("id, created_at, counted_grosz").Where("opening_grosz IS NOT NULL AND created_at >= ? AND created_at < ?", since, now).
+		Order("created_at").Find(&cos)
+	points := make([]tillPoint, len(cos))
+	for i := range cos {
+		points[i] = tillPoint{At: cos[i].CreatedAt, Counted: cos[i].CountedGrosz != nil}
+	}
+	at, i := tillPlace(from, to, anchor, now, points)
+	e.DrawerAt = &at
+	if i >= 0 {
+		id := cos[i].ID
+		e.ExplainsCloseout = &id
+	}
+}
+
+// tillInfo — что расход из кассы сделал с ящиком (для ответа и тоста): nil — не
+// из кассы; live — «должно быть» меньше с момента записи; иначе — какую сдачу
+// объясняет (когда, кто, её расхождение; baseline — это начальный остаток:
+// расход ушёл до того, как ящик завели, и уже в нём учтён).
+func tillInfo(e *models.Expense) gin.H {
+	if e.DrawerAt == nil {
+		return nil
+	}
+	if e.ExplainsCloseout == nil {
+		return gin.H{"live": true}
+	}
+	var co models.ShiftCloseout
+	if db.First(&co, "id = ?", *e.ExplainsCloseout).Error != nil {
+		return gin.H{"live": false}
+	}
+	out := gin.H{"live": false, "closeout_id": co.ID, "closeout_at": co.CreatedAt, "closeout_baseline": co.Baseline,
+		"closeout_by": nicknamesByID([]string{co.UserID.String()})[co.UserID.String()]}
+	if co.DiffGrosz != nil {
+		out["closeout_diff_pln"] = models.PLNFromGrosz(*co.DiffGrosz)
+	}
+	return out
+}
+
 func expenseToday() time.Time {
 	now := time.Now()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -345,6 +458,12 @@ func expenseOut(e *models.Expense, names map[string]string, cps map[string]strin
 	}
 	if e.PhotoAt != nil {
 		row["photo"] = fmt.Sprintf("/api/v1/admin/expenses/%s/photo?v=%d", e.ID, e.PhotoAt.Unix())
+	}
+	if e.DrawerAt != nil { // З9-и3а: расход из кассы — в ящике
+		row["drawer_at"] = e.DrawerAt
+		if e.ExplainsCloseout != nil {
+			row["explains_closeout"] = *e.ExplainsCloseout
+		}
 	}
 	if e.CounterpartyID != nil {
 		row["counterparty_id"], row["counterparty"] = *e.CounterpartyID, cps[e.CounterpartyID.String()]
@@ -378,7 +497,11 @@ func expenseOutOne(e *models.Expense) gin.H {
 			ids = append(ids, u.String())
 		}
 	}
-	return expenseOut(e, categoryNames(), counterpartyNames(), nicknamesByID(ids))
+	row := expenseOut(e, categoryNames(), counterpartyNames(), nicknamesByID(ids))
+	if t := tillInfo(e); t != nil { // З9-и3а
+		row["till"] = t
+	}
+	return row
 }
 
 // expenseQ — расходы без байтов фото: модель их не знает, а SELECT * тянул бы их
@@ -496,7 +619,15 @@ func handleExpenseCreate(c *gin.Context) {
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	e.ClubID, e.CreatedBy = club.ID, &adminID
-	if err := db.Create(&e).Error; err != nil {
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", drawerLock).Error; err != nil { // как сдачи (З9-и3а)
+			return err
+		}
+		e.CreatedAt = time.Now()
+		placeTill(tx, &e, e.CreatedAt) // при записи anchor — сейчас
+		return tx.Create(&e).Error
+	})
+	if err != nil {
 		expenseFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
@@ -552,15 +683,34 @@ func handleExpenseUpdate(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"expense": expenseOutOne(cur), "changed": 0})
 		return
 	}
-	res := db.Model(&models.Expense{}).Where("id = ? AND storno_at IS NULL", cur.ID).Updates(map[string]any{
-		"op_date": e.OpDate.Format("2006-01-02"), "category_id": e.CategoryID, "counterparty_id": e.CounterpartyID,
-		"gross_grosz": e.GrossGrosz, "vat_grosz": e.VatGrosz, "method": e.Method, "paid": e.Paid,
-		"doc_no": e.DocNo, "note": e.Note, "updated_at": time.Now()})
-	if res.Error != nil {
+	var rows int64
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", drawerLock).Error; err != nil {
+			return err
+		}
+		// З9-и3а: место в ящике. Был и остался оплаченным «из кассы» с тем же днём — как было;
+		// отметили оплату — от этой минуты; поправили способ или день — заново от момента первой
+		// записи, как если бы так и внесли: пересчёт с тех пор увидел нехватку — его и объясняет.
+		switch {
+		case tillPaid(cur) && tillPaid(&e) && cur.OpDate.Equal(e.OpDate):
+		case !cur.Paid && e.Paid:
+			placeTill(tx, &e, time.Now())
+		default:
+			placeTill(tx, &e, cur.CreatedAt)
+		}
+		res := tx.Model(&models.Expense{}).Where("id = ? AND storno_at IS NULL", cur.ID).Updates(map[string]any{
+			"op_date": e.OpDate.Format("2006-01-02"), "category_id": e.CategoryID, "counterparty_id": e.CounterpartyID,
+			"gross_grosz": e.GrossGrosz, "vat_grosz": e.VatGrosz, "method": e.Method, "paid": e.Paid,
+			"doc_no": e.DocNo, "note": e.Note, "updated_at": time.Now(),
+			"drawer_at": e.DrawerAt, "explains_closeout": e.ExplainsCloseout})
+		rows = res.RowsAffected
+		return res.Error
+	})
+	if err != nil {
 		expenseFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
-	if res.RowsAffected == 0 { // сторнировали между чтением и записью
+	if rows == 0 { // сторнировали между чтением и записью
 		expenseFail(c, http.StatusConflict, "storno")
 		return
 	}

@@ -4411,7 +4411,7 @@ function paintShiftCloseouts(list){
     ${list.map(c => `<tr>
       <td><b>${esc(c.nickname)}</b></td>
       <td class="muted">${hhmm(c.created_at)}</td>
-      <td title="${c.opening_pln != null ? 'на начало ' + fmtPLN(c.opening_pln) + ' · ' : ''}пополнения ${fmtPLN(c.deposits_pln)} · товары ${fmtPLN(c.goods_pln)} · пакеты ${fmtPLN(c.packs_pln)}${c.refunds_pln > 0 ? ' · возвраты −' + fmtPLN(c.refunds_pln) : ''}${c.collections_pln > 0 ? ' · инкассации −' + fmtPLN(c.collections_pln) : ''}">${fmtPLN(c.expected_pln)} zł</td>
+      <td title="${c.opening_pln != null ? 'на начало ' + fmtPLN(c.opening_pln) + ' · ' : ''}пополнения ${fmtPLN(c.deposits_pln)} · товары ${fmtPLN(c.goods_pln)} · пакеты ${fmtPLN(c.packs_pln)}${c.refunds_pln > 0 ? ' · возвраты −' + fmtPLN(c.refunds_pln) : ''}${c.collections_pln > 0 ? ' · инкассации −' + fmtPLN(c.collections_pln) : ''}${c.expenses_pln > 0 ? ' · расходы из кассы −' + fmtPLN(c.expenses_pln) : ''}">${fmtPLN(c.expected_pln)} zł</td>
       <td>${c.skipped ? '<span style="color:var(--orange)">без пересчёта</span>' : fmtPLN(c.counted_pln) + ' zł'}</td>
       <td>${c.skipped ? '—' : c.baseline ? '<span class="muted">начальный остаток</span>' : (c.diff_pln === 0 ? '<span class="muted">сошлось</span>' : `<b style="color:var(--orange)">${c.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(c.diff_pln))} zł</b>`)}</td>
       <td class="muted">${esc(c.note || '')}</td>
@@ -5591,7 +5591,7 @@ function paintAcc(){
     <div class="kpis">
       <div class="kpi" title="«должно быть в ящике» — то же, что видит админ в «Моей смене»">В ящике сейчас <b id="accNow">${now.baseline ? '—' : accPLN(now.expected_pln)}</b></div>
       <div class="kpi" title="пополнения ${fmtPLN(t.deposits_pln)} · товары и кухня ${fmtPLN(t.goods_pln)} · пакеты ${fmtPLN(t.packs_pln)}">Пришло за период <b>${accPLN(t.in_pln)}</b></div>
-      <div class="kpi" title="возвраты налом ${fmtPLN(t.refunds_pln)} · инкассации ${fmtPLN(t.collections_pln)}">Ушло за период <b>${accPLN(t.out_pln)}</b></div>
+      <div class="kpi" title="возвраты налом ${fmtPLN(t.refunds_pln)} · инкассации ${fmtPLN(t.collections_pln)} · расходы из кассы ${fmtPLN(t.expenses_pln || 0)}">Ушло за период <b>${accPLN(t.out_pln)}</b></div>
       <div class="kpi" title="пересчёты при сдачах: пересчитанное минус ожидаемое">Расхождения <b>${accSigned(t.diff_pln)} zł</b></div>
     </div>
     ${now.baseline ? '<div class="muted" style="margin:-6px 0 12px">Ящик ещё не заведён: начальный остаток задаст первая сдача с пересчётом.</div>' : ''}
@@ -5608,9 +5608,9 @@ function paintAcc(){
         <button class="btn ghost mini" onclick="accCustom()"><span data-ic="chart"></span>Показать</button>
       </div>
     </div>
-    <div class="muted" style="margin:-4px 0 12px">${per.from ? ruDate(per.from) + (per.to !== per.from ? ' — ' + ruDate(per.to) : '') : ''} · клубные сутки · нажми на день — сдачи, инкассации и коррекции</div>
+    <div class="muted" style="margin:-4px 0 12px">${per.from ? ruDate(per.from) + (per.to !== per.from ? ' — ' + ruDate(per.to) : '') : ''} · клубные сутки · нажми на день — сдачи, инкассации, коррекции и расходы из кассы</div>
     ${days.length ? `<div class="tablewrap"><table class="accBook">
-      <tr><th>День</th><th>На начало</th><th>Пришло</th><th>Возвраты</th><th>Инкассации</th><th>Коррекции</th><th>Расхождения</th><th>На конец</th></tr>
+      <tr><th>День</th><th>На начало</th><th>Пришло</th><th>Возвраты</th><th>Инкассации</th><th>Расходы</th><th>Коррекции</th><th>Расхождения</th><th>На конец</th></tr>
       ${days.map(accRow).join('')}
     </table></div>` : '<div class="empty">За этот период дней ещё не было</div>'}`;
   mountIcons(box);
@@ -5623,17 +5623,24 @@ function accRow(r){
     <td title="пополнения ${fmtPLN(r.deposits_pln)} · товары и кухня ${fmtPLN(r.goods_pln)} · пакеты ${fmtPLN(r.packs_pln)}">${L('пришло')}${fmtPLN(r.in_pln)}</td>
     <td>${L('возвраты')}${r.refunds_pln ? '−' + fmtPLN(r.refunds_pln) : '0,00'}</td>
     <td>${L('инкассации')}${r.collections_pln ? '−' + fmtPLN(r.collections_pln) : '0,00'}</td>
+    <td title="расходы, оплаченные из кассы (З9-и3а)">${L('расходы')}${r.expenses_pln ? '−' + fmtPLN(r.expenses_pln) : '0,00'}</td>
     <td>${L('коррекции')}${accSigned(r.adjust_pln)}</td>
     <td${r.diff_pln ? ' style="color:var(--orange)"' : ''}>${L('расхождения')}${accSigned(r.diff_pln)}</td>
     <td>${L('на конец')}<b>${r.closing_pln == null ? '—' : fmtPLN(r.closing_pln)}</b></td>
-  </tr>${accDay === r.date ? `<tr class="accDet"><td colspan="8">${accDetails(r)}</td></tr>` : ''}`;
+  </tr>${accDay === r.date ? `<tr class="accDet"><td colspan="9">${accDetails(r)}</td></tr>` : ''}`;
 }
 function accDetails(r){
   const b = r.baseline;
   const cos = (r.closeouts || []).map(c => `<div>${hhmm(c.created_at)} · <b>${esc(c.nickname || '—')}</b> — ${
     c.baseline ? 'начальный остаток ' + fmtPLN(c.counted_pln) + ' zł'
     : c.skipped ? 'ушёл без пересчёта, должно было быть ' + fmtPLN(c.expected_pln) + ' zł'
-    : 'должно ' + fmtPLN(c.expected_pln) + ', пересчитано ' + fmtPLN(c.counted_pln) + (c.diff_pln ? ', расхождение ' + accSigned(c.diff_pln) : ' — сошлось')}${c.note ? ' · ' + esc(c.note) : ''}</div>`).join('');
+    : 'должно ' + fmtPLN(c.expected_pln) + ', пересчитано ' + fmtPLN(c.counted_pln) + (c.diff_pln ? ', расхождение ' + accSigned(c.diff_pln) : ' — сошлось')}${c.note ? ' · ' + esc(c.note) : ''}${
+    c.explained_pln ? ' · <b>' + (c.baseline ? 'расход из кассы, внесённый позже, уже в этом остатке: ' : 'объяснено расходом, внесённым позже: ')
+      + fmtPLN(c.explained_pln) + ' zł</b>' : ''}</div>`).join('');
+  // З9-и3а: расходы из кассы — в момент, когда ушли из ящика; объясняющие сдачу — перед ней, с тем, когда внесены
+  const exps = (r.expenses || []).map(x => { const co = x.explains_closeout ? (r.closeouts || []).find(c => c.id === x.explains_closeout) : null;
+    return `<div>${hhmm(x.drawer_at)} · <b>${esc(x.category || '—')}</b> — ${fmtPLN(x.amount_pln)} zł${x.doc_no ? ' · ' + esc(x.doc_no) : ''}${x.note ? ' · ' + esc(x.note) : ''}${
+      x.explains_closeout ? ` · <span class="muted">внесён ${ruDate(String(x.created_at).slice(0, 10))} ${hhmm(x.created_at)}${co ? (co.baseline ? ' — уже в начальном остатке ' : ' — объясняет сдачу ') + hhmm(co.created_at) + ' (' + esc(co.nickname || '—') + ')' : ''}</span>` : ''}</div>`; }).join('');
   const evs = (r.events || []).map(e => `<div class="${e.voided_at ? 'accVoid' : ''}">${hhmm(e.created_at)} · <span class="accT"><b>${esc(e.nickname || '—')}</b> — ${
     e.kind === 'correct' ? 'коррекция: в ящике ' + fmtPLN(e.stated_pln) + ' zł, поправка ' + accSigned(e.amount_pln)
     : 'инкассация ' + fmtPLN(e.amount_pln) + ' zł ' + (e.dest === 'bank' ? 'в банк' : 'в сейф')}${e.note ? ' · ' + esc(e.note) : ''}</span>${e.voided_at
@@ -5641,7 +5648,8 @@ function accDetails(r){
     : ` <button class="btn ghost mini" onclick="event.stopPropagation(); armButton(this, 'Точно отменить?', () => accVoid('${e.id}'))">Отменить</button>`}</div>`).join('');
   return (b ? `<div class="muted">Ящик заведён в ${hhmm(b.at)}: начальный остаток ${fmtPLN(b.pln)} zł, пересчитал ${esc(b.by || '—')}</div>` : '')
     + `<div class="dsub" style="margin-top:4px">Сдачи</div>${cos || '<div class="muted">сдач не было</div>'}`
-    + `<div class="dsub">Инкассации и коррекции</div>${evs || '<div class="muted">не было</div>'}`;
+    + `<div class="dsub">Инкассации и коррекции</div>${evs || '<div class="muted">не было</div>'}`
+    + (exps ? `<div class="dsub">Расходы из кассы</div>${exps}` : '');
 }
 function accCollectDrawer(){
   drawerUserId = null; drawerPCId = null; // шторка — книги, не гостя и не ПК: живые обновления её не перерисуют
@@ -5837,7 +5845,8 @@ function expPaint(){
       <input id="efVat" class="input" type="number" min="0" step="0.01" placeholder="VAT, zł" value="${esc(f.vat)}" oninput="expNet()">
     </div>
     <div id="efNet" class="muted">без VAT: —</div>
-    <div class="segs" id="efMethod">${EXP_METHODS.map(([k, n]) => `<button class="${f.method === k ? 'on' : ''}" onclick="expForm.method='${k}'; segOn(this)">${n}</button>`).join('')}</div>
+    <div class="segs" id="efMethod">${EXP_METHODS.map(([k, n]) => `<button class="${f.method === k ? 'on' : ''}" onclick="expForm.method='${k}'; segOn(this); expTillHint()">${n}</button>`).join('')}</div>
+    <div id="efTillHint" class="muted${f.method === 'till' ? '' : ' hidden'}">Из кассы — деньги ушли из ящика. За сегодня «должно быть в ящике» уменьшится сразу; за прошедший день, закрытый сдачей, — ящик не тронет, а объяснит расхождение той сдачи (видно в «Кассе»).</div>
     <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="efPaid" type="checkbox"${f.paid ? ' checked' : ''}> оплачен</label>
     <input id="efDoc" class="input" maxlength="64" placeholder="Номер документа — FV 12/09/2026" value="${esc(f.doc)}">
     <input id="efNote" class="input" maxlength="500" placeholder="Заметка" value="${esc(f.note)}">
@@ -5851,6 +5860,18 @@ function expPaint(){
   </div>`);
   expNet();
   if (f.photo) expPhotoShow(f.id);
+}
+function expTillHint(){ const h = document.getElementById('efTillHint'); if (h) h.classList.toggle('hidden', expForm.method !== 'till'); }
+// З9-и3а: что расход сделал с ящиком — к тосту, только если это изменилось (prev — прежний drawer_at); сдача-начальный
+// остаток ничего не объясняет — расход ушёл до того, как ящик завели, и в остатке уже учтён
+function expTillNote(e, prev){
+  const t = e.till;
+  if ((prev || null) === (e.drawer_at || null)) return '';
+  if (!t) return prev ? ' · ящик больше не трогает' : '';
+  if (t.live) return ' · «должно быть в ящике» меньше на ' + fmtPLN(e.amount_pln) + ' zł';
+  if (!t.closeout_at) return '';
+  const when = ruDate(String(t.closeout_at).slice(0, 10)) + ' ' + hhmm(t.closeout_at) + (t.closeout_by ? ' (' + t.closeout_by + ')' : '');
+  return t.closeout_baseline ? ' · уже учтён в начальном остатке ящика — ' + when : ' · объясняет сдачу ' + when;
 }
 // контрагент по имени: есть в справочнике — его id, нет — заводим (409 «уже есть» — берём тот id); '' — без контрагента
 async function expCounterparty(name){
@@ -5887,8 +5908,9 @@ async function expSave(){
                    : await api('/admin/expenses', {method:'POST', body: JSON.stringify(body)});
     let ph = '';
     if (file){ await expPhotoUpload(d.expense.id, file); ph = ' · фото документа приложено'; }
-    toast(f.id ? (d.changed || file ? '✓ Расход поправлен' + ph : 'Изменений нет')
-               : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category + ph);
+    const was = f.id ? ((expData || {}).expenses || []).find(x => x.id === f.id) : null, tn = expTillNote(d.expense, was ? was.drawer_at : null);
+    toast(f.id ? (d.changed || file ? '✓ Расход поправлен' + ph + tn : 'Изменений нет')
+               : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category + ph + tn);
     closeDrawer();
     renderExp();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -6259,6 +6281,7 @@ function coParts(cp){
   return 'пополнения ' + fmtPLN(cp.deposits_pln || 0) + ' · товары и кухня ' + fmtPLN(cp.goods_pln || 0) + ' · пакеты ' + fmtPLN(cp.packs_pln || 0)
     + (cp.refunds_pln > 0 ? ' · минус возвраты налом ' + fmtPLN(cp.refunds_pln) : '')
     + (cp.collections_pln > 0 ? ' · минус инкассации ' + fmtPLN(cp.collections_pln) : '')
+    + (cp.expenses_pln > 0 ? ' · минус расходы из кассы ' + fmtPLN(cp.expenses_pln) : '') // З9-и3а
     + (cp.adjust_pln ? ' · коррекции ' + (cp.adjust_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(cp.adjust_pln)) : '')
     + (m ? ' · из них провёл ты: +' + fmtPLN(m.in_pln || 0) + (m.out_pln > 0 ? ' / −' + fmtPLN(m.out_pln) : '') : '');
 }

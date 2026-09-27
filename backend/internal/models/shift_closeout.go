@@ -41,6 +41,8 @@ type ShiftCloseout struct {
 	OutGrosz     int64  `json:"out_grosz"    gorm:"not null;default:0"`
 	AdjustGrosz  int64  `json:"adjust_grosz" gorm:"not null;default:0"`
 	Baseline     bool   `json:"baseline"     gorm:"not null;default:false"`
+	// З9-и3а (миграция 072): расходы из кассы в «ушло» сдачи.
+	ExpensesGrosz int64 `json:"expenses_grosz" gorm:"not null;default:0"`
 }
 
 // AfterFind — день сдачи: полночь клуба, а не UTC (З2-и2, ClubDay).

@@ -16,6 +16,7 @@ package main
 //	  кошелька), продажи, пакета (неотыгранная доля; до З11 возврат — тем же
 //	  способом, что и оплата)
 //	− инкассации ± коррекции владельца (cash_events; ручки — З8-и2)
+//	− расходы из кассы (З9-и3а): по моменту, когда ушли из ящика (drawer_at)
 //
 // Каждая операция ложится в период по своему моменту: продажа и её отмена в
 // одном периоде гасят друг друга, отмена вчерашней продажи — минус сегодня.
@@ -50,18 +51,19 @@ type drawerFlow struct {
 	Deposits, Goods, Packs int64 // пришло: пополнения, товары и кухня, пакеты
 	Refunds                int64 // ушло: возвраты наличными по отменам
 	Collections            int64 // ушло: инкассации
+	Expenses               int64 // ушло: расходы из кассы (З9-и3а)
 	Adjust                 int64 // ± коррекции владельца
 }
 
 func (f drawerFlow) In() int64  { return f.Deposits + f.Goods + f.Packs }
-func (f drawerFlow) Out() int64 { return f.Refunds + f.Collections }
+func (f drawerFlow) Out() int64 { return f.Refunds + f.Collections + f.Expenses }
 
 func (f drawerFlow) out() gin.H {
 	pln := models.PLNFromGrosz
 	return gin.H{
 		"in_pln": pln(f.In()), "out_pln": pln(f.Out()), "adjust_pln": pln(f.Adjust),
 		"deposits_pln": pln(f.Deposits), "goods_pln": pln(f.Goods), "packs_pln": pln(f.Packs),
-		"refunds_pln": pln(f.Refunds), "collections_pln": pln(f.Collections),
+		"refunds_pln": pln(f.Refunds), "collections_pln": pln(f.Collections), "expenses_pln": pln(f.Expenses),
 	}
 }
 
@@ -142,7 +144,9 @@ func drawerFlowFor(q *gorm.DB, actor *uuid.UUID, from, to time.Time) drawerFlow 
 				"voided_by") +
 			sum(refund+"FROM user_packages WHERE method = 'cash' AND voided_at >= ? AND voided_at < ?", "voided_by"),
 		Collections: sum(event+"AND kind = 'collect' AND created_at >= ? AND created_at < ?", "created_by"),
-		Adjust:      sum(event+"AND kind = 'correct' AND created_at >= ? AND created_at < ?", "created_by"),
+		// З9-и3а: расход из кассы — в момент, когда ушёл из ящика (drawer_at); сторно — вне ящика
+		Expenses: sum("SELECT COALESCE(SUM(gross_grosz), 0)::bigint FROM expenses WHERE storno_at IS NULL AND drawer_at >= ? AND drawer_at < ?", "created_by"),
+		Adjust:   sum(event+"AND kind = 'correct' AND created_at >= ? AND created_at < ?", "created_by"),
 	}
 }
 
@@ -163,6 +167,7 @@ func drawerCloseout(co *models.ShiftCloseout, st drawerState, counted *int64) {
 		co.OpeningGrosz, co.ExpectedGrosz = &opening, st.Expected
 		co.InGrosz, co.OutGrosz, co.AdjustGrosz = f.In(), f.Out(), f.Adjust
 		co.DepositsGrosz, co.GoodsGrosz, co.PacksGrosz, co.RefundsGrosz = f.Deposits, f.Goods, f.Packs, f.Refunds
+		co.ExpensesGrosz = f.Expenses
 		if counted != nil {
 			diff := closeoutDiff(st.Expected, *counted)
 			co.CountedGrosz, co.DiffGrosz = counted, &diff

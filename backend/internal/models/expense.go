@@ -81,6 +81,10 @@ type Expense struct {
 	StornoAt       *time.Time `json:"storno_at,omitempty"`
 	StornoBy       *uuid.UUID `json:"storno_by,omitempty" gorm:"type:uuid"`
 	StornoReason   string     `json:"storno_reason"   gorm:"not null;default:''"`
+	// З9-и3а (миграция 072): расход из кассы в модели ящика — когда ушёл из ящика
+	// (момент записи или миг перед объясняемой сдачей) и какую сдачу объясняет.
+	DrawerAt         *time.Time `json:"drawer_at,omitempty"`
+	ExplainsCloseout *uuid.UUID `json:"explains_closeout,omitempty" gorm:"column:explains_closeout;type:uuid"`
 }
 
 func (e *Expense) BeforeCreate(tx *gorm.DB) error {
