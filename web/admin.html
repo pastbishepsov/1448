@@ -7524,9 +7524,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Escape'){
-    if (!gqDrop.classList.contains('hidden')) gqHide();
-    else if (document.getElementById('drawer').classList.contains('open')) closeDrawer();
-    else if (typing) e.target.blur();
+    if (!e.repeat) adminBack(); // выходы 27.09: общий шаг назад — раздел «ВЫХОДЫ» ниже
     return;
   }
   if (typing) return;
@@ -7538,6 +7536,82 @@ document.addEventListener('keydown', e => {
   const i = parseInt(e.key) - 1;
   if (i >= 0 && i < SECTIONS.length) nav(SECTIONS[i]);
 });
+
+/* ═══════════════ ВЫХОДЫ (27.09.2026): Esc, кнопка «назад» мыши, BrowserBack ═══════════════
+   Одно нажатие — один шаг назад, сверху вниз: тур → палитра (из выбора цели — в корень) →
+   выпадашка поиска → колокол → шторка (сначала её подформа: форма в карточке гостя, «Проблема»
+   у ПК, инкассация в «Моей смене»; потом сама шторка) → формы на экране (новый заказ кухни,
+   компенсация в «Проблемах») → редактор зала (снять выбор ПК, потом выйти) → поле ввода (снять
+   фокус). Несохранённое молча не теряем: если в закрываемом месте что-то набрано и оно не
+   живёт в переменной (oninput="x=this.value" — вернётся само), первое нажатие только
+   предупреждает тостом, второе в течение 4 с закрывает — как arm у кнопок (confirm() в
+   админке нет, А3). Кнопка «назад» мыши в Chromium по умолчанию листает историю и уводила со
+   страницы — mouseup кнопок 3/4 гасим; на экране входа «назад» ничего не делает. */
+let backArm = null;               // {key, t} — взвод «закрыть без сохранения»
+const backTouched = new Map();    // поле → значение в момент первого фокуса
+document.addEventListener('focusin', e => {
+  const c = e.target;
+  if (c && c.matches && c.matches('input, textarea, select') && !backTouched.has(c)) backTouched.set(c, backVal(c));
+}, true);
+function backVal(c){ return (c.type === 'checkbox' || c.type === 'radio') ? String(c.checked) : String(c.value); }
+function backKept(c){ // значение живёт в переменной или поле само действует — закрытие ничего не теряет
+  if (c.type === 'file' || c.type === 'search') return true;
+  return /^\s*[\w.$\[\]]+\s*=\s*this\.(value|checked)\b/.test(c.getAttribute('oninput') || c.getAttribute('onchange') || '');
+}
+function backDirty(root){
+  if (!root) return false;
+  let dirty = false;
+  for (const [c, v0] of backTouched){
+    if (!c.isConnected){ backTouched.delete(c); continue; }
+    if (root.contains(c) && !backKept(c) && backVal(c) !== v0) dirty = true;
+  }
+  return dirty;
+}
+function backGuarded(key, root, fn){
+  if (backDirty(root) && !(backArm && backArm.key === key && Date.now() - backArm.t < 4000)){
+    backArm = {key, t: Date.now()};
+    toast('⚠ Есть несохранённое — ещё раз Esc или «назад», чтобы закрыть без сохранения');
+    return;
+  }
+  backArm = null;
+  if (root) for (const c of [...backTouched.keys()]) if (root.contains(c)) backTouched.delete(c);
+  fn();
+}
+function adminBack(){
+  if (!me) return;
+  const shown = id => { const el = document.getElementById(id); return !!el && !el.classList.contains('hidden'); };
+  if (shown('tour')){ tourSkip(); return; }
+  if (!pal.classList.contains('hidden')){ if (palPickAct){ palPickAct = null; palOpen(); } else palClose(); return; }
+  if (!gqDrop.classList.contains('hidden')){ gqHide(); gq.blur(); return; }
+  if (shown('bellDrop')){ document.getElementById('bellDrop').classList.add('hidden'); return; }
+  if (document.getElementById('drawer').classList.contains('open')){
+    const body = document.getElementById('drawerBody');
+    if (drawerUserId && uForm){ backGuarded('uform', body, () => uFormToggle(uForm)); return; }
+    const incF = document.getElementById('incForm');
+    if (drawerPCId && pcIncOpen && incF){ backGuarded('pcinc', incF, () => { pcIncOpen = null; renderPCDrawer(drawerPCId); }); return; }
+    if (ccOpen && document.getElementById('ccAmount')){ backGuarded('cc', body, () => { ccOpen = false; paintMyShift(); }); return; }
+    backGuarded('drawer', body, closeDrawer);
+    return;
+  }
+  const kn = document.getElementById('kitNew');
+  if (kitNewOpen && kn && kn.offsetParent){ backGuarded('kitnew', kn, kitNewToggle); return; }
+  const icf = incComp && document.getElementById('ic_min');
+  if (icf && icf.offsetParent){ backGuarded('inccomp', icf.closest('.uform'), () => { incComp = null; renderIncidents(); }); return; }
+  if (hallEdit && curTab === 'hall'){ if (selPCId){ selPCId = null; paintHall(); } else toggleHallEdit(); return; }
+  const a = document.activeElement;
+  if (a && a.matches && a.matches('input, textarea, select')) a.blur();
+}
+window.addEventListener('mousedown', e => { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+window.addEventListener('mouseup', e => {
+  if (e.button !== 3 && e.button !== 4) return;
+  e.preventDefault(); // иначе браузер листает историю (4 — «вперёд», просто гасим)
+  if (e.button === 3) adminBack();
+}, true);
+window.addEventListener('keydown', e => {
+  if (e.key !== 'BrowserBack') return;
+  e.preventDefault();
+  if (!e.repeat) adminBack();
+}, true);
 
 /* ── старт (Б1) ── */
 (async function init(){

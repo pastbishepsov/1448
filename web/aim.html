@@ -969,8 +969,38 @@ function exitSession(){
   showScreen("setup");
 }
 $("exitBtn").addEventListener("click",e=>{e.stopPropagation();exitSession();});
+/* ═══ Выходы (27.09): Esc, кнопка «назад» мыши, BrowserBack и «назад» из шелла ═══
+   Один шаг назад: свайп-калибровка → настройки; арена → как ✕ в углу (exitSession: от 6
+   раундов — итог по ним, иначе настройки); настройки, итог и замер DPI в шелле → «Закрыть»
+   (post молчит, если страница открыта сама по себе). Пока мышь захвачена, Esc забирает
+   браузер — он отпускает захват; кнопку «назад» в захвате не трогаем (боковые кнопки у
+   игроков часто назначены на что-то своё). Тот же Esc, что отпустил захват, второй раз
+   не считаем. Кнопка «назад» в Chromium/WebView2 листает историю — mouseup гасим. */
+let aimUnlockAt=-1e9; // performance.now() во фрейме считается с его создания — 0 гасил бы первые 400 мс
+document.addEventListener("pointerlockchange",()=>{ if(!document.pointerLockElement)aimUnlockAt=performance.now(); });
+function aimBack(){
+  if(document.pointerLockElement)return;
+  if(performance.now()-aimUnlockAt<400)return;
+  if($("calib").classList.contains("on")){ st.mode="idle"; st.calSum=0; $("calib").classList.remove("on"); return; }
+  const scr=["session","results","measure","setup"].find(id=>$(id).classList.contains("on"));
+  if(scr==="session"){ exitSession(); return; }
+  if(scr==="measure"&&$("ms2").classList.contains("on")){ st.mode="idle"; mStep(1); return; } // замер без захвата — к шагу 1
+  post({type:"aim_close"});
+}
 document.addEventListener("keydown",e=>{
-  if(e.key==="Escape"&&st.mode==="game"&&!document.pointerLockElement)exitSession();
+  if(e.key!=="Escape"&&e.key!=="BrowserBack")return;
+  if(e.key==="BrowserBack")e.preventDefault();
+  if(!e.repeat)aimBack();
+});
+window.addEventListener("mousedown",e=>{ if(e.button===3||e.button===4)e.preventDefault(); },true);
+window.addEventListener("mouseup",e=>{
+  if(e.button!==3&&e.button!==4)return;
+  e.preventDefault();
+  if(e.button===3)aimBack();
+},true);
+window.addEventListener("message",e=>{
+  if(e.source!==parent||!e.data||e.data.type!=="aim_back")return;
+  aimBack();
 });
 
 /* ---------------- pointer lock ---------------- */

@@ -1056,7 +1056,7 @@
   </div>
 </div>
 
-<div id="profOverlay" class="overlay" onclick="if(event.target===this)closeOverlay('profOverlay')">
+<div id="profOverlay" class="overlay" onclick="if(event.target===this)profClose()">
   <div class="modal">
     <h2 data-str="prof_title"></h2>
     <input id="pNick" class="input" style="margin-top:16px" data-str-ph="ph_nick">
@@ -1287,6 +1287,10 @@ const SH_RU = {
   prof_fav_hint: "Любимые игры (до 3) — поднимем их в витрине",
   prof_cancel: "Отмена",
   prof_save: "Сохранить",
+  prof_leave_title: "Выйти без сохранения?",
+  prof_leave_sub: "Изменения в профиле пропадут.",
+  prof_leave_yes: "Выйти",
+  prof_leave_no: "Остаться",
   qr_title: "Клуб в кармане",
   qr_sub: "Наведи камеру телефона — брони, кейсы, прогресс и чат в гостевом приложении <b>/app</b>.",
   toast_prof_saved: "✓ Профиль обновлён",
@@ -1831,6 +1835,10 @@ const SH_EN = {
   prof_fav_hint: "Favorite games (up to 3) — we pin them first in the showcase",
   prof_cancel: "Cancel",
   prof_save: "Save",
+  prof_leave_title: "Leave without saving?",
+  prof_leave_sub: "Your profile changes will be lost.",
+  prof_leave_yes: "Leave",
+  prof_leave_no: "Stay",
   qr_title: "The club in your pocket",
   qr_sub: "Point your phone camera — bookings, cases, progress and chat in the guest app <b>/app</b>.",
   toast_prof_saved: "✓ Profile updated",
@@ -2375,6 +2383,10 @@ const SH_PL = {
   prof_fav_hint: "Ulubione gry (do 3) — podbijemy je w witrynie",
   prof_cancel: "Anuluj",
   prof_save: "Zapisz",
+  prof_leave_title: "Wyjść bez zapisywania?",
+  prof_leave_sub: "Zmiany w profilu przepadną.",
+  prof_leave_yes: "Wyjdź",
+  prof_leave_no: "Zostań",
   qr_title: "Klub w kieszeni",
   qr_sub: "Skieruj aparat telefonu — rezerwacje, skrzynki, postęp i czat w aplikacji gościa <b>/app</b>.",
   toast_prof_saved: "✓ Profil zaktualizowany",
@@ -3632,17 +3644,11 @@ function catBarHtml(){
     .concat(catAppGroups.length ? [`<button class="${onApps ? 'on' : ''}" onclick="catTab('apps')">${esc(STR.cat_tab_apps)}</button>`] : []);
   return `<div class="cat-bar"><div class="cat-tabs">${tabs.join('')}</div>
     <div class="cat-search"><input id="catSearch" class="input" placeholder="${esc(STR.cat_search_ph)}" value="${esc(catQuery).replace(/"/g, '&quot;')}" autocomplete="off"
-      oninput="catSearchInput(this.value)" onkeydown="if(event.key==='Escape'){catSearchClear(); this.blur()}">
+      oninput="catSearchInput(this.value)">
       <button class="x${catQuery.trim() ? '' : ' hidden'}" onclick="catSearchClear()" aria-label="✕">✕</button></div></div>`;
 }
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  if (confirmResolve){ confirmAnswer(false); return; } // К1-и5
-  const prof = document.getElementById('profOverlay');
-  if (prof && prof.classList.contains('show')){ closeOverlay('profOverlay'); return; } // К2-и1
-  if (catQuery){ catSearchClear(); return; } // К2-и4
-  if (catFolder) closeCatFolder();
-});
+/* Esc, «назад» на мышке и BrowserBack — общий goBack() (раздел «ВЫХОДЫ» у утилит):
+   подтверждение, окна, профиль, поиск (К2-и4), папка → витрина. */
 
 /* ═════════ П3: СОСТОЯНИЕ ПРИЛОЖЕНИЯ НА ЭТОМ ПК ═════════
    Данные — из GET http://127.0.0.1:1448/apps-status агента (пакет 2, см.
@@ -6047,7 +6053,21 @@ function openProfile(){
   const pl = document.getElementById('profLang');
   if (pl) pl.innerHTML = langSwitch('inline'); // Г9-и2: язык прямо в профиле
   drawClubQR(); // М5: QR на /app
+  profSnap = profState(); // выходы 27.09: с чем сравнивать при Esc / «назад» / клике мимо
   document.getElementById('profOverlay').classList.add('show');
+}
+/* Выходы (27.09, решение основателя): Esc, «назад» мыши и клик мимо закрывают профиль
+   сразу, только если ничего не менял; есть правки — «Выйти без сохранения?»
+   (Остаться / Выйти). Кнопка «Отмена» — как раньше: явный отказ от правок. */
+let profSnap = '';
+function profState(){
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  return JSON.stringify([v('pNick'), profAva, v('pBirth'), v('pSource'), v('pDiscord'), v('pTelegram'), profFavs]);
+}
+async function profClose(){
+  if (profState() !== profSnap &&
+      !await askConfirm(STR.prof_leave_title, STR.prof_leave_sub, STR.prof_leave_yes, STR.prof_leave_no)) return;
+  closeOverlay('profOverlay');
 }
 /* К2-и1: выбранные — чипами (клик снимает), остальные — через поиск по имени,
    первые FAV_SHOW совпадений. 38 кнопок делали модалку выше экрана. */
@@ -6107,13 +6127,15 @@ function toast(msg){
 function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
 /* К1-и5: общее подтверждение — промис; Esc и «Отмена» = false */
 let confirmResolve = null;
-function askConfirm(title, sub, yes){
+function askConfirm(title, sub, yes, no){
   return new Promise(res => {
     if (confirmResolve){ const r = confirmResolve; confirmResolve = null; r(false); }
     confirmResolve = res;
     document.getElementById('cfTitle').textContent = title || '';
     document.getElementById('cfSub').textContent = sub || '';
     document.getElementById('cfYes').textContent = yes || STR.cf_yes;
+    const cfNo = document.querySelector('#confirmOverlay .btn.ghost');
+    if (cfNo) cfNo.textContent = no || STR.cf_no; // выходы 27.09: «Остаться» у профиля
     document.getElementById('confirmOverlay').classList.add('show');
   });
 }
@@ -6122,6 +6144,79 @@ function confirmAnswer(v){
   const r = confirmResolve; confirmResolve = null;
   if (r) r(!!v);
 }
+
+/* ═══════════════ ВЫХОДЫ: Esc, «назад» на мышке, клавиша BrowserBack (27.09.2026) ═══════════════
+   Одно нажатие — один шаг назад в самом верхнем видимом слое, как его видит гость (больший
+   z-index, при равенстве — тот, что ниже в разметке). Глухие экраны — лок, «Готов?», смена
+   временного пароля, ноль кошелька, заставка — назад не ведут: это состояние ПК, а не окно
+   (заставку гасит любой ввод сам — attractPoke). Решения основателя 27.09: профиль с правками
+   спрашивает (profClose); кейс, пока крутится лента, не закрывается, после приза «назад» =
+   «Забрать». Калибратор в iframe решает сам: шелл пересылает ему aim_back (aim.html).
+   Боковая кнопка мыши в Chromium/WebView2 по умолчанию листает историю — на демо-стенде
+   уводила гостя со страницы; mouseup кнопок 3/4 гасим: preventDefault отменяет переход. */
+const BACK_LAYERS = [
+  {id: 'confirmOverlay', back: () => confirmAnswer(false)},
+  {id: 'packOverlay',    back: () => closePackShop()},
+  {id: 'readyOverlay',   block: true},
+  {id: 'pwdOverlay',     block: true},
+  {id: 'zeroOverlay',    block: true},
+  {id: 'attract',        block: true},
+  {id: 'endOverlay',     back: () => endOk()},
+  {id: 'caseOverlay',    back: () => { if (!document.getElementById('coResult').classList.contains('hidden')) closeCase(); }},
+  {id: 'lvlOverlay',     back: () => closeOverlay('lvlOverlay')},
+  {id: 'rankOverlay',    back: () => closeOverlay('rankOverlay')},
+  {id: 'oddsOverlay',    back: () => closeOverlay('oddsOverlay')},
+  {id: 'infoOverlay',    back: () => closeOverlay('infoOverlay')},
+  {id: 'profOverlay',    back: () => profClose()},
+  {id: 'lockOverlay',    block: true},
+  {id: 'aimOverlay',     back: () => aimBack()},
+  {id: 'chatPanel',      back: () => { if (chatOpen) toggleChat(); else document.getElementById('chatPanel').classList.add('hidden'); }},
+];
+function backTop(){
+  let top = null;
+  for (const l of BACK_LAYERS){
+    const el = document.getElementById(l.id);
+    if (!el) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none') continue;
+    const z = parseInt(cs.zIndex, 10) || 0;
+    if (!top || z > top.z || (z === top.z && (top.el.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)))
+      top = {l, el, z};
+  }
+  return top;
+}
+function goBack(){
+  const t = backTop();
+  if (t){ if (!t.l.block) t.l.back(); return; }
+  if (document.getElementById('shellView').classList.contains('hidden')) return; // экран входа — назад некуда
+  if (catQuery){ catSearchClear(); const i = document.getElementById('catSearch'); if (i) i.blur(); return; } // К2-и4
+  if (catFolder) closeCatFolder(); // папка платформы / вкладка / приложения → витрина
+}
+/* калибратор: пока его страница не загрузилась, терять нечего — закрываем сразу */
+function aimBack(){
+  const f = document.getElementById('aimFrame');
+  if (f && f.dataset.ready && f.contentWindow) f.contentWindow.postMessage({type: 'aim_back'}, '*');
+  else aimClose();
+}
+document.getElementById('aimOverlay').addEventListener('load', e => {
+  if (e.target && e.target.id === 'aimFrame') e.target.dataset.ready = '1';
+}, true);
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' && e.key !== 'BrowserBack') return;
+  if (e.key === 'BrowserBack') e.preventDefault();
+  if (!e.repeat) goBack(); // зажатый Esc не схлопывает всё подряд
+}, true);
+let backOnAttract = false; // заставку гасит pointerdown (attractPoke) — этот «назад» больше ничего не делает
+window.addEventListener('pointerdown', e => {
+  if (e.button === 3) backOnAttract = document.getElementById('attract').classList.contains('show');
+}, true);
+window.addEventListener('mousedown', e => { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+window.addEventListener('mouseup', e => {
+  if (e.button !== 3 && e.button !== 4) return;
+  e.preventDefault(); // иначе Chromium/WebView2 листает историю (4 — «вперёд», просто гасим)
+  if (e.button === 3 && !backOnAttract) goBack();
+  backOnAttract = false;
+}, true);
 setInterval(() => {
   const d = new Date();
   const t = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');

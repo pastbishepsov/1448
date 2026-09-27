@@ -793,6 +793,7 @@ const STR_RU = {
   pf_source: 'Откуда узнал о клубе',
   pf_games: 'Любимые игры (до 3) — поднимем в витрине шелла',
   pf_limit: 'Любимых игр — до трёх',
+  pf_draft: 'Анкета свёрнута — правки не пропали, вернутся при «Заполнить»',
   ntf_birthday: '🎂 С днём рождения! Клуб дарит кейс {t}',
   kt_st_new: 'ждёт', kt_st_accepted: 'принят', kt_st_preparing: 'готовим',
   kt_st_delivering: 'несём', kt_st_done: 'выдан', kt_st_cancelled: 'отменён',
@@ -1074,6 +1075,7 @@ const STR_EN = {
   pf_source: 'How did you find the club?',
   pf_games: 'Favorite games (up to 3) — pinned first in the shell showcase',
   pf_limit: 'Up to three favorite games',
+  pf_draft: 'Form collapsed — your edits are kept for the next “Fill in”',
   ntf_birthday: '🎂 Happy birthday! The club gifts you a {t} case',
   kt_st_new: 'waiting', kt_st_accepted: 'accepted', kt_st_preparing: 'cooking',
   kt_st_delivering: 'on the way', kt_st_done: 'served', kt_st_cancelled: 'cancelled',
@@ -1350,6 +1352,7 @@ const STR_PL = {
   pf_source: 'Skąd wiesz o klubie?',
   pf_games: 'Ulubione gry (do 3) — będą pierwsze w witrynie',
   pf_limit: 'Ulubione gry — maksymalnie trzy',
+  pf_draft: 'Ankieta zwinięta — zmiany zostały, wrócą przy „Wypełnij”',
   ntf_birthday: '🎂 Wszystkiego najlepszego! Klub daje ci skrzynkę {t}',
   kt_st_new: 'czeka', kt_st_accepted: 'przyjęte', kt_st_preparing: 'gotujemy',
   kt_st_delivering: 'niesiemy', kt_st_done: 'wydane', kt_st_cancelled: 'anulowane',
@@ -2990,6 +2993,7 @@ function renderProfileCard(){
     return;
   }
   const favBtn = g => `<button class="pfg ${pfFavs.includes(g.id)?'on':''}" onclick="pfFav('${g.id}')">${esc(g.name)}</button>`;
+  const typed = document.getElementById('pf_birth') ? pfCollect() : null; // выходы 27.09: набранное не стираем
   el.innerHTML = `<h3>${esc(STR.pf_title)} <span class="muted cnum" style="font-weight:700">${filled}/5</span></h3>
     <div class="muted" style="font-size:12.5px; margin-bottom:8px">${esc(STR.pf_hint)}</div>
     <div style="display:grid; gap:8px">
@@ -3004,6 +3008,7 @@ function renderProfileCard(){
       <button class="btn" style="flex:1" onclick="pfSave()">${esc(STR.pf_save)}</button>
       <button class="btn ghost" style="flex:1" onclick="pfToggle()">${esc(STR.pf_close)}</button>
     </div>` + langRow;
+  if (typed) pfPut(typed);
 }
 async function setLang(l){
   if (!LANGS[l] || l === LANG) return;
@@ -3013,8 +3018,11 @@ async function setLang(l){
 }
 async function pfToggle(){
   pfOpen = !pfOpen;
-  if (pfOpen){ await loadPfGames(); pfFavs = [...(me.favorite_games || [])]; }
+  const draft = pfOpen && pfDraft && me && pfDraft.uid === me.id ? pfDraft : null; // выходы 27.09: черновик после «назад»
+  if (pfOpen){ await loadPfGames(); pfFavs = draft ? [...draft.favs] : [...(me.favorite_games || [])]; }
   renderProfileCard();
+  if (draft) pfPut(draft);
+  pfDraft = null; // «Свернуть» кнопкой — как раньше: правки не держим
 }
 function pfFav(id){
   if (pfFavs.includes(id)) pfFavs = pfFavs.filter(x => x !== id);
@@ -3033,7 +3041,7 @@ async function pfSave(){
       source: v('pf_source'), favorite_games: pfFavs,
     })});
     await loadMe();
-    pfOpen = false;
+    pfOpen = false; pfDraft = null;
     renderProfileCard();
     const dx = (me.xp_total || 0) - xpBefore;
     toast(dx > 0 ? T('pf_xp', {n: dx}) : STR.pf_saved);
@@ -3164,6 +3172,98 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendChat(); }
 });
 
+/* ═══════════════ ВЫХОДЫ (27.09.2026): «назад» закрывает шторку, а не приложение ═══════════════
+   Шторки и окна живут поверх одной страницы — без своих записей в истории системный «назад»
+   Android (кнопка, жест) закрывал всё приложение. Теперь окно, открытое касанием, получает одну
+   запись истории ({g1448: глубина}); «назад» её съедает и закрывает верхнее окно; закрыли окно
+   сами (✕, тап мимо, «Готово») — запись снимаем history.go(-1). Правило Chrome: запись,
+   добавленная после системного «назад» без касания между ними, помечается «пропускаемой» — и
+   следующий «назад» выкидывает из приложения. Поэтому после «назад» записей не добавляем, а сам
+   «назад» всегда что-то закрывает: кейс во время ленты — как ✕ (приз уже начислен и виден в
+   списке), анкета с несохранёнными правками сворачивается, а правки остаются черновиком
+   (вернутся при следующем «Заполнить»). Экран смены временного пароля — глухой, как и был.
+   На компьютере то же делают Esc, клавиша BrowserBack и кнопка «назад» мыши. */
+const BACK_LAYERS = [
+  {id: 'pwdGate',     on: el => !el.classList.contains('hidden'), block: true},
+  {id: 'caseOv',      on: el => el.classList.contains('show'), back: () => closeCase()},
+  {id: 'qrWrap',      on: el => el.classList.contains('open'), back: () => closeQrLogin()},
+  {id: 'installWrap', on: el => el.classList.contains('open'), back: () => closeInstall()},
+  {id: 'packWrap',    on: el => el.classList.contains('open'), back: () => closePackShop()},
+  {id: 'topupWrap',   on: el => el.classList.contains('open'), back: () => closeTopup()},
+  {id: 'sheetWrap',   on: el => el.classList.contains('open'), back: () => closeSheet()},
+  {id: 'profileCard', on: () => pfOpen, back: () => pfBackClose(), low: true}, // анкета — не окно: последней
+];
+function backLayers(){ // открытые, сверху вниз (z-index, при равенстве — ниже в разметке)
+  const out = [];
+  for (const l of BACK_LAYERS){
+    const el = document.getElementById(l.id);
+    if (!el || !l.on(el)) continue;
+    out.push({l, el, z: l.low ? -1 : (parseInt(getComputedStyle(el).zIndex, 10) || 0)});
+  }
+  return out.sort((a, b) => b.z - a.z || ((a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? 1 : -1));
+}
+function backStep(){
+  const t = backLayers()[0];
+  if (!t || t.l.block) return false;
+  t.l.back();
+  return true;
+}
+let backDepth = (history.state && history.state.g1448) || 0; // перезагрузка могла застать нашу запись
+let backExpect = false, backAfterPop = false;
+function backSync(){
+  const want = backLayers().filter(x => !x.l.block).length;
+  if (want > backDepth){
+    if (backAfterPop || (navigator.userActivation && !navigator.userActivation.isActive)) return;
+    while (backDepth < want){ try{ history.pushState({g1448: backDepth + 1}, ''); backDepth++; }catch(e){ break; } }
+  } else if (want < backDepth && !backExpect){
+    backExpect = true;
+    try{ history.go(want - backDepth); }catch(e){ backExpect = false; }
+  }
+}
+window.addEventListener('popstate', e => {
+  const d = (e.state && e.state.g1448) || 0;
+  if (backExpect){ backExpect = false; backDepth = d; backSync(); return; } // это мы сами сняли запись
+  if (/[#&]qr=/.test(location.hash)) return;                               // пришла ссылка QR, а не «назад»
+  backAfterPop = true;                                                      // до касания записей не добавляем
+  const n = backDepth - d; backDepth = d;
+  for (let i = 0; i < n; i++) if (!backStep()) break;
+});
+['pointerdown', 'keydown'].forEach(t => window.addEventListener(t, () => { backAfterPop = false; }, true));
+{
+  const mo = new MutationObserver(() => backSync());
+  BACK_LAYERS.forEach(l => { const el = document.getElementById(l.id); if (el) mo.observe(el, l.low ? {childList: true} : {attributes: true, attributeFilter: ['class']}); });
+}
+window.addEventListener('keydown', e => {
+  if ((e.key !== 'Escape' && e.key !== 'BrowserBack') || e.repeat) return;
+  if (backStep() && e.key === 'BrowserBack') e.preventDefault();
+}, true);
+window.addEventListener('mouseup', e => { // кнопка «назад» мыши: есть что закрыть — закрываем сами
+  if (e.button !== 3 || !backLayers().some(x => !x.l.block)) return;
+  e.preventDefault();
+  backStep();
+}, true);
+/* анкета: «назад» сворачивает; несохранённое — черновиком до «Сохранить»/«Свернуть» */
+let pfDraft = null;
+function pfCollect(){
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  return {birth: v('pf_birth'), source: v('pf_source'), discord: v('pf_discord'), telegram: v('pf_telegram'), favs: [...pfFavs]};
+}
+function pfPut(d){
+  const put = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  put('pf_birth', d.birth); put('pf_source', d.source); put('pf_discord', d.discord); put('pf_telegram', d.telegram);
+}
+function pfDirty(){
+  if (!me || !document.getElementById('pf_birth')) return false;
+  const c = pfCollect();
+  return c.birth !== (me.birth_date || '').slice(0, 10) || c.source !== (me.source || '') || c.discord !== (me.discord || '')
+    || c.telegram !== (me.telegram || '') || [...c.favs].sort().join() !== [...(me.favorite_games || [])].sort().join();
+}
+function pfBackClose(){
+  if (pfDirty()){ pfDraft = Object.assign(pfCollect(), {uid: me.id}); toast(STR.pf_draft); }
+  pfOpen = false;
+  renderProfileCard();
+}
+
 /* ═══════════════ М5: УСТАНОВКА И ПОЛИРОВКА ═══════════════ */
 /* version-check поверх SW (RESEARCH §1): iOS агрессивно кэширует sw.js и
    гость может залипнуть на старой версии. Зашитую APP_VER сравниваем с
@@ -3171,7 +3271,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-16.3';
+const APP_VER = '2026-09-27.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
