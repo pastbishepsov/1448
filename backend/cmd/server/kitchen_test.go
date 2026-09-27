@@ -56,3 +56,21 @@ func TestKitchenQueue(t *testing.T) {
 		t.Fatalf("пустая очередь — %d заказов", n)
 	}
 }
+
+// З8-и6: отмена оплаченного заказа — куда вернули деньги и что сказать админу,
+// которому отмена чужой или вчерашней продажи не положена.
+func TestRefundWhere(t *testing.T) {
+	for m, want := range map[string]string{"wallet": "на кошелёк гостя", "cash": "наличными", "card": "на карту", "blik": "по BLIK"} {
+		if got := refundWhere(m); got != want {
+			t.Errorf("refundWhere(%q) = %q, ждали %q", m, got, want)
+		}
+	}
+	day := time.Date(2026, 9, 27, 8, 0, 0, 0, time.UTC)
+	for _, sale := range []struct{ by, at string }{{"other", "2026-09-27T10:00:00Z"}, {"me", "2026-09-26T10:00:00Z"}} {
+		at, _ := time.Parse(time.RFC3339, sale.at)
+		ok, code := canVoidSale(string(models.UserRoleAdmin), sale.by, "me", at, day, day.Add(24*time.Hour))
+		if ok || kitchenRefundErrors[code] == "" {
+			t.Errorf("продажа %s от %s: ok=%v, код %q без сообщения", sale.by, sale.at, ok, code)
+		}
+	}
+}

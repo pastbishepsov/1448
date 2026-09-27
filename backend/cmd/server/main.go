@@ -336,6 +336,17 @@ func main() {
 		own.GET("/reports/staff", handleReportStaff)
 		own.POST("/cash/events/:id/void", handleCashEventVoid) // З8-и2: отмена события ящика
 		own.GET("/cash/book", handleCashBook)                  // З8-и3: кассовая книга по клубным дням
+		// З9-и1: расходы, категории и контрагенты — только владелец (З-Р29)
+		own.GET("/expense-categories", handleExpenseCategories)
+		own.GET("/counterparties", handleCounterparties)
+		own.POST("/counterparties", handleCounterpartyCreate)
+		own.GET("/expenses", handleExpenseList)
+		own.POST("/expenses", handleExpenseCreate)
+		own.PATCH("/expenses/:id", handleExpenseUpdate)
+		own.POST("/expenses/:id/storno", handleExpenseStorno) // удаления нет — сторно
+		own.GET("/expenses/:id/photo", handleExpensePhoto)    // фото документа — только владельцу
+		own.PUT("/expenses/:id/photo", handleExpensePhotoPut)
+		own.DELETE("/expenses/:id/photo", handleExpensePhotoDelete)
 		// Смены и график персонала (Б11): правит только owner
 		own.POST("/shifts", handleAdminShiftCreate)
 		own.PATCH("/shifts/:id", handleAdminShiftUpdate)

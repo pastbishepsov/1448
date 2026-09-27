@@ -20,6 +20,7 @@ package main
 // растёт при ВЫДАЧЕ (done), не при заказе — отмена не фармит «Подкрепился».
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -260,23 +261,41 @@ func computerNameByID(id *uuid.UUID) string {
 	return comp.Name
 }
 
-// cancelKitchenOrder — отменить заказ: статус (CAS) + возврат склада. Денег
-// не трогаем: при постоплате (Р10) их ещё не брали — расчёт только у стойки.
+// cancelKitchenOrder — отменить заказ: статус (CAS) + возврат склада. При
+// постоплате (Р10) денег ещё не брали — расчёт только у стойки. З8-и6: заказ
+// от стойки, оплаченный сразу (нал, карта, BLIK, кошелёк — Ж6-и3), отменяется
+// вместе со своей продажей в той же транзакции: кошелёк возвращается гостю,
+// выручка и ящик уменьшаются; refunded — отменённая продажа (nil — денег не было).
 // guestOnly — гостю можно только пока new.
-func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID) (string, bool) {
+func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID) (code string, ok bool, refunded *models.Sale) {
 	allowed := kitchenOpenStatuses
 	if byGuest {
 		allowed = []string{models.KitchenNew}
 	}
+	now := time.Now()
 	err := db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.KitchenOrder{}).
 			Where("id = ? AND status IN ?", o.ID, allowed).
-			Updates(map[string]any{"status": models.KitchenCancelled, "status_at": time.Now(), "status_by": adminID})
+			Updates(map[string]any{"status": models.KitchenCancelled, "status_at": now, "status_by": adminID})
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
 			return errKitchenState
+		}
+		if o.SaleID != nil && adminID != nil {
+			// продажа заказа: отмена возвращает кошелёк и сбрасывает оплату заказа,
+			// склад не трогает — товар вернёт отмена заказа ниже, один раз
+			var sale models.Sale
+			if err := tx.First(&sale, "id = ?", *o.SaleID).Error; err != nil {
+				return err
+			}
+			switch err := voidSaleTx(tx, &sale, *adminID, now); {
+			case err == nil:
+				refunded = &sale
+			case !errors.Is(err, errAlreadyVoid): // продажу уже отменили — деньги вернулись тогда
+				return err
+			}
 		}
 		if o.GoodID != nil { // вернуть на склад (позицию могли удалить)
 			if err := tx.Model(&models.Good{}).Where("id = ?", *o.GoodID).
@@ -291,15 +310,38 @@ func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID
 		return nil
 	})
 	if err == errKitchenState {
-		return "kitchen_state", false
+		return "kitchen_state", false, nil
 	}
 	if err != nil {
-		return "db_error", false
+		return "db_error", false, nil
 	}
-	return "", true
+	return "", true, refunded
 }
 
 var errKitchenState = fmt.Errorf("kitchen_state")
+
+// refundWhere — куда вернули деньги отменённого заказа (чистая, тест): строка
+// журнала и тост стойки.
+func refundWhere(method string) string {
+	switch method {
+	case "wallet":
+		return "на кошелёк гостя"
+	case "cash":
+		return "наличными"
+	case "card":
+		return "на карту"
+	case "blik":
+		return "по BLIK"
+	}
+	return method
+}
+
+// kitchenRefundErrors — заказ оплачен продажей, которую этот админ отменить не
+// может (canVoidSale): отмена с возвратом денег — владельцу (З8-и6).
+var kitchenRefundErrors = map[string]string{
+	"not_yours": "Заказ оплачен продажей другого админа — отменить с возвратом денег может владелец",
+	"too_old":   "Заказ оплачен не в эту смену — отменить с возвратом денег может владелец",
+}
 
 // POST /me/kitchen/orders/:id/cancel — гость передумал (только пока заказ new).
 func handleMyKitchenOrderCancel(c *gin.Context) {
@@ -309,7 +351,7 @@ func handleMyKitchenOrderCancel(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "order_not_found", "message": "Заказ не найден"})
 		return
 	}
-	if code, ok := cancelKitchenOrder(&o, true, nil); !ok {
+	if code, ok, _ := cancelKitchenOrder(&o, true, nil); !ok {
 		msg := "Заказ уже готовят — отменить может админ у стойки"
 		if code == "db_error" {
 			msg = "Не получилось, попробуй ещё раз"
@@ -525,15 +567,28 @@ func handleAdminKitchenPay(c *gin.Context) {
 }
 
 // POST /admin/kitchen/orders/:id/cancel — отмена админом: товар на склад,
-// гостю уведомление. Денег не трогаем — при постоплате их ещё не брали (Р10).
+// гостю уведомление. При постоплате денег ещё не брали (Р10); заказ, оплаченный
+// сразу, отменяется вместе с продажей — права те же, что у отмены продажи (З8-и6).
 func handleAdminKitchenCancel(c *gin.Context) {
 	var o models.KitchenOrder
 	if err := db.First(&o, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "order_not_found", "message": "Заказ не найден"})
 		return
 	}
+	if o.SaleID != nil {
+		var sale models.Sale
+		if db.First(&sale, "id = ?", *o.SaleID).Error == nil && sale.VoidedAt == nil {
+			from, to, _, _ := shiftWindow("", int(settingInt64("report_hour", 8)), time.Now())
+			if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
+				c.GetString("user_id"), sale.CreatedAt, from, to); !ok {
+				c.JSON(http.StatusForbidden, gin.H{"code": code, "message": kitchenRefundErrors[code]})
+				return
+			}
+		}
+	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
-	if code, ok := cancelKitchenOrder(&o, false, &adminID); !ok {
+	code, ok, refunded := cancelKitchenOrder(&o, false, &adminID)
+	if !ok {
 		msg := "Заказ уже закрыт"
 		if code == "db_error" {
 			msg = "Не получилось, попробуй ещё раз"
@@ -543,8 +598,14 @@ func handleAdminKitchenCancel(c *gin.Context) {
 	}
 	notifyUser(o.UserID, "kitchen_status", map[string]any{
 		"order_id": o.ID, "name": o.Name, "qty": o.Qty, "status": models.KitchenCancelled})
-	logAdminAction(c, "kitchen_cancel", &o.UserID, fmt.Sprintf("%s ×%d", o.Name, o.Qty))
-	c.JSON(http.StatusOK, gin.H{"cancelled": o.ID})
+	what, out := fmt.Sprintf("%s ×%d", o.Name, o.Qty), gin.H{"cancelled": o.ID}
+	if refunded != nil {
+		what += fmt.Sprintf(" · возврат %.2f zł %s", refunded.TotalPLN, refundWhere(refunded.Method))
+		out["refund"] = gin.H{"method": refunded.Method, "pln": refunded.TotalPLN}
+		hub.AdminBroadcast("sale", map[string]any{"kind": "void", "name": refunded.Name, "total_pln": refunded.TotalPLN})
+	}
+	logAdminAction(c, "kitchen_cancel", &o.UserID, what)
+	c.JSON(http.StatusOK, out)
 }
 
 // kitchenProgress — выданный заказ в суточный прогресс + проверка ачивок

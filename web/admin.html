@@ -4602,10 +4602,14 @@ function armKitCancel(btn, id){
   btn.dataset.armed = '1'; btn.textContent = 'Точно отменить?';
   setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; } }, 4000);
 }
+// З8-и6: оплаченный сразу заказ отменяется вместе с продажей — тост говорит, что стало с деньгами
+const KIT_REFUND = {wallet: p => p + ' zł вернулись на кошелёк гостя', cash: p => 'верни гостю ' + p + ' zł наличными из ящика — «должно быть» уже меньше на них',
+  card: p => 'верни гостю ' + p + ' zł на карту через терминал', blik: p => 'верни гостю ' + p + ' zł по BLIK'};
 async function kitCancel(id){
   try{
-    await api('/admin/kitchen/orders/' + id + '/cancel', {method:'POST'});
-    toast('✓ Заказ отменён — деньги и товар вернулись');
+    const d = await api('/admin/kitchen/orders/' + id + '/cancel', {method:'POST'});
+    const r = d.refund, f = r && KIT_REFUND[r.method];
+    toast('✓ Заказ отменён — ' + (f ? f(fmtPLN(r.pln)) + ', товар — на склад' : 'товар вернулся на склад'));
     kitBadgeLoad();
   }catch(e){ toast('⚠ ' + e.message); }
 }
