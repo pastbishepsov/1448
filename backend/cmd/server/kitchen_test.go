@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -35,5 +36,23 @@ func TestAllowedKitchenNext(t *testing.T) {
 		if allowedKitchenNext(p[0], p[1]) {
 			t.Errorf("%s → %s должен быть запрещён", p[0], p[1])
 		}
+	}
+}
+
+// З8-и5: очередь кухни — живые заказы и последние закрытые (приходят от новых
+// к старым) одним списком от старых к новым.
+func TestKitchenQueue(t *testing.T) {
+	at := func(m int) time.Time { return time.Date(2026, 9, 26, 8, m, 0, 0, time.UTC) }
+	live := []models.KitchenOrder{{Name: "a", CreatedAt: at(1)}, {Name: "d", CreatedAt: at(40)}}
+	closed := []models.KitchenOrder{{Name: "e", CreatedAt: at(50)}, {Name: "c", CreatedAt: at(30)}, {Name: "b", CreatedAt: at(10)}}
+	got := ""
+	for _, o := range kitchenQueue(live, closed) {
+		got += o.Name
+	}
+	if got != "abcde" {
+		t.Fatalf("очередь %q, ждали abcde", got)
+	}
+	if n := len(kitchenQueue(nil, nil)); n != 0 {
+		t.Fatalf("пустая очередь — %d заказов", n)
 	}
 }

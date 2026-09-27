@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -322,16 +323,43 @@ func handleMyKitchenOrderCancel(c *gin.Context) {
 
 // ── Админская сторона ─────────────────────────────────────────────────
 
+// kitchenClosedLimit — сколько закрытых за сутки заказов (выданы и рассчитаны
+// или отменены) отдаёт очередь кухни — последних; открытые и «ждут оплаты» —
+// всегда все (З8-и5).
+const kitchenClosedLimit = 200
+
+// kitchenQueue — очередь кухни одним списком от старых к новым (чистая, тест):
+// живые заказы (открытые и «ждут оплаты») и последние закрытые, пришедшие от
+// новых к старым, встают по времени заказа.
+func kitchenQueue(live, closed []models.KitchenOrder) []models.KitchenOrder {
+	out := make([]models.KitchenOrder, 0, len(live)+len(closed))
+	out = append(out, live...)
+	out = append(out, closed...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out
+}
+
 // GET /admin/kitchen/orders — очередь кухни: все открытые, все «ждут оплаты»
 // (Р10 — не тонут в смене, пока гость не рассчитался) + закрытые за текущие
-// клубные сутки (окно report_hour, как продажи).
+// клубные сутки (окно report_hour, как продажи) — последние kitchenClosedLimit.
+// З8-и5: раньше всё шло одним списком от старых к новым с обрезкой на 200 — в
+// загруженный день только что пришедший заказ в очередь не попадал, а значок
+// «в работе · ждут оплаты» считался по обрезанному списку.
 func handleAdminKitchenOrders(c *gin.Context) {
 	reportHour := int(settingInt64("report_hour", 8))
 	from, to, _, _ := shiftWindow("", reportHour, time.Now())
-	var orders []models.KitchenOrder
-	db.Where("status IN ? OR (status = ? AND paid_at IS NULL) OR (created_at >= ? AND created_at < ?)",
-		kitchenOpenStatuses, models.KitchenDone, from, to).
-		Order("created_at").Limit(200).Find(&orders)
+	var live, closed []models.KitchenOrder
+	db.Where("status IN ? OR (status = ? AND paid_at IS NULL)", kitchenOpenStatuses, models.KitchenDone).
+		Order("created_at").Find(&live)
+	closedQ := func() *gorm.DB {
+		return db.Model(&models.KitchenOrder{}).
+			Where("created_at >= ? AND created_at < ? AND (status = ? OR (status = ? AND paid_at IS NOT NULL))",
+				from, to, models.KitchenCancelled, models.KitchenDone)
+	}
+	var closedTotal int64
+	closedQ().Count(&closedTotal)
+	closedQ().Order("created_at DESC").Limit(kitchenClosedLimit).Find(&closed)
+	orders := kitchenQueue(live, closed)
 
 	ids := make([]string, 0, len(orders))
 	for _, o := range orders {
@@ -359,7 +387,7 @@ func handleAdminKitchenOrders(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "open": open, "orders": out,
-		"unpaid": unpaid, "unpaid_pln": roundPLN(unpaidSum)})
+		"unpaid": unpaid, "unpaid_pln": roundPLN(unpaidSum), "closed_total": closedTotal})
 }
 
 type kitchenStatusRequest struct {

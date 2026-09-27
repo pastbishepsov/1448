@@ -4458,12 +4458,13 @@ function shiftDay(delta){
 
 /* ── Г7: кухня — очередь заказов гостей. Принял → готовим → несут → выдан;
    wallet-заказ уже оплачен (не выручка, Р7), «у стойки» — деньги при выдаче ── */
-let kitData = [];
+let kitData = [], kitClosedTotal = 0; // З8-и5: закрытых за сутки всего — в очереди последние
 const KIT_ST = {new:'новый', accepted:'принят', preparing:'готовим', delivering:'несут', done:'выдан', cancelled:'отменён'};
 async function kitBadgeLoad(){
   try{
     const d = await api('/admin/kitchen/orders');
     kitData = d.orders || [];
+    kitClosedTotal = d.closed_total || 0;
     const b = document.getElementById('kitBadge');
     const n = (d.open || 0) + (d.unpaid || 0);
     if (b){ b.textContent = n; b.classList.toggle('hidden', !n); b.title = 'в работе: ' + (d.open||0) + ' · ждут оплаты: ' + (d.unpaid||0); }
@@ -4512,7 +4513,8 @@ function paintKitchen(){
     (open.length ? open.map(card).join('')
       : '<div class="empty">🍔 Очередь пуста — заказы гостей с шелла и мобилки появятся тут сами</div>')
     + (unpaid.length ? '<div class="muted" style="margin:16px 2px 8px; font-weight:700">Ждут оплаты — ' + unpaid.length + ' на ' + fmtPLN(unpaid.reduce((a, o) => a + (+o.total_pln||0), 0)) + ' zł</div>' + unpaid.map(card).join('') : '')
-    + (closed.length ? '<div class="muted" style="margin:16px 2px 8px; font-weight:700">За смену</div>' + closed.map(card).join('') : ''));
+    + (closed.length ? '<div class="muted" style="margin:16px 2px 8px; font-weight:700">За смену'
+      + (kitClosedTotal > closed.length ? ' · последние ' + closed.length + ' из ' + kitClosedTotal : '') + '</div>' + closed.map(card).join('') : ''));
 }
 /* ── Ж6-и3: заказ кухни от стойки. Гость — через общий резолвер (ник,
    телефон, имя; кандидаты при 409), позиция из ценника, «на сколько»;
