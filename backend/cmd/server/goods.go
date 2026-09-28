@@ -8,7 +8,9 @@ package main
 // его правит owner; продажа, приём поставки и корректировка — операции смены,
 // их делает admin. Остаток нельзя поменять «молча»: любое изменение проходит
 // через stock_moves, поэтому владелец в отчёте видит потери — всё, что ушло со
-// склада мимо кассы.
+// склада мимо кассы. З10-и1: изменение остатка и его строка stock_moves — одна
+// функция stockMove, через неё все семь мест (создание позиции, приход и
+// корректировка, продажа и её отмена, заказ кухни и его отмена, заказ от стойки).
 
 import (
 	"errors"
@@ -180,10 +182,10 @@ func handleAdminGoodCreate(c *gin.Context) {
 		goodFail(c, http.StatusBadRequest, "bad_stock")
 		return
 	}
-	g := models.Good{
+	g := models.Good{ // остаток — движением «начальный остаток» ниже (З10-и1)
 		ClubID: club.ID, Name: strings.TrimSpace(req.Name),
 		Category: category, PricePLN: price,
-		Stock: stock, LowStock: low, Active: true,
+		LowStock: low, Active: true,
 	}
 	if req.Description != nil {
 		d := strings.TrimSpace(*req.Description)
@@ -204,11 +206,8 @@ func handleAdminGoodCreate(c *gin.Context) {
 		if err := tx.Create(&g).Error; err != nil {
 			return err
 		}
-		if stock > 0 {
-			return tx.Create(&models.StockMove{ClubID: club.ID, GoodID: g.ID, Delta: stock,
-				Reason: "supply", Note: "начальный остаток", CreatedBy: &adminID, PricePLN: g.PricePLN}).Error
-		}
-		return nil
+		return stockMove(tx, stockOp{ClubID: club.ID, GoodID: g.ID, Delta: stock, Reason: "supply",
+			Note: "начальный остаток", By: &adminID, Price: g.PricePLN})
 	})
 	if err != nil {
 		if isDuplicate(err) {
@@ -218,6 +217,7 @@ func handleAdminGoodCreate(c *gin.Context) {
 		goodFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
+	g.Stock = stock
 	logAdminAction(c, "good_create", nil, fmt.Sprintf("%s · %.2f zł · остаток %d", g.Name, g.PricePLN, g.Stock))
 	c.JSON(http.StatusCreated, gin.H{"good": goodOut(&g)})
 }
@@ -394,24 +394,11 @@ func handleAdminGoodStock(c *gin.Context) {
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	err := db.Transaction(func(tx *gorm.DB) error {
-		// CAS: проверка «не уйдём в минус» выше сделана вне транзакции, и два
-		// одновременных списания уводили склад в минус, раздувая «потери» в
-		// отчёте (ревью 26.08).
-		// Потолок остатка (З6-и3) — в том же условии: списание он не держит, приход — да.
-		res := tx.Model(&models.Good{}).
-			Where("id = ? AND stock + ? >= 0 AND (? < 0 OR stock + ? <= ?)", g.ID, req.Delta, req.Delta, req.Delta, maxStockQty).
-			UpdateColumn("stock", gorm.Expr("stock + ?", req.Delta))
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 && req.Delta > 0 {
-			return errStockLimit
-		}
-		if res.RowsAffected == 0 {
-			return errNegativeStock
-		}
-		return tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: req.Delta,
-			Reason: req.Reason, Note: note, CreatedBy: &adminID, PricePLN: g.PricePLN}).Error
+		// проверки выше — вне транзакции; точные (не в минус, не выше потолка) —
+		// условием в stockMove: два одновременных списания не уведут склад в минус
+		// (ревью 26.08), приход не поднимет выше maxStockQty (З6-и3)
+		return stockMove(tx, stockOp{ClubID: g.ClubID, GoodID: g.ID, Delta: req.Delta, Reason: req.Reason,
+			Note: note, By: &adminID, Price: g.PricePLN, Cap: true})
 	})
 	if errors.Is(err, errNegativeStock) {
 		goodFail(c, http.StatusConflict, "negative_stock")
@@ -432,6 +419,58 @@ func handleAdminGoodStock(c *gin.Context) {
 	}
 	logAdminAction(c, action, nil, fmt.Sprintf("%s · %+d → %d%s", g.Name, req.Delta, g.Stock, noteSuffix(note)))
 	c.JSON(http.StatusOK, gin.H{"good": goodOut(&g)})
+}
+
+// stockOp — одно движение склада (З10-и1): на сколько (Delta: + приход и
+// возврат, − списание), почему (Reason: supply — приход, adjust —
+// корректировка, sale — продажа, void — возврат при отмене, order — заказ
+// кухни), по какой цене единицы (Price — цена в момент движения, З6-и2), к чему
+// привязано (продажа, заказ кухни — миграция 075) и кто сделал (By; у заказа
+// гостя — никто).
+type stockOp struct {
+	ClubID  uuid.UUID
+	GoodID  uuid.UUID
+	Delta   int
+	Reason  string
+	Note    string
+	Price   float64
+	SaleID  *uuid.UUID
+	OrderID *uuid.UUID
+	By      *uuid.UUID
+	Cap     bool // потолок остатка maxStockQty (З6-и3) — у прихода и корректировки
+}
+
+// stockMove — единственное место, где меняется остаток позиции (З10-и1):
+// изменение и его строка stock_moves в одной транзакции tx. Списание —
+// условием в WHERE: не хватило — errNegativeStock (две кассы не уведут склад в
+// минус, ревью 26.08); приход с Cap выше maxStockQty не поднимет —
+// errStockLimit. Возврат при отмене кладёт без условий. Нулевое движение не
+// пишется. Сюда З10-и3 добавит партии.
+func stockMove(tx *gorm.DB, op stockOp) error {
+	if op.Delta == 0 {
+		return nil
+	}
+	q := tx.Model(&models.Good{}).Where("id = ?", op.GoodID)
+	if op.Delta < 0 {
+		q = q.Where("stock + ? >= 0", op.Delta)
+	} else if op.Cap {
+		q = q.Where("stock + ? <= ?", op.Delta, maxStockQty)
+	}
+	res := q.UpdateColumn("stock", gorm.Expr("stock + ?", op.Delta))
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		switch {
+		case op.Delta < 0:
+			return errNegativeStock
+		case op.Cap:
+			return errStockLimit
+		}
+		return gorm.ErrRecordNotFound // позиции нет
+	}
+	return tx.Create(&models.StockMove{ClubID: op.ClubID, GoodID: op.GoodID, Delta: op.Delta, Reason: op.Reason,
+		Note: op.Note, SaleID: op.SaleID, KitchenOrderID: op.OrderID, CreatedBy: op.By, PricePLN: op.Price}).Error
 }
 
 func noteSuffix(note string) string {
@@ -658,22 +697,18 @@ func handleAdminSaleCreate(c *gin.Context) {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		for i := range sales {
 			g := &goods[i]
-			// остаток списываем условием в WHERE: две кассы не уведут его в минус
-			res := tx.Model(&models.Good{}).Where("id = ? AND stock >= ?", g.ID, sales[i].Qty).
-				UpdateColumn("stock", gorm.Expr("stock - ?", sales[i].Qty))
-			if res.Error != nil {
-				return res.Error
-			}
-			if res.RowsAffected == 0 {
-				short = g
-				return errOutOfStock
-			}
 			if err := tx.Create(&sales[i]).Error; err != nil {
 				return err
 			}
+			// остаток списывает stockMove условием в WHERE: две кассы не уведут его в минус
 			saleID := sales[i].ID
-			if err := tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -sales[i].Qty,
-				Reason: "sale", SaleID: &saleID, CreatedBy: &adminID, PricePLN: sales[i].PricePLN}).Error; err != nil {
+			err := stockMove(tx, stockOp{ClubID: g.ClubID, GoodID: g.ID, Delta: -sales[i].Qty, Reason: "sale",
+				SaleID: &saleID, By: &adminID, Price: sales[i].PricePLN})
+			if errors.Is(err, errNegativeStock) {
+				short = g
+				return errOutOfStock
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -878,13 +913,9 @@ func voidSaleTx(tx *gorm.DB, sale *models.Sale, adminID uuid.UUID, now time.Time
 	if sale.GoodID == nil { // позицию успели удалить — возвращать некуда
 		return nil
 	}
-	if err := tx.Model(&models.Good{}).Where("id = ?", *sale.GoodID).
-		UpdateColumn("stock", gorm.Expr("stock + ?", sale.Qty)).Error; err != nil {
-		return err
-	}
 	saleID := sale.ID
-	return tx.Create(&models.StockMove{ClubID: sale.ClubID, GoodID: *sale.GoodID, Delta: sale.Qty,
-		Reason: "void", Note: "отмена продажи", SaleID: &saleID, CreatedBy: &adminID, PricePLN: sale.PricePLN}).Error
+	return stockMove(tx, stockOp{ClubID: sale.ClubID, GoodID: *sale.GoodID, Delta: sale.Qty, Reason: "void",
+		Note: "отмена продажи", SaleID: &saleID, By: &adminID, Price: sale.PricePLN})
 }
 
 // isKitchenSale — продажа рассчитала заказ кухни (З6-и1): её отмена не

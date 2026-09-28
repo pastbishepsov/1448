@@ -12,6 +12,7 @@ package main
 // нал/карта/BLIK/кошелёк.
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -331,19 +332,16 @@ func handleAdminKitchenOrderCreate(c *gin.Context) {
 		}
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&models.Good{}).Where("id = ? AND stock >= ?", g.ID, req.Qty).
-			UpdateColumn("stock", gorm.Expr("stock - ?", req.Qty))
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return errOutOfStock
-		}
 		if err := tx.Create(&order).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty,
-			Reason: "order", Note: "заказ кухни от стойки", CreatedBy: &adminID, PricePLN: g.PricePLN}).Error; err != nil {
+		orderID := order.ID // З10-и1: движение знает свой заказ
+		err := stockMove(tx, stockOp{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty, Reason: "order",
+			Note: "заказ кухни от стойки", OrderID: &orderID, By: &adminID, Price: g.PricePLN})
+		if errors.Is(err, errNegativeStock) {
+			return errOutOfStock
+		}
+		if err != nil {
 			return err
 		}
 		if sale == nil {

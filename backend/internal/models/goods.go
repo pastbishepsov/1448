@@ -76,7 +76,9 @@ func (s *Sale) BeforeCreate(tx *gorm.DB) error {
 func (Sale) TableName() string { return "sales" }
 
 // StockMove — движение склада. reason: supply (приход), sale (продажа),
-// void (возврат при отмене), adjust (ручная корректировка с причиной).
+// void (возврат при отмене), adjust (ручная корректировка с причиной), order
+// (заказ кухни). З10-и1: пишется только функцией stockMove (goods.go) — вместе
+// с изменением остатка.
 type StockMove struct {
 	ID        uuid.UUID  `json:"id"      gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
 	ClubID    uuid.UUID  `json:"club_id" gorm:"type:uuid;not null"`
@@ -90,6 +92,8 @@ type StockMove struct {
 	// З6-и2 (миграция 069): цена единицы в момент движения — «Потери» считаются
 	// по ней, перецена позиции прошлые движения не переписывает.
 	PricePLN float64 `json:"price_pln" gorm:"type:decimal(8,2);not null;default:0"`
+	// З10-и1 (миграция 075): заказ кухни, чьё это движение, — заказ и его отмена.
+	KitchenOrderID *uuid.UUID `json:"kitchen_order_id,omitempty" gorm:"column:kitchen_order_id;type:uuid"`
 }
 
 func (m *StockMove) BeforeCreate(tx *gorm.DB) error {

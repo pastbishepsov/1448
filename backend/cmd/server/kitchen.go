@@ -197,19 +197,16 @@ func handleMyKitchenOrderCreate(c *gin.Context) {
 		Paid: models.KitchenPaidPostpay, Status: models.KitchenNew, ComputerID: &compID, StatusAt: time.Now(),
 	}
 	err = db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&models.Good{}).Where("id = ? AND stock >= ?", g.ID, req.Qty).
-			UpdateColumn("stock", gorm.Expr("stock - ?", req.Qty))
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return errOutOfStock
-		}
 		if err := tx.Create(&order).Error; err != nil {
 			return err
 		}
-		return tx.Create(&models.StockMove{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty,
-			Reason: "order", Note: "заказ кухни", PricePLN: g.PricePLN}).Error
+		orderID := order.ID // З10-и1: движение знает свой заказ
+		err := stockMove(tx, stockOp{ClubID: g.ClubID, GoodID: g.ID, Delta: -req.Qty, Reason: "order",
+			Note: "заказ кухни", OrderID: &orderID, Price: g.PricePLN})
+		if errors.Is(err, errNegativeStock) {
+			return errOutOfStock
+		}
+		return err
 	})
 	if err == errOutOfStock {
 		goodFail(c, http.StatusConflict, "out_of_stock")
@@ -298,14 +295,9 @@ func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID
 			}
 		}
 		if o.GoodID != nil { // вернуть на склад (позицию могли удалить)
-			if err := tx.Model(&models.Good{}).Where("id = ?", *o.GoodID).
-				UpdateColumn("stock", gorm.Expr("stock + ?", o.Qty)).Error; err != nil {
-				return err
-			}
-			if err := tx.Create(&models.StockMove{ClubID: o.ClubID, GoodID: *o.GoodID, Delta: o.Qty,
-				Reason: "void", Note: "отмена заказа кухни", CreatedBy: adminID, PricePLN: o.PricePLN}).Error; err != nil {
-				return err
-			}
+			orderID := o.ID
+			return stockMove(tx, stockOp{ClubID: o.ClubID, GoodID: *o.GoodID, Delta: o.Qty, Reason: "void",
+				Note: "отмена заказа кухни", OrderID: &orderID, By: adminID, Price: o.PricePLN})
 		}
 		return nil
 	})
