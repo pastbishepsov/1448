@@ -9,6 +9,7 @@ package main
 // З9-и3, справочники (свои категории, скрытие, NIP с контрольной суммой) — З9-и4.
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -56,6 +57,7 @@ var expenseErrors = map[string]string{
 	"bad_photo":           "Фото — JPEG, PNG или WebP",
 	"photo_too_big":       fmt.Sprintf("Фото — до %d КБ (сожми на клиенте)", maxPhotoBytes>>10),
 	"photo_not_found":     "У расхода нет фото",
+	"bad_closeout":        "«Взяли до сдачи» — только у оплаченного расхода из кассы и только до сдачи с пересчётом того же дня",
 }
 
 func expenseFail(c *gin.Context, status int, code string) {
@@ -74,6 +76,10 @@ type expenseRequest struct {
 	Paid           *bool    `json:"paid"`
 	DocNo          *string  `json:"doc_no"`
 	Note           *string  `json:"note"`
+	// З9-и3в: расход «из кассы» взяли до этой сдачи (id сдачи с пересчётом того же
+	// дня) — объясняет её; "" — после сдач: «должно быть» меньше с этой минуты.
+	// Нет поля — место по правилу (tillPlace).
+	BeforeCloseout *string `json:"before_closeout"`
 }
 
 var expenseMethods = map[string]string{
@@ -395,9 +401,7 @@ func placeTill(tx *gorm.DB, e *models.Expense, anchor time.Time) {
 	if !tillPaid(e) {
 		return
 	}
-	rh, d := int(settingInt64("report_hour", 8)), e.OpDate
-	from := time.Date(d.Year(), d.Month(), d.Day(), rh, 0, 0, 0, time.Local)
-	to := time.Date(d.Year(), d.Month(), d.Day()+1, rh, 0, 0, 0, time.Local)
+	from, to := tillDay(e.OpDate)
 	now := time.Now()
 	since := from
 	if anchor.Before(since) {
@@ -415,6 +419,47 @@ func placeTill(tx *gorm.DB, e *models.Expense, anchor time.Time) {
 	if i >= 0 {
 		id := cos[i].ID
 		e.ExplainsCloseout = &id
+	}
+}
+
+// tillDay — клубные сутки дня операции: [report_hour того дня, report_hour следующего).
+func tillDay(d time.Time) (from, to time.Time) {
+	rh := int(settingInt64("report_hour", 8))
+	return time.Date(d.Year(), d.Month(), d.Day(), rh, 0, 0, 0, time.Local),
+		time.Date(d.Year(), d.Month(), d.Day()+1, rh, 0, 0, 0, time.Local)
+}
+
+var errBadCloseout = errors.New("bad_closeout")
+
+// tillBefore — владелец сказал, что деньги взяли до сдачи id (З9-и3в, решение
+// основателя 27.09): расход ложится в миг перед ней и объясняет её. Годится
+// сдача с пересчётом (и начальный остаток) в клубных сутках дня операции, уже
+// прошедшая; расход — оплаченный «из кассы». Под замком ящика; false — не годится.
+func tillBefore(tx *gorm.DB, e *models.Expense, id string) bool {
+	cid, err := uuid.Parse(id)
+	if err != nil || !tillPaid(e) {
+		return false
+	}
+	from, to := tillDay(e.OpDate)
+	var co models.ShiftCloseout
+	if tx.Select("id, created_at").Where("id = ? AND opening_grosz IS NOT NULL AND counted_grosz IS NOT NULL "+
+		"AND created_at >= ? AND created_at < ? AND created_at < ?", cid, from, to, time.Now()).First(&co).Error != nil {
+		return false
+	}
+	at := co.CreatedAt.Add(-time.Microsecond)
+	e.DrawerAt, e.ExplainsCloseout = &at, &co.ID
+	return true
+}
+
+// tillWhere — место расхода в ящике словами для журнала правки (чистая, тест).
+func tillWhere(e *models.Expense) string {
+	switch {
+	case e.DrawerAt == nil:
+		return "ящик не трогает"
+	case e.ExplainsCloseout == nil:
+		return "из ящика с " + e.DrawerAt.Local().Format("02.01 15:04")
+	default:
+		return "до сдачи " + e.DrawerAt.Add(time.Microsecond).Local().Format("02.01 15:04")
 	}
 }
 
@@ -625,8 +670,15 @@ func handleExpenseCreate(c *gin.Context) {
 		}
 		e.CreatedAt = time.Now()
 		placeTill(tx, &e, e.CreatedAt) // при записи anchor — сейчас
+		if b := req.BeforeCloseout; b != nil && *b != "" && !tillBefore(tx, &e, *b) {
+			return errBadCloseout // З9-и3в: «взяли до сдачи» — выбор владельца
+		}
 		return tx.Create(&e).Error
 	})
+	if errors.Is(err, errBadCloseout) {
+		expenseFail(c, http.StatusBadRequest, "bad_closeout")
+		return
+	}
 	if err != nil {
 		expenseFail(c, http.StatusInternalServerError, "db_error")
 		return
@@ -679,7 +731,7 @@ func handleExpenseUpdate(c *gin.Context) {
 		names[k] = v
 	}
 	changes := expenseChanges(*cur, e, names)
-	if len(changes) == 0 {
+	if len(changes) == 0 && req.BeforeCloseout == nil {
 		c.JSON(http.StatusOK, gin.H{"expense": expenseOutOne(cur), "changed": 0})
 		return
 	}
@@ -698,6 +750,23 @@ func handleExpenseUpdate(c *gin.Context) {
 		default:
 			placeTill(tx, &e, cur.CreatedAt)
 		}
+		// З9-и3в: владелец сам сказал, когда взяли: до сдачи — объясняет её; после сдач — с этой минуты
+		if b := req.BeforeCloseout; b != nil {
+			if *b != "" {
+				if !tillBefore(tx, &e, *b) {
+					return errBadCloseout
+				}
+			} else if tillPaid(&e) {
+				now := time.Now()
+				e.DrawerAt, e.ExplainsCloseout = &now, nil
+			}
+			if tillWhere(cur) != tillWhere(&e) {
+				changes = append(changes, "ящик: "+tillWhere(cur)+" → "+tillWhere(&e))
+			}
+		}
+		if len(changes) == 0 {
+			return nil // ни полей, ни места в ящике — нечего писать
+		}
 		res := tx.Model(&models.Expense{}).Where("id = ? AND storno_at IS NULL", cur.ID).Updates(map[string]any{
 			"op_date": e.OpDate.Format("2006-01-02"), "category_id": e.CategoryID, "counterparty_id": e.CounterpartyID,
 			"gross_grosz": e.GrossGrosz, "vat_grosz": e.VatGrosz, "method": e.Method, "paid": e.Paid,
@@ -706,8 +775,16 @@ func handleExpenseUpdate(c *gin.Context) {
 		rows = res.RowsAffected
 		return res.Error
 	})
+	if errors.Is(err, errBadCloseout) {
+		expenseFail(c, http.StatusBadRequest, "bad_closeout")
+		return
+	}
 	if err != nil {
 		expenseFail(c, http.StatusInternalServerError, "db_error")
+		return
+	}
+	if len(changes) == 0 {
+		c.JSON(http.StatusOK, gin.H{"expense": expenseOutOne(cur), "changed": 0})
 		return
 	}
 	if rows == 0 { // сторнировали между чтением и записью

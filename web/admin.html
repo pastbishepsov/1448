@@ -5747,6 +5747,7 @@ function accTabSet(t){
 }
 function accGo(t){ accTab = t; try{ localStorage.setItem('1448a_acctab', t); }catch(e){} nav('acc'); }
 let expPeriod = {preset:'month'}, expData = null, expCats = null, expCps = null, expFilt = {category:'', method:''}, expForm = null;
+let expTodayCos = null; // З9-и3в: сегодняшние сдачи с пересчётом — для «взяли до сдачи»
 const EXP_METHODS = [['till','Из кассы'], ['bank','Банк'], ['card','Карта'], ['owner','Личные деньги владельца']];
 const EXP_METHOD_RU = Object.fromEntries(EXP_METHODS);
 const EXP_PRESETS = ACC_PRESETS.concat([['year','Год']]);
@@ -5832,8 +5833,9 @@ async function expOpen(id){
   const e = id ? ((expData || {}).expenses || []).find(x => x.id === id) : null;
   if (id && !e) return;
   expForm = e ? {id:e.id, date:ruDate(e.op_date), category:e.category_id, counterparty:e.counterparty || '', amount:String(e.amount_pln),
-      vat:e.vat_pln ? String(e.vat_pln) : '', method:e.method, paid:e.paid, doc:e.doc_no || '', note:e.note || '', storno:e.storno_at ? e : null, photo:e.has_photo}
-    : {id:'', date:ruDate(isoDate(new Date())), category:'', counterparty:'', amount:'', vat:'', method:'bank', paid:true, doc:'', note:'', storno:null, photo:false};
+      vat:e.vat_pln ? String(e.vat_pln) : '', method:e.method, paid:e.paid, doc:e.doc_no || '', note:e.note || '', storno:e.storno_at ? e : null, photo:e.has_photo,
+      before:e.explains_closeout || '', before0:e.explains_closeout || ''}
+    : {id:'', date:ruDate(isoDate(new Date())), category:'', counterparty:'', amount:'', vat:'', method:'bank', paid:true, doc:'', note:'', storno:null, photo:false, before:'', before0:''};
   expPaint();
 }
 function expNet(){
@@ -5867,7 +5869,8 @@ function expPaint(){
     <div class="segs" id="efMethod">${EXP_METHODS.map(([k, n]) => `<button class="${f.method === k ? 'on' : ''}" onclick="expForm.method='${k}'; segOn(this); expTillHint()">${n}</button>`).join('')}</div>
     <div id="efTillHint" class="muted${f.method === 'till' ? '' : ' hidden'}">Из кассы — деньги ушли из ящика. За сегодня «должно быть в ящике» уменьшится сразу; за прошедший день, закрытый сдачей, — ящик не тронет, а объяснит расхождение той сдачи (видно в «Кассе»).</div>
     <div id="efOwnerHint" class="muted${f.method === 'owner' ? '' : ' hidden'}">Личные деньги владельца — клуб будет должен их вернуть: сумма ляжет в «Клуб должен владельцу» над списком, вернуть — «Вернуть владельцу», из кассы или с банка.</div>
-    <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="efPaid" type="checkbox"${f.paid ? ' checked' : ''}> оплачен</label>
+    <div id="efWhen"></div>
+    <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="efPaid" type="checkbox"${f.paid ? ' checked' : ''} onchange="expWhen()"> оплачен</label>
     <input id="efDoc" class="input" maxlength="64" placeholder="Номер документа — FV 12/09/2026" value="${esc(f.doc)}">
     <input id="efNote" class="input" maxlength="500" placeholder="Заметка" value="${esc(f.note)}">
     ${photo}
@@ -5879,11 +5882,38 @@ function expPaint(){
     <div class="muted">Удаления нет: строка останется бледной, с причиной, и уйдёт из итогов.</div>` : ''}
   </div>`);
   expNet();
+  const dt = document.getElementById('efDate');
+  dt.addEventListener('change', expWhen); dt.addEventListener('input', expWhen);
+  expWhenLoad(); // З9-и3в: сегодняшние сдачи с пересчётом — для «взяли до сдачи»
   if (f.photo) expPhotoShow(f.id);
 }
 function expTillHint(){
   const h = document.getElementById('efTillHint'); if (h) h.classList.toggle('hidden', expForm.method !== 'till');
   const o = document.getElementById('efOwnerHint'); if (o) o.classList.toggle('hidden', expForm.method !== 'owner'); // З9-и3б
+  expWhen(); // З9-и3в: вопрос «взяли до сдачи» — только у «Из кассы»
+}
+// З9-и3в (решение основателя 27.09): расход «Из кассы» за сегодня, а сегодня уже пересчитывали ящик, — владелец
+// говорит, когда взяли. «После сдачи» (по умолчанию) — «должно быть» меньше сейчас; «до сдачи ЧЧ:ММ» — расход
+// объясняет её недостачу, ящик не трогает. Несколько пересчётов — выбирается нужный.
+async function expWhenLoad(){
+  try{
+    const b = await api('/admin/cash/book?preset=today'), day = (b.days || [])[(b.days || []).length - 1] || {};
+    expTodayCos = {date: day.date || '', list: (day.closeouts || []).filter(c => c.counted_pln != null && !c.skipped)};
+  }catch(e){ expTodayCos = {date:'', list:[]}; }
+  expWhen();
+}
+function expWhen(){
+  const box = document.getElementById('efWhen');
+  if (!box || !expForm) return;
+  const f = expForm, t = expTodayCos || {list:[]}, paid = document.getElementById('efPaid');
+  if (!(f.method === 'till' && paid && paid.checked && t.list.length && dateIso(document.getElementById('efDate')) === t.date)){ box.innerHTML = ''; return; }
+  const cos = t.list.slice().reverse(), last = cos[0];
+  box.innerHTML = `<label class="muted">Взяли из кассы
+    <select id="efBefore" class="input" style="margin-top:4px" onchange="expForm.before=this.value">
+      <option value="">после сдачи ${hhmm(last.created_at)} (${esc(last.nickname || '—')}) — «должно быть» меньше сейчас</option>
+      ${cos.map(c => `<option value="${c.id}"${f.before === c.id ? ' selected' : ''}>до сдачи ${hhmm(c.created_at)} (${esc(c.nickname || '—')}${
+        c.baseline ? ', начальный остаток' : c.diff_pln ? ', расхождение ' + accSigned(c.diff_pln) : ', сошлось'}) — объяснит её</option>`).join('')}
+    </select></label>`;
 }
 // З9-и3а: что расход сделал с ящиком — к тосту, только если это изменилось (prev — прежний drawer_at); сдача-начальный
 // остаток ничего не объясняет — расход ушёл до того, как ящик завели, и в остатке уже учтён
@@ -5927,6 +5957,7 @@ async function expSave(){
     const body = {op_date: date, category_id: cat, counterparty_id: await expCounterparty(document.getElementById('efCp').value.trim()),
       amount_pln: Math.round(amount * 100) / 100, vat_pln: Math.round(vat * 100) / 100, method: f.method,
       paid: document.getElementById('efPaid').checked, doc_no: document.getElementById('efDoc').value.trim(), note: document.getElementById('efNote').value.trim()};
+    if (document.getElementById('efBefore') && (f.id ? f.before !== f.before0 : f.before)) body.before_closeout = f.before; // З9-и3в: взяли до сдачи / после
     const d = f.id ? await api('/admin/expenses/' + f.id, {method:'PATCH', body: JSON.stringify(body)})
                    : await api('/admin/expenses', {method:'POST', body: JSON.stringify(body)});
     let ph = '';

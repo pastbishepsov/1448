@@ -152,3 +152,23 @@ func TestTillPlace(t *testing.T) {
 		t.Errorf("должно быть с расходом из кассы: %d", got)
 	}
 }
+
+// З9-и3в: место расхода в ящике словами — для журнала правки «взяли до сдачи».
+func TestTillWhere(t *testing.T) {
+	live := time.Date(2026, 9, 27, 12, 5, 0, 0, time.Local)
+	before := time.Date(2026, 9, 27, 20, 57, 0, 0, time.Local).Add(-time.Microsecond)
+	co := uuid.New()
+	cases := []struct {
+		e    models.Expense
+		want string
+	}{
+		{models.Expense{}, "ящик не трогает"},
+		{models.Expense{DrawerAt: &live}, "из ящика с 27.09 12:05"},
+		{models.Expense{DrawerAt: &before, ExplainsCloseout: &co}, "до сдачи 27.09 20:57"},
+	}
+	for _, c := range cases {
+		if got := tillWhere(&c.e); got != c.want {
+			t.Errorf("%q, ждали %q", got, c.want)
+		}
+	}
+}
