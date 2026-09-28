@@ -69,6 +69,14 @@ var expenseErrors = map[string]string{
 	"counterparty_not_found": "Контрагент не найден",
 	"method_off":             "Этот способ оплаты выключен — включи его в «Справочниках» или выбери другой",
 	"need_method":            "Хотя бы один способ оплаты должен остаться включённым",
+	// З9-и5: регулярные расходы
+	"bad_template_name":  fmt.Sprintf("Название шаблона — 1–%d символов", maxTemplateName),
+	"template_exists":    "Шаблон с таким названием уже есть",
+	"template_not_found": "Шаблон не найден",
+	"bad_day":            "Число месяца — от 1 до 31 (нет такого в месяце — последний день)",
+	"bad_template":       "Такого шаблона нет",
+	"bad_template_month": "Месяц шаблона — с первого месяца шаблона по текущий",
+	"template_entered":   "За этот месяц по шаблону уже внесено — сторнируй тот расход, если он ошибочный",
 }
 
 func expenseFail(c *gin.Context, status int, code string) {
@@ -91,6 +99,9 @@ type expenseRequest struct {
 	// дня) — объясняет её; "" — после сдач: «должно быть» меньше с этой минуты.
 	// Нет поля — место по правилу (tillPlace).
 	BeforeCloseout *string `json:"before_closeout"`
+	// З9-и5: по шаблону регулярного расхода за месяц (только при записи).
+	TemplateID    *string `json:"template_id"`
+	TemplateMonth *string `json:"template_month"`
 }
 
 var expenseMethods = map[string]string{
@@ -521,6 +532,9 @@ func expenseOut(e *models.Expense, names map[string]string, cps map[string]strin
 			row["explains_closeout"] = *e.ExplainsCloseout
 		}
 	}
+	if e.TemplateID != nil && e.TemplateMonth != nil { // З9-и5: по шаблону за месяц
+		row["template_id"], row["template_month"] = *e.TemplateID, e.TemplateMonth.Format("2006-01-02")
+	}
 	if e.CounterpartyID != nil {
 		row["counterparty_id"], row["counterparty"] = *e.CounterpartyID, cps[e.CounterpartyID.String()]
 	}
@@ -641,7 +655,8 @@ func handleExpenseList(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"period": p.out(), "expenses": out,
 		"totals": gin.H{"count": count, "amount_pln": models.PLNFromGrosz(gross), "vat_pln": models.PLNFromGrosz(vat),
 			"net_pln": models.PLNFromGrosz(gross - vat)},
-		"by_category": cats, "owner_debt": ownerDebtOf(db).out()}) // З9-и3б: клуб должен владельцу — на все даты
+		"by_category": cats, "owner_debt": ownerDebtOf(db).out(), // З9-и3б: клуб должен владельцу — на все даты
+		"due": dueOut(dueList(expenseToday()), expenseToday())}) // З9-и5: ждут внесения
 }
 
 // POST /admin/expenses — новый расход (owner).
@@ -678,9 +693,22 @@ func handleExpenseCreate(c *gin.Context) {
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	e.ClubID, e.CreatedBy = club.ID, &adminID
+	tcode, tname := "", "" // З9-и5: по шаблону
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", drawerLock).Error; err != nil { // как сдачи (З9-и3а)
 			return err
+		}
+		if b := req.TemplateID; b != nil && *b != "" { // З9-и5: по шаблону за месяц — один на месяц
+			month := ""
+			if req.TemplateMonth != nil {
+				month = *req.TemplateMonth
+			}
+			code, t, m := expenseTemplateLink(tx, *b, month, expenseToday())
+			if code != "" {
+				tcode = code
+				return errTemplate
+			}
+			e.TemplateID, e.TemplateMonth, tname = &t.ID, &m, t.Name
 		}
 		e.CreatedAt = time.Now()
 		placeTill(tx, &e, e.CreatedAt) // при записи anchor — сейчас
@@ -693,12 +721,24 @@ func handleExpenseCreate(c *gin.Context) {
 		expenseFail(c, http.StatusBadRequest, "bad_closeout")
 		return
 	}
+	if errors.Is(err, errTemplate) || (err != nil && e.TemplateID != nil && isDuplicate(err)) {
+		if tcode == "" || tcode == "template_entered" {
+			expenseFail(c, http.StatusConflict, "template_entered") // гонка за тот же месяц — уникальный индекс
+			return
+		}
+		expenseFail(c, http.StatusBadRequest, tcode)
+		return
+	}
 	if err != nil {
 		expenseFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
 	fresh := reloadExpense(e.ID)
-	logAdminAction(c, "expense_create", nil, expenseLine(fresh, categoryNames()[fresh.CategoryID.String()]))
+	line := expenseLine(fresh, categoryNames()[fresh.CategoryID.String()])
+	if fresh.TemplateID != nil && fresh.TemplateMonth != nil {
+		line += " · по шаблону «" + tname + "» за " + fresh.TemplateMonth.Format("01.2006")
+	}
+	logAdminAction(c, "expense_create", nil, line)
 	c.JSON(http.StatusCreated, gin.H{"expense": expenseOutOne(fresh), "owner_debt": ownerDebtOf(db).out()})
 }
 

@@ -602,6 +602,12 @@
   .refList .refWarn{color:var(--orange)}
   #rmMethods button{min-width:0}
   @media (max-width:640px){ .refList td.refAct{text-align:left} }
+  /* З9-и5: «Ждут внесения» над списком расходов, число на вкладке «Расходы» */
+  .dueBox{border:1px solid var(--hair); border-left:3px solid var(--orange); border-radius:12px; padding:10px 12px 12px; margin:0 0 14px}
+  .dueBox .dsub{margin-top:2px}
+  .dueList td.dueLate{color:var(--orange)}
+  #accTabs button[data-n]::after{content:attr(data-n); margin-left:6px; background:rgba(255,39,64,.22); color:var(--acc3); border-radius:8px;
+                                 padding:0 6px; font-size:11px; font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -683,7 +689,7 @@
       <button id="r-grants" onclick="nav('grants')" aria-label="Журнал"><span data-ic="scroll"></span><span class="rlabel">Журнал</span></button>
       <div class="rzone zclub">Клуб</div>
       <button id="r-stats" class="ownerOnly hidden" onclick="nav('stats')" aria-label="Отчёты"><span data-ic="chart"></span><span class="rlabel">Отчёты</span></button>
-      <button id="r-acc" class="ownerOnly hidden" onclick="nav('acc')" aria-label="Бухгалтерия"><span data-ic="coins"></span><span class="rlabel">Бухгалтерия</span></button>
+      <button id="r-acc" class="ownerOnly hidden" onclick="nav('acc')" aria-label="Бухгалтерия"><span data-ic="coins"></span><span class="rlabel">Бухгалтерия</span><span class="rbadge hidden" id="accBadge"></span></button>
       <button id="r-staff" onclick="nav('staff')" aria-label="Персонал"><span data-ic="users"></span><span class="rlabel">Персонал</span></button>
       <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Экономика"><span data-ic="gear"></span><span class="rlabel">Экономика</span></button>
       <div class="grow"></div>
@@ -1430,6 +1436,7 @@ async function refresh(){
     const bb = document.getElementById('bkBadge'), nb = ov.bookings_today | 0;
     bb.textContent = nb;
     bb.classList.toggle('hidden', !nb);
+    accBadgeSet(ov.expenses_due); // З9-и5: регулярные расходы ждут внесения — у админа поля нет
     loadBell(); // Б2: очередь вызовов (параллельно, не ждём)
     kitBadgeLoad(); // Г7: бейдж кухни
     if (curTab === 'hall' && !hallEdit) await renderHall(); // в редакторе не дёргаем схему
@@ -1656,8 +1663,10 @@ function handleLiveEvent(m){
   if (m.type === 'staff_chat'){ // Е6: свой написал — счётчик и открытая лента
     const d = m.data || {};
     loadStaffChat(true);
+    if (d.expense_due) refresh(); // З9-и5: регулярный расход ждёт — бейдж «Бухгалтерии» сразу
     if (!drawerIsStaffChat && me && d.author_id !== me.id){
-      toast(d.kind === 'system' // З1-и2: служебное — от системы; «только владельцу» до админа не доходит вовсе
+      toast(d.expense_due ? '🧾 Регулярный расход ждёт внесения — «Бухгалтерия» → «Расходы»'
+        : d.kind === 'system' // З1-и2: служебное — от системы; «только владельцу» до админа не доходит вовсе
         ? '🧮 Служебное в канале персонала' + (d.visible_to === 'owner' ? ' — видишь только ты' : '')
         : (d.role === 'owner' ? '👑 Владелец' : '💬 Свой') + ' написал в канал персонала');
     }
@@ -3930,7 +3939,8 @@ const AUD_GROUPS = {
           'cash_collect','cash_correct','cash_event_void', // З8-и2: инкассация, коррекция остатка, отмена события ящика
           'expense_create','expense_update','expense_storno', // З9-и2: расходы (видит только владелец)
           'owner_repay','owner_repay_void', // З9-и3б
-          'expense_category_create','expense_category_update','counterparty_update','expense_methods'], // З9-и4: справочники: долг клуба владельцу — возврат и его отмена (тоже только владелец)
+          'expense_category_create','expense_category_update','counterparty_update','expense_methods', // З9-и4: справочники
+          'expense_template_create','expense_template_update'], // З9-и5: регулярные расходы (всё это видит только владелец)
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -3968,6 +3978,7 @@ const AUD_LABEL = {
   owner_repay:'долг владельцу: возврат', owner_repay_void:'долг владельцу: отмена возврата', // З9-и3б
   expense_category_create:'категория: новая', expense_category_update:'категория: правка', counterparty_update:'контрагент: правка',
   expense_methods:'способы оплаты', // З9-и4
+  expense_template_create:'регулярный: новый', expense_template_update:'регулярный: правка', // З9-и5
   login_failed:'вход: неверный пароль', // З0-и3: серия неудач входа персонала — только владельцу
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   coin_redeem:'монеты: время за монеты',
@@ -4004,6 +4015,7 @@ const AUD_ICON = {
   expense_create:'coins', expense_update:'edit', expense_storno:'cross', counterparty_create:'users', // З9-и2
   owner_repay:'coins', owner_repay_void:'cross', // З9-и3б
   expense_category_create:'plus', expense_category_update:'edit', counterparty_update:'edit', expense_methods:'wrench', // З9-и4
+  expense_template_create:'clock', expense_template_update:'edit', // З9-и5
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out',
   work_start:'clock', work_stop:'check', work_edit:'edit',
@@ -5757,6 +5769,41 @@ function accTabSet(t){
   renderAcc();
 }
 function accGo(t){ accTab = t; try{ localStorage.setItem('1448a_acctab', t); }catch(e){} nav('acc'); }
+
+/* ── З9-и5 (№67, Д10; решение основателя 28.09 — только ежемесячные): регулярные расходы. Шаблон заводится в
+   «Справочниках»; когда наступил его день месяца (нет такого — последний), месяц ждёт внесения: блок «Ждут внесения»
+   над списком расходов, число на «Бухгалтерии» и на вкладке «Расходы», в день срока — одно сообщение владельцу в
+   канал. «Внести» — шторка расхода, заполненная по шаблону; за месяц — один расход, сторно освобождает месяц.
+   Сервер — expense_templates.go. ── */
+const MONTHS_NOM = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+function tplMonth(iso){ return iso ? MONTHS_NOM[+iso.slice(5, 7) - 1] + ' ' + iso.slice(0, 4) : ''; }
+function accBadgeSet(n){
+  n = n | 0;
+  const b = document.getElementById('accBadge'), t = document.querySelector('#accTabs button[data-t="exp"]');
+  if (b){ b.textContent = n || ''; b.classList.toggle('hidden', !n); b.title = n ? 'регулярные расходы ждут внесения: ' + n : ''; }
+  if (t){ if (n) t.dataset.n = n; else delete t.dataset.n; } // число на вкладке — псевдоэлементом: текст вкладки тот же
+}
+function dueBlock(list){
+  if (!list || !list.length) return '';
+  return `<div class="dueBox" id="expDue"><div class="dsub">Ждут внесения · ${list.length}</div>
+    <div class="tablewrap"><table class="refList dueList">
+      <tr><th>Регулярный расход</th><th>Категория</th><th>Сумма</th><th>Способ</th><th>Срок</th><th></th></tr>
+      ${list.map((x, i) => `<tr class="dueRow" data-t="${x.template_id}" data-m="${x.month}">
+        <td><b>${esc(x.name)}</b>&nbsp;<span class="muted">· за ${tplMonth(x.month)}</span></td>
+        <td>${esc(x.category || '—')}${x.counterparty ? ' · ' + esc(x.counterparty) : ''}</td>
+        <td><b>${fmtPLN(x.amount_pln)} zł</b>${x.vat_pln ? '&nbsp;<span class="muted">VAT ' + fmtPLN(x.vat_pln) + '</span>' : ''}</td>
+        <td>${EXP_METHOD_RU[x.method] || esc(x.method)}</td>
+        <td${x.overdue_days > 0 ? ' class="dueLate"' : ''}>${x.overdue_days > 0 ? 'срок был ' + ruDate(x.due) + ' · ' + x.overdue_days + ' дн.' : 'срок сегодня'}</td>
+        <td class="refAct"><button class="btn mini" onclick="expOpenDue(${i})"><span data-ic="plus"></span>Внести</button></td></tr>`).join('')}
+    </table></div>
+    <div class="muted" style="margin-top:6px">«Внести» откроет расход, заполненный по шаблону, — проверь сумму и дату. Шаблоны —
+      <a href="#" class="lnk" onclick="event.preventDefault(); refsGo()">«Справочники» → «Регулярные расходы»</a>.</div></div>`;
+}
+function expTplLine(f){
+  if (f.tpl) return `<div class="muted" id="efTpl">Регулярный «<b>${esc(f.tpl.name)}</b>» за ${tplMonth(f.tpl.month)} — заполнено по шаблону, проверь сумму и дату. За месяц запишется один раз.</div>`;
+  if (f.tplMonth) return `<div class="muted" id="efTpl">Внесён по регулярному расходу за ${tplMonth(f.tplMonth)} — сторно освободит месяц: он снова будет ждать внесения.</div>`;
+  return '';
+}
 let expPeriod = {preset:'month'}, expData = null, expCats = null, expCps = null, expFilt = {category:'', method:''}, expForm = null;
 let expTodayCos = null; // З9-и3в: сегодняшние сдачи с пересчётом — для «взяли до сдачи»
 const EXP_METHODS = [['till','Из кассы'], ['bank','Банк'], ['card','Карта'], ['owner','Личные деньги владельца']];
@@ -5804,6 +5851,7 @@ function paintExp(){
       <div class="kpi">Записей <b>${t.count || 0}</b></div>
       ${debtKpi(d.owner_debt)}
     </div>
+    ${dueBlock(d.due)}
     <div class="toolrow">
       <button class="btn mini" id="expNewBtn" onclick="expOpen('')"><span data-ic="plus"></span>Внести расход</button>
       <button class="btn ghost mini" id="expDebtBtn" onclick="debtOpen('bank')"><span data-ic="coins"></span>Вернуть владельцу</button>
@@ -5828,12 +5876,13 @@ function paintExp(){
       ${list.map(expRow).join('')}
     </table></div>` : '<div class="empty">За этот период расходов нет — «Внести расход» добавит первый</div>'}`;
   mountIcons(box);
+  accBadgeSet((d.due || []).length); // З9-и5
 }
 function expRow(e){
   const off = !!e.storno_at, L = s => '<span class="expL">' + s + '</span>';
   return `<tr class="expRow${off ? ' expOff' : ''}" data-id="${e.id}" onclick="expOpen('${e.id}')">
     <td>${ruDate(e.op_date)}</td>
-    <td><b>${esc(e.category || '—')}</b></td>
+    <td><b>${esc(e.category || '—')}</b>${e.template_month ? '&nbsp;<span class="muted" title="регулярный расход за ' + tplMonth(e.template_month) + '">↻</span>' : ''}</td>
     <td>${esc(e.counterparty || '—')}</td>
     <td>${esc(e.doc_no || '—')}${e.has_photo ? ' <span title="есть фото документа">📎</span>' : ''}</td>
     <td>${EXP_METHOD_RU[e.method] || esc(e.method)}${e.paid ? '' : ' <span style="color:var(--orange)">· не оплачен</span>'}</td>
@@ -5848,8 +5897,18 @@ async function expOpen(id){
   if (id && !e) return;
   expForm = e ? {id:e.id, date:ruDate(e.op_date), category:e.category_id, counterparty:e.counterparty || '', amount:String(e.amount_pln),
       vat:e.vat_pln ? String(e.vat_pln) : '', method:e.method, paid:e.paid, doc:e.doc_no || '', note:e.note || '', storno:e.storno_at ? e : null, photo:e.has_photo,
-      before:e.explains_closeout || '', before0:e.explains_closeout || ''}
+      before:e.explains_closeout || '', before0:e.explains_closeout || '', tplMonth:e.template_month || ''}
     : {id:'', date:ruDate(isoDate(new Date())), category:'', counterparty:'', amount:'', vat:'', method:expMethodDef(), paid:true, doc:'', note:'', storno:null, photo:false, before:'', before0:''};
+  expPaint();
+}
+// З9-и5: «Внести» из «Ждут внесения» — новый расход, заполненный по шаблону; дата — срок
+async function expOpenDue(i){
+  const x = ((expData || {}).due || [])[i];
+  if (!x) return;
+  try{ await expRefs(); }catch(e){ toast('⚠ ' + e.message); return; }
+  expForm = {id:'', date:ruDate(x.due), category:x.category_id, counterparty:x.counterparty || '', amount:String(x.amount_pln),
+    vat:x.vat_pln ? String(x.vat_pln) : '', method:x.method, paid:true, doc:'', note:x.note || '', storno:null, photo:false, before:'', before0:'',
+    tpl:{id:x.template_id, month:x.month, name:x.name}};
   expPaint();
 }
 function expNet(){
@@ -5870,7 +5929,8 @@ function expPaint(){
     if (f.photo) expPhotoShow(f.id);
     return;
   }
-  openDrawer(f.id ? 'Расход' : 'Новый расход', `<div class="uform">
+  openDrawer(f.id ? 'Расход' : f.tpl ? 'Расход по шаблону' : 'Новый расход', `<div class="uform">
+    ${expTplLine(f)}
     <input id="efDate" ${DATE_FIELD} aria-label="Дата операции" value="${esc(f.date)}">
     <select id="efCat" class="input" aria-label="Категория"><option value="">— категория —</option>${cats.map(c => `<option value="${c.id}"${f.category === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
     <input id="efCp" class="input" list="efCpList" maxlength="128" placeholder="Контрагент — необязательно; нового заведу при записи" value="${esc(f.counterparty)}">
@@ -5972,6 +6032,7 @@ async function expSave(){
       amount_pln: Math.round(amount * 100) / 100, vat_pln: Math.round(vat * 100) / 100, method: f.method,
       paid: document.getElementById('efPaid').checked, doc_no: document.getElementById('efDoc').value.trim(), note: document.getElementById('efNote').value.trim()};
     if (document.getElementById('efBefore') && (f.id ? f.before !== f.before0 : f.before)) body.before_closeout = f.before; // З9-и3в: взяли до сдачи / после
+    if (!f.id && f.tpl){ body.template_id = f.tpl.id; body.template_month = f.tpl.month; } // З9-и5: по шаблону за месяц
     const d = f.id ? await api('/admin/expenses/' + f.id, {method:'PATCH', body: JSON.stringify(body)})
                    : await api('/admin/expenses', {method:'POST', body: JSON.stringify(body)});
     let ph = '';
@@ -5979,7 +6040,8 @@ async function expSave(){
     const was = f.id ? ((expData || {}).expenses || []).find(x => x.id === f.id) : null, tn = expTillNote(d.expense, was ? was.drawer_at : null);
     const dn = debtNote(d.owner_debt, (expData || {}).owner_debt); // З9-и3б: личными — долг клуба владельцу изменился
     toast(f.id ? (d.changed || file ? '✓ Расход поправлен' + ph + tn + dn : 'Изменений нет')
-               : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category + ph + tn + dn);
+               : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category
+                 + (f.tpl ? ' · регулярный «' + f.tpl.name + '» за ' + tplMonth(f.tpl.month) : '') + ph + tn + dn);
     closeDrawer();
     renderExp();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -6131,13 +6193,14 @@ async function renderRefs(){
   const box = document.getElementById('accBody');
   if (!refsData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
   try{
-    const [c, p, m] = await Promise.all([api('/admin/expense-categories'), api('/admin/counterparties'), api('/admin/expense-methods')]);
-    refsData = {cats: c.categories || [], cps: p.counterparties || [], methods: m.methods || []};
+    const [c, p, m, t] = await Promise.all([api('/admin/expense-categories'), api('/admin/counterparties'), api('/admin/expense-methods'),
+      api('/admin/expense-templates')]); // З9-и5
+    refsData = {cats: c.categories || [], cps: p.counterparties || [], methods: m.methods || [], tpls: t.templates || []};
   }catch(e){ box.innerHTML = '<div class="muted">Справочники не загрузились: ' + esc(e.message) + '</div>'; return; }
   paintRefs();
 }
 function paintRefs(){
-  const box = document.getElementById('accBody'), d = refsData || {cats:[], cps:[], methods:[]};
+  const box = document.getElementById('accBody'), d = refsData || {cats:[], cps:[], methods:[], tpls:[]};
   const cat = c => `<tr class="refRow${c.hidden ? ' refOff' : ''}" data-id="${c.id}">
       <td><b>${esc(c.name)}</b>${c.hidden ? ' <span class="muted">· скрыта</span>' : ''}</td>
       <td class="muted">${c.code ? 'стандартная' : 'своя'}</td>
@@ -6151,6 +6214,15 @@ function paintRefs(){
       <td class="muted" style="white-space:normal">${esc(p.note || '')}</td>
       <td class="refAct"><button class="btn ghost mini" onclick="refCpOpen('${p.id}')">Изменить</button>
         <button class="btn ghost mini" onclick="refCpHide('${p.id}', ${!p.hidden})">${p.hidden ? 'Вернуть' : 'Скрыть'}</button></td></tr>`;
+  const tpl = t => `<tr class="refRow${t.active ? '' : ' refOff'}" data-id="${t.id}">
+      <td><b>${esc(t.name)}</b>${t.active ? '' : '&nbsp;<span class="muted">· выключен</span>'}</td>
+      <td>${esc(t.category || '—')}${t.counterparty ? ' · ' + esc(t.counterparty) : ''}</td>
+      <td><b>${fmtPLN(t.amount_pln)} zł</b>${t.vat_pln ? '&nbsp;<span class="muted">VAT ' + fmtPLN(t.vat_pln) + '</span>' : ''}</td>
+      <td>${EXP_METHOD_RU[t.method] || esc(t.method)}</td>
+      <td>${t.day}-го${t.day > 28 ? '&nbsp;<span class="muted" title="нет такого числа в месяце — в последний день">*</span>' : ''}</td>
+      <td>${!t.active ? '<span class="muted">—</span>' : t.waiting ? '<span class="refWarn">ждёт внесения' + (t.waiting > 1 ? ' · ' + t.waiting : '') + '</span>' : 'дальше ' + ruDate(t.next_due)}</td>
+      <td class="refAct"><button class="btn ghost mini" onclick="refTplOpen('${t.id}')">Изменить</button>
+        <button class="btn ghost mini" onclick="refTplActive('${t.id}', ${!t.active})">${t.active ? 'Выключить' : 'Включить'}</button></td></tr>`;
   box.innerHTML = `
     <div class="dsub" style="margin-top:0">Категории</div>
     <div class="muted" style="margin-bottom:8px">Свои встают после стандартных. «Закупка» — себестоимость в «Прибыли»: у стандартных она своя и не меняется. Скрытая не предлагается в новом расходе, старые расходы в ней остаются.</div>
@@ -6167,8 +6239,14 @@ function paintRefs(){
     <div class="toolrow" style="margin-top:8px"><button class="btn mini" id="rpNew" onclick="refCpOpen('')"><span data-ic="plus"></span>Новый контрагент</button></div>
     <div class="dsub">Способы оплаты</div>
     <div class="muted" style="margin-bottom:8px">Выключенный не предлагается в новом расходе; старые расходы с ним остаются как были. Хотя бы один остаётся включённым.</div>
-    <div class="segs" id="rmMethods">${d.methods.map(m => `<button class="${m.on ? 'on' : ''}" data-m="${m.code}" onclick="refMethodToggle('${m.code}')">${EXP_METHOD_RU[m.code] || esc(m.name)}</button>`).join('')}</div>`;
+    <div class="segs" id="rmMethods">${d.methods.map(m => `<button class="${m.on ? 'on' : ''}" data-m="${m.code}" onclick="refMethodToggle('${m.code}')">${EXP_METHOD_RU[m.code] || esc(m.name)}</button>`).join('')}</div>
+    <div class="dsub" id="refTplsHead">Регулярные расходы</div>
+    <div class="muted" style="margin-bottom:8px">Раз в месяц в свой день (нет такого числа в месяце — в последний) расход ждёт внесения: в «Расходах» — «Ждут внесения» с кнопкой «Внести», на «Бухгалтерии» — число, в день срока — сообщение тебе в канал. Новый и снова включённый ждёт с ближайшего срока. Выключенный не ждёт и не напоминает; удаления нет.</div>
+    ${d.tpls.length ? `<div class="tablewrap"><table class="refList" id="refTpls"><tr><th>Название</th><th>Категория</th><th>Сумма</th><th>Способ</th><th>Число</th><th>Срок</th><th></th></tr>${d.tpls.map(tpl).join('')}</table></div>`
+      : '<div class="empty">Регулярных расходов ещё нет — аренда, интернет, бухгалтер: заведи раз, дальше они сами напомнят</div>'}
+    <div class="toolrow" style="margin-top:8px"><button class="btn mini" id="rtNew" onclick="refTplOpen('')"><span data-ic="plus"></span>Новый регулярный расход</button></div>`;
   mountIcons(box);
+  if (refsFocus){ const el = document.getElementById(refsFocus); refsFocus = ''; if (el) el.scrollIntoView({block:'start'}); } // З9-и5
 }
 async function refCatAdd(){
   const el = document.getElementById('rcName'), name = el.value.trim(), purchase = document.getElementById('rcPurchase').checked;
@@ -6252,6 +6330,75 @@ async function refMethodToggle(code){
     const name = EXP_METHOD_RU[code] || m.name;
     toast(m.on ? '✓ Способ «' + name + '» выключен — в новом расходе его нет' : '✓ Способ «' + name + '» снова включён');
     refsDirty(); paintRefs();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+// З9-и5: регулярные расходы — шторка шаблона (поля как у расхода плюс название и число месяца), выключить и включить
+let refTpl = null, refsFocus = '';
+function refsGo(){ refsFocus = 'refTplsHead'; accTabSet('refs'); }
+async function refTplOpen(id){
+  const t = id ? ((refsData || {}).tpls || []).find(x => x.id === id) : null;
+  if (id && !t) return;
+  try{ await expRefs(); }catch(e){ toast('⚠ ' + e.message); return; }
+  refTpl = t ? {id, name:t.name, category:t.category_id, counterparty:t.counterparty || '', amount:String(t.amount_pln), vat:t.vat_pln ? String(t.vat_pln) : '',
+      method:t.method, day:String(t.day), note:t.note || ''}
+    : {id:'', name:'', category:'', counterparty:'', amount:'', vat:'', method:expMethodDef(), day:'', note:''};
+  drawerUserId = null; drawerPCId = null; // шторка бухгалтерии — живые обновления её не перерисуют
+  const f = refTpl, cats = expCats.filter(c => !c.hidden || c.id === f.category);
+  openDrawer(id ? 'Регулярный расход' : 'Новый регулярный расход', `<div class="uform">
+    <input id="rtName" class="input" maxlength="64" placeholder="Название — «Аренда зала»" value="${esc(f.name)}" oninput="refTpl.name=this.value">
+    <select id="rtCat" class="input" aria-label="Категория" onchange="refTpl.category=this.value"><option value="">— категория —</option>${cats.map(c => `<option value="${c.id}"${f.category === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    <input id="rtCp" class="input" list="rtCpList" maxlength="128" placeholder="Контрагент — необязательно; нового заведу при записи" value="${esc(f.counterparty)}" oninput="refTpl.counterparty=this.value">
+    <datalist id="rtCpList">${expCps.filter(c => !c.hidden).map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+    <div style="display:flex; gap:8px">
+      <input id="rtAmount" class="input" type="number" min="0.01" step="0.01" placeholder="Сумма брутто, zł" value="${esc(f.amount)}" oninput="refTpl.amount=this.value">
+      <input id="rtVat" class="input" type="number" min="0" step="0.01" placeholder="VAT, zł" value="${esc(f.vat)}" oninput="refTpl.vat=this.value">
+    </div>
+    <div class="segs" id="rtMethod">${EXP_METHODS.filter(([k]) => !expMethodsOn || expMethodsOn[k] || f.method === k).map(([k, n]) => `<button class="${f.method === k ? 'on' : ''}" onclick="refTpl.method='${k}'; segOn(this)">${n}</button>`).join('')}</div>
+    <label class="muted">Каждый месяц, число
+      <input id="rtDay" class="input" type="number" min="1" max="31" step="1" placeholder="1–31" value="${esc(f.day)}" style="margin-top:4px" oninput="refTpl.day=this.value; refTplDayHint()"></label>
+    <div id="rtDayHint" class="muted">${refTplDayText()}</div>
+    <input id="rtNote" class="input" maxlength="500" placeholder="Заметка — ляжет в расход" value="${esc(f.note)}" oninput="refTpl.note=this.value">
+    <button class="btn" style="width:100%; justify-content:center" id="rtSave" onclick="refTplSave()"><span data-ic="save"></span>${id ? 'Сохранить' : 'Завести'}</button>
+    ${t ? '<div class="muted">Правка не трогает уже внесённые расходы — по шаблону заполнится следующий.</div>' : ''}
+  </div>`);
+}
+function refTplDayText(){
+  const d = parseInt(refTpl && refTpl.day, 10);
+  if (!(d >= 1 && d <= 31)) return 'Срок — это число каждого месяца; нет такого в месяце (31-е в сентябре) — последний день.';
+  return 'Каждый месяц ' + d + '-го' + (d > 28 ? '; где такого числа нет — в последний день месяца' : '') + '. Ждёт с ближайшего срока — прошедшие месяцы на него не повесятся.';
+}
+function refTplDayHint(){ const h = document.getElementById('rtDayHint'); if (h) h.textContent = refTplDayText(); }
+async function refTplSave(){
+  const f = refTpl, name = String(f.name).trim();
+  if (!name){ toast('⚠ Как назвать регулярный расход?'); return; }
+  if (!f.category){ toast('⚠ Выбери категорию'); return; }
+  const amount = parseFloat(String(f.amount).replace(',', '.'));
+  if (!(amount > 0)){ toast('⚠ Сумма брутто — больше нуля'); return; }
+  const vatRaw = String(f.vat).trim(), vat = vatRaw === '' ? 0 : parseFloat(vatRaw.replace(',', '.'));
+  if (isNaN(vat) || vat < 0 || vat > amount){ toast('⚠ VAT — от 0 до суммы брутто'); return; }
+  const day = parseInt(f.day, 10);
+  if (!(day >= 1 && day <= 31) || String(day) !== String(f.day).trim()){ toast('⚠ Число месяца — от 1 до 31'); return; }
+  const btn = document.getElementById('rtSave');
+  btn.disabled = true;
+  try{
+    const body = {name, category_id: f.category, counterparty_id: await expCounterparty(String(f.counterparty).trim()),
+      amount_pln: Math.round(amount * 100) / 100, vat_pln: Math.round(vat * 100) / 100, method: f.method, day, note: String(f.note).trim()};
+    const d = f.id ? await api('/admin/expense-templates/' + f.id, {method:'PATCH', body: JSON.stringify(body)})
+                   : await api('/admin/expense-templates', {method:'POST', body: JSON.stringify(body)});
+    const t = d.template || {};
+    toast(f.id ? (d.changed ? '✓ Регулярный расход поправлен' : 'Изменений нет')
+               : '✓ «' + name + '» заведён — ' + (t.waiting ? 'ждёт внесения уже сейчас: «Расходы» → «Ждут внесения»' : 'первый срок ' + ruDate(t.next_due)));
+    closeDrawer(); refsDirty(); renderRefs(); refresh();
+  }catch(e){ toast('⚠ ' + e.message); }
+  finally{ if (btn.isConnected) btn.disabled = false; }
+}
+async function refTplActive(id, active){
+  const t = ((refsData || {}).tpls || []).find(x => x.id === id) || {};
+  try{
+    const d = await api('/admin/expense-templates/' + id, {method:'PATCH', body: JSON.stringify({active})}), n = d.template || {};
+    toast(active ? '✓ «' + t.name + '» включён — ' + (n.waiting ? 'ждёт внесения уже сейчас' : 'следующий срок ' + ruDate(n.next_due))
+                 : '✓ «' + t.name + '» выключен — не ждёт и не напоминает');
+    renderRefs(); refresh();
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
@@ -7599,6 +7746,10 @@ const PAL_WORDS = [
    sub:'Бухгалтерия → Расходы: сколько клуб должен, вернуть', ic:'coins', run:() => debtGo()},
   {who:'owner', words:['справочник', 'справочники', 'категории', 'категория расходов', 'контрагенты', 'поставщики', 'nip', 'способы оплаты'],
    name:'Справочники', sub:'Бухгалтерия → категории, контрагенты, способы оплаты', ic:'scroll', run:() => accGo('refs')}, // З9-и4
+  {who:'owner', words:['регулярные', 'регулярный расход', 'шаблон расхода', 'ежемесячные', 'каждый месяц'], name:'Регулярные расходы', // З9-и5
+   sub:'Бухгалтерия → Справочники: раз в месяц, сами напоминают', ic:'clock', run:() => { refsFocus = 'refTplsHead'; accGo('refs'); }},
+  {who:'owner', words:['ждут внесения', 'внести по шаблону', 'напоминание о расходе'], name:'Ждут внесения',
+   sub:'Бухгалтерия → Расходы: регулярные, чей срок наступил', ic:'coins', run:() => accGo('exp')},
   {who:'owner', words:['сдачи', 'сдача кассы', 'расхождение', 'недостача'], name:'Сдачи кассы',
    sub:'Отчёты → смена: кто сколько сдал', ic:'coins', run:() => palGoShift()},
   {who:'owner', words:['зарплата', 'выплата', 'к выплате', 'ставка'], name:'К выплате',

@@ -85,6 +85,9 @@ type Expense struct {
 	// (момент записи или миг перед объясняемой сдачей) и какую сдачу объясняет.
 	DrawerAt         *time.Time `json:"drawer_at,omitempty"`
 	ExplainsCloseout *uuid.UUID `json:"explains_closeout,omitempty" gorm:"column:explains_closeout;type:uuid"`
+	// З9-и5 (миграция 074): внесён по шаблону регулярного расхода — за этот месяц (первое число).
+	TemplateID    *uuid.UUID `json:"template_id,omitempty" gorm:"type:uuid"`
+	TemplateMonth *time.Time `json:"template_month,omitempty" gorm:"type:date"`
 }
 
 func (e *Expense) BeforeCreate(tx *gorm.DB) error {
@@ -97,6 +100,7 @@ func (e *Expense) BeforeCreate(tx *gorm.DB) error {
 // AfterFind — день операции: полночь клуба, а не UTC (как у табеля, З2-и2).
 func (e *Expense) AfterFind(tx *gorm.DB) error {
 	e.OpDate = ClubDay(e.OpDate)
+	clubDayPtr(e.TemplateMonth)
 	return nil
 }
 
@@ -132,3 +136,44 @@ func (r *OwnerRepayment) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (OwnerRepayment) TableName() string { return "owner_repayments" }
+
+// ExpenseTemplate — регулярный расход (миграция 074, З9-и5; №67, Д10): раз в
+// месяц в день Day (нет такого числа в месяце — в последний день) расход ждёт
+// внесения: в «Расходах» — «Ждут внесения», на «Бухгалтерии» — бейдж, в день
+// срока — одно сообщение «только владельцу» в канал. FromMonth — первый месяц,
+// за который шаблон ждёт; RemindedFor — месяц, о котором уже напомнили.
+// Выключенный (Active = false) не ждёт и не напоминает; удаления нет.
+type ExpenseTemplate struct {
+	ID             uuid.UUID  `json:"id"              gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ClubID         uuid.UUID  `json:"club_id"         gorm:"type:uuid;not null"`
+	Name           string     `json:"name"            gorm:"size:64;not null"`
+	CategoryID     uuid.UUID  `json:"category_id"     gorm:"type:uuid;not null"`
+	CounterpartyID *uuid.UUID `json:"counterparty_id,omitempty" gorm:"type:uuid"`
+	GrossGrosz     int64      `json:"-"               gorm:"not null"`
+	VatGrosz       int64      `json:"-"               gorm:"not null"`
+	Method         string     `json:"method"          gorm:"size:8;not null"`
+	Day            int        `json:"day"             gorm:"not null"`
+	Note           string     `json:"note"            gorm:"not null"`
+	Active         bool       `json:"active"          gorm:"not null"` // без default-тега: иначе GORM не запишет false
+	FromMonth      time.Time  `json:"from_month"      gorm:"type:date;not null"`
+	RemindedFor    *time.Time `json:"reminded_for,omitempty" gorm:"type:date"`
+	CreatedBy      *uuid.UUID `json:"created_by,omitempty" gorm:"type:uuid"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+func (t *ExpenseTemplate) BeforeCreate(tx *gorm.DB) error {
+	if t.ID == uuid.Nil {
+		t.ID = uuid.New()
+	}
+	return nil
+}
+
+// AfterFind — месяцы шаблона: полночь клуба, а не UTC (как день операции расхода).
+func (t *ExpenseTemplate) AfterFind(tx *gorm.DB) error {
+	t.FromMonth = ClubDay(t.FromMonth)
+	clubDayPtr(t.RemindedFor)
+	return nil
+}
+
+func (ExpenseTemplate) TableName() string { return "expense_templates" }

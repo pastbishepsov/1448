@@ -345,6 +345,11 @@ func main() {
 		own.PATCH("/counterparties/:id", handleCounterpartyUpdate) // З9-и4: правка, скрыть
 		own.GET("/expense-methods", handleExpenseMethods)          // З9-и4: способы оплаты вкл/выкл
 		own.PUT("/expense-methods", handleExpenseMethodsPut)
+		own.GET("/expense-templates", handleExpenseTemplates) // З9-и5: регулярные расходы
+		own.POST("/expense-templates", handleExpenseTemplateCreate)
+		own.PATCH("/expense-templates/:id", handleExpenseTemplateUpdate) // правка, выключить, включить
+		own.GET("/expenses/due", handleExpensesDue)                      // ждут внесения
+		own.POST("/expenses/due/remind", handleExpensesDueRemind)        // напомнить сейчас — как фоновый прогон
 		own.GET("/expenses", handleExpenseList)
 		own.POST("/expenses", handleExpenseCreate)
 		own.PATCH("/expenses/:id", handleExpenseUpdate)
@@ -431,6 +436,7 @@ func main() {
 	// перезапусках — жечь чаще раза в неделю на гостя правило не даёт.
 	startCoinBurnJob()
 	startPackageWarnJob() // Е2-и5: сказать, что пакет вот-вот сгорит
+	startExpenseDueJob()  // З9-и5: регулярный расход ждёт — одно напоминание владельцу в день срока
 
 	// Г1: поминутный биллинг кошелька активных сессий. Вся память — в БД,
 	// перезапуск догоняет прошедшие минуты одним доначислением.

@@ -168,7 +168,17 @@ func handleAdminOverview(c *gin.Context) {
 			"packs_pln": money.PacksPLN, "deposits": money.Deposits, "sales": money.GoodsSales},
 		"day_from": day.From, "day_to": day.To, "report_hour": reportHour,
 		"ready_wait_min": settingInt64("ready_wait_min", readyWaitMinDef), // Ж4: форма посадки говорит, сколько ждём ПК без связи
+		"expenses_due":   overviewExpensesDue(c),                          // З9-и5: бейдж «Бухгалтерии» — только владельцу
 	})
+}
+
+// overviewExpensesDue — сколько регулярных расходов ждёт внесения: владельцу
+// число, админу — nil (бухгалтерию он не видит, З-Р29).
+func overviewExpensesDue(c *gin.Context) any {
+	if c.GetString("user_role") != string(models.UserRoleOwner) {
+		return nil
+	}
+	return len(dueList(expenseToday()))
 }
 
 // GET /admin/users?q=… — гости (поиск, свежие сверху).
