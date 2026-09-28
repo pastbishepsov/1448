@@ -12,7 +12,7 @@ g = uid("Guest38")
 W = sql("SELECT id FROM goods WHERE name='Woda 0.5'")
 stock = lambda: int(sql(f"SELECT stock FROM goods WHERE id='{W}'"))
 stock0 = stock()
-at_end(lambda: sql(f"UPDATE goods SET stock={stock0} WHERE id='{W}'"))
+at_end(lambda: stock_to(W, stock0, "z6 уборка: остаток как до проверки"))  # З10-и3: не SQL — партии не разойдутся с остатком
 order_row = lambda oid: sql(f"SELECT COALESCE(pay_method,'—') || '|' || (paid_at IS NULL)::text || '|' || (sale_id IS NULL)::text FROM kitchen_orders WHERE id='{oid}'")
 in_debt = lambda oid: any(i.get("id") == oid and i.get("kind") == "kitchen"
                           for i in api("GET", f"/admin/users/{g}/debt", None, "admin1")[1].get("items", []))

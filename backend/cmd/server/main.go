@@ -325,6 +325,7 @@ func main() {
 		own.PATCH("/goods/:id", handleAdminGoodUpdate)
 		own.DELETE("/goods/:id", handleAdminGoodDelete)
 		own.GET("/goods/:id/moves", handleAdminGoodMoves)
+		own.GET("/goods/lots/check", handleGoodsLotsCheck)   // З10-и3: сумма партий = остаток
 		own.PUT("/goods/:id/photo", handleAdminGoodPhotoPut) // фото позиции (Г7)
 		own.DELETE("/goods/:id/photo", handleAdminGoodPhotoDelete)
 		own.GET("/reports/coins", handleReportCoins)  // В4-2: эмиссия и обязательства

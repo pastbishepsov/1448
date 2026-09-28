@@ -117,6 +117,10 @@ sql(f"""INSERT INTO goods (club_id,name,category,price_pln,stock,low_stock,sort,
 ('{CLUB}','Coca-Cola 0.5','Напитки',8.00,24,5,1,TRUE),('{CLUB}','Red Bull','Напитки',12.00,3,5,2,TRUE),
 ('{CLUB}','Lay''s','Снеки',7.00,15,3,3,TRUE),('{CLUB}','Snickers','Снеки',5.00,0,3,4,TRUE),
 ('{CLUB}','Woda 0.5','Напитки',4.00,40,10,5,TRUE) ON CONFLICT (club_id, name) DO NOTHING""")
+# З10-и3: остаток сида — начальной партией, как у миграции 077 (иначе партии разойдутся с остатком)
+sql("""INSERT INTO stock_lots (club_id, good_id, kind, qty_in, qty_left, received_at, part)
+SELECT g.club_id, g.id, 'initial', g.stock, g.stock, now(), 1 FROM goods g
+WHERE g.stock > 0 AND NOT EXISTS (SELECT 1 FROM stock_lots l WHERE l.good_id = g.id)""")
 # Пакеты времени
 sql(f"""INSERT INTO time_packages (club_id,zone_id,name,minutes,price_pln,days_valid,sort,active)
 SELECT * FROM (VALUES

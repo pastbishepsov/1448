@@ -188,3 +188,12 @@ func TestLotBackAfterSplit(t *testing.T) {
 		t.Errorf("вторая частичная отмена: %q %v, ждали «A:4»", partsStr(got), err)
 	}
 }
+
+// З10-и3: у движения — одна строка на партию: возврат «в те же партии» и остаток «в самую новую» сливаются.
+func TestAddPart(t *testing.T) {
+	got := addPart([]lotPart{{lotA, 2}, {lotB, 3}}, lotB, 4)
+	got = addPart(got, lotC, 1)
+	if partsStr(got) != "A:2 B:7 C:1 " {
+		t.Errorf("addPart: %q", partsStr(got))
+	}
+}

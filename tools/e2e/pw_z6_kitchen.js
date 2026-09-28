@@ -4,8 +4,11 @@
 const z = require('./_z');
 (async () => {
   const g = z.uid('Guest38'), w = z.sql("SELECT id FROM goods WHERE name='Woda 0.5'");
-  const stock0 = z.sql(`SELECT stock FROM goods WHERE id='${w}'`);
-  z.atEnd(() => z.sql(`UPDATE goods SET stock=${stock0} WHERE id='${w}'`));
+  const stock0 = +z.sql(`SELECT stock FROM goods WHERE id='${w}'`);
+  z.atEnd(async () => { // З10-и3: остаток — корректировкой через API, не SQL: партии не разойдутся с остатком
+    const d = stock0 - +z.sql(`SELECT stock FROM goods WHERE id='${w}'`);
+    if (d) await z.api('POST', `/admin/goods/${w}/stock`, { delta: d, reason: 'adjust', note: 'z6 уборка: остаток как до проверки' }, 'boss');
+  });
   const o = await z.api('POST', '/admin/kitchen/orders', { guest_id: g, good_id: w, qty: 1, method: 'card' }, 'admin1');
   const oid = (o.data.order || {}).id, sid = o.data.sale_id;
   await z.api('POST', `/admin/kitchen/orders/${oid}/status`, { status: 'done' }, 'admin1');

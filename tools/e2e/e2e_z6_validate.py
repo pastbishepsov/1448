@@ -19,11 +19,6 @@ def call(method, path, body=None, who="boss"):
 def refused(name, s, d, code, status=400):
     return check(f"{name} → {status} {code}", s == status and d.get("code") == code, f"{s} {J(d)}")
 
-def drop_good(gid):
-    """Временный товар стенда: движения и позиция — SQL-ом (удаление через API у позиции с историей — 409)."""
-    if gid:
-        sql(f"DELETE FROM stock_moves WHERE good_id='{gid}'; DELETE FROM goods WHERE id='{gid}'")
-
 def new_good(name, **kv):
     s, d = call("POST", "/admin/goods", {"name": name, "category": "z6", "active": False, **kv})
     gid = d.get("good", {}).get("id", "")

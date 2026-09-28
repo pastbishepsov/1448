@@ -17,7 +17,8 @@ from _env import API, BASE, HOST, PORT, DB, SRV_LOG, MOCK_AGENT, agent_log
 __all__ = ["API", "BASE", "DB", "SRV_LOG", "TZ", "GUEST_PASS", "STAFF_PASS", "sql", "rows", "uid", "login", "tok",
            "tokens", "password_of", "jwt_claims", "api", "J", "check", "near", "section", "at_end", "done", "club_day", "at_club", "settings",
            "set_settings", "restore_settings", "wallet", "topup", "ensure_wallet", "pcs", "seat", "end", "end_all", "free_pcs",
-           "hire_temp", "dismiss", "drawer_ready", "audit", "ws_admin", "ws_read", "agent_start", "agent_stop"]
+           "hire_temp", "dismiss", "drawer_ready", "audit", "ws_admin", "ws_read", "agent_start", "agent_stop",
+           "drop_good", "stock_to"]
 
 TZ = "Europe/Warsaw"  # часовой пояс клуба; сессия psql может жить в UTC — время клуба только через AT TIME ZONE
 GUEST_PASS, STAFF_PASS = "Guest12345", "Admin12345"
@@ -238,6 +239,26 @@ def free_pcs():
     """ПК «занят/бронь» без живой сессии — снова свободны (хвосты упавших прогонов)."""
     sql("UPDATE computers SET status='available' WHERE status IN ('in_session','reserved') "
         "AND id NOT IN (SELECT computer_id FROM sessions WHERE status='active')")
+
+
+# ── склад ────────────────────────────────────────────────────────────────────────────────────────
+def drop_good(gid):
+    """Временная позиция стенда — SQL-ом вместе с движениями, партиями и её поставками (З10-и3; удаления через API
+    у позиции с историей нет). Продажи и заказы кухни остаются без позиции (good_id → NULL)."""
+    if not gid:
+        return
+    sql(f"""CREATE TEMP TABLE _dg AS SELECT DISTINCT supply_id FROM stock_lots WHERE good_id = '{gid}' AND supply_id IS NOT NULL;
+        DELETE FROM lot_moves WHERE lot_id IN (SELECT id FROM stock_lots WHERE good_id = '{gid}');
+        DELETE FROM stock_moves WHERE good_id = '{gid}';
+        DELETE FROM stock_lots WHERE good_id = '{gid}';
+        DELETE FROM supplies s WHERE s.id IN (SELECT supply_id FROM _dg) AND NOT EXISTS (SELECT 1 FROM stock_lots l WHERE l.supply_id = s.id);
+        DELETE FROM goods WHERE id = '{gid}'""")
+
+def stock_to(gid, target, note, who="boss"):
+    """Остаток позиции — к target корректировкой через API, а не SQL: движение и партии остаются честными (З10-и3)."""
+    cur = int(sql(f"SELECT stock FROM goods WHERE id = '{gid}'") or 0)
+    if cur != target:
+        return api("POST", f"/admin/goods/{gid}/stock", {"delta": target - cur, "reason": "adjust", "note": note}, who)
 
 
 # ── персонал ─────────────────────────────────────────────────────────────────────────────────────

@@ -445,7 +445,7 @@ type stockOp struct {
 // условием в WHERE: не хватило — errNegativeStock (две кассы не уведут склад в
 // минус, ревью 26.08); приход с Cap выше maxStockQty не поднимет —
 // errStockLimit. Возврат при отмене кладёт без условий. Нулевое движение не
-// пишется. Сюда З10-и3 добавит партии.
+// пишется. З10-и3: партии движения — lotsApply (lots_apply.go) в той же транзакции.
 func stockMove(tx *gorm.DB, op stockOp) error {
 	if op.Delta == 0 {
 		return nil
@@ -469,8 +469,12 @@ func stockMove(tx *gorm.DB, op stockOp) error {
 		}
 		return gorm.ErrRecordNotFound // позиции нет
 	}
-	return tx.Create(&models.StockMove{ClubID: op.ClubID, GoodID: op.GoodID, Delta: op.Delta, Reason: op.Reason,
-		Note: op.Note, SaleID: op.SaleID, KitchenOrderID: op.OrderID, CreatedBy: op.By, PricePLN: op.Price}).Error
+	mv := models.StockMove{ClubID: op.ClubID, GoodID: op.GoodID, Delta: op.Delta, Reason: op.Reason,
+		Note: op.Note, SaleID: op.SaleID, KitchenOrderID: op.OrderID, CreatedBy: op.By, PricePLN: op.Price}
+	if err := tx.Create(&mv).Error; err != nil {
+		return err
+	}
+	return lotsApply(tx, op, mv.ID) // З10-и3: из каких партий взяло, в какие положило
 }
 
 func noteSuffix(note string) string {

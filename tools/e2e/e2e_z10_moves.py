@@ -6,7 +6,7 @@ kitchen_order_id: у заказа кухни и его отмены движен
 — 409, приход выше потолка — 409, две кассы разом не продадут больше остатка; отмена заказа от стойки,
 оплаченного сразу, возвращает товар один раз. Итог: остаток позиции = сумма её движений.
 Данные: позиция «z10 Движение склада» (категория z10) живёт между прогонами, в конце выключена; «z10 Однодневка» и
-«z10 Пустая» заводятся каждый прогон и удаляются SQL вместе со своим движением (продаж у них нет); Guest40 за PC-04
+«z10 Пустая» заводятся каждый прогон и удаляются SQL вместе со своим движением, партией и поставкой (продаж у них нет); Guest40 за PC-04
 (кошелёк докладывается до 30 zł, сессия в конце завершается)."""
 import threading
 
@@ -18,9 +18,9 @@ COLS = "delta, reason, note, COALESCE(created_by::text, '-'), price_pln::text, C
 
 
 def drop(name):
-    """одноразовую позицию — вместе с её движениями (продаж и заказов у неё нет)"""
-    sql(f"DELETE FROM stock_moves WHERE good_id IN (SELECT id FROM goods WHERE name = '{name}') RETURNING id")
-    sql(f"DELETE FROM goods WHERE name = '{name}' RETURNING id")
+    """одноразовую позицию — вместе с её движениями, партиями и поставкой (продаж и заказов у неё нет)"""
+    for gid in rows(f"SELECT id FROM goods WHERE name = '{name}'"):
+        drop_good(gid)
 
 
 def stock(gid):
@@ -116,6 +116,8 @@ check(f"две кассы разом продают весь остаток ({st
 section("заказ кухни гостя и его отмена")
 end_all("Guest40")
 at_end(lambda: end_all("Guest40"))
+at_end(lambda: [api("POST", f"/admin/kitchen/orders/{o}/cancel", {}, "admin1") for o in  # упавший прогон — заказы не висят в очереди
+                 rows(f"SELECT id FROM kitchen_orders WHERE user_id = '{uid('Guest40')}' AND status IN ('new','accepted','preparing','delivering')")])
 ensure_wallet("Guest40", 30)
 seat("Guest40", "PC-04")
 gs, gd = login("Guest40")
