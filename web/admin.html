@@ -596,6 +596,12 @@
   #odList .odRow.off{color:var(--dim)}
   #odList .odRow.off .odT{text-decoration:line-through}
   #odList .odRow .btn{margin-left:4px; vertical-align:middle}
+  /* З9-и4: «Справочники» — строки категорий и контрагентов; скрытые бледные; кнопки строки — справа */
+  .refList tr.refOff td{color:var(--dim)}
+  .refList td.refAct{white-space:nowrap; text-align:right}
+  .refList .refWarn{color:var(--orange)}
+  #rmMethods button{min-width:0}
+  @media (max-width:640px){ .refList td.refAct{text-align:left} }
 </style>
 </head>
 <body>
@@ -943,7 +949,7 @@
       <section id="s-acc" class="hidden">
         <!-- З8-и3 (№78): «Бухгалтерия» — только владельцу; вкладки (пока одна — «Касса»):
              ящик клуба по клубным дням, инкассации, коррекции остатка. -->
-        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button></div></div>
+        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button><button data-t="refs" onclick="accTabSet('refs')">Справочники</button></div></div>
         <div id="accBody"><div class="skel"></div><div class="skel"></div></div>
       </section>
 
@@ -3923,7 +3929,8 @@ const AUD_GROUPS = {
           'sale_paid','settle','kitchen_order','shift_close', // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
           'cash_collect','cash_correct','cash_event_void', // З8-и2: инкассация, коррекция остатка, отмена события ящика
           'expense_create','expense_update','expense_storno', // З9-и2: расходы (видит только владелец)
-          'owner_repay','owner_repay_void'], // З9-и3б: долг клуба владельцу — возврат и его отмена (тоже только владелец)
+          'owner_repay','owner_repay_void', // З9-и3б
+          'expense_category_create','expense_category_update','counterparty_update','expense_methods'], // З9-и4: справочники: долг клуба владельцу — возврат и его отмена (тоже только владелец)
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -3959,6 +3966,8 @@ const AUD_LABEL = {
   cash_collect:'касса: инкассация', cash_correct:'касса: коррекция остатка', cash_event_void:'касса: отмена события', // З8-и2
   expense_create:'расход: внесён', expense_update:'расход: правка', expense_storno:'расход: сторно', counterparty_create:'контрагент: новый', // З9-и2
   owner_repay:'долг владельцу: возврат', owner_repay_void:'долг владельцу: отмена возврата', // З9-и3б
+  expense_category_create:'категория: новая', expense_category_update:'категория: правка', counterparty_update:'контрагент: правка',
+  expense_methods:'способы оплаты', // З9-и4
   login_failed:'вход: неверный пароль', // З0-и3: серия неудач входа персонала — только владельцу
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   coin_redeem:'монеты: время за монеты',
@@ -3994,6 +4003,7 @@ const AUD_ICON = {
   cash_collect:'coins', cash_correct:'wrench', cash_event_void:'cross', // З8-и2
   expense_create:'coins', expense_update:'edit', expense_storno:'cross', counterparty_create:'users', // З9-и2
   owner_repay:'coins', owner_repay_void:'cross', // З9-и3б
+  expense_category_create:'plus', expense_category_update:'edit', counterparty_update:'edit', expense_methods:'wrench', // З9-и4
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out',
   work_start:'clock', work_stop:'check', work_edit:'edit',
@@ -5585,6 +5595,7 @@ function accCustom(){
 async function renderAcc(){
   document.querySelectorAll('#accTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === accTab)); // З9-и2
   if (accTab === 'exp') return renderExp();
+  if (accTab === 'refs') return renderRefs(); // З9-и4
   const box = document.getElementById('accBody');
   if (!accData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
   try{ accData = await api('/admin/cash/book?' + accQuery()); }
@@ -5739,7 +5750,7 @@ async function accVoid(id){
    Шторка расхода: дата, категория, контрагент (нового нет в справочнике — заведётся при записи), сумма брутто и
    VAT, способ, оплачен, документ, заметка, фото документа (браузер сжимает до 500 КБ; показывается только
    владельцу — по токену, не ссылкой). Правка — там же, удаления нет — сторно с причиной. Сервер — expenses.go. ── */
-let accTab = (() => { try{ return localStorage.getItem('1448a_acctab') === 'exp' ? 'exp' : 'cash'; }catch(e){ return 'cash'; } })();
+let accTab = (() => { try{ const v = localStorage.getItem('1448a_acctab'); return v === 'exp' || v === 'refs' ? v : 'cash'; }catch(e){ return 'cash'; } })();
 function accTabSet(t){
   accTab = t;
   try{ localStorage.setItem('1448a_acctab', t); }catch(e){}
@@ -5760,7 +5771,10 @@ function expQuery(){
 async function expRefs(){ // справочники — один раз; новый контрагент дописывается сам
   if (!expCats) expCats = (await api('/admin/expense-categories')).categories || [];
   if (!expCps) expCps = (await api('/admin/counterparties')).counterparties || [];
+  if (!expMethodsOn) expMethodsOn = Object.fromEntries(((await api('/admin/expense-methods')).methods || []).map(m => [m.code, m.on])); // З9-и4
 }
+let expMethodsOn = null; // З9-и4: какие способы оплаты включены; справочники поменяли — перечитать (refsDirty)
+function expMethodDef(){ const on = expMethodsOn || {}; return on.bank !== false ? 'bank' : (EXP_METHODS.find(([k]) => on[k]) || ['bank'])[0]; }
 async function renderExp(){
   const box = document.getElementById('accBody');
   if (!expData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
@@ -5835,7 +5849,7 @@ async function expOpen(id){
   expForm = e ? {id:e.id, date:ruDate(e.op_date), category:e.category_id, counterparty:e.counterparty || '', amount:String(e.amount_pln),
       vat:e.vat_pln ? String(e.vat_pln) : '', method:e.method, paid:e.paid, doc:e.doc_no || '', note:e.note || '', storno:e.storno_at ? e : null, photo:e.has_photo,
       before:e.explains_closeout || '', before0:e.explains_closeout || ''}
-    : {id:'', date:ruDate(isoDate(new Date())), category:'', counterparty:'', amount:'', vat:'', method:'bank', paid:true, doc:'', note:'', storno:null, photo:false, before:'', before0:''};
+    : {id:'', date:ruDate(isoDate(new Date())), category:'', counterparty:'', amount:'', vat:'', method:expMethodDef(), paid:true, doc:'', note:'', storno:null, photo:false, before:'', before0:''};
   expPaint();
 }
 function expNet(){
@@ -5866,7 +5880,7 @@ function expPaint(){
       <input id="efVat" class="input" type="number" min="0" step="0.01" placeholder="VAT, zł" value="${esc(f.vat)}" oninput="expNet()">
     </div>
     <div id="efNet" class="muted">без VAT: —</div>
-    <div class="segs" id="efMethod">${EXP_METHODS.map(([k, n]) => `<button class="${f.method === k ? 'on' : ''}" onclick="expForm.method='${k}'; segOn(this); expTillHint()">${n}</button>`).join('')}</div>
+    <div class="segs" id="efMethod">${EXP_METHODS.filter(([k]) => !expMethodsOn || expMethodsOn[k] || f.method === k).map(([k, n]) => `<button class="${f.method === k ? 'on' : ''}" onclick="expForm.method='${k}'; segOn(this); expTillHint()">${n}</button>`).join('')}</div>
     <div id="efTillHint" class="muted${f.method === 'till' ? '' : ' hidden'}">Из кассы — деньги ушли из ящика. За сегодня «должно быть в ящике» уменьшится сразу; за прошедший день, закрытый сдачей, — ящик не тронет, а объяснит расхождение той сдачи (видно в «Кассе»).</div>
     <div id="efOwnerHint" class="muted${f.method === 'owner' ? '' : ' hidden'}">Личные деньги владельца — клуб будет должен их вернуть: сумма ляжет в «Клуб должен владельцу» над списком, вернуть — «Вернуть владельцу», из кассы или с банка.</div>
     <div id="efWhen"></div>
@@ -6099,6 +6113,147 @@ async function debtVoid(id, till, inDrawer){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 function debtGo(){ accGo('exp'); debtOpen('bank'); }
+
+/* ── З9-и4 (№61, №62, №66): «Бухгалтерия» → «Справочники», только владельцу. Категории: свои (после стандартных,
+   «закупка» — себестоимость в «Прибыли»; у стандартных закупка не меняется), переименовать, скрыть — в новом расходе
+   её нет, старые расходы остаются. Контрагенты: новый и правка в шторке — NIP 10 цифр с контрольной суммой; скрытый
+   не подсказывается. Способы оплаты: выключенный не предлагается в новом расходе, хотя бы один остаётся. Удаления нет.
+   Сервер — expense_refs.go. ── */
+let refsData = null, refCat = null, refCp = null;
+function refsDirty(){ expCats = null; expCps = null; expMethodsOn = null; } // форма расхода перечитает справочники
+function nipOk(n){ // контрольная сумма NIP, как на сервере (у старых записей может не сходиться — покажем)
+  if (!/^\d{10}$/.test(n || '')) return false;
+  const w = [6, 5, 7, 2, 3, 4, 5, 6, 7], sum = w.reduce((a, x, i) => a + x * +n[i], 0) % 11;
+  return sum !== 10 && sum === +n[9];
+}
+function nipFmt(n){ return n ? n.slice(0, 3) + '-' + n.slice(3, 6) + '-' + n.slice(6, 8) + '-' + n.slice(8) : ''; }
+async function renderRefs(){
+  const box = document.getElementById('accBody');
+  if (!refsData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  try{
+    const [c, p, m] = await Promise.all([api('/admin/expense-categories'), api('/admin/counterparties'), api('/admin/expense-methods')]);
+    refsData = {cats: c.categories || [], cps: p.counterparties || [], methods: m.methods || []};
+  }catch(e){ box.innerHTML = '<div class="muted">Справочники не загрузились: ' + esc(e.message) + '</div>'; return; }
+  paintRefs();
+}
+function paintRefs(){
+  const box = document.getElementById('accBody'), d = refsData || {cats:[], cps:[], methods:[]};
+  const cat = c => `<tr class="refRow${c.hidden ? ' refOff' : ''}" data-id="${c.id}">
+      <td><b>${esc(c.name)}</b>${c.hidden ? ' <span class="muted">· скрыта</span>' : ''}</td>
+      <td class="muted">${c.code ? 'стандартная' : 'своя'}</td>
+      <td>${c.purchase ? 'закупка' : '<span class="muted">—</span>'}</td>
+      <td class="refAct"><button class="btn ghost mini" onclick="refCatOpen('${c.id}')">Изменить</button>
+        <button class="btn ghost mini" onclick="refCatHide('${c.id}', ${!c.hidden})">${c.hidden ? 'Вернуть' : 'Скрыть'}</button></td></tr>`;
+  const cp = p => `<tr class="refRow${p.hidden ? ' refOff' : ''}" data-id="${p.id}">
+      <td><b>${esc(p.name)}</b>${p.hidden ? ' <span class="muted">· скрыт</span>' : ''}</td>
+      <td>${p.nip ? (nipOk(p.nip) ? nipFmt(p.nip) : `<span class="refWarn" title="контрольная сумма не сходится — поправь NIP">⚠ ${nipFmt(p.nip)}</span>`) : '<span class="muted">—</span>'}</td>
+      <td>${esc(p.contact || '') || '<span class="muted">—</span>'}</td>
+      <td class="muted" style="white-space:normal">${esc(p.note || '')}</td>
+      <td class="refAct"><button class="btn ghost mini" onclick="refCpOpen('${p.id}')">Изменить</button>
+        <button class="btn ghost mini" onclick="refCpHide('${p.id}', ${!p.hidden})">${p.hidden ? 'Вернуть' : 'Скрыть'}</button></td></tr>`;
+  box.innerHTML = `
+    <div class="dsub" style="margin-top:0">Категории</div>
+    <div class="muted" style="margin-bottom:8px">Свои встают после стандартных. «Закупка» — себестоимость в «Прибыли»: у стандартных она своя и не меняется. Скрытая не предлагается в новом расходе, старые расходы в ней остаются.</div>
+    <div class="tablewrap"><table class="refList" id="refCats"><tr><th>Категория</th><th>Какая</th><th>Закупка</th><th></th></tr>${d.cats.map(cat).join('')}</table></div>
+    <div class="toolrow" style="margin-top:8px">
+      <input id="rcName" class="input" maxlength="64" placeholder="Новая категория" style="width:auto; flex:1; min-width:180px" onkeydown="if(event.key==='Enter')refCatAdd()">
+      <label class="muted" style="display:flex; gap:6px; align-items:center"><input id="rcPurchase" type="checkbox"> закупка</label>
+      <button class="btn mini" id="rcAdd" onclick="refCatAdd()"><span data-ic="plus"></span>Добавить</button>
+    </div>
+    <div class="dsub">Контрагенты</div>
+    <div class="muted" style="margin-bottom:8px">NIP — 10 цифр, контрольная сумма проверяется. Скрытый не подсказывается в новом расходе, старые расходы с ним остаются.</div>
+    ${d.cps.length ? `<div class="tablewrap"><table class="refList" id="refCps"><tr><th>Контрагент</th><th>NIP</th><th>Контакты</th><th>Заметка</th><th></th></tr>${d.cps.map(cp).join('')}</table></div>`
+      : '<div class="empty">Контрагентов ещё нет — они появляются и сами, когда в расходе пишешь новое имя</div>'}
+    <div class="toolrow" style="margin-top:8px"><button class="btn mini" id="rpNew" onclick="refCpOpen('')"><span data-ic="plus"></span>Новый контрагент</button></div>
+    <div class="dsub">Способы оплаты</div>
+    <div class="muted" style="margin-bottom:8px">Выключенный не предлагается в новом расходе; старые расходы с ним остаются как были. Хотя бы один остаётся включённым.</div>
+    <div class="segs" id="rmMethods">${d.methods.map(m => `<button class="${m.on ? 'on' : ''}" data-m="${m.code}" onclick="refMethodToggle('${m.code}')">${EXP_METHOD_RU[m.code] || esc(m.name)}</button>`).join('')}</div>`;
+  mountIcons(box);
+}
+async function refCatAdd(){
+  const el = document.getElementById('rcName'), name = el.value.trim(), purchase = document.getElementById('rcPurchase').checked;
+  if (!name){ toast('⚠ Как назвать категорию?'); el.focus(); return; }
+  try{
+    await api('/admin/expense-categories', {method:'POST', body: JSON.stringify({name, purchase})});
+    toast('✓ Категория «' + name + '» добавлена' + (purchase ? ' — закупка' : '') + ' · уже в форме расхода');
+    refsDirty(); renderRefs();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function refCatOpen(id){
+  const c = ((refsData || {}).cats || []).find(x => x.id === id);
+  if (!c) return;
+  refCat = {id, name:c.name, purchase:c.purchase, std:!!c.code};
+  drawerUserId = null; drawerPCId = null; // шторка бухгалтерии — живые обновления её не перерисуют
+  openDrawer('Категория', `<div class="uform">
+    <input id="rcEditName" class="input" maxlength="64" placeholder="Название" value="${esc(c.name)}" oninput="refCat.name=this.value">
+    <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="rcEditPurchase" type="checkbox"${c.purchase ? ' checked' : ''}${c.code ? ' disabled' : ''} onchange="refCat.purchase=this.checked"> закупка — себестоимость в «Прибыли»</label>
+    ${c.code ? '<div class="muted">Стандартная категория: переименовать можно, «закупку» — нет, по ней «Прибыль» отделит себестоимость.</div>' : ''}
+    <button class="btn" style="width:100%; justify-content:center" id="rcSave" onclick="refCatSave()"><span data-ic="save"></span>Сохранить</button>
+  </div>`);
+}
+async function refCatSave(){
+  const f = refCat, body = {name: String(f.name).trim()};
+  if (!body.name){ toast('⚠ Как назвать категорию?'); return; }
+  if (!f.std) body.purchase = f.purchase;
+  try{
+    const d = await api('/admin/expense-categories/' + f.id, {method:'PATCH', body: JSON.stringify(body)});
+    toast(d.changed ? '✓ Категория поправлена' : 'Изменений нет');
+    closeDrawer(); refsDirty(); renderRefs();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function refCatHide(id, hidden){
+  const c = ((refsData || {}).cats || []).find(x => x.id === id) || {};
+  try{
+    await api('/admin/expense-categories/' + id, {method:'PATCH', body: JSON.stringify({hidden})});
+    toast(hidden ? '✓ «' + c.name + '» скрыта — в новом расходе её нет, старые расходы остались' : '✓ «' + c.name + '» снова в списке');
+    refsDirty(); renderRefs();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function refCpOpen(id){
+  const p = id ? ((refsData || {}).cps || []).find(x => x.id === id) : null;
+  if (id && !p) return;
+  refCp = p ? {id, name:p.name, nip:p.nip ? nipFmt(p.nip) : '', contact:p.contact || '', note:p.note || ''} : {id:'', name:'', nip:'', contact:'', note:''};
+  drawerUserId = null; drawerPCId = null;
+  const f = refCp;
+  openDrawer(id ? 'Контрагент' : 'Новый контрагент', `<div class="uform">
+    <input id="rpName" class="input" maxlength="128" placeholder="Название или имя" value="${esc(f.name)}" oninput="refCp.name=this.value">
+    <input id="rpNip" class="input" maxlength="13" placeholder="NIP — 10 цифр, необязательно" value="${esc(f.nip)}" oninput="refCp.nip=this.value">
+    ${p && p.nip && !nipOk(p.nip) ? '<div class="refWarn">⚠ У этого NIP не сходится контрольная сумма — проверь цифры по фактуре.</div>' : ''}
+    <input id="rpContact" class="input" maxlength="200" placeholder="Контакты — телефон, почта" value="${esc(f.contact)}" oninput="refCp.contact=this.value">
+    <input id="rpNote" class="input" maxlength="500" placeholder="Заметка" value="${esc(f.note)}" oninput="refCp.note=this.value">
+    <button class="btn" style="width:100%; justify-content:center" id="rpSave" onclick="refCpSave()"><span data-ic="save"></span>${id ? 'Сохранить' : 'Добавить'}</button>
+  </div>`);
+}
+async function refCpSave(){
+  const f = refCp, body = {name: String(f.name).trim(), nip: String(f.nip).trim(), contact: String(f.contact).trim(), note: String(f.note).trim()};
+  if (!body.name){ toast('⚠ Как зовут контрагента?'); return; }
+  try{
+    const d = f.id ? await api('/admin/counterparties/' + f.id, {method:'PATCH', body: JSON.stringify(body)})
+                   : await api('/admin/counterparties', {method:'POST', body: JSON.stringify(body)});
+    toast(f.id ? (d.changed ? '✓ Контрагент поправлен' : 'Изменений нет') : '✓ Контрагент «' + body.name + '» добавлен');
+    closeDrawer(); refsDirty(); renderRefs();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function refCpHide(id, hidden){
+  const p = ((refsData || {}).cps || []).find(x => x.id === id) || {};
+  try{
+    await api('/admin/counterparties/' + id, {method:'PATCH', body: JSON.stringify({hidden})});
+    toast(hidden ? '✓ «' + p.name + '» скрыт — в подсказках его нет' : '✓ «' + p.name + '» снова в подсказках');
+    refsDirty(); renderRefs();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function refMethodToggle(code){
+  const ms = (refsData || {}).methods || [], m = ms.find(x => x.code === code);
+  if (!m) return;
+  const on = ms.filter(x => x.code === code ? !x.on : x.on).map(x => x.code);
+  try{
+    const d = await api('/admin/expense-methods', {method:'PUT', body: JSON.stringify({on})});
+    refsData.methods = d.methods || ms;
+    const name = EXP_METHOD_RU[code] || m.name;
+    toast(m.on ? '✓ Способ «' + name + '» выключен — в новом расходе его нет' : '✓ Способ «' + name + '» снова включён');
+    refsDirty(); paintRefs();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
 
 /* ── Б11-и2: график смен в «Персонале». Сетка недели: строки — активные
    шаблоны, колонки пн–вс; admin читает, owner назначает через drawer и
@@ -7442,6 +7597,8 @@ const PAL_WORDS = [
    sub:'Бухгалтерия → расходы за период, внести расход', ic:'coins', run:() => accGo('exp')},
   {who:'owner', words:['долг', 'долг владельцу', 'вернуть владельцу', 'личные', 'личные деньги'], name:'Долг клуба владельцу', // З9-и3б
    sub:'Бухгалтерия → Расходы: сколько клуб должен, вернуть', ic:'coins', run:() => debtGo()},
+  {who:'owner', words:['справочник', 'справочники', 'категории', 'категория расходов', 'контрагенты', 'поставщики', 'nip', 'способы оплаты'],
+   name:'Справочники', sub:'Бухгалтерия → категории, контрагенты, способы оплаты', ic:'scroll', run:() => accGo('refs')}, // З9-и4
   {who:'owner', words:['сдачи', 'сдача кассы', 'расхождение', 'недостача'], name:'Сдачи кассы',
    sub:'Отчёты → смена: кто сколько сдал', ic:'coins', run:() => palGoShift()},
   {who:'owner', words:['зарплата', 'выплата', 'к выплате', 'ставка'], name:'К выплате',

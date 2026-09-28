@@ -50,6 +50,7 @@ var expenseErrors = map[string]string{
 	"already_storno":      "Расход уже сторнирован",
 	"bad_name":            fmt.Sprintf("Имя контрагента — 1–%d символов", maxCounterparty),
 	"bad_nip":             "NIP — 10 цифр",
+	"bad_nip_sum":         "NIP не сходится по контрольной сумме — проверь цифры",
 	"bad_contact":         fmt.Sprintf("Контакты — до %d символов", maxCPContact),
 	"counterparty_exists": "Такой контрагент уже есть",
 	"no_club":             "Клуб не настроен",
@@ -58,6 +59,16 @@ var expenseErrors = map[string]string{
 	"photo_too_big":       fmt.Sprintf("Фото — до %d КБ (сожми на клиенте)", maxPhotoBytes>>10),
 	"photo_not_found":     "У расхода нет фото",
 	"bad_closeout":        "«Взяли до сдачи» — только у оплаченного расхода из кассы и только до сдачи с пересчётом того же дня",
+	// З9-и4: справочники
+	"bad_category_name":      fmt.Sprintf("Название категории — 1–%d символов", maxCategoryName),
+	"category_exists":        "Такая категория уже есть",
+	"category_not_found":     "Категория не найдена",
+	"category_hidden":        "Категория скрыта — верни её в «Справочниках» или выбери другую",
+	"purchase_fixed":         "У стандартной категории «закупка» не меняется — по ней «Прибыль» считает себестоимость",
+	"last_category":          "Это последняя категория в списке — без неё расход не внести",
+	"counterparty_not_found": "Контрагент не найден",
+	"method_off":             "Этот способ оплаты выключен — включи его в «Справочниках» или выбери другой",
+	"need_method":            "Хотя бы один способ оплаты должен остаться включённым",
 }
 
 func expenseFail(c *gin.Context, status int, code string) {
@@ -147,7 +158,7 @@ func checkExpense(req expenseRequest, cur models.Expense, today time.Time) (stri
 var nipDigits = regexp.MustCompile(`^\d{10}$`)
 
 // normNIP — NIP без пробелов и дефисов (чистая, тест): «» — нет NIP, ok=false —
-// не 10 цифр. Контрольная сумма — З9-и4.
+// не 10 цифр. Контрольная сумма — nipValid (З9-и4).
 func normNIP(s string) (string, bool) {
 	n := strings.NewReplacer(" ", "", "-", "").Replace(strings.TrimSpace(s))
 	if n == "" {
@@ -257,9 +268,9 @@ func handleCounterpartyCreate(c *gin.Context) {
 		expenseFail(c, http.StatusBadRequest, "bad_name")
 		return
 	}
-	nip, ok := normNIP(req.NIP)
-	if !ok {
-		expenseFail(c, http.StatusBadRequest, "bad_nip")
+	nip, code := checkNIP(req.NIP) // З9-и4: и контрольная сумма
+	if code != "" {
+		expenseFail(c, http.StatusBadRequest, code)
 		return
 	}
 	contact := strings.TrimSpace(req.Contact)
@@ -653,6 +664,9 @@ func handleExpenseCreate(c *gin.Context) {
 	if code == "" {
 		code = expenseRefs(&e)
 	}
+	if code == "" {
+		code = expenseAllowed(&e, nil) // З9-и4: способ включён, категория не скрыта
+	}
 	if code != "" {
 		expenseFail(c, http.StatusBadRequest, code)
 		return
@@ -721,6 +735,9 @@ func handleExpenseUpdate(c *gin.Context) {
 	code, e := checkExpense(req, next, expenseToday())
 	if code == "" {
 		code = expenseRefs(&e)
+	}
+	if code == "" {
+		code = expenseAllowed(&e, cur) // З9-и4: прежние способ и категория — как есть
 	}
 	if code != "" {
 		expenseFail(c, http.StatusBadRequest, code)

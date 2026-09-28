@@ -172,3 +172,54 @@ func TestTillWhere(t *testing.T) {
 		}
 	}
 }
+
+// З9-и4: NIP — 10 цифр и контрольная сумма (веса 6 5 7 2 3 4 5 6 7, остаток 10 — не NIP).
+func TestNIPValid(t *testing.T) {
+	for _, n := range []string{"1234563218", "5260250995", "7740001454", "5213017228"} {
+		if !nipValid(n) {
+			t.Errorf("nipValid(%q) = false", n)
+		}
+	}
+	for _, n := range []string{"1234567890", "1234563219", "5260250994", "123456321", "12345632180"} {
+		if nipValid(n) {
+			t.Errorf("nipValid(%q) = true", n)
+		}
+	}
+	cases := map[string][2]string{
+		"123-456-32-18": {"1234563218", ""}, "": {"", ""}, "12345": {"", "bad_nip"}, "123-456-78-90": {"", "bad_nip_sum"},
+	}
+	for in, want := range cases {
+		if n, code := checkNIP(in); n != want[0] || code != want[1] {
+			t.Errorf("checkNIP(%q) = %q %q, ждали %q %q", in, n, code, want[0], want[1])
+		}
+	}
+}
+
+// З9-и4: способы оплаты — пустая настройка и мусор значат «все»; включить — известные коды,
+// хотя бы один, в порядке формы.
+func TestExpenseMethodsSetting(t *testing.T) {
+	if on := parseMethods(""); len(on) != 4 {
+		t.Errorf("пустая настройка: %v", on)
+	}
+	if on := parseMethods("bank, card ,cash"); len(on) != 2 || !on["bank"] || !on["card"] {
+		t.Errorf("bank, card: %v", on)
+	}
+	if on := parseMethods("cash"); len(on) != 4 {
+		t.Errorf("только мусор — все: %v", on)
+	}
+	cases := []struct {
+		in   []string
+		want string
+		code string
+	}{
+		{[]string{"owner", "till"}, "till,owner", ""},
+		{[]string{"bank", "bank"}, "bank", ""},
+		{[]string{}, "", "need_method"},
+		{[]string{"bank", "cash"}, "", "bad_method"},
+	}
+	for _, c := range cases {
+		if got, code := checkMethods(c.in); got != c.want || code != c.code {
+			t.Errorf("checkMethods(%v) = %q %q, ждали %q %q", c.in, got, code, c.want, c.code)
+		}
+	}
+}

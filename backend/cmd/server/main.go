@@ -338,8 +338,13 @@ func main() {
 		own.GET("/cash/book", handleCashBook)                  // З8-и3: кассовая книга по клубным дням
 		// З9-и1: расходы, категории и контрагенты — только владелец (З-Р29)
 		own.GET("/expense-categories", handleExpenseCategories)
+		own.POST("/expense-categories", handleExpenseCategoryCreate)      // З9-и4: своя категория
+		own.PATCH("/expense-categories/:id", handleExpenseCategoryUpdate) // переименовать, скрыть, закупка
 		own.GET("/counterparties", handleCounterparties)
 		own.POST("/counterparties", handleCounterpartyCreate)
+		own.PATCH("/counterparties/:id", handleCounterpartyUpdate) // З9-и4: правка, скрыть
+		own.GET("/expense-methods", handleExpenseMethods)          // З9-и4: способы оплаты вкл/выкл
+		own.PUT("/expense-methods", handleExpenseMethodsPut)
 		own.GET("/expenses", handleExpenseList)
 		own.POST("/expenses", handleExpenseCreate)
 		own.PATCH("/expenses/:id", handleExpenseUpdate)

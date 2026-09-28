@@ -129,11 +129,12 @@ func handleAdminAudit(c *gin.Context) {
 	// З1-и2 (Д4): shift_close — суммы сдачи кассы, их видит только владелец.
 	// З8-и2: коррекция остатка и отмена события ящика — тоже; инкассацию видят все.
 	// З9-и1: расходы и контрагенты — бухгалтерия, только владельцу (З-Р29).
-	// З9-и3б: возвраты владельцу и их отмена — тоже.
+	// З9-и3б: возвраты владельцу и их отмена — тоже. З9-и4: справочники (категории,
+	// контрагенты, способы оплаты) — тоже.
 	hiddenFromAdmin := func(action string) bool {
 		return !ownerView && (action == "settings_update" || action == "login_failed" ||
 			action == "shift_close" || action == "cash_correct" || action == "cash_event_void" ||
-			strings.HasPrefix(action, "staff_") || strings.HasPrefix(action, "expense_") || action == "counterparty_create" ||
+			strings.HasPrefix(action, "staff_") || strings.HasPrefix(action, "expense_") || strings.HasPrefix(action, "counterparty_") ||
 			strings.HasPrefix(action, "owner_repay"))
 	}
 
