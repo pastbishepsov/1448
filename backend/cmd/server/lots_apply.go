@@ -3,13 +3,16 @@ package main
 // З10-и3 (OWNER.md, трек З; №68): партии в работе. Каждое движение склада знает
 // свои партии: stockMove после строки stock_moves зовёт lotsApply в той же
 // транзакции. Списание (продажа, заказ кухни, «бой») — FIFO, со старых партий;
-// приход — новая поставка из одной строки, ждёт цен (приёмку с экрана даст
-// З10-и4); «нашлось» — новая партия без цены (Д5); возврат при отмене продажи или
+// приход — строка поставки (приёмка многими строками — З10-и4) или новая
+// поставка из одной строки, ждёт цен; правка приёмки — в партию своей строки
+// («пришло» меняется вместе с остатком, З10-и4); «нашлось» — новая партия без
+// цены (Д5); возврат при отмене продажи или
 // заказа — в те партии, откуда взяло его списание, а продажа или заказ до партий
 // — в самую новую партию позиции (грабли плана). Сверка «сумма остатков партий =
 // остаток позиции» — GET /admin/goods/lots/check (владелец).
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -25,6 +28,8 @@ import (
 // stockMove — два движения одной позиции идут по очереди, партии не делятся.
 func lotsApply(tx *gorm.DB, op stockOp, moveID uuid.UUID) error {
 	switch {
+	case op.Reason == "supply" && op.Lot != nil:
+		return lotsFix(tx, op, moveID)
 	case op.Delta < 0:
 		return lotsTake(tx, op, moveID)
 	case op.Reason == "supply":
@@ -89,17 +94,40 @@ func lotsTake(tx *gorm.DB, op stockOp, moveID uuid.UUID) error {
 	return lotsWrite(tx, moveID, parts, -1)
 }
 
-// lotsSupply — приход: поставка из одной строки (ждёт цен), её партия без цены.
+// lotsSupply — приход: строка поставки op.SupplyID или поставка из одной строки
+// (ждёт цен), её партия без цены.
 func lotsSupply(tx *gorm.DB, op stockOp, moveID uuid.UUID) error {
-	s := models.Supply{ClubID: op.ClubID, Status: models.SupplyWaiting, Note: op.Note, ReceivedBy: op.By}
-	if err := tx.Create(&s).Error; err != nil {
-		return err
+	sid := op.SupplyID
+	if sid == nil {
+		s := models.Supply{ClubID: op.ClubID, Status: models.SupplyWaiting, Note: op.Note, ReceivedBy: op.By}
+		if err := tx.Create(&s).Error; err != nil {
+			return err
+		}
+		sid = &s.ID
 	}
-	l, err := lotCreate(tx, op, models.LotSupply, &s.ID, op.Delta, 0)
+	l, err := lotCreate(tx, op, models.LotSupply, sid, op.Delta, 0)
 	if err != nil {
 		return err
 	}
 	return lotsWrite(tx, moveID, []lotPart{{l.ID, op.Delta}}, 1)
+}
+
+// errLineSold — правка приёмки уводит строку ниже того, что из неё уже ушло.
+var errLineSold = errors.New("line_sold")
+
+// lotsFix — правка приёмки (З10-и4): «пришло» и остаток партии строки op.Lot
+// меняются на Delta; из строки ушло больше, чем останется, — errLineSold.
+func lotsFix(tx *gorm.DB, op stockOp, moveID uuid.UUID) error {
+	res := tx.Model(&models.StockLot{}).
+		Where("id = ? AND good_id = ? AND qty_left + ? >= 0 AND qty_in + ? >= 0", *op.Lot, op.GoodID, op.Delta, op.Delta).
+		Updates(map[string]any{"qty_in": gorm.Expr("qty_in + ?", op.Delta), "qty_left": gorm.Expr("qty_left + ?", op.Delta)})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errLineSold
+	}
+	return tx.Create(&models.LotMove{StockMoveID: moveID, LotID: *op.Lot, Qty: op.Delta}).Error
 }
 
 // lotsBack — возврат при отмене: в партии, откуда взяло списание той же продажи

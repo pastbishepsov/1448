@@ -287,6 +287,10 @@ func main() {
 		adm.POST("/user-packages/:id/void", handleAdminPackageVoid) // отмена ошибочной выдачи (Е2-и2)
 		adm.GET("/goods", handleAdminGoods)
 		adm.POST("/goods/:id/stock", handleAdminGoodStock)
+		adm.GET("/supplies", handleSupplies)                 // З10-и4: поставки — ждут цен
+		adm.POST("/supplies", handleSupplyCreate)            // приёмка строками «позиция × штук»
+		adm.PATCH("/supplies/:id", handleSupplyUpdate)       // правка штук, пока ждёт цен (с пометкой)
+		adm.POST("/supplies/:id/cancel", handleSupplyCancel) // отмена целиком, если ничего не ушло
 		adm.GET("/sales", handleAdminSales)
 		adm.POST("/sales", handleAdminSaleCreate) // Ж6: корзина items[] одним чеком, method=later — в долг гостю за ПК
 		adm.POST("/sales/:id/void", handleAdminSaleVoid)

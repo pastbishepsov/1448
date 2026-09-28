@@ -25,6 +25,13 @@ const out = [], cleanups = [], browsers = [], jsErrors = [];
 const rows = q => execFileSync('psql', [DB, '-tAc', q]).toString().split('\n').filter(Boolean); // без шелла — $ и кавычки как есть
 const sql = q => rows(q)[0] || '';
 const uid = nick => sql(`SELECT id FROM users WHERE nickname='${nick}'`);
+// временная позиция стенда — SQL-ом вместе с движениями, партиями и её поставками (как drop_good в _z.py, З10-и4)
+const dropGood = gid => gid && sql(`CREATE TEMP TABLE _dg AS SELECT DISTINCT supply_id FROM stock_lots WHERE good_id = '${gid}' AND supply_id IS NOT NULL;
+  DELETE FROM lot_moves WHERE lot_id IN (SELECT id FROM stock_lots WHERE good_id = '${gid}');
+  DELETE FROM stock_moves WHERE good_id = '${gid}';
+  DELETE FROM stock_lots WHERE good_id = '${gid}';
+  DELETE FROM supplies s WHERE s.id IN (SELECT supply_id FROM _dg) AND NOT EXISTS (SELECT 1 FROM stock_lots l WHERE l.supply_id = s.id);
+  DELETE FROM goods WHERE id = '${gid}'`);
 
 // ── API ──
 async function call(method, path, body, token) {
@@ -116,5 +123,5 @@ async function nav(page, screen) { await page.evaluate(s => nav(s), screen); awa
 const shot = (page, name, fullPage = false) => page.screenshot({ path: `${OUT}/z_${name}.png`, fullPage });
 const text = (page, sel) => page.evaluate(s => { const e = document.querySelector(s); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; }, sel);
 
-module.exports = { API, BASE, DB, OUT, WEB_DIR, GUEST_PASS, STAFF_PASS, passwordOf, sleep, rows, sql, uid, call, login, tok, api,
+module.exports = { API, BASE, DB, OUT, WEB_DIR, GUEST_PASS, STAFF_PASS, passwordOf, sleep, rows, sql, uid, dropGood, call, login, tok, api,
   clubDay, hireTemp, dismiss, check, atEnd, done, crash, jsErrors, openAdmin, nav, shot, text };

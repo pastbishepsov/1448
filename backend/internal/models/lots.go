@@ -15,8 +15,9 @@ import (
 
 // Статусы поставки.
 const (
-	SupplyWaiting = "waiting" // принята, ждёт цен
-	SupplyPriced  = "priced"  // оценена
+	SupplyWaiting   = "waiting"   // принята, ждёт цен
+	SupplyPriced    = "priced"    // оценена
+	SupplyCancelled = "cancelled" // отменена целиком, пока ждала цен (З10-и4, миграция 078)
 )
 
 // Откуда партия.
@@ -33,7 +34,7 @@ const (
 type Supply struct {
 	ID             uuid.UUID  `json:"id"                        gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
 	ClubID         uuid.UUID  `json:"club_id"                   gorm:"type:uuid;not null"`
-	Status         string     `json:"status"                    gorm:"size:8;not null"`
+	Status         string     `json:"status"                    gorm:"size:16;not null"`
 	Note           string     `json:"note"                      gorm:"not null"`
 	ReceivedBy     *uuid.UUID `json:"received_by,omitempty"     gorm:"type:uuid"`
 	CounterpartyID *uuid.UUID `json:"counterparty_id,omitempty" gorm:"type:uuid"`
@@ -46,6 +47,9 @@ type Supply struct {
 	ExpenseGrosz   *int64     `json:"-"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
+	// З10-и4 (миграция 078): приёмку исправили — когда и кто (пометка «исправлено»).
+	EditedAt *time.Time `json:"edited_at,omitempty"`
+	EditedBy *uuid.UUID `json:"edited_by,omitempty" gorm:"type:uuid"`
 }
 
 func (s *Supply) BeforeCreate(tx *gorm.DB) error {

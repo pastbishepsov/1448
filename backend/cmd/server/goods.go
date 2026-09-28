@@ -418,6 +418,10 @@ func handleAdminGoodStock(c *gin.Context) {
 		action = "stock_adjust"
 	}
 	logAdminAction(c, action, nil, fmt.Sprintf("%s · %+d → %d%s", g.Name, req.Delta, g.Stock, noteSuffix(note)))
+	if req.Reason == "supply" { // З10-и4: приход — поставка из одной строки, в канал всем, как приёмка
+		postSystem(fmt.Sprintf("📦 Принята поставка: %s ×%d · %s", g.Name, req.Delta, nicknamesByID([]string{adminID.String()})[adminID.String()]),
+			false, map[string]any{"supply": true, "by": adminID})
+	}
 	c.JSON(http.StatusOK, gin.H{"good": goodOut(&g)})
 }
 
@@ -438,6 +442,11 @@ type stockOp struct {
 	OrderID *uuid.UUID
 	By      *uuid.UUID
 	Cap     bool // потолок остатка maxStockQty (З6-и3) — у прихода и корректировки
+	// З10-и4: приход строкой этой поставки (приёмка многими строками); nil —
+	// поставка из одной строки заводится сама.
+	SupplyID *uuid.UUID
+	// З10-и4: правка приёмки — в эту партию: «пришло» и остаток меняются вместе.
+	Lot *uuid.UUID
 }
 
 // stockMove — единственное место, где меняется остаток позиции (З10-и1):
