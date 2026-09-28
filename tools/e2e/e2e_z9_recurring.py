@@ -19,7 +19,7 @@ _cats = [c for c in api("GET", "/admin/expense-categories", None, "boss")[1].get
 std, RENT = {c.get("code"): c.get("id") for c in _cats}, next((c.get("name") for c in _cats if c.get("code") == "rent"), "")
 CAL = sql(f"SELECT (now() AT TIME ZONE '{TZ}')::date::text")  # «сегодня» шаблонов — календарный день клуба
 D = int(CAL[8:])
-M, PM, PPM, NM = (sql(f"SELECT (date_trunc('month', '{CAL}'::date) + interval '{k} month')::date::text") for k in (0, -1, -3, 1))
+M, PM, PPM, NM, NNM = (sql(f"SELECT (date_trunc('month', '{CAL}'::date) + interval '{k} month')::date::text") for k in (0, -1, -3, 1, 2))
 LAST = sql(f"SELECT (date_trunc('month', '{CAL}'::date) + interval '1 month - 1 day')::date::text")
 
 
@@ -138,9 +138,9 @@ line = [x.get("text", "") for x in audit("boss", kind="expense_create", limit=20
 check(f"«Внести» за этот месяц → 201: расход помнит шаблон и месяц {M}; ждёт только прошлый; в журнале «по шаблону «{TPL}» за {M[5:7]}.{M[:4]}»",
       s == 201 and e.get("template_id") == tid and e.get("template_month") == M and [x.get("month") for x in due(tid)] == [PM]
       and any(f"по шаблону «{TPL}» за {M[5:7]}.{M[:4]}" in t for t in line), f"{s} {J(e, 200)} {J(line[:1])}")
-got = [enter(tid, M), enter(tid, NM), enter(tid, PPM), enter("кривой", M), enter(tid, "2026-13-01")]
+got = [enter(tid, M), enter(tid, NNM), enter(tid, PPM), enter("кривой", M), enter(tid, "2026-13-01")]  # следующий — можно заранее (З9-и5б)
 got = [(s, d.get("code")) for s, d in got]
-check("повтор за тот же месяц → 409 template_entered; следующий месяц и до первого месяца шаблона → 400 bad_template_month; "
+check("повтор за тот же месяц → 409 template_entered; через месяц и до первого месяца шаблона → 400 bad_template_month; "
       "кривой шаблон → 400 bad_template; кривой месяц → 400",
       got == [(409, "template_entered"), (400, "bad_template_month"), (400, "bad_template_month"), (400, "bad_template"),
               (400, "bad_template_month")], J(got))

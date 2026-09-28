@@ -9,7 +9,10 @@ package main
 // «Бухгалтерии», в день срока — одно сообщение «только владельцу» в канал.
 // Расход, внесённый по шаблону, помнит шаблон и месяц: за месяц — один (409),
 // сторно освобождает месяц. Шаблон ждёт с ближайшего срока после заведения
-// (или включения): прошедшие месяцы на него не вешаются.
+// (или включения): прошедшие месяцы на него не вешаются. З9-и5б (решение
+// основателя 28.09): заплатили раньше срока — «Внести заранее» у шаблона в
+// «Справочниках»: ближайший месяц, чей срок впереди (этот или следующий), в
+// срок тогда не ждёт и не напоминает.
 
 import (
 	"errors"
@@ -101,6 +104,19 @@ func nextDue(from, today time.Time, day int, filled map[string]bool) time.Time {
 		m = m.AddDate(0, 1, 0)
 	}
 	return dueDay(m, day)
+}
+
+// earlyMonth — месяц шаблона, который можно внести заранее (З9-и5б): ничего не
+// ждёт, а ближайший срок впереди — в этом месяце или в следующем. Чистая, тест.
+func earlyMonth(from, today time.Time, day int, filled map[string]bool) (time.Time, bool) {
+	if len(dueMonths(from, today, day, filled)) > 0 {
+		return time.Time{}, false // сначала — то, что уже ждёт («Ждут внесения»)
+	}
+	m := monthOf(nextDue(from, today, day, filled))
+	if m.After(monthOf(today).AddDate(0, 1, 0)) {
+		return time.Time{}, false // следующий месяц уже внесён — дальше рано
+	}
+	return m, true
 }
 
 type templateRequest struct {
@@ -285,6 +301,9 @@ func templateOut(t *models.ExpenseTemplate, names, cps map[string]string, today 
 	if t.Active {
 		row["next_due"] = nextDue(t.FromMonth, today, t.Day, filled).Format("2006-01-02")
 		row["waiting"] = len(dueMonths(t.FromMonth, today, t.Day, filled))
+		if m, ok := earlyMonth(t.FromMonth, today, t.Day, filled); ok { // З9-и5б: «Внести заранее»
+			row["early"] = m.Format("2006-01-02")
+		}
 	}
 	return row
 }
@@ -451,8 +470,8 @@ func handleExpenseTemplateUpdate(c *gin.Context) {
 }
 
 // expenseTemplateLink — расход по шаблону за месяц (для записи): шаблон есть,
-// месяц — с первого месяца шаблона по текущий, ещё не внесён. Возвращает код
-// ошибки, шаблон и месяц.
+// месяц — с первого месяца шаблона по следующий за текущим (заранее, З9-и5б),
+// ещё не внесён. Возвращает код ошибки, шаблон и месяц.
 func expenseTemplateLink(tx *gorm.DB, tid, month string, today time.Time) (string, *models.ExpenseTemplate, time.Time) {
 	var t models.ExpenseTemplate
 	id, err := uuid.Parse(strings.TrimSpace(tid))
@@ -466,7 +485,7 @@ func expenseTemplateLink(tx *gorm.DB, tid, month string, today time.Time) (strin
 		}
 	}
 	m = monthOf(m)
-	if m.Before(monthIn(t.FromMonth, today.Location())) || m.After(monthOf(today)) {
+	if m.Before(monthIn(t.FromMonth, today.Location())) || m.After(monthOf(today).AddDate(0, 1, 0)) {
 		return "bad_template_month", nil, time.Time{}
 	}
 	var n int64

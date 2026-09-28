@@ -86,6 +86,38 @@ func TestDueMonths(t *testing.T) {
 	}
 }
 
+// З9-и5б: «Внести заранее» — ближайший месяц со сроком впереди, не дальше следующего.
+func TestEarlyMonth(t *testing.T) {
+	d := func(y int, m time.Month, day int) time.Time { return time.Date(y, m, day, 0, 0, 0, 0, time.UTC) }
+	today := d(2026, 9, 28)
+	cases := []struct {
+		name   string
+		from   time.Time
+		day    int
+		filled map[string]bool
+		want   string // "" — заранее нечего
+	}{
+		{"срок этого месяца впереди", d(2026, 9, 1), 30, nil, "2026-09"},
+		{"срок сегодня — уже ждёт, не заранее", d(2026, 9, 1), 28, nil, ""},
+		{"ждёт пропущенный — сначала он", d(2026, 8, 1), 30, nil, ""},
+		{"этот внесён — следующий", d(2026, 9, 1), 28, map[string]bool{"2026-09": true}, "2026-10"},
+		{"срок прошёл, внесён — следующий", d(2026, 9, 1), 5, map[string]bool{"2026-09": true}, "2026-10"},
+		{"первый месяц — следующий", d(2026, 10, 1), 1, nil, "2026-10"},
+		{"и следующий внесён — рано", d(2026, 9, 1), 28, map[string]bool{"2026-09": true, "2026-10": true}, ""},
+		{"внесён следующий, а этот впереди — этот", d(2026, 9, 1), 30, map[string]bool{"2026-10": true}, "2026-09"},
+	}
+	for _, c := range cases {
+		m, ok := earlyMonth(c.from, today, c.day, c.filled)
+		got := ""
+		if ok {
+			got = monthKey(m)
+		}
+		if got != c.want {
+			t.Errorf("%s: %q, ждали %q", c.name, got, c.want)
+		}
+	}
+}
+
 // З9-и5: поля шаблона — как у расхода, плюс название и число месяца.
 func TestCheckTemplate(t *testing.T) {
 	s := func(v string) *string { return &v }

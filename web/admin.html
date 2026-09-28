@@ -606,6 +606,8 @@
   .dueBox{border:1px solid var(--hair); border-left:3px solid var(--orange); border-radius:12px; padding:10px 12px 12px; margin:0 0 14px}
   .dueBox .dsub{margin-top:2px}
   .dueList td.dueLate{color:var(--orange)}
+  .refList .tplDue{display:inline-flex; flex-wrap:wrap; align-items:center; gap:4px 8px; white-space:normal} /* З9-и5б: срок и «Внести заранее» */
+  .refList .tplDue > *{white-space:nowrap}
   #accTabs button[data-n]::after{content:attr(data-n); margin-left:6px; background:rgba(255,39,64,.22); color:var(--acc3); border-radius:8px;
                                  padding:0 6px; font-size:11px; font-variant-numeric:tabular-nums}
 </style>
@@ -5800,6 +5802,7 @@ function dueBlock(list){
       <a href="#" class="lnk" onclick="event.preventDefault(); refsGo()">«Справочники» → «Регулярные расходы»</a>.</div></div>`;
 }
 function expTplLine(f){
+  if (f.tpl && f.tpl.early) return `<div class="muted" id="efTpl">Регулярный «<b>${esc(f.tpl.name)}</b>» за ${tplMonth(f.tpl.month)} — заранее, срок ${ruDate(f.tpl.due)}: в срок он уже не будет ждать и не напомнит. Заполнено по шаблону, проверь сумму и дату.</div>`; // З9-и5б
   if (f.tpl) return `<div class="muted" id="efTpl">Регулярный «<b>${esc(f.tpl.name)}</b>» за ${tplMonth(f.tpl.month)} — заполнено по шаблону, проверь сумму и дату. За месяц запишется один раз.</div>`;
   if (f.tplMonth) return `<div class="muted" id="efTpl">Внесён по регулярному расходу за ${tplMonth(f.tplMonth)} — сторно освободит месяц: он снова будет ждать внесения.</div>`;
   return '';
@@ -6041,9 +6044,9 @@ async function expSave(){
     const dn = debtNote(d.owner_debt, (expData || {}).owner_debt); // З9-и3б: личными — долг клуба владельцу изменился
     toast(f.id ? (d.changed || file ? '✓ Расход поправлен' + ph + tn + dn : 'Изменений нет')
                : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category
-                 + (f.tpl ? ' · регулярный «' + f.tpl.name + '» за ' + tplMonth(f.tpl.month) : '') + ph + tn + dn);
+                 + (f.tpl ? ' · регулярный «' + f.tpl.name + '» за ' + tplMonth(f.tpl.month) + (f.tpl.early ? ' — заранее' : '') : '') + ph + tn + dn);
     closeDrawer();
-    renderExp();
+    if (accTab === 'refs') renderRefs(); else renderExp(); // З9-и5б: «Внести заранее» открывают из «Справочников»
   }catch(e){ toast('⚠ ' + e.message); }
   finally{ if (btn.isConnected) btn.disabled = false; }
 }
@@ -6220,7 +6223,9 @@ function paintRefs(){
       <td><b>${fmtPLN(t.amount_pln)} zł</b>${t.vat_pln ? '&nbsp;<span class="muted">VAT ' + fmtPLN(t.vat_pln) + '</span>' : ''}</td>
       <td>${EXP_METHOD_RU[t.method] || esc(t.method)}</td>
       <td>${t.day}-го${t.day > 28 ? '&nbsp;<span class="muted" title="нет такого числа в месяце — в последний день">*</span>' : ''}</td>
-      <td>${!t.active ? '<span class="muted">—</span>' : t.waiting ? '<span class="refWarn">ждёт внесения' + (t.waiting > 1 ? ' · ' + t.waiting : '') + '</span>' : 'дальше ' + ruDate(t.next_due)}</td>
+      <td>${!t.active ? '<span class="muted">—</span>' : t.waiting ? '<span class="refWarn">ждёт внесения' + (t.waiting > 1 ? ' · ' + t.waiting : '') + '</span>'
+        : t.early ? `<span class="tplDue"><span>дальше ${ruDate(t.next_due)}</span><button class="btn ghost mini" onclick="expOpenEarly('${t.id}')" title="заплатили раньше срока — внести за ${tplMonth(t.early)}">Внести заранее</button></span>` // З9-и5б
+        : 'дальше ' + ruDate(t.next_due)}</td>
       <td class="refAct"><button class="btn ghost mini" onclick="refTplOpen('${t.id}')">Изменить</button>
         <button class="btn ghost mini" onclick="refTplActive('${t.id}', ${!t.active})">${t.active ? 'Выключить' : 'Включить'}</button></td></tr>`;
   box.innerHTML = `
@@ -6241,7 +6246,7 @@ function paintRefs(){
     <div class="muted" style="margin-bottom:8px">Выключенный не предлагается в новом расходе; старые расходы с ним остаются как были. Хотя бы один остаётся включённым.</div>
     <div class="segs" id="rmMethods">${d.methods.map(m => `<button class="${m.on ? 'on' : ''}" data-m="${m.code}" onclick="refMethodToggle('${m.code}')">${EXP_METHOD_RU[m.code] || esc(m.name)}</button>`).join('')}</div>
     <div class="dsub" id="refTplsHead">Регулярные расходы</div>
-    <div class="muted" style="margin-bottom:8px">Раз в месяц в свой день (нет такого числа в месяце — в последний) расход ждёт внесения: в «Расходах» — «Ждут внесения» с кнопкой «Внести», на «Бухгалтерии» — число, в день срока — сообщение тебе в канал. Новый и снова включённый ждёт с ближайшего срока. Выключенный не ждёт и не напоминает; удаления нет.</div>
+    <div class="muted" style="margin-bottom:8px">Раз в месяц в свой день (нет такого числа в месяце — в последний) расход ждёт внесения: в «Расходах» — «Ждут внесения» с кнопкой «Внести», на «Бухгалтерии» — число, в день срока — сообщение тебе в канал. Новый и снова включённый ждёт с ближайшего срока. Заплатили раньше срока — «Внести заранее»: в срок он уже не будет ждать и не напомнит. Выключенный не ждёт и не напоминает; удаления нет.</div>
     ${d.tpls.length ? `<div class="tablewrap"><table class="refList" id="refTpls"><tr><th>Название</th><th>Категория</th><th>Сумма</th><th>Способ</th><th>Число</th><th>Срок</th><th></th></tr>${d.tpls.map(tpl).join('')}</table></div>`
       : '<div class="empty">Регулярных расходов ещё нет — аренда, интернет, бухгалтер: заведи раз, дальше они сами напомнят</div>'}
     <div class="toolrow" style="margin-top:8px"><button class="btn mini" id="rtNew" onclick="refTplOpen('')"><span data-ic="plus"></span>Новый регулярный расход</button></div>`;
@@ -6361,6 +6366,16 @@ async function refTplOpen(id){
     <button class="btn" style="width:100%; justify-content:center" id="rtSave" onclick="refTplSave()"><span data-ic="save"></span>${id ? 'Сохранить' : 'Завести'}</button>
     ${t ? '<div class="muted">Правка не трогает уже внесённые расходы — по шаблону заполнится следующий.</div>' : ''}
   </div>`);
+}
+// З9-и5б: «Внести заранее» — новый расход по шаблону за ближайший месяц со сроком впереди; дата — сегодня
+async function expOpenEarly(id){
+  const t = ((refsData || {}).tpls || []).find(x => x.id === id);
+  if (!t || !t.early) return;
+  try{ await expRefs(); }catch(e){ toast('⚠ ' + e.message); return; }
+  expForm = {id:'', date:ruDate(isoDate(new Date())), category:t.category_id, counterparty:t.counterparty || '', amount:String(t.amount_pln),
+    vat:t.vat_pln ? String(t.vat_pln) : '', method:t.method, paid:true, doc:'', note:t.note || '', storno:null, photo:false, before:'', before0:'',
+    tpl:{id:t.id, month:t.early, name:t.name, early:true, due:t.next_due}};
+  expPaint();
 }
 function refTplDayText(){
   const d = parseInt(refTpl && refTpl.day, 10);
@@ -7746,8 +7761,8 @@ const PAL_WORDS = [
    sub:'Бухгалтерия → Расходы: сколько клуб должен, вернуть', ic:'coins', run:() => debtGo()},
   {who:'owner', words:['справочник', 'справочники', 'категории', 'категория расходов', 'контрагенты', 'поставщики', 'nip', 'способы оплаты'],
    name:'Справочники', sub:'Бухгалтерия → категории, контрагенты, способы оплаты', ic:'scroll', run:() => accGo('refs')}, // З9-и4
-  {who:'owner', words:['регулярные', 'регулярный расход', 'шаблон расхода', 'ежемесячные', 'каждый месяц'], name:'Регулярные расходы', // З9-и5
-   sub:'Бухгалтерия → Справочники: раз в месяц, сами напоминают', ic:'clock', run:() => { refsFocus = 'refTplsHead'; accGo('refs'); }},
+  {who:'owner', words:['регулярные', 'регулярный расход', 'шаблон расхода', 'ежемесячные', 'каждый месяц', 'внести заранее', 'заплатил заранее'], name:'Регулярные расходы', // З9-и5, З9-и5б
+   sub:'Бухгалтерия → Справочники: раз в месяц, сами напоминают, можно внести заранее', ic:'clock', run:() => { refsFocus = 'refTplsHead'; accGo('refs'); }},
   {who:'owner', words:['ждут внесения', 'внести по шаблону', 'напоминание о расходе'], name:'Ждут внесения',
    sub:'Бухгалтерия → Расходы: регулярные, чей срок наступил', ic:'coins', run:() => accGo('exp')},
   {who:'owner', words:['сдачи', 'сдача кассы', 'расхождение', 'недостача'], name:'Сдачи кассы',
