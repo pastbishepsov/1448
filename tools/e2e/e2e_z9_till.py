@@ -101,8 +101,12 @@ d7 = book("preset=d7").get("days", [])
 day = next((x for x in d7 if any(c.get("id") == cid for c in x.get("closeouts", []))), {})
 was = next((x for x in d7_before if x.get("date") == day.get("date")), {})
 cor = next((c for c in day.get("closeouts", []) if c.get("id") == cid), {})
-check("кассовая книга: у той сдачи — «объяснено расходом» 20, расхождение её дня +20, расход — в раскрытии дня, строка сходится",
-      near(cor.get("explained_pln", 0), 20) and near(day.get("diff_pln", 0) - was.get("diff_pln", 0), 20)
+# сдача — начальный остаток (на стенде без вчерашних сдач так и выходит) ничего не объясняет: расход уже в остатке,
+# расхождение дня не меняется
+grow = 0 if cor.get("baseline") else 20
+check(f"кассовая книга: у той сдачи — «объяснено расходом» 20, расхождение её дня +{grow}"
+      f"{' (сдача — начальный остаток: расход уже в нём)' if cor.get('baseline') else ''}, расход — в раскрытии дня, строка сходится",
+      near(cor.get("explained_pln", 0), 20) and near(day.get("diff_pln", 0) - was.get("diff_pln", 0), grow)
       and any(x.get("id") == e3.get("id") and x.get("explains_closeout") == cid for x in day.get("expenses", [])) and adds_up(day),
       J({"день": day.get("date"), "расхождение": [was.get("diff_pln"), day.get("diff_pln")], "сдача": {k: cor.get(k) for k in ("explained_pln", "diff_pln")}}, 400))
 check("все дни недели сходятся", all(adds_up(x) for x in d7), J([x.get("date") for x in d7 if not adds_up(x)]))

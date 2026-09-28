@@ -347,6 +347,9 @@ func main() {
 		own.GET("/expenses/:id/photo", handleExpensePhoto)    // фото документа — только владельцу
 		own.PUT("/expenses/:id/photo", handleExpensePhotoPut)
 		own.DELETE("/expenses/:id/photo", handleExpensePhotoDelete)
+		own.GET("/owner-debt", handleOwnerDebt)                      // З9-и3б: клуб должен владельцу и возвраты
+		own.POST("/owner-repayments", handleOwnerRepay)              // З9-и3б: вернули владельцу — из кассы или с банка
+		own.POST("/owner-repayments/:id/void", handleOwnerRepayVoid) // З9-и3б: отмена ошибочного возврата
 		// Смены и график персонала (Б11): правит только owner
 		own.POST("/shifts", handleAdminShiftCreate)
 		own.PATCH("/shifts/:id", handleAdminShiftUpdate)

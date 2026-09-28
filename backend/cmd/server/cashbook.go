@@ -5,7 +5,8 @@ package main
 // наличными по видам (пополнения, товары и кухня, пакеты), возвраты,
 // инкассации, коррекции, расхождения пересчётов, остаток на конец; ниже —
 // сдачи дня (кто, когда, должно, пересчитано, расхождение) и события ящика
-// (инкассации и коррекции, с отменёнными — пометкой).
+// (инкассации и коррекции, с отменёнными — пометкой). З9-и3а — расходы из кассы,
+// З9-и3б — возвраты владельцу из кассы (с отменёнными — пометкой).
 //
 // Остаток на момент t считается так же, как «должно быть» в сдаче: остаток
 // последней сдачи до t (пересчитанный, если пересчитывали) + движение с неё
@@ -93,12 +94,14 @@ func handleCashBook(c *gin.Context) {
 
 	var closeouts []models.ShiftCloseout
 	var events []models.CashEvent
-	var tills []models.Expense // З9-и3а: расходы из кассы — по моменту, когда ушли из ящика
+	var tills []models.Expense         // З9-и3а: расходы из кассы — по моменту, когда ушли из ящика
+	var owners []models.OwnerRepayment // З9-и3б: возвраты владельцу из кассы — по минуте записи
 	if len(wins) > 0 {
 		from, to := wins[0].From, wins[len(wins)-1].To
 		db.Where("created_at >= ? AND created_at < ?", from, to).Order("created_at").Find(&closeouts)
 		db.Where("created_at >= ? AND created_at < ?", from, to).Order("created_at").Find(&events)
 		expenseQ().Where("drawer_at >= ? AND drawer_at < ? AND storno_at IS NULL", from, to).Order("drawer_at").Find(&tills)
+		db.Where("method = ? AND created_at >= ? AND created_at < ?", models.RepayTill, from, to).Order("created_at").Find(&owners)
 	}
 	explained := map[uuid.UUID]int64{} // сдача → расходы, внесённые позже и объяснившие её расхождение
 	for i := range tills {
@@ -113,6 +116,13 @@ func handleCashBook(c *gin.Context) {
 	}
 	for i := range events {
 		for _, u := range []*uuid.UUID{events[i].CreatedBy, events[i].VoidedBy} {
+			if u != nil {
+				ids = append(ids, u.String())
+			}
+		}
+	}
+	for i := range owners {
+		for _, u := range []*uuid.UUID{owners[i].CreatedBy, owners[i].VoidedBy} {
 			if u != nil {
 				ids = append(ids, u.String())
 			}
@@ -182,7 +192,15 @@ func handleCashBook(c *gin.Context) {
 			}
 			dayExp = append(dayExp, r)
 		}
-		row["closeouts"], row["events"], row["expenses"] = dayCO, dayEv, dayExp
+		dayOwn := []gin.H{}
+		for i := range owners {
+			r := &owners[i]
+			if r.CreatedAt.Before(w.From) || !r.CreatedAt.Before(w.To) {
+				continue
+			}
+			dayOwn = append(dayOwn, repaymentOut(r, nick))
+		}
+		row["closeouts"], row["events"], row["expenses"], row["owner"] = dayCO, dayEv, dayExp, dayOwn
 
 		var diff int64
 		switch {
@@ -202,6 +220,7 @@ func handleCashBook(c *gin.Context) {
 		total.Refunds += f.Refunds
 		total.Collections += f.Collections
 		total.Expenses += f.Expenses
+		total.Owner += f.Owner
 		total.Adjust += f.Adjust
 		totalDiff += diff
 		opening, last = closing, closing

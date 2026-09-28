@@ -590,6 +590,12 @@
   .expCats span{border:1px solid var(--hair); border-radius:99px; padding:4px 11px; font-size:13px}
   #efPhotoBox img{max-width:100%; max-height:260px; border-radius:10px; display:block; margin-top:6px; cursor:zoom-in}
   @media (max-width:640px){ .expList .expL{display:inline; color:var(--dim); margin-right:4px} }
+  /* З9-и3б: шторка долга клуба владельцу — история возвратов строками; отменённый бледный, суть зачёркнута */
+  #odList .odRow{font-size:13px; line-height:1.55; padding:7px 0; border-top:1px solid var(--hair)}
+  #odList .odRow:first-child{border-top:0; padding-top:2px}
+  #odList .odRow.off{color:var(--dim)}
+  #odList .odRow.off .odT{text-decoration:line-through}
+  #odList .odRow .btn{margin-left:4px; vertical-align:middle}
 </style>
 </head>
 <body>
@@ -3916,7 +3922,8 @@ const AUD_GROUPS = {
           'kitchen_done','kitchen_pay','kitchen_cancel', // кухню считают у той же стойки (ревью 26.08)
           'sale_paid','settle','kitchen_order','shift_close', // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
           'cash_collect','cash_correct','cash_event_void', // З8-и2: инкассация, коррекция остатка, отмена события ящика
-          'expense_create','expense_update','expense_storno'], // З9-и2: расходы (видит только владелец)
+          'expense_create','expense_update','expense_storno', // З9-и2: расходы (видит только владелец)
+          'owner_repay','owner_repay_void'], // З9-и3б: долг клуба владельцу — возврат и его отмена (тоже только владелец)
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -3951,6 +3958,7 @@ const AUD_LABEL = {
   work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка', shift_close:'сдача кассы', // Ж6-и4
   cash_collect:'касса: инкассация', cash_correct:'касса: коррекция остатка', cash_event_void:'касса: отмена события', // З8-и2
   expense_create:'расход: внесён', expense_update:'расход: правка', expense_storno:'расход: сторно', counterparty_create:'контрагент: новый', // З9-и2
+  owner_repay:'долг владельцу: возврат', owner_repay_void:'долг владельцу: отмена возврата', // З9-и3б
   login_failed:'вход: неверный пароль', // З0-и3: серия неудач входа персонала — только владельцу
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   coin_redeem:'монеты: время за монеты',
@@ -3985,6 +3993,7 @@ const AUD_ICON = {
   sale:'box', sale_void:'cross', sale_paid:'coins', settle:'coins', shift_close:'coins', kitchen_order:'box', // Ж6
   cash_collect:'coins', cash_correct:'wrench', cash_event_void:'cross', // З8-и2
   expense_create:'coins', expense_update:'edit', expense_storno:'cross', counterparty_create:'users', // З9-и2
+  owner_repay:'coins', owner_repay_void:'cross', // З9-и3б
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out',
   work_start:'clock', work_stop:'check', work_edit:'edit',
@@ -4411,7 +4420,7 @@ function paintShiftCloseouts(list){
     ${list.map(c => `<tr>
       <td><b>${esc(c.nickname)}</b></td>
       <td class="muted">${hhmm(c.created_at)}</td>
-      <td title="${c.opening_pln != null ? 'на начало ' + fmtPLN(c.opening_pln) + ' · ' : ''}пополнения ${fmtPLN(c.deposits_pln)} · товары ${fmtPLN(c.goods_pln)} · пакеты ${fmtPLN(c.packs_pln)}${c.refunds_pln > 0 ? ' · возвраты −' + fmtPLN(c.refunds_pln) : ''}${c.collections_pln > 0 ? ' · инкассации −' + fmtPLN(c.collections_pln) : ''}${c.expenses_pln > 0 ? ' · расходы из кассы −' + fmtPLN(c.expenses_pln) : ''}">${fmtPLN(c.expected_pln)} zł</td>
+      <td title="${c.opening_pln != null ? 'на начало ' + fmtPLN(c.opening_pln) + ' · ' : ''}пополнения ${fmtPLN(c.deposits_pln)} · товары ${fmtPLN(c.goods_pln)} · пакеты ${fmtPLN(c.packs_pln)}${c.refunds_pln > 0 ? ' · возвраты −' + fmtPLN(c.refunds_pln) : ''}${c.collections_pln > 0 ? ' · инкассации −' + fmtPLN(c.collections_pln) : ''}${c.expenses_pln > 0 ? ' · расходы из кассы −' + fmtPLN(c.expenses_pln) : ''}${c.owner_pln > 0 ? ' · владельцу −' + fmtPLN(c.owner_pln) : ''}">${fmtPLN(c.expected_pln)} zł</td>
       <td>${c.skipped ? '<span style="color:var(--orange)">без пересчёта</span>' : fmtPLN(c.counted_pln) + ' zł'}</td>
       <td>${c.skipped ? '—' : c.baseline ? '<span class="muted">начальный остаток</span>' : (c.diff_pln === 0 ? '<span class="muted">сошлось</span>' : `<b style="color:var(--orange)">${c.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(c.diff_pln))} zł</b>`)}</td>
       <td class="muted">${esc(c.note || '')}</td>
@@ -5591,13 +5600,14 @@ function paintAcc(){
     <div class="kpis">
       <div class="kpi" title="«должно быть в ящике» — то же, что видит админ в «Моей смене»">В ящике сейчас <b id="accNow">${now.baseline ? '—' : accPLN(now.expected_pln)}</b></div>
       <div class="kpi" title="пополнения ${fmtPLN(t.deposits_pln)} · товары и кухня ${fmtPLN(t.goods_pln)} · пакеты ${fmtPLN(t.packs_pln)}">Пришло за период <b>${accPLN(t.in_pln)}</b></div>
-      <div class="kpi" title="возвраты налом ${fmtPLN(t.refunds_pln)} · инкассации ${fmtPLN(t.collections_pln)} · расходы из кассы ${fmtPLN(t.expenses_pln || 0)}">Ушло за период <b>${accPLN(t.out_pln)}</b></div>
+      <div class="kpi" title="возвраты налом ${fmtPLN(t.refunds_pln)} · инкассации ${fmtPLN(t.collections_pln)} · расходы из кассы ${fmtPLN(t.expenses_pln || 0)} · возвраты владельцу ${fmtPLN(t.owner_pln || 0)}">Ушло за период <b>${accPLN(t.out_pln)}</b></div>
       <div class="kpi" title="пересчёты при сдачах: пересчитанное минус ожидаемое">Расхождения <b>${accSigned(t.diff_pln)} zł</b></div>
     </div>
     ${now.baseline ? '<div class="muted" style="margin:-6px 0 12px">Ящик ещё не заведён: начальный остаток задаст первая сдача с пересчётом.</div>' : ''}
     <div class="toolrow">
       <button class="btn mini" id="accColBtn" onclick="accCollectDrawer()"><span data-ic="coins"></span>Инкассация</button>
       <button class="btn ghost mini" id="accCorBtn" onclick="accCorrectDrawer()"><span data-ic="wrench"></span>Коррекция остатка</button>
+      <button class="btn ghost mini" id="accOwnBtn" onclick="debtOpen('till')"><span data-ic="coins"></span>Вернуть владельцу</button>
     </div>
     <div class="toolrow">
       <div class="segs" id="accPresets">${ACC_PRESETS.map(([p, n]) => `<button class="${accPeriod.preset === p ? 'on' : ''}" onclick="accPreset('${p}')">${n}</button>`).join('')}</div>
@@ -5608,9 +5618,9 @@ function paintAcc(){
         <button class="btn ghost mini" onclick="accCustom()"><span data-ic="chart"></span>Показать</button>
       </div>
     </div>
-    <div class="muted" style="margin:-4px 0 12px">${per.from ? ruDate(per.from) + (per.to !== per.from ? ' — ' + ruDate(per.to) : '') : ''} · клубные сутки · нажми на день — сдачи, инкассации, коррекции и расходы из кассы</div>
+    <div class="muted" style="margin:-4px 0 12px">${per.from ? ruDate(per.from) + (per.to !== per.from ? ' — ' + ruDate(per.to) : '') : ''} · клубные сутки · нажми на день — сдачи, инкассации, коррекции, расходы из кассы и возвраты владельцу</div>
     ${days.length ? `<div class="tablewrap"><table class="accBook">
-      <tr><th>День</th><th>На начало</th><th>Пришло</th><th>Возвраты</th><th>Инкассации</th><th>Расходы</th><th>Коррекции</th><th>Расхождения</th><th>На конец</th></tr>
+      <tr><th>День</th><th>На начало</th><th>Пришло</th><th>Возвраты</th><th>Инкассации</th><th>Расходы</th><th>Владельцу</th><th>Коррекции</th><th>Расхождения</th><th>На конец</th></tr>
       ${days.map(accRow).join('')}
     </table></div>` : '<div class="empty">За этот период дней ещё не было</div>'}`;
   mountIcons(box);
@@ -5624,10 +5634,11 @@ function accRow(r){
     <td>${L('возвраты')}${r.refunds_pln ? '−' + fmtPLN(r.refunds_pln) : '0,00'}</td>
     <td>${L('инкассации')}${r.collections_pln ? '−' + fmtPLN(r.collections_pln) : '0,00'}</td>
     <td title="расходы, оплаченные из кассы (З9-и3а)">${L('расходы')}${r.expenses_pln ? '−' + fmtPLN(r.expenses_pln) : '0,00'}</td>
+    <td title="возвращено владельцу из кассы — долг клуба (З9-и3б)">${L('владельцу')}${r.owner_pln ? '−' + fmtPLN(r.owner_pln) : '0,00'}</td>
     <td>${L('коррекции')}${accSigned(r.adjust_pln)}</td>
     <td${r.diff_pln ? ' style="color:var(--orange)"' : ''}>${L('расхождения')}${accSigned(r.diff_pln)}</td>
     <td>${L('на конец')}<b>${r.closing_pln == null ? '—' : fmtPLN(r.closing_pln)}</b></td>
-  </tr>${accDay === r.date ? `<tr class="accDet"><td colspan="9">${accDetails(r)}</td></tr>` : ''}`;
+  </tr>${accDay === r.date ? `<tr class="accDet"><td colspan="10">${accDetails(r)}</td></tr>` : ''}`;
 }
 function accDetails(r){
   const b = r.baseline;
@@ -5646,10 +5657,16 @@ function accDetails(r){
     : 'инкассация ' + fmtPLN(e.amount_pln) + ' zł ' + (e.dest === 'bank' ? 'в банк' : 'в сейф')}${e.note ? ' · ' + esc(e.note) : ''}</span>${e.voided_at
     ? ' · отменил ' + esc(e.voided_by_nickname || '—') + ' ' + hhmm(e.voided_at)
     : ` <button class="btn ghost mini" onclick="event.stopPropagation(); armButton(this, 'Точно отменить?', () => accVoid('${e.id}'))">Отменить</button>`}</div>`).join('');
+  // З9-и3б: возвраты владельцу из кассы — в минуту записи; отменённый — зачёркнут, кто и когда отменил
+  const own = (r.owner || []).map(o => `<div class="${o.voided_at ? 'accVoid' : ''}">${hhmm(o.created_at)} · <span class="accT"><b>${esc(o.nickname || '—')}</b> — вернули владельцу ${
+    fmtPLN(o.amount_pln)} zł${o.note ? ' · ' + esc(o.note) : ''}</span>${o.voided_at
+    ? ' · отменил ' + esc(o.voided_by_nickname || '—') + ' ' + hhmm(o.voided_at)
+    : ` <button class="btn ghost mini" onclick="event.stopPropagation(); armButton(this, 'Точно отменить?', () => debtVoid('${o.id}', true, false))">Отменить</button>`}</div>`).join('');
   return (b ? `<div class="muted">Ящик заведён в ${hhmm(b.at)}: начальный остаток ${fmtPLN(b.pln)} zł, пересчитал ${esc(b.by || '—')}</div>` : '')
     + `<div class="dsub" style="margin-top:4px">Сдачи</div>${cos || '<div class="muted">сдач не было</div>'}`
     + `<div class="dsub">Инкассации и коррекции</div>${evs || '<div class="muted">не было</div>'}`
-    + (exps ? `<div class="dsub">Расходы из кассы</div>${exps}` : '');
+    + (exps ? `<div class="dsub">Расходы из кассы</div>${exps}` : '')
+    + (own ? `<div class="dsub">Возвраты владельцу из кассы</div>${own}` : '');
 }
 function accCollectDrawer(){
   drawerUserId = null; drawerPCId = null; // шторка — книги, не гостя и не ПК: живые обновления её не перерисуют
@@ -5770,9 +5787,11 @@ function paintExp(){
       <div class="kpi">из них VAT <b>${fmtPLN(t.vat_pln)} zł</b></div>
       <div class="kpi">без VAT <b>${fmtPLN(t.net_pln)} zł</b></div>
       <div class="kpi">Записей <b>${t.count || 0}</b></div>
+      ${debtKpi(d.owner_debt)}
     </div>
     <div class="toolrow">
       <button class="btn mini" id="expNewBtn" onclick="expOpen('')"><span data-ic="plus"></span>Внести расход</button>
+      <button class="btn ghost mini" id="expDebtBtn" onclick="debtOpen('bank')"><span data-ic="coins"></span>Вернуть владельцу</button>
       <select id="expCat" class="input" style="width:auto" aria-label="Категория" onchange="expFilt.category=this.value; renderExp()">
         <option value="">Все категории</option>${cur.map(c => `<option value="${c.id}"${expFilt.category === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       <select id="expMethod" class="input" style="width:auto" aria-label="Способ" onchange="expFilt.method=this.value; renderExp()">
@@ -5847,6 +5866,7 @@ function expPaint(){
     <div id="efNet" class="muted">без VAT: —</div>
     <div class="segs" id="efMethod">${EXP_METHODS.map(([k, n]) => `<button class="${f.method === k ? 'on' : ''}" onclick="expForm.method='${k}'; segOn(this); expTillHint()">${n}</button>`).join('')}</div>
     <div id="efTillHint" class="muted${f.method === 'till' ? '' : ' hidden'}">Из кассы — деньги ушли из ящика. За сегодня «должно быть в ящике» уменьшится сразу; за прошедший день, закрытый сдачей, — ящик не тронет, а объяснит расхождение той сдачи (видно в «Кассе»).</div>
+    <div id="efOwnerHint" class="muted${f.method === 'owner' ? '' : ' hidden'}">Личные деньги владельца — клуб будет должен их вернуть: сумма ляжет в «Клуб должен владельцу» над списком, вернуть — «Вернуть владельцу», из кассы или с банка.</div>
     <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="efPaid" type="checkbox"${f.paid ? ' checked' : ''}> оплачен</label>
     <input id="efDoc" class="input" maxlength="64" placeholder="Номер документа — FV 12/09/2026" value="${esc(f.doc)}">
     <input id="efNote" class="input" maxlength="500" placeholder="Заметка" value="${esc(f.note)}">
@@ -5861,7 +5881,10 @@ function expPaint(){
   expNet();
   if (f.photo) expPhotoShow(f.id);
 }
-function expTillHint(){ const h = document.getElementById('efTillHint'); if (h) h.classList.toggle('hidden', expForm.method !== 'till'); }
+function expTillHint(){
+  const h = document.getElementById('efTillHint'); if (h) h.classList.toggle('hidden', expForm.method !== 'till');
+  const o = document.getElementById('efOwnerHint'); if (o) o.classList.toggle('hidden', expForm.method !== 'owner'); // З9-и3б
+}
 // З9-и3а: что расход сделал с ящиком — к тосту, только если это изменилось (prev — прежний drawer_at); сдача-начальный
 // остаток ничего не объясняет — расход ушёл до того, как ящик завели, и в остатке уже учтён
 function expTillNote(e, prev){
@@ -5909,8 +5932,9 @@ async function expSave(){
     let ph = '';
     if (file){ await expPhotoUpload(d.expense.id, file); ph = ' · фото документа приложено'; }
     const was = f.id ? ((expData || {}).expenses || []).find(x => x.id === f.id) : null, tn = expTillNote(d.expense, was ? was.drawer_at : null);
-    toast(f.id ? (d.changed || file ? '✓ Расход поправлен' + ph + tn : 'Изменений нет')
-               : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category + ph + tn);
+    const dn = debtNote(d.owner_debt, (expData || {}).owner_debt); // З9-и3б: личными — долг клуба владельцу изменился
+    toast(f.id ? (d.changed || file ? '✓ Расход поправлен' + ph + tn + dn : 'Изменений нет')
+               : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category + ph + tn + dn);
     closeDrawer();
     renderExp();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -5954,12 +5978,96 @@ async function expStorno(){
   const reason = document.getElementById('efReason').value.trim();
   if (!reason){ toast('⚠ У сторно нужна причина'); return; }
   try{
-    await api('/admin/expenses/' + expForm.id + '/storno', {method:'POST', body: JSON.stringify({reason})});
-    toast('✓ Расход сторнирован — строка осталась, в итоги не входит');
+    const d = await api('/admin/expenses/' + expForm.id + '/storno', {method:'POST', body: JSON.stringify({reason})});
+    toast('✓ Расход сторнирован — строка осталась, в итоги не входит' + debtNote(d.owner_debt, (expData || {}).owner_debt));
     closeDrawer();
     renderExp();
   }catch(e){ toast('⚠ ' + e.message); }
 }
+
+/* ── З9-и3б (№62): долг клуба владельцу, только владельцу. Расход «Личные деньги владельца» — клуб потратил деньги
+   владельца и должен их вернуть: долг = оплаченные расходы личными без сторно − возвраты без отменённых, за всё время
+   (не за период). Возврат — из кассы (деньги ушли из ящика: «должно быть» меньше с минуты записи, в «Кассе» — колонка
+   «Владельцу») или с банка (ящик не трогает); больше долга сервер не примет. Ошибочный возврат отменяется — строка
+   остаётся бледной, долг и ящик возвращаются. Сервер — owner_debt.go. ── */
+let debtData = null, debtForm = {amount:'', method:'bank', note:''};
+const DEBT_METHODS = [['till', 'Из кассы'], ['bank', 'С банка']];
+// долг словами — для тостов и шторки: меньше нуля — вернули больше, чем владелец потратил личными
+function debtWords(v){
+  return v > 0 ? 'клуб должен владельцу ' + fmtPLN(v) + ' zł' : v < 0 ? 'вернули владельцу лишнее: ' + fmtPLN(-v) + ' zł' : 'клуб ничего не должен владельцу';
+}
+// к тосту — только если долг изменился
+function debtNote(od, was){ return od && was && Math.abs(od.debt_pln - was.debt_pln) >= 0.005 ? ' · ' + debtWords(od.debt_pln) : ''; }
+function debtKpi(od){
+  const v = (od || {}).debt_pln || 0;
+  return `<div class="kpi" id="expDebtKpi" onclick="debtOpen('bank')" title="расходы «Личные деньги владельца» (оплаченные, без сторно) минус возвраты — за всё время, не за период · нажми — вернуть и история">${
+    v < 0 ? 'Вернули владельцу лишнее <b id="expDebt" style="color:var(--orange)">' + fmtPLN(-v) : 'Клуб должен владельцу <b id="expDebt">' + fmtPLN(v)} zł</b></div>`;
+}
+async function debtOpen(method){
+  if (method) debtForm.method = method;
+  try{ debtData = await api('/admin/owner-debt'); }catch(e){ toast('⚠ ' + e.message); return; }
+  debtPaint();
+}
+function debtHint(){
+  return debtForm.method === 'till' ? 'Из кассы — деньги уходят из ящика: «должно быть в ящике» станет меньше с этой минуты, в «Кассе» — колонка «Владельцу».'
+    : 'С банка — перевод со счёта клуба, ящик не трогает.';
+}
+function debtRow(r){
+  const at = x => ruDate(String(x).slice(0, 10)) + ' ' + hhmm(x);
+  return `<div class="odRow${r.voided_at ? ' off' : ''}">${at(r.created_at)} · <span class="odT"><b>${esc(r.nickname || '—')}</b> — ${fmtPLN(r.amount_pln)} zł ${
+    r.method === 'till' ? 'из кассы' : 'с банка'}${r.note ? ' · ' + esc(r.note) : ''}</span>${r.voided_at
+    ? ' · отменил ' + esc(r.voided_by_nickname || '—') + ' ' + at(r.voided_at)
+    : ` <button class="btn ghost mini" onclick="armButton(this, 'Точно отменить?', () => debtVoid('${r.id}', ${r.method === 'till'}, true))">Отменить</button>`}</div>`;
+}
+function debtPaint(){
+  const d = debtData || {}, od = d.owner_debt || {}, v = od.debt_pln || 0, list = d.repayments || [];
+  drawerUserId = null; drawerPCId = null; // шторка бухгалтерии — живые обновления её не перерисуют
+  const amount = debtForm.amount !== '' ? debtForm.amount : (v > 0 ? String(v) : '');
+  openDrawer('Долг клуба владельцу', `<div class="uform">
+    <div id="odNow">${v > 0 ? 'Клуб должен владельцу <b>' + fmtPLN(v) + ' zł</b>'
+      : v < 0 ? '<span style="color:var(--orange)">Вернули владельцу лишнее: <b>' + fmtPLN(-v) + ' zł</b></span> — больше, чем он потратил личными; отмени лишний возврат ниже'
+      : 'Клуб ничего не должен владельцу'}</div>
+    <div class="muted">потрачено личными ${fmtPLN(od.spent_pln || 0)} zł · возвращено ${fmtPLN(od.repaid_pln || 0)} zł — за всё время: расходы «Личные деньги владельца» (оплаченные, без сторно) минус возвраты</div>
+    ${v > 0 ? `<label class="muted">Сколько вернули, zł — сразу весь долг, можно меньше<input id="odAmount" class="input" type="number" min="0.01" step="0.01" placeholder="Сколько вернули, zł"
+           value="${esc(amount)}" oninput="debtForm.amount=this.value" style="margin-top:4px"></label>
+    <div class="segs" id="odMethod">${DEBT_METHODS.map(([k, n]) => `<button class="${debtForm.method === k ? 'on' : ''}" onclick="debtForm.method='${k}'; segOn(this); document.getElementById('odHint').textContent = debtHint()">${n}</button>`).join('')}</div>
+    <div id="odHint" class="muted">${debtHint()}</div>
+    <input id="odNote" class="input" maxlength="200" placeholder="Заметка (необязательно)" value="${esc(debtForm.note)}" oninput="debtForm.note=this.value">
+    <button class="btn" style="width:100%; justify-content:center" id="odSubmit" onclick="armButton(this, 'Ещё раз — записать возврат', () => debtRepay())"><span data-ic="coins"></span>Записать возврат</button>`
+    : v === 0 ? '<div class="muted">Возвращать нечего. Долг появится, когда внесёшь расход способом «Личные деньги владельца».</div>' : ''}
+    <div class="dsub">Возвраты</div>
+    <div id="odList">${list.length ? list.map(debtRow).join('') : '<div class="muted">возвратов ещё не было</div>'}</div>
+  </div>`);
+}
+async function debtRepay(){
+  const el = document.getElementById('odAmount'), v = parseFloat(String(el ? el.value : '').replace(',', '.'));
+  if (!(v > 0)){ toast('⚠ Сколько вернули владельцу — сумма больше нуля'); return; }
+  try{
+    const d = await api('/admin/owner-repayments', {method:'POST', body: JSON.stringify({amount_pln: Math.round(v * 100) / 100, method: debtForm.method, note: debtForm.note.trim()})});
+    const r = d.repayment || {};
+    toast('✓ Вернули владельцу ' + fmtPLN(r.amount_pln) + ' zł ' + (r.method === 'till' ? 'из кассы' : 'с банка') + ' · ' + debtWords((d.owner_debt || {}).debt_pln || 0)
+      + (r.method === 'till' && !d.baseline ? ' · в ящике должно быть ' + fmtPLN(d.expected_pln) + ' zł' : ''));
+    debtForm = {amount:'', method: debtForm.method, note:''};
+    closeDrawer();
+    renderAcc();
+  }catch(e){
+    if (e.code === 'over_debt' && e.data && e.data.owner_debt){ // кто-то вернул раньше — шторка со свежим остатком
+      debtData.owner_debt = e.data.owner_debt; debtForm.amount = ''; debtPaint();
+      toast('⚠ ' + (e.data.owner_debt.debt_pln > 0 ? 'Клуб должен владельцу ' + fmtPLN(e.data.owner_debt.debt_pln) + ' zł — больше вернуть нельзя' : 'Клуб ничего не должен владельцу — возвращать нечего'));
+      return;
+    }
+    toast('⚠ ' + e.message);
+  }
+}
+async function debtVoid(id, till, inDrawer){
+  try{
+    const d = await api('/admin/owner-repayments/' + id + '/void', {method:'POST'});
+    toast('✓ Возврат отменён · ' + debtWords((d.owner_debt || {}).debt_pln || 0) + (till && !d.baseline ? ' · в ящике должно быть ' + fmtPLN(d.expected_pln) + ' zł' : ''));
+    if (inDrawer) debtOpen(); // шторка — со свежей историей
+    renderAcc();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function debtGo(){ accGo('exp'); debtOpen('bank'); }
 
 /* ── Б11-и2: график смен в «Персонале». Сетка недели: строки — активные
    шаблоны, колонки пн–вс; admin читает, owner назначает через drawer и
@@ -6282,6 +6390,7 @@ function coParts(cp){
     + (cp.refunds_pln > 0 ? ' · минус возвраты налом ' + fmtPLN(cp.refunds_pln) : '')
     + (cp.collections_pln > 0 ? ' · минус инкассации ' + fmtPLN(cp.collections_pln) : '')
     + (cp.expenses_pln > 0 ? ' · минус расходы из кассы ' + fmtPLN(cp.expenses_pln) : '') // З9-и3а
+    + (cp.owner_pln > 0 ? ' · минус возвраты владельцу из кассы ' + fmtPLN(cp.owner_pln) : '') // З9-и3б
     + (cp.adjust_pln ? ' · коррекции ' + (cp.adjust_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(cp.adjust_pln)) : '')
     + (m ? ' · из них провёл ты: +' + fmtPLN(m.in_pln || 0) + (m.out_pln > 0 ? ' / −' + fmtPLN(m.out_pln) : '') : '');
 }
@@ -7300,6 +7409,8 @@ const PAL_WORDS = [
    sub:'Бухгалтерия → ящик по дням, инкассации', ic:'coins', run:() => accGo('cash')},
   {who:'owner', words:['расход', 'расходы', 'аренда', 'коммуналка', 'контрагент', 'счёт', 'фактура'], name:'Расходы', // З9-и2
    sub:'Бухгалтерия → расходы за период, внести расход', ic:'coins', run:() => accGo('exp')},
+  {who:'owner', words:['долг', 'долг владельцу', 'вернуть владельцу', 'личные', 'личные деньги'], name:'Долг клуба владельцу', // З9-и3б
+   sub:'Бухгалтерия → Расходы: сколько клуб должен, вернуть', ic:'coins', run:() => debtGo()},
   {who:'owner', words:['сдачи', 'сдача кассы', 'расхождение', 'недостача'], name:'Сдачи кассы',
    sub:'Отчёты → смена: кто сколько сдал', ic:'coins', run:() => palGoShift()},
   {who:'owner', words:['зарплата', 'выплата', 'к выплате', 'ставка'], name:'К выплате',

@@ -24,8 +24,9 @@ package main
 // З8-и1 (З-Р1, миграция 070): «должно быть в ящике» — ящик клуба, а не
 // наличные одного админа: остаток прошлой сдачи + всё, что пришло наличными с
 // неё, кто бы ни провёл, − наличные возвраты − инкассации − расходы из кассы
-// (З9-и3а) ± коррекции (счёт — drawer.go). Первая сдача после обновления —
-// нулевая точка. «Из них провёл ты» — справка; дата сдачи и сообщения — как в З1.
+// (З9-и3а) − возвраты владельцу из кассы (З9-и3б) ± коррекции (счёт —
+// drawer.go). Первая сдача после обновления — нулевая точка. «Из них провёл
+// ты» — справка; дата сдачи и сообщения — как в З1.
 
 import (
 	"fmt"
@@ -133,8 +134,9 @@ func closeoutOut(co *models.ShiftCloseout) gin.H {
 	if co.OpeningGrosz != nil { // З8-и1: сдача модели ящика
 		row["opening_pln"], row["in_pln"] = models.PLNFromGrosz(*co.OpeningGrosz), models.PLNFromGrosz(co.InGrosz)
 		row["out_pln"], row["adjust_pln"] = models.PLNFromGrosz(co.OutGrosz), models.PLNFromGrosz(co.AdjustGrosz)
-		row["collections_pln"] = models.PLNFromGrosz(co.OutGrosz - co.RefundsGrosz - co.ExpensesGrosz)
+		row["collections_pln"] = models.PLNFromGrosz(co.OutGrosz - co.RefundsGrosz - co.ExpensesGrosz - co.OwnerGrosz)
 		row["expenses_pln"] = models.PLNFromGrosz(co.ExpensesGrosz) // З9-и3а: расходы из кассы
+		row["owner_pln"] = models.PLNFromGrosz(co.OwnerGrosz)       // З9-и3б: возвраты владельцу из кассы
 	}
 	return row
 }

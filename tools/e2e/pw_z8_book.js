@@ -50,8 +50,8 @@ const z = require('./_z');
     && /сегодня/.test(tr[0].cells[0]), JSON.stringify(tr.map(r => r.date)));
   const cell = async v => v == null ? '—' : await F(v); // «—» — ящика ещё не было
   z.check('строки дней: «на начало» и «на конец» — из книги, конец вчера = начало сегодня',
-    tr[0].cells[1] === await cell(today.opening_pln) && tr[0].cells[8] === await cell(today.closing_pln)
-    && tr[1].cells[8] === await cell(yday.closing_pln) && tr[1].cells[8] === tr[0].cells[1], JSON.stringify(tr.slice(0, 2))); // З9-и3а: + «Расходы»
+    tr[0].cells[1] === await cell(today.opening_pln) && tr[0].cells.at(-1) === await cell(today.closing_pln)
+    && tr[1].cells.at(-1) === await cell(yday.closing_pln) && tr[1].cells.at(-1) === tr[0].cells[1], JSON.stringify(tr.slice(0, 2))); // «на конец» — последняя колонка (З9-и3а: + «Расходы», З9-и3б: + «Владельцу»)
   await z.shot(boss, 'z8_book');
   await boss.click(`#accBody tr.accDay[data-date="${z.clubDay(0)}"]`); await z.sleep(400);
   const det = await z.text(boss, '#accBody tr.accDet');
@@ -117,7 +117,7 @@ const z = require('./_z');
     const c = document.querySelector('#accBody tr.accDay'), lab = c ? [...c.querySelectorAll('.accL')].filter(x => x.offsetParent).map(x => x.textContent) : [];
     return { fits: r.scrollWidth <= r.clientWidth && bs.every(b => b.getBoundingClientRect().right <= innerWidth), n: bs.length, lab, page: document.documentElement.scrollWidth }; });
   z.check('телефон 360 px: нижняя панель владельца — все 12 кнопок на экране, у чисел дня подписи', pr.fits && pr.n === 12 && pr.page <= 360
-    && pr.lab.join(',') === 'на начало,пришло,возвраты,инкассации,расходы,коррекции,расхождения,на конец', JSON.stringify(pr));
+    && pr.lab.join(',') === 'на начало,пришло,возвраты,инкассации,расходы,владельцу,коррекции,расхождения,на конец', JSON.stringify(pr));
   await ph.evaluate(() => document.querySelector('#accBody .tablewrap').scrollIntoView());
   await z.shot(ph, 'z8_book_phone');
   await z.done();

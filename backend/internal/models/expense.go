@@ -101,3 +101,34 @@ func (e *Expense) AfterFind(tx *gorm.DB) error {
 }
 
 func (Expense) TableName() string { return "expenses" }
+
+// OwnerRepayment — возврат владельцу его личных денег, потраченных на клуб
+// (миграция 073, З9-и3б): из кассы (ушло из ящика) или с банка (ящик не
+// трогает). «Клуб должен владельцу» = оплаченные расходы личными − возвраты.
+// Отменённый (VoidedAt) не считается ни в долге, ни в ящике.
+type OwnerRepayment struct {
+	ID          uuid.UUID  `json:"id"           gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ClubID      uuid.UUID  `json:"club_id"      gorm:"type:uuid;not null"`
+	AmountGrosz int64      `json:"amount_grosz" gorm:"not null"`
+	Method      string     `json:"method"       gorm:"size:8;not null"`
+	Note        string     `json:"note"         gorm:"not null;default:''"`
+	CreatedBy   *uuid.UUID `json:"created_by,omitempty" gorm:"type:uuid"`
+	CreatedAt   time.Time  `json:"created_at"`
+	VoidedAt    *time.Time `json:"voided_at,omitempty"`
+	VoidedBy    *uuid.UUID `json:"voided_by,omitempty"  gorm:"type:uuid"`
+}
+
+// Откуда вернули владельцу.
+const (
+	RepayTill = "till" // из кассы — «должно быть в ящике» меньше
+	RepayBank = "bank" // с банка — ящик не трогает
+)
+
+func (r *OwnerRepayment) BeforeCreate(tx *gorm.DB) error {
+	if r.ID == uuid.Nil {
+		r.ID = uuid.New()
+	}
+	return nil
+}
+
+func (OwnerRepayment) TableName() string { return "owner_repayments" }

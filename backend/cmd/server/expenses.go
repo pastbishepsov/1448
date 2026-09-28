@@ -585,7 +585,7 @@ func handleExpenseList(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"period": p.out(), "expenses": out,
 		"totals": gin.H{"count": count, "amount_pln": models.PLNFromGrosz(gross), "vat_pln": models.PLNFromGrosz(vat),
 			"net_pln": models.PLNFromGrosz(gross - vat)},
-		"by_category": cats})
+		"by_category": cats, "owner_debt": ownerDebtOf(db).out()}) // З9-и3б: клуб должен владельцу — на все даты
 }
 
 // POST /admin/expenses — новый расход (owner).
@@ -633,7 +633,7 @@ func handleExpenseCreate(c *gin.Context) {
 	}
 	fresh := reloadExpense(e.ID)
 	logAdminAction(c, "expense_create", nil, expenseLine(fresh, categoryNames()[fresh.CategoryID.String()]))
-	c.JSON(http.StatusCreated, gin.H{"expense": expenseOutOne(fresh)})
+	c.JSON(http.StatusCreated, gin.H{"expense": expenseOutOne(fresh), "owner_debt": ownerDebtOf(db).out()})
 }
 
 func loadExpense(c *gin.Context) (*models.Expense, bool) {
@@ -716,7 +716,7 @@ func handleExpenseUpdate(c *gin.Context) {
 	}
 	fresh := reloadExpense(cur.ID)
 	logAdminAction(c, "expense_update", nil, names[fresh.CategoryID.String()]+fmt.Sprintf(" · %.2f zł: ", models.PLNFromGrosz(fresh.GrossGrosz))+strings.Join(changes, "; "))
-	c.JSON(http.StatusOK, gin.H{"expense": expenseOutOne(fresh), "changed": len(changes)})
+	c.JSON(http.StatusOK, gin.H{"expense": expenseOutOne(fresh), "changed": len(changes), "owner_debt": ownerDebtOf(db).out()})
 }
 
 // POST /admin/expenses/:id/storno — сторно вместо удаления (owner): причина
@@ -752,7 +752,7 @@ func handleExpenseStorno(c *gin.Context) {
 	}
 	e = reloadExpense(e.ID)
 	logAdminAction(c, "expense_storno", nil, expenseLine(e, categoryNames()[e.CategoryID.String()])+" — «"+reason+"»")
-	c.JSON(http.StatusOK, gin.H{"expense": expenseOutOne(e)})
+	c.JSON(http.StatusOK, gin.H{"expense": expenseOutOne(e), "owner_debt": ownerDebtOf(db).out()})
 }
 
 // PUT /admin/expenses/:id/photo — фото документа (owner; сырое тело, ≤500 КБ).
