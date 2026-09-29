@@ -329,8 +329,11 @@ func main() {
 		own.PATCH("/goods/:id", handleAdminGoodUpdate)
 		own.DELETE("/goods/:id", handleAdminGoodDelete)
 		own.GET("/goods/:id/moves", handleAdminGoodMoves)
-		own.GET("/goods/lots/check", handleGoodsLotsCheck)   // З10-и3: сумма партий = остаток
-		own.PUT("/goods/:id/photo", handleAdminGoodPhotoPut) // фото позиции (Г7)
+		own.GET("/goods/lots/check", handleGoodsLotsCheck)       // З10-и3: сумма партий = остаток
+		own.GET("/supplies/:id/pricing", handleSupplyPricing)    // З10-и5: поставка с ценами
+		own.PUT("/supplies/:id/pricing", handleSupplyPricingPut) // оценить или переоценить: цены строк, документ, расход
+		own.GET("/purchases", handlePurchases)                   // закупки: ждут цен и оценённые — для «Закупок» (З10-и6)
+		own.PUT("/goods/:id/photo", handleAdminGoodPhotoPut)     // фото позиции (Г7)
 		own.DELETE("/goods/:id/photo", handleAdminGoodPhotoDelete)
 		own.GET("/reports/coins", handleReportCoins)  // В4-2: эмиссия и обязательства
 		own.GET("/coins/burn", handleCoinBurnPreview) // В4-3: кто потеряет монеты сейчас

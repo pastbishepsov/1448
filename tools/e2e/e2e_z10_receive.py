@@ -37,9 +37,19 @@ t0 = sql("SELECT now()::text")
 msgs = lambda: rows(f"SELECT visible_to || '|' || text FROM staff_messages WHERE text LIKE '%{MARK[:3]} Приёмка%' AND created_at > '{t0}' ORDER BY created_at")
 
 
+def keys_of(x):
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield k.lower()
+            yield from keys_of(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from keys_of(v)
+
+
 def no_prices(x):
-    """нигде в ответе нет цены закупки: ни одного ключа с price, grosz, cost"""
-    return not any(k in json.dumps(x, ensure_ascii=False).lower() for k in ('"price', 'grosz', '"cost'))
+    """нигде в ответе нет цены закупки: ни одного ключа с price, grosz, cost, total, amount, vat, expense (статус «priced» — не ключ)"""
+    return not any(w in k for k in keys_of(x) for w in ("price", "grosz", "cost", "total", "amount", "vat", "expense"))
 
 
 def line(sup, gid):

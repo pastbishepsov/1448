@@ -129,8 +129,16 @@ type lotAlloc struct {
 // списание (последний тронутый — первым), без источника — в первый кусок.
 // Повторная оценка — та же разбивка всех движений строки заново. Возвращает
 // куски с остатками и долю каждого движения по кускам (allocs[i] — для
-// entries[i]). Цена меньше нуля, кусок без штук, «пришло» не сходится с
-// кусками, списание больше, чем было в кусках, — errLotSplit. Чистая, тест.
+// entries[i]).
+//
+// Правки приёмки (З10-и4) вызывающий складывает с приходом: «пришло» строки —
+// после правок. Если строку исправили вниз после продажи, отменённой потом, то в
+// прошлом списание могло быть больше, чем теперь в кусках, — это перебор: он
+// берётся «сверх кусков» последним, и возврат его списания снимает перебор
+// первым (доля — на последнем куске, туда и обратно). Перебор, который так и не
+// вернули, в конце берётся из кусков по порядку, с того, что в них осталось.
+// Цена меньше нуля, кусок без штук, «пришло» не сходится с кусками, перебора
+// больше, чем осталось в кусках, — errLotSplit. Чистая, тест.
 func lotSplit(prices []lotPrice, entries []lotEntry) ([]lotPiece, [][]lotAlloc, error) {
 	if len(prices) == 0 {
 		return nil, nil, errLotSplit
@@ -155,9 +163,14 @@ func lotSplit(prices []lotPrice, entries []lotEntry) ([]lotPiece, [][]lotAlloc, 
 	if in != total {
 		return nil, nil, errLotSplit // куски не сходятся с «пришло»
 	}
+	const over = -1 // «кусок» перебора: списали больше, чем было в кусках
+	last := len(pieces) - 1
 	allocs := make([][]lotAlloc, len(entries))
-	filled := make([]int, len(pieces)) // сколько прихода уже разложено по куску
-	took := map[uuid.UUID][]lotAlloc{} // списание → из каких кусков взяло (невозвращённое)
+	filled := make([]int, len(pieces))    // сколько прихода уже разложено по куску
+	took := map[uuid.UUID][]lotAlloc{}    // списание → из каких кусков взяло (невозвращённое)
+	pos := map[uuid.UUID]int{}            // списание → его номер в entries
+	overOut := make([]int, len(entries))  // перебор, взятый списанием
+	overBack := make([]int, len(entries)) // перебор, снятый возвратом (или вернувшийся к списанию)
 	for i, e := range entries {
 		switch {
 		case e.In: // приход — по кускам их количествами, по порядку
@@ -176,6 +189,7 @@ func lotSplit(prices []lotPrice, entries []lotEntry) ([]lotPiece, [][]lotAlloc, 
 				q -= n
 			}
 		case e.Qty < 0: // списание — FIFO по кускам
+			pos[e.Move] = i
 			q := -e.Qty
 			for k := range pieces {
 				if q == 0 {
@@ -190,8 +204,9 @@ func lotSplit(prices []lotPrice, entries []lotEntry) ([]lotPiece, [][]lotAlloc, 
 				took[e.Move] = append(took[e.Move], lotAlloc{k, n})
 				q -= n
 			}
-			if q > 0 {
-				return nil, nil, errLotSplit // списали больше, чем было в кусках
+			if q > 0 { // перебор — сверх кусков, последним
+				overOut[i] = q
+				took[e.Move] = append(took[e.Move], lotAlloc{over, q})
 			}
 		case e.Qty > 0: // возврат — туда, откуда взяло его списание
 			q := e.Qty
@@ -203,15 +218,46 @@ func lotSplit(prices []lotPrice, entries []lotEntry) ([]lotPiece, [][]lotAlloc, 
 						continue
 					}
 					src[j].Qty -= n
+					q -= n
+					if src[j].Piece == over { // перебор снят: доля — на последнем куске, туда и обратно
+						overBack[i] += n
+						overBack[pos[*e.Source]] += n
+						continue
+					}
 					pieces[src[j].Piece].Left += n
 					allocs[i] = append(allocs[i], lotAlloc{src[j].Piece, n})
-					q -= n
 				}
 			}
 			if q > 0 { // без источника (или вернули больше, чем взяли из строки) — в первый кусок
 				pieces[0].Left += q
 				allocs[i] = addAlloc(allocs[i], 0, q)
 			}
+		}
+	}
+	for i, e := range entries {
+		switch {
+		case e.Qty < 0 && overOut[i] > 0: // перебор списания
+			if back := overBack[i]; back > 0 {
+				allocs[i] = addAlloc(allocs[i], last, -back)
+			}
+			q := overOut[i] - overBack[i] // не вернули — из того, что осталось в кусках, по порядку
+			for k := range pieces {
+				if q == 0 {
+					break
+				}
+				n := min(pieces[k].Left, q)
+				if n <= 0 {
+					continue
+				}
+				pieces[k].Left -= n
+				allocs[i] = addAlloc(allocs[i], k, -n)
+				q -= n
+			}
+			if q > 0 {
+				return nil, nil, errLotSplit // списали больше, чем было в кусках, и не вернули
+			}
+		case e.Qty > 0 && overBack[i] > 0: // возврат, снявший перебор
+			allocs[i] = addAlloc(allocs[i], last, overBack[i])
 		}
 	}
 	return pieces, allocs, nil

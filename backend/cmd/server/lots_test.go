@@ -157,6 +157,18 @@ func TestLotSplit(t *testing.T) {
 		{"цена меньше нуля", []lotPrice{{30, -1}}, []lotEntry{{Move: in, Qty: 30, In: true}}, "", "", errLotSplit},
 		{"цен нет", nil, []lotEntry{{Move: in, Qty: 30, In: true}}, "", "", errLotSplit},
 		{"списали больше, чем было", two, []lotEntry{{Move: in, Qty: 30, In: true}, {Move: s1, Qty: -31}}, "", "", errLotSplit},
+		// З10-и5: приняли 35, продали 30, отменили 25, правкой приёмки строка стала 10 — «пришло» 10 после правок
+		{"правка вниз после продажи и отмены — перебор на последний кусок, возврат снимает его первым",
+			[]lotPrice{{6, 250}, {4, 280}}, []lotEntry{{Move: in, Qty: 10, In: true}, {Move: s1, Qty: -30}, {Move: m(4), Qty: 25, Source: &s1}},
+			"1/6@250 4/4@280 ", "0:+6 1:+4 | 0:-6 1:-24 | 1:+24 0:+1 ", nil},
+		{"перебор на один кусок — туда же", []lotPrice{{10, 250}}, []lotEntry{{Move: in, Qty: 10, In: true}, {Move: s1, Qty: -12}, {Move: m(4), Qty: 12, Source: &s1}},
+			"10/10@250 ", "0:+10 | 0:-12 | 0:+12 ", nil},
+		{"перебор не вернули, а в кусках пусто — ошибка", two, []lotEntry{{Move: in, Qty: 30, In: true}, {Move: s1, Qty: -32}, {Move: m(4), Qty: 1, Source: &s1}},
+			"", "", errLotSplit},
+		// приняли 35, продали 25 и 5, первую продажу отменили, строку исправили до 10: вторая продажа — по первой цене
+		{"перебор второй продажи, её не вернули — из кусков по порядку, с того, что осталось",
+			[]lotPrice{{6, 100}, {4, 200}}, []lotEntry{{Move: in, Qty: 10, In: true}, {Move: s1, Qty: -25}, {Move: s2, Qty: -5}, {Move: m(4), Qty: 25, Source: &s1}},
+			"1/6@100 4/4@200 ", "0:+6 1:+4 | 0:-6 1:-19 | 0:-5 | 1:+19 0:+6 ", nil},
 	}
 	for _, c := range cases {
 		ps, as, err := lotSplit(c.prices, c.entries)
