@@ -333,6 +333,8 @@ func main() {
 		own.GET("/supplies/:id/pricing", handleSupplyPricing)    // З10-и5: поставка с ценами
 		own.PUT("/supplies/:id/pricing", handleSupplyPricingPut) // оценить или переоценить: цены строк, документ, расход
 		own.GET("/purchases", handlePurchases)                   // закупки: ждут цен и оценённые — для «Закупок» (З10-и6)
+		own.GET("/goods/:id/lots", handleGoodLots)               // З10-и7: партии позиции — «бой» из выбранной
+		own.PUT("/lots/:id/price", handleLotPrice)               // цена начального остатка и «нашлось»
 		own.PUT("/goods/:id/photo", handleAdminGoodPhotoPut)     // фото позиции (Г7)
 		own.DELETE("/goods/:id/photo", handleAdminGoodPhotoDelete)
 		own.GET("/reports/coins", handleReportCoins)  // В4-2: эмиссия и обязательства

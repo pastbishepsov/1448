@@ -30,6 +30,8 @@ func lotsApply(tx *gorm.DB, op stockOp, moveID uuid.UUID) error {
 	switch {
 	case op.Reason == "supply" && op.Lot != nil:
 		return lotsFix(tx, op, moveID)
+	case op.Delta < 0 && op.Lot != nil: // З10-и7: «бой» из выбранной владельцем партии
+		return lotsTakeLot(tx, op, moveID)
 	case op.Delta < 0:
 		return lotsTake(tx, op, moveID)
 	case op.Reason == "supply":

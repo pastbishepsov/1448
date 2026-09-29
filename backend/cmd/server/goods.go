@@ -345,6 +345,9 @@ type stockRequest struct {
 	Delta  int    `json:"delta"`
 	Reason string `json:"reason"`
 	Note   string `json:"note"`
+	// З10-и7: корректировка в минус из этой партии (только владелец); нет —
+	// со старых партий первыми.
+	LotID *string `json:"lot_id"`
 }
 
 // POST /admin/goods/:id/stock — приход поставки или корректировка (staff).
@@ -384,6 +387,22 @@ func handleAdminGoodStock(c *gin.Context) {
 		goodFail(c, http.StatusBadRequest, "bad_note")
 		return
 	}
+	// З10-и7: «бой» из выбранной партии — только владелец (в списке партий цены
+	// закупки), только корректировка в минус и только партия этой позиции
+	var lot *models.StockLot
+	if req.LotID != nil && strings.TrimSpace(*req.LotID) != "" {
+		if c.GetString("user_role") != string(models.UserRoleOwner) {
+			goodFail(c, http.StatusForbidden, "lot_owner_only")
+			return
+		}
+		var l models.StockLot
+		id, perr := uuid.Parse(strings.TrimSpace(*req.LotID))
+		if perr != nil || req.Reason != "adjust" || req.Delta >= 0 || db.First(&l, "id = ? AND good_id = ?", id, g.ID).Error != nil {
+			goodFail(c, http.StatusBadRequest, "bad_lot")
+			return
+		}
+		lot = &l
+	}
 	if g.Stock+req.Delta < 0 {
 		goodFail(c, http.StatusConflict, "negative_stock")
 		return
@@ -397,9 +416,24 @@ func handleAdminGoodStock(c *gin.Context) {
 		// проверки выше — вне транзакции; точные (не в минус, не выше потолка) —
 		// условием в stockMove: два одновременных списания не уведут склад в минус
 		// (ревью 26.08), приход не поднимет выше maxStockQty (З6-и3)
-		return stockMove(tx, stockOp{ClubID: g.ClubID, GoodID: g.ID, Delta: req.Delta, Reason: req.Reason,
-			Note: note, By: &adminID, Price: g.PricePLN, Cap: true})
+		op := stockOp{ClubID: g.ClubID, GoodID: g.ID, Delta: req.Delta, Reason: req.Reason,
+			Note: note, By: &adminID, Price: g.PricePLN, Cap: true}
+		if lot != nil {
+			op.Lot = &lot.ID
+		}
+		return stockMove(tx, op)
 	})
+	lotName := ""
+	if lot != nil {
+		lotName = lotTitle(*lot, supplyTimes(lot.SupplyID))
+	}
+	if errors.Is(err, errLotShort) {
+		var l models.StockLot
+		db.First(&l, "id = ?", lot.ID)
+		c.JSON(http.StatusConflict, gin.H{"code": "lot_short", "left": l.QtyLeft,
+			"message": fmt.Sprintf("В партии «%s» осталось %d шт — меньше, чем списываешь", lotName, l.QtyLeft)})
+		return
+	}
 	if errors.Is(err, errNegativeStock) {
 		goodFail(c, http.StatusConflict, "negative_stock")
 		return
@@ -416,6 +450,9 @@ func handleAdminGoodStock(c *gin.Context) {
 	action := "stock_in"
 	if req.Reason == "adjust" {
 		action = "stock_adjust"
+	}
+	if lotName != "" {
+		note = strings.TrimSpace(note + " · из партии: " + lotName) // без цены: журнал корректировок видит и админ
 	}
 	logAdminAction(c, action, nil, fmt.Sprintf("%s · %+d → %d%s", g.Name, req.Delta, g.Stock, noteSuffix(note)))
 	if req.Reason == "supply" { // З10-и4: приход — поставка из одной строки, в канал всем, как приёмка

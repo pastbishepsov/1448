@@ -629,6 +629,7 @@
   .purTotal{display:flex; justify-content:space-between; gap:8px; padding:8px 0 2px; border-top:1px solid var(--hair); font-size:15px}
   .purFlag{color:var(--orange); font-size:12px; margin-top:2px}
   .refList td.purWhat{white-space:normal}
+  .refList .purLotPrice{width:110px}
 </style>
 </head>
 <body>
@@ -3970,7 +3971,7 @@ const AUD_GROUPS = {
           'owner_repay','owner_repay_void', // З9-и3б
           'expense_category_create','expense_category_update','counterparty_update','expense_methods', // З9-и4: справочники
           'expense_template_create','expense_template_update', // З9-и5: регулярные расходы (всё это видит только владелец)
-          'supply_price'], // З10-и6: цены поставки — только владелец
+          'supply_price', 'lot_price'], // З10-и6, З10-и7: цены поставки и партий без поставки — только владелец
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -4019,6 +4020,7 @@ const AUD_LABEL = {
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
   supply_receive:'приёмка', supply_edit:'приёмка: правка', supply_cancel:'приёмка: отмена', // З10-и4
   supply_price:'закупка: цены', // З10-и6
+  lot_price:'партия: цена', // З10-и7
   // Эти виды сервер писал давно, а журнал печатал их сырым английским
   // идентификатором (ревью 26.08).
   guest_update:'гость: правка данных', password_reset:'сброс пароля',
@@ -4060,6 +4062,7 @@ const AUD_ICON = {
   stock_in:'box', stock_adjust:'wrench',
   supply_receive:'box', supply_edit:'edit', supply_cancel:'cross', // З10-и4
   supply_price:'coins', // З10-и6
+  lot_price:'coins', // З10-и7
   guest_update:'edit', password_reset:'users', // ревью 26.08
   pc_hold:'clock', pc_unhold:'check', pc_release:'check', // Ж4-и3
   seat_cancel:'cross', session_move:'monitor',
@@ -5131,22 +5134,37 @@ function stockDrawer(id){
     </div>
     <input id="stk_delta" class="input" type="number" placeholder="Сколько штук (приход — плюсом)" value="">
     <input id="stk_note" class="input" placeholder="Причина (для корректировки обязательна)">
+    ${isOwner() ? `<select id="stk_lot" class="input hidden" aria-label="Из какой партии списать"><option value="">Со старых партий первыми</option></select>` : ''}
     <div class="muted" id="stk_hint">Приход — поставка из одной строки: остаток вырастет сразу, цену закупки поставит владелец.</div>
     <div style="display:flex; gap:10px">
       <button class="btn mini" onclick="saveStock('${g.id}')"><span data-ic="save"></span>Записать</button>
       <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
     </div>
   </div>`);
-  stockKindV = 'supply';
+  stockKindV = 'supply'; stockGood = id;
 }
-let stockKindV = 'supply';
+let stockKindV = 'supply', stockGood = null;
 function stockKind(k){
   stockKindV = k;
   document.getElementById('stk_supply').classList.toggle('on', k === 'supply');
   document.getElementById('stk_adjust').classList.toggle('on', k === 'adjust');
   setText('stk_hint', k === 'supply'
     ? 'Приход — поставка из одной строки: остаток вырастет сразу, цену закупки поставит владелец.'
-    : 'Корректировка списывает со склада (бой, порча, пересчёт) — минусом. Причину увидит владелец в отчёте о потерях.');
+    : 'Корректировка списывает со склада (бой, порча, пересчёт) — минусом. Причину увидит владелец в отчёте о потерях.'
+      + (isOwner() ? ' Минус — из выбранной партии: «Потери» по себестоимости — по её цене. Плюс («нашлось») — новая партия без цены: цену ставишь в «Закупках».' : ''));
+  const sel = document.getElementById('stk_lot'); // З10-и7: партия — только у владельца
+  if (sel){ sel.classList.toggle('hidden', k !== 'adjust'); if (k === 'adjust') stockLots(); }
+}
+// З10-и7 (№68; решение основателя 29.09): партии позиции для «боя» — откуда, сколько осталось, цена за штуку
+async function stockLots(){
+  const sel = document.getElementById('stk_lot');
+  if (!sel || sel.dataset.loaded) return;
+  try{
+    const d = await api('/admin/goods/' + stockGood + '/lots');
+    sel.innerHTML = '<option value="">Со старых партий первыми (как у админа)</option>' + (d.lots || []).map(l => `<option value="${l.id}">${esc(l.title)} · осталось ${l.qty_left} из ${l.qty_in} · ${
+      l.price_pln != null ? fmtPLN(l.price_pln) + ' zł/шт' : 'без цены'}</option>`).join('');
+    sel.dataset.loaded = '1';
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 async function saveStock(id){
   const delta = parseInt(document.getElementById('stk_delta').value, 10);
@@ -5154,9 +5172,10 @@ async function saveStock(id){
   if (!delta){ toast('⚠ Укажи количество'); return; }
   if (stockKindV === 'adjust' && !note){ toast('⚠ У корректировки должна быть причина'); return; }
   try{
+    const sel = document.getElementById('stk_lot'), lot = stockKindV === 'adjust' && delta < 0 && sel ? sel.value : ''; // З10-и7
     await api('/admin/goods/' + id + '/stock', {method:'POST', body:JSON.stringify(
-      {delta: stockKindV === 'supply' ? Math.abs(delta) : delta, reason: stockKindV, note})});
-    toast('✓ Склад обновлён');
+      Object.assign({delta: stockKindV === 'supply' ? Math.abs(delta) : delta, reason: stockKindV, note}, lot ? {lot_id: lot} : {}))});
+    toast('✓ Склад обновлён' + (lot ? ' · из партии «' + sel.selectedOptions[0].text.split(' · ')[0] + '»' : ''));
     closeDrawer();
     renderGoods();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -5318,9 +5337,37 @@ function paintPur(){
         <td class="purWhat">${s.expense ? esc(s.expense.category || '—') + ' · ' + (EXP_METHOD_RU[s.method] || esc(s.method || '')) + (s.expense.paid ? '' : ' · не оплачен')
           : '<span class="muted">без расхода — сумма 0</span>'}${purExpFlag(s.expense)}</td>
         <td class="refAct"><button class="btn ghost mini" onclick="purOpen('${s.id}')"><span data-ic="edit"></span>Цены</button></td></tr>`).join('')}
-    </table></div>` : '<div class="empty">Оценённых поставок ещё нет</div>'}`;
+    </table></div>` : '<div class="empty">Оценённых поставок ещё нет</div>'}
+    ${purLotsBlock(d)}`;
   mountIcons(box);
   accBadgeSet(undefined, w.length); // число «ждут цен» — по списку
+}
+// З10-и7 (решение основателя 29.09): партии без поставки — начальный остаток и «нашлось» (Д5): одна цена за штуку, без
+// VAT и без расхода — это не покупка; нужна для себестоимости в «Потерях» и марже. Без цены — сверху
+function purLotsBlock(d){
+  const lots = d.lots || [];
+  return `<div class="sect" id="purLotsHead">Начальный остаток и «нашлось» · без цены: ${d.lots_unpriced || 0}</div>
+    <div class="muted" style="margin:-4px 0 10px">Партии без поставки: остаток на момент включения партий и найденное при пересчёте. Цена за штуку — для себестоимости в «Потерях» и марже; расхода нет — это не покупка.</div>
+    ${lots.length ? `<div class="tablewrap"><table class="refList" id="purLots">
+      <tr><th>Позиция</th><th>Откуда</th><th>Пришло · осталось</th><th>Цена за штуку, zł</th><th></th></tr>
+      ${lots.map(l => `<tr class="purLot" data-id="${l.id}">
+        <td><b>${esc(l.name)}</b></td>
+        <td class="muted">${esc(l.title)}</td>
+        <td>${l.qty_in}&nbsp;·&nbsp;${l.qty_left}</td>
+        <td><input class="input purLotPrice" type="number" min="0" step="0.01" placeholder="без цены" value="${l.price_pln == null ? '' : l.price_pln}" aria-label="цена за штуку — ${esc(l.name)}"></td>
+        <td class="refAct"><button class="btn ghost mini" onclick="purLotSave('${l.id}', this)"><span data-ic="save"></span>Записать</button></td></tr>`).join('')}
+    </table></div>` : '<div class="empty">Партий без поставки нет</div>'}`;
+}
+async function purLotSave(id, btn){
+  const inp = btn.closest('tr').querySelector('input'), raw = String(inp.value).trim().replace(',', '.'), v = parseFloat(raw);
+  if (raw === '' || isNaN(v) || v < 0 || Math.abs(v * 100 - Math.round(v * 100)) > 1e-6){ toast('⚠ Цена за штуку — от 0, не больше двух знаков после запятой'); return; }
+  btn.disabled = true;
+  try{
+    const l = (await api('/admin/lots/' + id + '/price', {method:'PUT', body: JSON.stringify({price_pln: Math.round(v * 100) / 100})})).lot || {};
+    toast('✓ Цена партии: ' + l.name + ' · ' + l.title + ' — ' + fmtPLN(l.price_pln) + ' zł за штуку');
+    purData = null; renderPur();
+  }catch(e){ toast('⚠ ' + e.message); }
+  finally{ if (btn.isConnected) btn.disabled = false; }
 }
 async function purOpen(id){
   let s;
@@ -5656,6 +5703,11 @@ function paintMoney(d){
        ${repKpi('Потери', fmtPLN(loss.pln + lostDep) + ' zł', undefined,
                 {title:'склад: списано корректировкой, а не через кассу — ' + loss.units + ' шт за ' + loss.moves + ' движений, ' + fmtPLN(loss.pln) + ' zł'
                        + ' · отыграно по ошибочным депозитам — ' + fmtPLN(lostDep) + ' zł'})}
+       ${repKpi('— склад по себестоимости', fmtPLN(loss.cost_pln || 0) + ' zł', undefined, // З10-и7 (№70)
+                {title:'списано корректировкой — по цене закупки партий, из которых ушло: ' + loss.units + ' шт, по рознице ' + fmtPLN(loss.pln) + ' zł'
+                       + (loss.no_cost_units ? ' · без себестоимости: ' + loss.no_cost_units + ' шт' : '')})}
+       ${loss.no_cost_units > 0 ? repKpi('— без себестоимости', loss.no_cost_units + ' шт', undefined,
+                {title:'ушло корректировкой из партий без цены (или до партий) — цену начальному остатку и «нашлось» ставишь в «Бухгалтерия» → «Закупки»'}) : ''}
        ${lostDep > 0 || loss.deposit_voids > 0 ? repKpi('— по ошибочным депозитам', fmtPLN(lostDep) + ' zł', undefined,
                 {title:'гость успел потратить до отмены депозита — долгом не стало (Ж-Р4), с кошелька снят только остаток · '
                        + (loss.deposit_voids || 0) + ' отмен на ' + fmtPLN(loss.deposit_void_pln || 0) + ' zł за период'}) : ''}
@@ -8096,7 +8148,7 @@ const PAL_WORDS = [
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
    sub:'Каталог → файл JSON', ic:'save', run:() => { nav('catalog'); exportCatalog(); }},
-  {who:'owner', words:['закупки', 'закупка', 'цены поставки', 'оценить поставку', 'ждут цен', 'себестоимость'], name:'Закупки', // З10-и6
+  {who:'owner', words:['закупки', 'закупка', 'цены поставки', 'оценить поставку', 'ждут цен', 'себестоимость', 'начальный остаток', 'нашлось', 'цена партии'], name:'Закупки', // З10-и6, З10-и7
    sub:'Бухгалтерия → цены поставок, документ, расход', ic:'box', run:() => accGo('pur')},
   {words:['приёмка', 'поставка', 'поставки', 'принять поставку', 'накладная', 'ждут цен'], name:'Поставки', // З10-и4
    sub:'Товары → принять поставку, исправить', ic:'box', run:() => supGo()},

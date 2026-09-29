@@ -736,5 +736,6 @@ func handlePurchases(c *gin.Context) {
 		supplyFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"waiting": pricingOut(waiting), "priced": pricingOut(priced)})
+	lots, unpriced := extraLots() // З10-и7: начальный остаток и «нашлось» — цены владельца
+	c.JSON(http.StatusOK, gin.H{"waiting": pricingOut(waiting), "priced": pricingOut(priced), "lots": lots, "lots_unpriced": unpriced})
 }

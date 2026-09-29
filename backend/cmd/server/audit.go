@@ -135,7 +135,7 @@ func handleAdminAudit(c *gin.Context) {
 		return !ownerView && (action == "settings_update" || action == "login_failed" ||
 			action == "shift_close" || action == "cash_correct" || action == "cash_event_void" ||
 			strings.HasPrefix(action, "staff_") || strings.HasPrefix(action, "expense_") || strings.HasPrefix(action, "counterparty_") ||
-			strings.HasPrefix(action, "owner_repay") || action == "supply_price") // З10-и5: цены закупки — только владельцу
+			strings.HasPrefix(action, "owner_repay") || action == "supply_price" || action == "lot_price") // З10-и5, З10-и7: цены закупки — только владельцу
 	}
 
 	type item struct {

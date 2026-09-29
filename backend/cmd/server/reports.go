@@ -484,6 +484,9 @@ func handleReportMoney(c *gin.Context) {
 		Select("COALESCE(-SUM(stock_moves.delta),0) AS units, COUNT(*) AS moves, COALESCE(-SUM(stock_moves.delta * stock_moves.price_pln),0) AS pln").
 		Where("stock_moves.created_at >= ? AND stock_moves.created_at < ? AND stock_moves.reason = ? AND stock_moves.delta < 0",
 			p.From, p.To, "adjust").Scan(&loss)
+	// З10-и7 (№70): и по себестоимости — по цене партий, из которых ушло; ушедшее
+	// из партий без цены (и до партий) — «без себестоимости»
+	lossCost, lossCosted := lossesByCost(p.From, p.To)
 
 	// Ж1-и2 (Ж-Р4): отменённые депозиты. Сам депозит из выручки ушёл целиком
 	// (voided_at IS NULL во всех выручечных запросах выше), но если гость
@@ -586,6 +589,7 @@ func handleReportMoney(c *gin.Context) {
 		},
 		"days": days, "by_admin": byAdmin, "top_goods": topGoods,
 		"losses": gin.H{"units": loss.Units, "pln": math.Round(loss.Pln*100) / 100, "moves": loss.Moves,
+			"cost_pln": models.PLNFromGrosz(lossCost), "no_cost_units": loss.Units - lossCosted, // З10-и7
 			// Ж1: отменённые депозиты за период и «отыграно по ошибочному депозиту»
 			"deposit_voids": depVoid.Cnt, "deposit_void_pln": math.Round(depVoid.Pln*100) / 100,
 			"unrecovered_pln": math.Round(depVoid.Unrecovered*100) / 100},
