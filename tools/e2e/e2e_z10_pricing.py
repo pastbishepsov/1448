@@ -19,8 +19,8 @@ A, B, C, MARK, CP = "z10 Цены A", "z10 Цены B", "z10 Цены C", "z10 �
 exps = set()
 
 
-def gone():
-    for eid in exps:
+def gone():  # расходы поставок проверки — и заведённые этим прогоном, и оставшиеся от упавшего (заметка «поставка от …: z10 Цены …»)
+    for eid in set(exps) | set(rows("SELECT id FROM expenses WHERE storno_at IS NULL AND note LIKE '%z10 Цены%'")):
         if sql(f"SELECT count(*) FROM expenses WHERE id = '{eid}' AND storno_at IS NULL") == "1":
             api("POST", f"/admin/expenses/{eid}/storno", {"reason": "уборка проверки"}, "boss")
     for n in (A, B, C):

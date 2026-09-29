@@ -2,8 +2,8 @@
 // строками «позиция × штук» и заметкой, тост «✓ Поставка принята: …», строка в списке без единой цены. «Исправить» — шторка
 // с «Принята … · кто», штуки строк; сохранили — у поставки пометка «исправлено ДД.ММ ЧЧ:ММ · admin1», у строки «(было N)».
 // Ушёл товар — отменить нельзя, меньше ушедшего не даёт; вернули — «Отменить поставку» (два нажатия), строки нет.
-// Владелец в «Бухгалтерии»: бейдж раздела вырос на поставку сразу (канал персонала), тост «📦 Приёмка …»; в «Расходах» —
-// «Поставки ждут цен: N» со ссылкой в «Товары» → «Поставки»; в «Журнале» — «приёмка», «приёмка: правка», «приёмка: отмена».
+// Владелец в «Бухгалтерии»: бейдж раздела вырос на поставку сразу (канал персонала), тост «📦 Приёмка …»; у вкладки
+// «Закупки» — своё число, поставка — в «Ждут цен» (З10-и6); в «Журнале» — «приёмка», «приёмка: правка», «приёмка: отмена».
 // Палитра «приёмка» → «Поставки». Телефон 360: список и шторка без горизонтальной прокрутки.
 // Данные: позиции «z10 Приёмка окно» и «z10 Приёмка ящик» (категория z10) заводятся каждый прогон и в конце удаляются
 // вместе с движениями, партиями и поставками; продажа — картой, возвращается.
@@ -59,13 +59,13 @@ const z = require('./_z');
     b1.rail === due0 + sup0 + 1 && b1.tab === b0.tab && b0.rail === due0 + sup0 && b1.title.includes(`поставки ждут цен: ${sup0 + 1}`)
     && bt === '📦 Приёмка — строка в канале персонала', JSON.stringify({ b0, b1, bt, due0, sup0 }));
   await boss.click('#accTabs button[data-t="exp"]'); await z.sleep(1500);
-  const hint = await z.text(boss, '#expSupHint');
-  await z.shot(boss, 'z10_receive_owner_hint');
-  await boss.click('#expSupHint a'); await z.sleep(2000);
-  const w = await boss.evaluate(n => { const h = document.getElementById('supHead'), r = h ? h.getBoundingClientRect() : null;
-    return { tab: curTab, seen: !!r && r.top >= 0 && r.top < innerHeight, row: [...document.querySelectorAll('#suppliesBox tr.supRow')].some(x => x.innerText.includes(n)) }; }, MARK);
-  z.check(`«Расходы»: «Поставки ждут цен: ${sup0 + 1} — «Товары» → «Поставки»», ссылка ведёт к списку поставок`,
-    hint === `Поставки ждут цен: ${sup0 + 1} — «Товары» → «Поставки»` && w.tab === 'goods' && w.seen && w.row, JSON.stringify({ hint, w }));
+  const hint = await boss.evaluate(() => !!document.getElementById('expSupHint'));
+  if (await boss.evaluate(() => !!document.querySelector('#accTabs button[data-t="pur"]'))){ await boss.click('#accTabs button[data-t="pur"]'); await z.sleep(1800); } // на старом коде вкладки нет
+  const w = await boss.evaluate(n => { const t = document.querySelector('#accTabs button[data-t="pur"]');
+    return { n: t && t.dataset.n ? +t.dataset.n : 0, row: [...document.querySelectorAll('#purWait tr.purRow')].some(x => x.innerText.includes(n)) }; }, MARK);
+  await z.shot(boss, 'z10_receive_owner_pur');
+  z.check(`«Бухгалтерия»: у вкладки «Закупки» своё число ${sup0 + 1}, поставка — в «Ждут цен»; строки «Поставки ждут цен» в «Расходах» больше нет (З10-и6)`,
+    w.n === sup0 + 1 && w.row && !hint, JSON.stringify({ hint, w }));
 
   section('исправление');
   await adm.click(`#suppliesBox tr.supRow[data-id="${r1.id}"] button`); await z.sleep(700);

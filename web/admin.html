@@ -616,6 +616,19 @@
   #suppliesBox td.supWhat{white-space:normal}
   #accTabs button[data-n]::after{content:attr(data-n); margin-left:6px; background:rgba(255,39,64,.22); color:var(--acc3); border-radius:8px;
                                  padding:0 6px; font-size:11px; font-variant-numeric:tabular-nums}
+  /* З10-и6: «Закупки» — цены поставки: у строки куски «штук × цена за штуку», итог, пометка расхода */
+  .supBtns{display:inline-flex; gap:6px; flex-wrap:wrap}
+  .purLine{display:flex; flex-direction:column; gap:6px; padding-top:10px; border-top:1px solid var(--hair)}
+  .purLine:first-child{padding-top:0; border-top:0}
+  .purHead{display:flex; justify-content:space-between; align-items:baseline; gap:4px 10px; flex-wrap:wrap}
+  .purHead .purBad{color:var(--orange)}
+  .purPiece{display:flex; gap:6px; align-items:center}
+  .uform .purPiece .input{flex:1 1 0; min-width:0; width:auto}
+  .purPiece .purX{color:var(--dim); flex:none}
+  .purPiece .purSum{flex:none; min-width:64px; text-align:right; font-variant-numeric:tabular-nums; color:var(--dim)}
+  .purTotal{display:flex; justify-content:space-between; gap:8px; padding:8px 0 2px; border-top:1px solid var(--hair); font-size:15px}
+  .purFlag{color:var(--orange); font-size:12px; margin-top:2px}
+  .refList td.purWhat{white-space:normal}
 </style>
 </head>
 <body>
@@ -968,7 +981,7 @@
       <section id="s-acc" class="hidden">
         <!-- З8-и3 (№78): «Бухгалтерия» — только владельцу; вкладки (пока одна — «Касса»):
              ящик клуба по клубным дням, инкассации, коррекции остатка. -->
-        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button><button data-t="refs" onclick="accTabSet('refs')">Справочники</button></div></div>
+        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button><button data-t="pur" onclick="accTabSet('pur')">Закупки</button><button data-t="refs" onclick="accTabSet('refs')">Справочники</button></div></div>
         <div id="accBody"><div class="skel"></div><div class="skel"></div></div>
       </section>
 
@@ -3956,7 +3969,8 @@ const AUD_GROUPS = {
           'expense_create','expense_update','expense_storno', // З9-и2: расходы (видит только владелец)
           'owner_repay','owner_repay_void', // З9-и3б
           'expense_category_create','expense_category_update','counterparty_update','expense_methods', // З9-и4: справочники
-          'expense_template_create','expense_template_update'], // З9-и5: регулярные расходы (всё это видит только владелец)
+          'expense_template_create','expense_template_update', // З9-и5: регулярные расходы (всё это видит только владелец)
+          'supply_price'], // З10-и6: цены поставки — только владелец
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -4004,6 +4018,7 @@ const AUD_LABEL = {
   good_create:'товар: заведён', good_update:'товар: правка', good_delete:'товар: удалён',
   stock_in:'склад: приход', stock_adjust:'склад: корректировка',
   supply_receive:'приёмка', supply_edit:'приёмка: правка', supply_cancel:'приёмка: отмена', // З10-и4
+  supply_price:'закупка: цены', // З10-и6
   // Эти виды сервер писал давно, а журнал печатал их сырым английским
   // идентификатором (ревью 26.08).
   guest_update:'гость: правка данных', password_reset:'сброс пароля',
@@ -4044,6 +4059,7 @@ const AUD_ICON = {
   good_create:'plus', good_update:'edit', good_delete:'cross',
   stock_in:'box', stock_adjust:'wrench',
   supply_receive:'box', supply_edit:'edit', supply_cancel:'cross', // З10-и4
+  supply_price:'coins', // З10-и6
   guest_update:'edit', password_reset:'users', // ревью 26.08
   pc_hold:'clock', pc_unhold:'check', pc_release:'check', // Ж4-и3
   seat_cancel:'cross', session_move:'monitor',
@@ -5182,7 +5198,8 @@ function paintSupplies(){
         <td class="muted">${esc(s.received_by || '—')}</td>
         <td class="supWhat">${supLinesHTML(s)}</td>
         <td class="muted" style="white-space:normal">${esc(s.note || '')}</td>
-        <td><button class="btn ghost mini" onclick="supOpen('${s.id}')"><span data-ic="edit"></span>Исправить</button></td></tr>`).join('')}</table>`);
+        <td><span class="supBtns"><button class="btn ghost mini" onclick="supOpen('${s.id}')"><span data-ic="edit"></span>Исправить</button>${
+          isOwner() ? `<button class="btn mini" onclick="purOpen('${s.id}')"><span data-ic="coins"></span>Цены</button>` : ''}</span></td></tr>`).join('')}</table>`);
 }
 function supOpen(id){
   const s = id ? supData.find(x => x.id === id) : null;
@@ -5249,6 +5266,188 @@ async function supCancel(){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 function supGo(){ nav('goods'); setTimeout(() => { const h = document.getElementById('supHead'); if (h) h.scrollIntoView({block:'start'}); }, 700); }
+
+/* ── З10-и6 (№68, №69; решения основателя 28–29.09): «Бухгалтерия» → «Закупки» — ждут цен и оценённые. «Оценить» —
+   шторка цен: у строки одна или несколько цен за штуку — с VAT, сколько заплатили; штук в сумме — сколько пришло после
+   правок приёмки; контрагент (нового заведу при записи), документ, способ, «оплачен», категория расхода — закупочная,
+   по умолчанию «Закупка товаров»; VAT по документу — одной суммой. Поставка сама заведёт расход; поправили его сумму в
+   «Расходах» — переоценка его не тронет, здесь — пометка. Число «ждут цен» — на вкладке «Закупки». Сервер —
+   supplies_pricing.go. ── */
+let purData = null, purForm = null;
+async function renderPur(){
+  const box = document.getElementById('accBody');
+  if (!purData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  try{ await expRefs(); purData = await api('/admin/purchases'); }
+  catch(e){ box.innerHTML = '<div class="muted">Закупки не загрузились: ' + esc(e.message) + '</div>'; return; }
+  paintPur();
+}
+function purLinesText(s){
+  return (s.lines || []).filter(l => l.qty > 0).map(l => esc(l.name) + ' ×' + l.qty).join(', ') || '<span class="muted">—</span>';
+}
+// пометка у расхода поставки: сторнировали или поправили сумму вручную — переоценка его не тронет
+function purExpFlag(e){
+  if (!e) return '';
+  if (e.storno) return '<div class="purFlag">расход сторнирован — переоценка его не тронет и нового не заведёт</div>';
+  if (e.edited) return '<div class="purFlag">расход поправлен вручную' + (e.diff_pln ? ': ' + fmtPLN(e.amount_pln) + ' zł, не равен поставке ('
+    + (e.diff_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(e.diff_pln)) + ')' : '') + ' — переоценка его не тронет</div>';
+  return '';
+}
+function paintPur(){
+  const box = document.getElementById('accBody'), d = purData || {}, w = d.waiting || [], p = d.priced || [];
+  box.innerHTML = `
+    <div class="muted" style="margin:0 0 12px">Поставку принимает админ в «Товарах» — по штукам; цены и документ ставишь ты, поставка сама заведёт расход. Уже проданное разложится по ценам: проданное — по первой цене.</div>
+    <div class="sect" id="purWaitHead">Ждут цен · ${w.length}</div>
+    ${w.length ? `<div class="tablewrap"><table class="refList" id="purWait">
+      <tr><th>Принята</th><th>Кто</th><th>Что</th><th>Заметка</th><th></th></tr>
+      ${w.map(s => `<tr class="purRow" data-id="${s.id}">
+        <td>${supWhen(s.created_at)}${s.edited_at ? `<div class="supEdited">исправлено ${supWhen(s.edited_at)} · ${esc(s.edited_by || '—')}</div>` : ''}</td>
+        <td class="muted">${esc(s.received_by || '—')}</td>
+        <td class="purWhat">${purLinesText(s)}</td>
+        <td class="muted" style="white-space:normal">${esc(s.note || '')}</td>
+        <td class="refAct"><button class="btn mini" onclick="purOpen('${s.id}')"><span data-ic="coins"></span>Оценить</button></td></tr>`).join('')}
+    </table></div>` : '<div class="empty"><span data-ic="box"></span>Поставок без цен нет</div>'}
+    <div class="sect" id="purDoneHead">Оценённые · ${p.length >= 100 ? 'последние 100' : p.length}</div>
+    ${p.length ? `<div class="tablewrap"><table class="refList" id="purDone">
+      <tr><th>Оценена</th><th>Документ</th><th>Контрагент</th><th>Что</th><th>Сумма</th><th>Расход</th><th></th></tr>
+      ${p.map(s => `<tr class="purRow" data-id="${s.id}">
+        <td>${s.priced_at ? supWhen(s.priced_at) : '—'}&nbsp;<span class="muted">· ${esc(s.priced_by || '—')}</span></td>
+        <td>${esc(s.doc_no || '—')}${s.doc_date ? '&nbsp;<span class="muted">от ' + ruDate(s.doc_date) + '</span>' : ''}</td>
+        <td>${esc(s.counterparty || '—')}</td>
+        <td class="purWhat">${purLinesText(s)}</td>
+        <td><b>${fmtPLN(s.total_pln)}&nbsp;zł</b></td>
+        <td class="purWhat">${s.expense ? esc(s.expense.category || '—') + ' · ' + (EXP_METHOD_RU[s.method] || esc(s.method || '')) + (s.expense.paid ? '' : ' · не оплачен')
+          : '<span class="muted">без расхода — сумма 0</span>'}${purExpFlag(s.expense)}</td>
+        <td class="refAct"><button class="btn ghost mini" onclick="purOpen('${s.id}')"><span data-ic="edit"></span>Цены</button></td></tr>`).join('')}
+    </table></div>` : '<div class="empty">Оценённых поставок ещё нет</div>'}`;
+  mountIcons(box);
+  accBadgeSet(undefined, w.length); // число «ждут цен» — по списку
+}
+async function purOpen(id){
+  let s;
+  try{ await expRefs(); s = (await api('/admin/supplies/' + id + '/pricing')).supply; }
+  catch(e){ toast('⚠ ' + e.message); return; }
+  const e = s.expense || null, def = (expCats.find(c => c.code === 'goods') || {}).id || '';
+  purForm = {id, s, cp: s.counterparty || '', doc: s.doc_no || '', date: s.doc_date ? ruDate(s.doc_date) : '',
+    method: s.method || expMethodDef(), paid: e ? e.paid : true, cat: e ? e.category_id : def, vat: e && e.vat_pln ? String(e.vat_pln) : '',
+    lines: (s.lines || []).filter(l => l.qty > 0).map(l => ({good: l.good_id, name: l.name, qty: l.qty, gone: l.gone,
+      pieces: (l.pieces || []).some(p => p.price_pln != null) ? l.pieces.filter(p => p.qty > 0).map(p => ({qty: String(p.qty), price: String(p.price_pln)}))
+        : [{qty: String(l.qty), price: ''}]}))};
+  purPaint();
+}
+function purExpLine(s){
+  const e = s.expense;
+  if (!e) return `<div class="muted" id="purExp">${s.status === 'priced' ? 'Расхода у поставки нет — сумма была 0; с ценами он заведётся сам.'
+    : 'Расход заведётся сам — на сумму поставки, в выбранную категорию.'}</div>`;
+  return `<div class="muted" id="purExp">Расход поставки: ${fmtPLN(e.amount_pln)} zł · ${esc(e.category || '—')} · ${ruDate(e.op_date)}${e.paid ? '' : ' · не оплачен'}${
+    e.storno || e.edited ? '' : ' — переоценка его перепишет'}</div>${purExpFlag(e)}`;
+}
+function purPaint(){
+  const f = purForm, s = f.s, cats = expCats.filter(c => c.purchase && (!c.hidden || c.id === f.cat));
+  drawerUserId = null; drawerPCId = null; // шторка — бухгалтерии, живые обновления её не перерисуют
+  openDrawer(s.status === 'priced' ? 'Цены поставки — переоценка' : 'Цены поставки', `<div class="uform">
+    <div class="muted" id="purWho">Принята ${supWhen(s.created_at)} · ${esc(s.received_by || '—')}${s.edited_at ? ' · <span style="color:var(--orange)">исправлено '
+      + supWhen(s.edited_at) + ' · ' + esc(s.edited_by || '—') + '</span>' : ''}${s.note ? ' · ' + esc(s.note) : ''}</div>
+    <div id="purLines" style="display:flex; flex-direction:column; gap:10px">${f.lines.map((l, i) => `<div class="purLine" data-good="${l.good}">
+      <div class="purHead"><b>${esc(l.name)}</b><span class="muted" id="purQty${i}"></span></div>
+      ${l.pieces.map((p, j) => `<div class="purPiece">
+        <input class="input" type="number" min="1" step="1" placeholder="штук" value="${esc(p.qty)}" aria-label="штук — ${esc(l.name)}" oninput="purForm.lines[${i}].pieces[${j}].qty=this.value; purCalc()">
+        <span class="purX">×</span>
+        <input class="input" type="number" min="0" step="0.01" placeholder="цена за шт, zł" value="${esc(p.price)}" aria-label="цена за штуку — ${esc(l.name)}" oninput="purForm.lines[${i}].pieces[${j}].price=this.value; purCalc()">
+        <span class="purSum" id="purSum${i}_${j}"></span>
+        ${l.pieces.length > 1 ? `<button class="btn ghost mini" title="убрать цену" onclick="purPieceDel(${i}, ${j})">✕</button>` : ''}</div>`).join('')}
+      ${l.pieces.length < 10 ? `<button class="btn ghost mini" style="align-self:flex-start" onclick="purPieceAdd(${i})"><span data-ic="plus"></span>цена</button>` : ''}
+    </div>`).join('')}</div>
+    <div class="purTotal" id="purTotal"></div>
+    <input id="purCp" class="input" list="purCpList" maxlength="128" placeholder="Контрагент — необязательно; нового заведу при записи" value="${esc(f.cp)}">
+    <datalist id="purCpList">${expCps.filter(c => !c.hidden).map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+    <div style="display:flex; gap:8px">
+      <input id="purDoc" class="input" maxlength="64" placeholder="Номер документа" value="${esc(f.doc)}">
+      <input id="purDate" ${DATE_FIELD} aria-label="Дата документа" value="${esc(f.date)}">
+    </div>
+    <div class="segs" id="purMethod">${EXP_METHODS.filter(([k]) => !expMethodsOn || expMethodsOn[k] || f.method === k).map(([k, n]) =>
+      `<button class="${f.method === k ? 'on' : ''}" onclick="purForm.method='${k}'; segOn(this)">${n}</button>`).join('')}</div>
+    <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="purPaid" type="checkbox"${f.paid ? ' checked' : ''}> оплачен</label>
+    <select id="purCat" class="input" aria-label="Категория расхода">${cats.map(c => `<option value="${c.id}"${f.cat === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    <input id="purVat" class="input" type="number" min="0" step="0.01" placeholder="VAT по документу, zł — необязательно" value="${esc(f.vat)}">
+    <div class="muted">Цена за штуку — с VAT, сколько заплатили; VAT по документу — одной суммой, уйдёт в расход. Уже проданное разложится по ценам: проданное — по первой цене. Без даты документа расход ляжет днём приёмки.</div>
+    ${purExpLine(s)}
+    <button class="btn" style="width:100%; justify-content:center" id="purSave" onclick="purSave()"><span data-ic="save"></span>${s.status === 'priced' ? 'Переоценить' : 'Записать цены'}</button>
+  </div>`);
+  purCalc();
+}
+function purKeep(){ // поля документа — в форму: «+ цена» перерисует шторку
+  const f = purForm, v = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  if (!f || !document.getElementById('purSave')) return;
+  f.cp = v('purCp'); f.doc = v('purDoc'); f.date = v('purDate'); f.cat = v('purCat'); f.vat = v('purVat');
+  f.paid = document.getElementById('purPaid').checked;
+}
+function purPieceAdd(i){
+  purKeep();
+  const l = purForm.lines[i], used = l.pieces.reduce((a, p) => a + (parseInt(p.qty, 10) || 0), 0);
+  l.pieces.push({qty: used < l.qty ? String(l.qty - used) : '', price: ''});
+  purPaint();
+}
+function purPieceDel(i, j){ purKeep(); purForm.lines[i].pieces.splice(j, 1); purPaint(); }
+function purNum(v){ const x = parseFloat(String(v).trim().replace(',', '.')); return isNaN(x) ? null : x; }
+function purCalc(){
+  const f = purForm;
+  if (!f) return;
+  let total = 0;
+  f.lines.forEach((l, i) => {
+    let n = 0;
+    l.pieces.forEach((p, j) => {
+      const q = parseInt(p.qty, 10) || 0, pr = purNum(p.price), el = document.getElementById('purSum' + i + '_' + j);
+      n += q;
+      if (pr != null) total += q * Math.round(pr * 100);
+      if (el) el.textContent = pr != null && q ? fmtPLN(q * Math.round(pr * 100) / 100) : '';
+    });
+    const el = document.getElementById('purQty' + i);
+    if (el){
+      el.textContent = 'пришло ' + l.qty + (l.gone ? ' · ушло ' + l.gone : '') + (n !== l.qty ? ' · цен на ' + n + ' шт' : '');
+      el.classList.toggle('purBad', n !== l.qty);
+    }
+  });
+  const t = document.getElementById('purTotal');
+  if (t) t.innerHTML = '<span>Итого по поставке</span><b>' + fmtPLN(total / 100) + ' zł</b>';
+}
+async function purSave(){
+  purKeep();
+  const f = purForm, btn = document.getElementById('purSave'), lines = [];
+  let total = 0;
+  for (const l of f.lines){
+    const prices = [];
+    let n = 0;
+    for (const p of l.pieces){
+      const qs = String(p.qty).trim(), q = parseInt(qs, 10), raw = String(p.price).trim().replace(',', '.'), pr = parseFloat(raw);
+      if (isNaN(q) || String(q) !== qs || q < 1){ toast('⚠ «' + l.name + '»: штук — целое число от 1'); return; }
+      if (raw === '' || isNaN(pr) || pr < 0 || Math.abs(pr * 100 - Math.round(pr * 100)) > 1e-6){ toast('⚠ «' + l.name + '»: цена за штуку — от 0, не больше двух знаков после запятой'); return; }
+      prices.push({qty: q, price_pln: Math.round(pr * 100) / 100});
+      n += q; total += q * Math.round(pr * 100);
+    }
+    if (n !== l.qty){ toast('⚠ «' + l.name + '»: цен на ' + n + ' шт, а пришло ' + l.qty); return; }
+    lines.push({good_id: l.good, prices});
+  }
+  const date = dateOf('purDate', 'Дата документа');
+  if (date === null) return;
+  const vat = String(f.vat || '').trim() === '' ? 0 : purNum(f.vat);
+  if (vat == null || vat < 0 || Math.round(vat * 100) > total){ toast('⚠ VAT — от 0 до суммы поставки'); return; }
+  btn.disabled = true;
+  try{
+    const body = {lines, counterparty_id: await expCounterparty(String(f.cp || '').trim()), doc_no: String(f.doc || '').trim(), doc_date: date,
+      method: f.method, paid: !!f.paid, category_id: f.cat, vat_pln: Math.round(vat * 100) / 100};
+    const d = await api('/admin/supplies/' + f.id + '/pricing', {method:'PUT', body: JSON.stringify(body)});
+    const s = d.supply || {}, cat = (s.expense || {}).category || '';
+    const tail = {created: ' · расход заведён — ' + cat, updated: ' · расход переписан', same: ' · расход без изменений',
+      edited: ' · расход поправлен вручную — не тронут', storno: ' · расход сторнирован — не тронут',
+      none: ' — сумма 0, расхода нет', dropped: ' — сумма 0, расход поставки сторнирован'}[d.expense_action] || '';
+    toast((d.repriced ? '✓ Переоценка: ' : '✓ Поставка оценена: ') + fmtPLN(s.total_pln) + ' zł' + tail);
+    closeDrawer();
+    if (curTab === 'goods') renderGoods(); else if (curTab === 'acc'){ purData = null; expData = null; renderAcc(); }
+    refresh(); // бейдж «Бухгалтерии»
+  }catch(e){ toast('⚠ ' + e.message); }
+  finally{ if (btn.isConnected) btn.disabled = false; }
+}
+function expSupOpen(){ const id = expForm && expForm.supply; if (!id) return; closeDrawer(); purOpen(id); } // из шторки расхода поставки
 
 /* ── В1: отчёты владельца за период (ADMIN.md, спринт В1).
    Один период на четыре разреза: пресеты и произвольный диапазон «с…по…».
@@ -5720,6 +5919,7 @@ async function renderAcc(){
   document.querySelectorAll('#accTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === accTab)); // З9-и2
   if (accTab === 'exp') return renderExp();
   if (accTab === 'refs') return renderRefs(); // З9-и4
+  if (accTab === 'pur') return renderPur(); // З10-и6
   const box = document.getElementById('accBody');
   if (!accData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
   try{ accData = await api('/admin/cash/book?' + accQuery()); }
@@ -5874,7 +6074,7 @@ async function accVoid(id){
    Шторка расхода: дата, категория, контрагент (нового нет в справочнике — заведётся при записи), сумма брутто и
    VAT, способ, оплачен, документ, заметка, фото документа (браузер сжимает до 500 КБ; показывается только
    владельцу — по токену, не ссылкой). Правка — там же, удаления нет — сторно с причиной. Сервер — expenses.go. ── */
-let accTab = (() => { try{ const v = localStorage.getItem('1448a_acctab'); return v === 'exp' || v === 'refs' ? v : 'cash'; }catch(e){ return 'cash'; } })();
+let accTab = (() => { try{ const v = localStorage.getItem('1448a_acctab'); return v === 'exp' || v === 'refs' || v === 'pur' ? v : 'cash'; }catch(e){ return 'cash'; } })();
 function accTabSet(t){
   accTab = t;
   try{ localStorage.setItem('1448a_acctab', t); }catch(e){}
@@ -5889,17 +6089,20 @@ function accGo(t){ accTab = t; try{ localStorage.setItem('1448a_acctab', t); }ca
    Сервер — expense_templates.go. ── */
 const MONTHS_NOM = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
 function tplMonth(iso){ return iso ? MONTHS_NOM[+iso.slice(5, 7) - 1] + ' ' + iso.slice(0, 4) : ''; }
-let accSup = 0; // З10-и4 (решение основателя 28.09): поставки ждут цен — в тот же бейдж «Бухгалтерии»
+let accSup = 0, accDue = 0; // З10-и4 (решение основателя 28.09): поставки ждут цен — в тот же бейдж «Бухгалтерии»
 function accBadgeSet(n, sup){
-  n = n | 0;
+  n = n === undefined ? accDue : n | 0; // З10-и6: без первого числа — прежнее (перерисовка «Закупок»)
+  accDue = n;
   if (sup !== undefined) accSup = sup | 0; // без второго числа — прежнее (перерисовка «Расходов»)
   const all = n + accSup;
-  const b = document.getElementById('accBadge'), t = document.querySelector('#accTabs button[data-t="exp"]');
+  const b = document.getElementById('accBadge'), t = document.querySelector('#accTabs button[data-t="exp"]'),
+        tp = document.querySelector('#accTabs button[data-t="pur"]');
   if (b){
     b.textContent = all || ''; b.classList.toggle('hidden', !all);
-    b.title = all ? [n ? 'регулярные расходы ждут внесения: ' + n : '', accSup ? 'поставки ждут цен: ' + accSup + ' — «Товары» → «Поставки»' : ''].filter(Boolean).join(' · ') : '';
+    b.title = all ? [n ? 'регулярные расходы ждут внесения: ' + n : '', accSup ? 'поставки ждут цен: ' + accSup + ' — «Закупки»' : ''].filter(Boolean).join(' · ') : '';
   }
   if (t){ if (n) t.dataset.n = n; else delete t.dataset.n; } // число на вкладке — псевдоэлементом: текст вкладки тот же
+  if (tp){ if (accSup) tp.dataset.n = accSup; else delete tp.dataset.n; } // З10-и6: у «Закупок» — своё число (решение 28.09)
 }
 function dueBlock(list){
   if (!list || !list.length) return '';
@@ -5971,7 +6174,6 @@ function paintExp(){
       ${debtKpi(d.owner_debt)}
     </div>
     ${dueBlock(d.due)}
-    ${accSup ? `<div class="muted" id="expSupHint" style="margin:-4px 0 12px">Поставки ждут цен: ${accSup} — <a href="#" class="lnk" onclick="event.preventDefault(); supGo()">«Товары» → «Поставки»</a></div>` : ''}
     <div class="toolrow">
       <button class="btn mini" id="expNewBtn" onclick="expOpen('')"><span data-ic="plus"></span>Внести расход</button>
       <button class="btn ghost mini" id="expDebtBtn" onclick="debtOpen('bank')"><span data-ic="coins"></span>Вернуть владельцу</button>
@@ -6002,7 +6204,8 @@ function expRow(e){
   const off = !!e.storno_at, L = s => '<span class="expL">' + s + '</span>';
   return `<tr class="expRow${off ? ' expOff' : ''}" data-id="${e.id}" onclick="expOpen('${e.id}')">
     <td>${ruDate(e.op_date)}</td>
-    <td><b>${esc(e.category || '—')}</b>${e.template_month ? '&nbsp;<span class="muted" title="регулярный расход за ' + tplMonth(e.template_month) + '">↻</span>' : ''}</td>
+    <td><b>${esc(e.category || '—')}</b>${e.template_month ? '&nbsp;<span class="muted" title="регулярный расход за ' + tplMonth(e.template_month) + '">↻</span>' : ''}${
+      e.supply_id ? '&nbsp;<span class="muted" title="расход поставки — цены в «Закупках»">📦</span>' : ''}</td>
     <td>${esc(e.counterparty || '—')}</td>
     <td>${esc(e.doc_no || '—')}${e.has_photo ? ' <span title="есть фото документа">📎</span>' : ''}</td>
     <td>${EXP_METHOD_RU[e.method] || esc(e.method)}${e.paid ? '' : ' <span style="color:var(--orange)">· не оплачен</span>'}</td>
@@ -6017,7 +6220,7 @@ async function expOpen(id){
   if (id && !e) return;
   expForm = e ? {id:e.id, date:ruDate(e.op_date), category:e.category_id, counterparty:e.counterparty || '', amount:String(e.amount_pln),
       vat:e.vat_pln ? String(e.vat_pln) : '', method:e.method, paid:e.paid, doc:e.doc_no || '', note:e.note || '', storno:e.storno_at ? e : null, photo:e.has_photo,
-      before:e.explains_closeout || '', before0:e.explains_closeout || '', tplMonth:e.template_month || ''}
+      before:e.explains_closeout || '', before0:e.explains_closeout || '', tplMonth:e.template_month || '', supply:e.supply_id || ''}
     : {id:'', date:ruDate(isoDate(new Date())), category:'', counterparty:'', amount:'', vat:'', method:expMethodDef(), paid:true, doc:'', note:'', storno:null, photo:false, before:'', before0:''};
   expPaint();
 }
@@ -6051,6 +6254,7 @@ function expPaint(){
   }
   openDrawer(f.id ? 'Расход' : f.tpl ? 'Расход по шаблону' : 'Новый расход', `<div class="uform">
     ${expTplLine(f)}
+    ${f.supply ? '<div class="muted" id="efSup">Расход поставки — его завела оценка в «Закупках». Поправишь сумму здесь — переоценка поставки его больше не перепишет, в «Закупках» появится пометка. <a href="#" class="lnk" onclick="event.preventDefault(); expSupOpen()">Цены поставки</a></div>' : ''}
     <input id="efDate" ${DATE_FIELD} aria-label="Дата операции" value="${esc(f.date)}">
     <select id="efCat" class="input" aria-label="Категория"><option value="">— категория —</option>${cats.map(c => `<option value="${c.id}"${f.category === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
     <input id="efCp" class="input" list="efCpList" maxlength="128" placeholder="Контрагент — необязательно; нового заведу при записи" value="${esc(f.counterparty)}">
@@ -7892,6 +8096,8 @@ const PAL_WORDS = [
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
    sub:'Каталог → файл JSON', ic:'save', run:() => { nav('catalog'); exportCatalog(); }},
+  {who:'owner', words:['закупки', 'закупка', 'цены поставки', 'оценить поставку', 'ждут цен', 'себестоимость'], name:'Закупки', // З10-и6
+   sub:'Бухгалтерия → цены поставок, документ, расход', ic:'box', run:() => accGo('pur')},
   {words:['приёмка', 'поставка', 'поставки', 'принять поставку', 'накладная', 'ждут цен'], name:'Поставки', // З10-и4
    sub:'Товары → принять поставку, исправить', ic:'box', run:() => supGo()},
   {who:'admin', words:['инкассация', 'в сейф', 'в банк'], name:'Инкассация', // З8-и3

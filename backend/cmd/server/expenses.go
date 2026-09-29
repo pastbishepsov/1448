@@ -535,6 +535,9 @@ func expenseOut(e *models.Expense, names map[string]string, cps map[string]strin
 	if e.TemplateID != nil && e.TemplateMonth != nil { // З9-и5: по шаблону за месяц
 		row["template_id"], row["template_month"] = *e.TemplateID, e.TemplateMonth.Format("2006-01-02")
 	}
+	if e.SupplyID != nil { // З10-и6: расход поставки — его завела оценка в «Закупках»
+		row["supply_id"] = *e.SupplyID
+	}
 	if e.CounterpartyID != nil {
 		row["counterparty_id"], row["counterparty"] = *e.CounterpartyID, cps[e.CounterpartyID.String()]
 	}
