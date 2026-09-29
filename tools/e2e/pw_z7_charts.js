@@ -35,6 +35,9 @@ const num = s => parseFloat(String(s).replace(/[^\d,.-]/g, '').replace(',', '.')
     m && m.tips.length === money.length && m.tips.every(t => /zł/.test(t) && /пополнения .* · товары .* · пакеты /.test(t)), JSON.stringify(m && m.tips.slice(-2)));
   z.check('«Числа таблицей»: строка на каждый день', m && m.rows === money.length, `${m ? m.rows : '—'} строк на ${money.length} дней`);
   if (m) {
+    // З10-и8: над графиком стало больше рядов, он ниже первого экрана — прокрутка, которую делает наведение, гасит
+    // подсказку (скролл её прячет); сначала к графику, потом наведение
+    await page.locator('#repBody .chart').first().scrollIntoViewIfNeeded(); await z.sleep(300);
     await page.hover(`#repBody .chart .bars .bar:nth-child(${iMax + 1})`);
     await z.sleep(250);
     const t = await tip();

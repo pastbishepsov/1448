@@ -388,6 +388,10 @@
        background:rgba(255,255,255,.05); color:var(--dim); white-space:nowrap}
   .dlt.up{color:var(--green); background:rgba(52,211,153,.13)}
   .dlt.dn{color:var(--acc3); background:rgba(255,39,64,.13)}
+  /* З10-и8: «Что покупают» и «По категориям» — маржа в минусе красным; на телефоне строки — карточки, у чисел подписи */
+  .repNeg, .repNeg b{color:var(--acc3)}
+  .repL{display:none}
+  @media (max-width:640px){ .repL{display:inline; color:var(--dim); margin-right:4px} }
   /* З7-и2 (№42): дата — «дд.мм.гггг» в текстовом поле (как у брони, Ж7-и3), кривая — оранжевой рамкой */
   .dfield{font-variant-numeric:tabular-nums}
   .segs .dfield, .toolrow .dfield{width:130px; min-width:0; padding:7px 10px}
@@ -5683,6 +5687,7 @@ function paintMoney(d){
   const wal = d.wallet || {liability_pln:0, guests_with_balance:0, period_spent_pln:0, period_spends:0};
   const pk = d.packages || {liability_pln:0, minutes_left:0, guests:0, period_pln:0, period_count:0, period_minutes:0}; // Е2-и6
   const ic = d.incidents || {period_count:0, compensated:0, comp_minutes:0, comp_pln:0, open:0}; // К8
+  const gm = d.goods_margin || {}, sv = d.stock_value || {}; // З10-и8 (№70)
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln,
@@ -5711,6 +5716,24 @@ function paintMoney(d){
        ${lostDep > 0 || loss.deposit_voids > 0 ? repKpi('— по ошибочным депозитам', fmtPLN(lostDep) + ' zł', undefined,
                 {title:'гость успел потратить до отмены депозита — долгом не стало (Ж-Р4), с кошелька снят только остаток · '
                        + (loss.deposit_voids || 0) + ' отмен на ' + fmtPLN(loss.deposit_void_pln || 0) + ' zł за период'}) : ''}
+     </div>
+     <div class="kpis" id="repMargin">
+       ${repKpi('Продано товаров на', fmtPLN(gm.sold_pln || 0) + ' zł', undefined, // З10-и8 (№70; решение основателя 29.09)
+                {title:'по цене продажи, все способы — и кухня с кошелька, и в долг: ' + (gm.items || 0) + ' шт. Это не выручка: от этой суммы считается маржа'})}
+       ${repKpi('Себестоимость проданного', gm.cost_pln == null ? '—' : fmtPLN(gm.cost_pln) + ' zł', undefined,
+                {title:'по цене закупки партий, из которых ушли проданные штуки: ' + (gm.costed_units || 0) + ' шт'})}
+       ${repKpi('Маржа товаров', repMarginTxt(gm), gm.margin_pln == null || gm.prev_margin_pln != null && gm.prev_margin_pln <= 0 ? undefined : k.margin_pln,
+                {title:'продано на − себестоимость — по штукам с известной себестоимостью',
+                 was:gm.prev_margin_pln == null ? undefined : fmtPLN(gm.prev_margin_pln) + ' zł'})}
+       ${gm.no_cost_units > 0 ? repKpi('— продано без себестоимости', gm.no_cost_units + ' шт', undefined,
+                {title:'проданы из партий без цены или до партий — в маржу не вошли; цены — «Бухгалтерия» → «Закупки»'}) : ''}
+     </div>
+     <div class="kpis" id="repStock">
+       ${repKpi('Стоимость склада сейчас', fmtPLN(sv.cost_pln || 0) + ' zł', undefined,
+                {title:'остатки по себестоимости партий: ' + (sv.costed_units || 0) + ' шт; по рознице — ' + fmtPLN(sv.retail_pln || 0) + ' zł'
+                       + (sv.no_cost_units ? ' · без цены: ' + sv.no_cost_units + ' шт' : '')})}
+       ${sv.no_cost_units > 0 ? repKpi('— склад без цены', sv.no_cost_units + ' шт', undefined,
+                {title:'в партиях без цены: поставки «ждут цен», начальный остаток, «нашлось» — цены ставишь в «Бухгалтерия» → «Закупки»'}) : ''}
      </div>
      <div class="kpis">
        <div class="kpi">Наличные <b>${fmtPLN(t.cash_pln)} zł</b></div>
@@ -5749,8 +5772,13 @@ function paintMoney(d){
         fmt:v => (v >= 100 ? Math.round(v).toLocaleString('ru-RU') : fmtPLN(v)) + ' zł', full:v => fmtPLN(v) + ' zł',
         date:x => repDate(x.date), more:x => moneyParts(x), x:repDayTick, cols:['День', 'Выручка', 'Из чего']})}
      <div class="sect">Что покупают</div>
-     ${repTable(['Позиция','Выручка','Штук'], (d.top_goods||[]).map(g =>
-        `<tr><td><b>${esc(g.name)}</b></td><td>${fmtPLN(g.revenue_pln)} zł</td><td>${g.items}</td></tr>`),
+     <div class="muted" style="margin:-4px 0 10px">Выручка — живые деньги: без кошелька, долг — когда рассчитались. Продано на, себестоимость и маржа — все продажи, и с кошелька.</div>
+     ${repTable(['Позиция','Выручка','Продано на','Штук','Себестоимость','Маржа'], (d.top_goods||[]).map(g =>
+        `<tr><td><b>${esc(g.name)}</b></td>${repGoodsCells(g)}</tr>`),
+        'За этот период товары не продавали')}
+     <div class="sect">По категориям</div>
+     ${repTable(['Категория','Выручка','Продано на','Штук','Себестоимость','Маржа'], (d.top_categories||[]).map(g =>
+        `<tr><td><b>${esc(g.category || 'Без категории')}</b></td>${repGoodsCells(g)}</tr>`),
         'За этот период товары не продавали')}
      <div class="sect">Кто оформлял</div>
      ${repTable(['Сотрудник','Выручка','Депозитов','Товаров','Пакетов'], (d.by_admin||[]).map(a =>
@@ -5758,6 +5786,24 @@ function paintMoney(d){
          <td>${a.deposits} · ${fmtPLN(a.deposits_pln)} zł</td><td>${a.sales} · ${fmtPLN(a.goods_pln)} zł</td>
          <td>${a.packs || 0} · ${fmtPLN(a.packs_pln)} zł</td></tr>`),
         'За этот период денег не принимали')}`;
+}
+
+// З10-и8 (№70; решение основателя 29.09): числа строки «Что покупают» и «По категориям» — выручка как была; продано на,
+// себестоимость и маржа — все продажи, и с кошелька; себестоимость и маржа — по штукам из партий с ценой, остальные —
+// «без цены: N шт». На телефоне строка — карточка, у чисел подписи (.repL)
+function repGoodsCells(g){
+  const L = t => `<span class="repL">${t}</span>`, nc = g.no_cost_units || 0, m = g.margin_pln;
+  const cost = g.cost_pln == null ? `<td class="muted">${L('себестоимость')}${nc ? 'без цены: ' + nc + ' шт' : '—'}</td>`
+    : `<td>${L('себестоимость')}${fmtPLN(g.cost_pln)} zł${nc ? `<span class="muted">&nbsp;· без цены: ${nc} шт</span>` : ''}</td>`;
+  const margin = m == null ? `<td class="muted">${L('маржа')}—</td>`
+    : `<td class="repM${m < 0 ? ' repNeg' : ''}" title="продано на ${fmtPLN(m + g.cost_pln)} zł − себестоимость ${fmtPLN(g.cost_pln)} zł${
+        nc ? ' · ' + nc + ' шт без себестоимости в маржу не вошли' : ''}">${L('маржа')}<b>${repMarginTxt(g)}</b></td>`;
+  return `<td>${L('выручка')}${fmtPLN(g.revenue_pln)} zł</td><td>${L('продано на')}${fmtPLN(g.sold_pln || 0)} zł</td>`
+    + `<td>${L('штук')}${g.items}</td>${cost}${margin}`;
+}
+// маржа словами: «1 740,00 zł · 64,4%»; неизвестна — «—»
+function repMarginTxt(x){
+  return x.margin_pln == null ? '—' : fmtPLN(x.margin_pln) + ' zł' + (x.margin_pct == null ? '' : '&nbsp;· ' + x.margin_pct.toLocaleString('ru-RU') + '%');
 }
 
 function paintGuests(d){
@@ -8144,6 +8190,8 @@ const PAL_WORDS = [
    sub:'Отчёты → Персонал', ic:'coins', run:() => palGoReport('staff')},
   {who:'owner', words:['выручка', 'деньги', 'доход', 'оборот'], name:'Выручка',
    sub:'Отчёты → Деньги', ic:'chart', run:() => palGoReport('money')},
+  {who:'owner', words:['маржа', 'наценка', 'себестоимость проданного', 'стоимость склада', 'склад в деньгах', 'что покупают'], name:'Маржа и склад', // З10-и8
+   sub:'Отчёты → Деньги: себестоимость проданного, маржа, склад сейчас', ic:'chart', run:() => palGoMargin()},
   {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
@@ -8161,6 +8209,15 @@ function palGoReport(tab){
   repTab = tab;
   document.querySelectorAll('#repTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   nav('stats');
+}
+// З10-и8: маржа и склад — ряд под «Потерями» в «Деньгах»: ждём, пока отчёт встанет, и показываем его
+function palGoMargin(){
+  palGoReport('money');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('repMargin');
+    if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
+  }, 100);
 }
 // сводка смены — под отчётом: ждём, пока отчёт встанет, иначе он сдвинет её с экрана
 function palGoShift(){

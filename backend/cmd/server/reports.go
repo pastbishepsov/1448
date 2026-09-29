@@ -453,24 +453,12 @@ func handleReportMoney(c *gin.Context) {
 		return byAdmin[i]["revenue_pln"].(float64) > byAdmin[j]["revenue_pln"].(float64)
 	})
 
-	// топ позиций ценника
-	var goodRows []struct {
-		Name  string
-		Pln   float64
-		Items int64
-	}
-	// штуки — полные (и кухня с кошельков тоже: владельцу важно, что едят), по
-	// моменту продажи; деньги — только выручка (Р7: wallet-продажи в неё не
-	// входят) и по моменту расчёта (Ж6: долг считается, когда его закрыли)
-	db.Model(&models.Sale{}).
-		Select("name, COALESCE(SUM(total_pln) FILTER (WHERE method <> 'wallet' AND paid_at >= ? AND paid_at < ?),0) AS pln, "+
-			"COALESCE(SUM(qty) FILTER (WHERE created_at >= ? AND created_at < ?),0) AS items", p.From, p.To, p.From, p.To).
-		Where("((created_at >= ? AND created_at < ?) OR (paid_at >= ? AND paid_at < ?)) AND voided_at IS NULL", p.From, p.To, p.From, p.To).
-		Group("name").Order("pln DESC").Limit(15).Scan(&goodRows)
-	topGoods := make([]gin.H, 0, len(goodRows))
-	for _, r := range goodRows {
-		topGoods = append(topGoods, gin.H{"name": r.Name, "revenue_pln": r.Pln, "items": r.Items})
-	}
+	// «Что покупают»: штуки — полные (и кухня с кошельков тоже: владельцу важно,
+	// что едят), по моменту продажи; выручка — только живые деньги (Р7:
+	// wallet-продажи в неё не входят) и по моменту расчёта (Ж6: долг считается,
+	// когда его закрыли). З10-и8 (№70): и продано на, себестоимость, маржа — по
+	// позиции, по категориям и итогом (margin.go)
+	topGoods, topCats, goodsMargin, marginDelta := goodsReport(p, prev)
 
 	// потери: всё, что ушло со склада корректировкой, а не через кассу. З6-и2:
 	// по цене в момент движения (stock_moves.price_pln), а не по нынешней —
@@ -586,8 +574,10 @@ func handleReportMoney(c *gin.Context) {
 			"deposits":      pctDelta(float64(cur.Deposits), float64(old.Deposits)),
 			"guests":        pctDelta(float64(cur.Guests), float64(old.Guests)),
 			"avg_check_pln": pctDelta(cur.AvgCheck, old.AvgCheck),
+			"margin_pln":    marginDelta, // З10-и8
 		},
 		"days": days, "by_admin": byAdmin, "top_goods": topGoods,
+		"top_categories": topCats, "goods_margin": goodsMargin, "stock_value": stockValue(), // З10-и8 (№70)
 		"losses": gin.H{"units": loss.Units, "pln": math.Round(loss.Pln*100) / 100, "moves": loss.Moves,
 			"cost_pln": models.PLNFromGrosz(lossCost), "no_cost_units": loss.Units - lossCosted, // З10-и7
 			// Ж1: отменённые депозиты за период и «отыграно по ошибочному депозиту»
