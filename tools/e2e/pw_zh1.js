@@ -48,12 +48,12 @@ const check = (name, cond, detail) => out.push((cond ? 'ok   ' : 'FAIL ') + name
   const btns = await page.locator('.hist button:has-text("Отменить")').count();
   check('кнопка «Отменить» только у живого депозита (1 шт)', btns === 1, String(btns));
   await page.screenshot({ path: OUT + '/zh1_tab.png' });
-  // arm-паттерн: первый клик — «Точно отменить?», второй — отмена
+  // первый клик — выбор «как вернули» (З11-и2): главная — «Вернуть … как платили», второй клик по ней — отмена
   await page.click('.hist button:has-text("Отменить")');
   await sleep(200);
-  const armed = await page.evaluate(() => document.querySelector('.hist button.danger') && document.querySelector('.hist button.danger').textContent);
-  check('первый клик взводит кнопку («Точно отменить?»)', armed === 'Точно отменить?', String(armed));
-  await page.click('.hist button.danger');
+  const armed = await page.evaluate(() => document.querySelector('.hist .rfPick button.danger') && document.querySelector('.hist .rfPick button.danger').textContent);
+  check('первый клик раскрывает выбор («Вернуть 25,00 zł наличными» — как платили)', armed === 'Вернуть 25,00 zł наличными', String(armed));
+  await page.click('.hist .rfPick button.danger');
   await sleep(1200);
   const rows2 = await page.evaluate(() => [...document.querySelectorAll('.hist tr')].map(r => r.textContent.replace(/\s+/g, ' ').trim()));
   check('после второго клика оба депозита отменены, кнопок нет', rows2.filter(r => /отменён/.test(r)).length >= 2 && (await page.locator('.hist button:has-text("Отменить")').count()) === 0, rows2.slice(0, 3).join(' | '));

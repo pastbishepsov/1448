@@ -22,7 +22,8 @@ const z = require('./_z');
     const card = page.locator('#kitBoard .card', { hasText: 'Guest39' }).filter({ hasText: 'оплачен: ' + { wallet: 'кошелёк', cash: 'наличные' }[method] })
       .filter({ has: page.locator('button:has-text("Отменить")') }).last();
     await card.locator('button:has-text("Отменить")').click(); await z.sleep(200);
-    await card.locator('button:has-text("Точно отменить?")').click(); await z.sleep(1500);
+    // З11-и2: выбор открыт один — в нём «Вернуть 4,00 zł …» как платили (карточка уже без «Отменить» — ищем выбор на доске)
+    await page.locator(`#kitBoard .rfPick button[data-rf="${method}"]`).click(); await z.sleep(1500);
     return { status: o.status, toast: (await z.text(page, '#toast')) || '' };
   };
   const w = await cancelInUI('wallet');

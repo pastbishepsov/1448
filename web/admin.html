@@ -392,6 +392,10 @@
   .repNeg, .repNeg b{color:var(--acc3)}
   .repL{display:none}
   @media (max-width:640px){ .repL{display:inline; color:var(--dim); margin-right:4px} }
+  /* З11-и2: «как вернули» у отмены — выбор на месте кнопки «Отменить», на узком месте переносится */
+  .rfPick{display:inline-flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; white-space:normal; max-width:100%}
+  .rfPick .btn{white-space:nowrap}
+  #drawer .rfPick .btn{white-space:normal; text-align:center} /* в шторке узко — надпись переносится внутри кнопки */
   /* З7-и2 (№42): дата — «дд.мм.гггг» в текстовом поле (как у брони, Ж7-и3), кривая — оранжевой рамкой */
   .dfield{font-variant-numeric:tabular-nums}
   .segs .dfield, .toolrow .dfield{width:130px; min-width:0; padding:7px 10px}
@@ -2790,6 +2794,50 @@ function armButton(btn, armedHTML, fn){
   btn.innerHTML = btn._orig; mountIcons(btn); // З8-и2: если шторка не перерисуется (ошибка ввода) — надпись как была
   fn();
 }
+/* З11-и2 (№17; решения основателя 30.09): «как вернули» у отмены. Первое нажатие «Отменить» раскрывает выбор на месте
+   кнопки: главная — «Вернуть N zł <как платили>» (быстрый путь, как раньше «Точно?»), рядом «Не возвращали»; владельцу —
+   ещё «Другим способом…»: наличными, на карту, по BLIK. На кошелёк — только как платили кошельком (тогда это и есть
+   главная); другой способ админу не дан — сервер ответит 403. Денег не брали (долг, заказ «при выходе») — одна кнопка
+   подтверждения. Выбор сворачивается сам через 6 с; пока открыт, шторка «занята» (data-armed) и не перерисовывается.
+   o: paid — как платили ('' — денег не брали), pln — сколько вернётся (0 — не знаем), confirm — надпись подтверждения
+   без денег, run(how) — отменить: how — cash | card | blik | wallet | none. */
+const REFUND_WAY = {cash:'наличными', card:'на карту', blik:'по BLIK', wallet:'на кошелёк'};
+function refundPick(btn, o){
+  const paid = REFUND_WAY[o.paid] ? o.paid : '';
+  const b = (how, label, cls) => `<button class="btn ${cls} mini" data-rf="${how}">${esc(label)}</button>`;
+  const box = document.createElement('span');
+  box.className = 'rfPick';
+  box.dataset.armed = '1';
+  box.innerHTML = paid
+    ? b(paid, 'Вернуть ' + (o.pln > 0 ? fmtPLN(o.pln) + ' zł ' : '') + REFUND_WAY[paid], 'danger') + b('none', 'Не возвращали', 'ghost')
+      + (isOwner() ? b('more', 'Другим способом…', 'ghost') : '')
+    : b('none', o.confirm || 'Точно отменить?', 'danger');
+  btn.replaceWith(box);
+  let t;
+  const wait = () => { clearTimeout(t); t = setTimeout(() => { if (box.isConnected && !box.dataset.done) box.replaceWith(btn); }, 6000); };
+  wait();
+  box.addEventListener('click', e => {
+    const x = e.target.closest('button[data-rf]');
+    e.stopPropagation(); // строка чека по клику раскрывается — выбор её не трогает
+    if (!x || box.dataset.done) return;
+    if (x.dataset.rf === 'more'){
+      x.outerHTML = ['cash', 'card', 'blik'].filter(m => m !== paid).map(m => b(m, REFUND_WAY[m], 'ghost')).join('');
+      wait();
+      return;
+    }
+    clearTimeout(t);
+    box.dataset.done = '1';
+    delete box.dataset.armed;
+    box.querySelectorAll('button').forEach(z => { z.disabled = true; });
+    o.run(x.dataset.rf);
+  });
+}
+// что делать с деньгами после отмены — теми же словами, что у кухни (З8-и6); вернуть нечего — пусто
+function refundTodo(how, pln){
+  const f = KIT_REFUND[how];
+  return !f || (how !== 'none' && !(pln > 0)) ? '' : f(fmtPLN(pln));
+}
+const refundBody = how => how ? {method:'POST', body:JSON.stringify({refund_method: how})} : {method:'POST'};
 function armEndSession(btn, id, nick, startedAt){
   const min = Math.max(1, Math.round((Date.now() - new Date(startedAt))/60000));
   armButton(btn, '<span data-ic="power"></span>Ещё раз — завершить (' + min + ' мин)', () => endSessionNow(id, nick));
@@ -3003,17 +3051,14 @@ async function submitPack(){
 /* Отмена ошибочной выдачи (В4-4): забирается НЕотыгранный остаток, строка
    остаётся с пометкой. Своя и сегодняшняя — админу, чужая и вчерашняя —
    владельцу; сервер решит и объяснит. */
-function armPackVoid(btn, id){
-  if (btn.dataset.armed){ voidPack(id); return; }
-  btn.dataset.armed = '1';
-  btn.textContent = 'Точно?';
-  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; } }, 4000);
+function armPackVoid(btn, id, paid, pln){ // З11-и2: pln — доля цены за неотыгранное, как посчитает сервер
+  refundPick(btn, {paid, pln, run: how => voidPack(id, how)});
 }
-async function voidPack(id){
+async function voidPack(id, how){
   try{
-    const d = await api('/admin/user-packages/' + id + '/void', {method:'POST'});
-    toast('✓ Выдача отменена — забрано ' + d.minutes_taken + ' мин'
-      + (d.refund_pln > 0 ? (d.refund_method === 'cash' ? ' · верни гостю ' + fmtPLN(d.refund_pln) + ' zł наличными' : ', возврат ' + fmtPLN(d.refund_pln) + ' zł') : ''));
+    const d = await api('/admin/user-packages/' + id + '/void', refundBody(how));
+    const todo = refundTodo(d.refund_method, d.refund_pln);
+    toast('✓ Выдача отменена — забрано ' + d.minutes_taken + ' мин' + (todo ? ' · ' + todo : ''));
     await loadUserPacks();
     await loadUserDrawer();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -3343,7 +3388,7 @@ function uHistHtml(){
         x.voided_at ? '<div class="muted">отменён</div>'
         : (x.days_left !== undefined ? '<div class="muted">' + (x.days_left > 0 ? 'сгорит через ' + x.days_left + ' дн' : 'сгорел') + '</div>' : '')}</td>
       <td>${x.voided_at || x.minutes_left === 0 ? ''
-        : `<button class="btn ghost mini danger" onclick="armPackVoid(this,'${x.id}')">Отменить</button>`}</td>
+        : `<button class="btn ghost mini danger" onclick="armPackVoid(this,'${x.id}','${x.method}',${Math.floor(Math.round(x.price_pln * 100) * x.minutes_left / Math.max(1, x.minutes_total)) / 100})">Отменить</button>`}</td>
     </tr>`).join('')}</table>`;
   }
   if (uTab === 'deposits'){
@@ -3358,7 +3403,7 @@ function uHistHtml(){
       <td${x.voided_at ? nb : ''}>+${x.coins_granted}${x.bonus_coins > 0 ? ' (+' + x.bonus_coins + ')' : ''}</td>
       <td class="muted"${x.voided_at ? nb : ''}>${esc(x.method)}</td>
       <td${x.voided_at ? nb : ''}>${x.voided_at || !(isOwner() || (me && x.created_by === me.id)) ? ''
-        : `<button class="btn ghost mini" onclick="armDepositVoid(this,'${x.id}')">Отменить</button>`}</td>
+        : `<button class="btn ghost mini" onclick="armDepositVoid(this,'${x.id}','${x.method}',${Math.min(+x.amount_pln, (uData.user.wallet_grosz || 0) / 100)})">Отменить</button>`}</td>
     </tr>${x.voided_at ? `<tr style="opacity:.5"><td colspan="5" class="muted" style="padding-top:0">отменён · возвращено `
         + ((x.refund_grosz || 0) / 100).toLocaleString('ru-RU') + ' из ' + (+x.amount_pln).toLocaleString('ru-RU')
         + (x.coins_taken > 0 ? ' · забрано ' + x.coins_taken + ' монет' : '') + '</td></tr>' : ''}`).join('')}</table>`;
@@ -3400,14 +3445,15 @@ async function submitDeposit(){
    клубных сутках отменяет админ, чужую и вчерашнюю — владелец. С кошелька
    снимается остаток, но не больше суммы; отыгранное долгом не становится —
    сервер отвечает, сколько вернулось, а сколько гость уже потратил. */
-async function voidDeposit(id){
+async function voidDeposit(id, how){ // З11-и2: how — как вернули; из тоста «Вернуть» — как платили
   return once('depvoid:' + id, async () => {
     try{
-      const d = await api('/admin/deposits/' + id + '/void', {method:'POST'});
+      const d = await api('/admin/deposits/' + id + '/void', refundBody(how));
       let msg = '✓ Депозит ' + fmtPLN(d.amount_pln) + ' zł отменён — с кошелька снято ' + fmtPLN(d.refund_pln) + ' zł';
       if (d.unrecovered_pln > 0) msg += ', уже отыграно ' + fmtPLN(d.unrecovered_pln) + ' zł';
       if (d.coins_taken > 0) msg += ', забрано ' + d.coins_taken + ' монет';
-      toast(msg);
+      const todo = refundTodo(d.refund_method, d.refund_pln);
+      toast(msg + (todo ? ' · ' + todo : ''));
       if (drawerUserId && !drawerBusy()) await loadUserDrawer();
       renderUsersTable();
       refresh(); // выручка в шапке
@@ -3415,12 +3461,8 @@ async function voidDeposit(id){
     }catch(e){ toast('⚠ ' + e.message); }
   });
 }
-function armDepositVoid(btn, id){
-  if (btn.dataset.armed){ delete btn.dataset.armed; btn.disabled = true; voidDeposit(id); return; } // взведённая кнопка держит шторку «занятой» — снимаем перед перерисовкой
-  btn.dataset.armed = '1';
-  btn.textContent = 'Точно отменить?';
-  btn.classList.add('danger');
-  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; btn.classList.remove('danger'); } }, 4000);
+function armDepositVoid(btn, id, paid, pln){ // З11-и2: pln — сколько ещё в кошельке из этого депозита
+  refundPick(btn, {paid, pln, run: how => voidDeposit(id, how)});
 }
 async function submitXP(){
   return once('xp:' + drawerUserId, async () => { // одно начисление на клик (ревью 26.08)
@@ -4591,7 +4633,7 @@ function paintKitchen(){
       <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap">
         ${kitNextBtns(o).map(([s,l,g]) => `<button class="btn ${g}mini" onclick="kitStatus('${o.id}','${s}')">${l}</button>`).join('')}
         <button class="btn mini" onclick="kitStatus('${o.id}','done')">✓ Выдан</button>
-        <button class="btn ghost mini danger" onclick="armKitCancel(this,'${o.id}')">Отменить</button>
+        <button class="btn ghost mini danger" onclick="armKitCancel(this,'${o.id}','${o.pay_method || ''}',${+o.total_pln || 0})">Отменить</button>
       </div>`}
     </div>`;
   setHTML('kitBoard',
@@ -4682,17 +4724,15 @@ async function kitPay(id, method){
     }catch(e){ toast('⚠ ' + e.message); }
   });
 }
-function armKitCancel(btn, id){
-  if (btn.dataset.armed){ kitCancel(id); return; }
-  btn.dataset.armed = '1'; btn.textContent = 'Точно отменить?';
-  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; } }, 4000);
+function armKitCancel(btn, id, paid, pln){ // З11-и2: оплачен сразу — выбор «как вернули», при выходе — просто «Точно отменить?»
+  refundPick(btn, {paid, pln, run: how => kitCancel(id, how)});
 }
-// З8-и6: оплаченный сразу заказ отменяется вместе с продажей — тост говорит, что стало с деньгами
+// З8-и6: оплаченный сразу заказ отменяется вместе с продажей — тост говорит, что стало с деньгами; З11-и2 — и у всех отмен
 const KIT_REFUND = {wallet: p => p + ' zł вернулись на кошелёк гостя', cash: p => 'верни гостю ' + p + ' zł наличными из ящика — «должно быть» уже меньше на них',
-  card: p => 'верни гостю ' + p + ' zł на карту через терминал', blik: p => 'верни гостю ' + p + ' zł по BLIK'};
-async function kitCancel(id){
+  card: p => 'верни гостю ' + p + ' zł на карту через терминал', blik: p => 'верни гостю ' + p + ' zł по BLIK', none: () => 'деньги не возвращаем'};
+async function kitCancel(id, how){
   try{
-    const d = await api('/admin/kitchen/orders/' + id + '/cancel', {method:'POST'});
+    const d = await api('/admin/kitchen/orders/' + id + '/cancel', refundBody(how));
     const r = d.refund, f = r && KIT_REFUND[r.method];
     toast('✓ Заказ отменён — ' + (f ? f(fmtPLN(r.pln)) + ', товар — на склад' : 'товар вернулся на склад'));
     kitBadgeLoad();
@@ -4875,10 +4915,11 @@ async function cartSell(){
     }
   });
 }
-async function voidReceipt(id, quiet){
+async function voidReceipt(id, quiet, how, paid){ // З11-и2: how — как вернули; из тоста «Вернуть» — как платили
   try{
-    const d = await api('/admin/receipts/' + id + '/void', {method:'POST'});
-    if (!quiet) toast('✓ Чек отменён — ' + (d.voided || []).length + ' позиций вернулись на склад');
+    const d = await api('/admin/receipts/' + id + '/void', refundBody(how));
+    const todo = paid ? refundTodo(d.refund_method, d.total_pln) : '';
+    if (!quiet) toast('✓ Чек отменён — ' + (d.voided || []).length + ' позиций вернулись на склад' + (todo ? ' · ' + todo : ''));
     renderGoods();
     refresh();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -4946,12 +4987,14 @@ async function sellGood(id){
   });
 }
 
-async function voidSale(id, quiet){
+async function voidSale(id, quiet, how, pln){ // З11-и2: how — как вернули; из тоста «Вернуть» — как платили
   try{
-    const d = await api('/admin/sales/' + id + '/void', {method:'POST'});
+    const d = await api('/admin/sales/' + id + '/void', refundBody(how));
+    const todo = d.unpaid ? '' : refundTodo(d.refund_method, pln);
     // З6-и1: отмена расчёта кухни склад не трогает (выпитое не вернуть) — заказ снова ждёт оплаты
-    if (!quiet) toast(d && d.kitchen_unpaid ? '✓ Оплата заказа кухни отменена — заказ снова ждёт оплаты, склад не тронут'
-                                            : '✓ Продажа отменена — товар вернулся на склад');
+    if (!quiet) toast((d && d.kitchen_unpaid ? '✓ Оплата заказа кухни отменена — заказ снова ждёт оплаты, склад не тронут'
+                                             : d.unpaid ? '✓ Долг списан — товар вернулся на склад' : '✓ Продажа отменена — товар вернулся на склад')
+                      + (todo ? ' · ' + todo : ''));
     renderGoods();
     refresh();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -4988,7 +5031,7 @@ function paintSales(d){
         <td class="muted">${payCell(x)}</td>
         <td class="muted">${guestCell(x)}</td>
         <td class="muted">${esc(x.admin || '—')}</td>
-        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}')">${x.unpaid ? 'Списать' : 'Отменить'}</button>`}</td>
+        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}','${x.unpaid ? '' : x.method}',${+x.total_pln || 0})">${x.unpaid ? 'Списать' : 'Отменить'}</button>`}</td>
       </tr>`;
   const receiptRows = g => {
     if (g.items.length === 1) return oneRow(g.items[0]);
@@ -5002,11 +5045,11 @@ function paintSales(d){
         <td class="muted">${payCell(live[0] || f)}</td>
         <td class="muted">${guestCell(f)}</td>
         <td class="muted">${esc(f.admin || '—')}</td>
-        <td onclick="event.stopPropagation()">${allVoid ? '' : `<button class="btn ghost mini" onclick="armVoidReceipt(this,'${g.rid}')">${live[0] && live[0].unpaid ? 'Списать чек' : 'Вернуть чек'}</button>`}</td>
+        <td onclick="event.stopPropagation()">${allVoid ? '' : `<button class="btn ghost mini" onclick="armVoidReceipt(this,'${g.rid}','${live[0] && !live[0].unpaid ? live[0].method : ''}',${total})">${live[0] && live[0].unpaid ? 'Списать чек' : 'Вернуть чек'}</button>`}</td>
       </tr>` + (open ? g.items.map(x => `<tr class="rcp"${x.voided ? ' style="opacity:.45"' : ''}>
         <td></td><td>${esc(x.name)}${x.qty > 1 ? ' ×' + x.qty : ''}${x.voided ? ' — отменена' : ''}</td>
         <td>${fmtPLN(x.total_pln)} zł</td><td></td><td></td><td></td>
-        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}')">${x.unpaid ? 'Списать' : 'Вернуть'}</button>`}</td>
+        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}','${x.unpaid ? '' : x.method}',${+x.total_pln || 0})">${x.unpaid ? 'Списать' : 'Вернуть'}</button>`}</td>
       </tr>`).join('') : '');
   };
   setHTML('salesTable', rows.length === 0
@@ -5019,23 +5062,14 @@ function toggleReceipt(rid){
   paintSales(lastSalesResp || {sales: salesCache}); // перерисовать без запроса
 }
 let lastSalesResp = null;
-function armVoidReceipt(btn, rid){
-  if (btn.dataset.armed){ voidReceipt(rid); return; }
-  btn.dataset.armed = '1';
-  const label = btn.textContent;
-  btn.textContent = 'Точно — весь чек?';
-  btn.classList.add('danger');
-  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = label; btn.classList.remove('danger'); } }, 4000);
+function armVoidReceipt(btn, rid, paid, pln){ // З11-и2: один способ на весь чек
+  refundPick(btn, {paid, pln, confirm: 'Точно — весь чек?', run: how => voidReceipt(rid, false, how, paid)});
 }
 const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK', wallet:'кошелёк', later:'при выходе'};
 
-/* отмена продажи — arm-confirm: деньги уходят из выручки смены */
-function armVoid(btn, id){
-  if (btn.dataset.armed){ voidSale(id); return; }
-  btn.dataset.armed = '1';
-  btn.textContent = 'Точно отменить?';
-  btn.classList.add('danger');
-  setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; btn.textContent = 'Отменить'; btn.classList.remove('danger'); } }, 4000);
+/* отмена продажи — деньги уходят из выручки смены; З11-и2: второй шаг — «как вернули», у долга — «Точно списать?» */
+function armVoid(btn, id, paid, pln){
+  refundPick(btn, {paid, pln, confirm: 'Точно списать?', run: how => voidSale(id, false, how, pln)});
 }
 
 function paintGoodsTable(){

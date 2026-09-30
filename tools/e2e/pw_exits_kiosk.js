@@ -169,11 +169,16 @@ const vis = (p, id) => p.evaluate(id => { const e = document.getElementById(id);
   // ноль кошелька — как у живой сессии: zero_since в состоянии, оверлей рисует сам шелл (тик раз в секунду)
   for (const id of ['zeroOverlay', 'readyOverlay', 'pwdOverlay']){
     await p.click('#rankPill'); await p.waitForTimeout(250);          // окно под глухим экраном
-    if (id === 'zeroOverlay'){ await p.evaluate(() => { activeSession.zero_since = new Date().toISOString(); }); await p.waitForTimeout(1200); }
+    // ноль изображается на странице, а поллинг /me/sessions раз в 10 с сверяет zero_since с сервером и снимал его посреди
+    // проверки (падение раз в несколько прогонов); пока ноль изображён, ответ поллинга несёт тот же zero_since
+    if (id === 'zeroOverlay'){ await p.evaluate(() => { const zs = new Date().toISOString(); activeSession.zero_since = zs; window.__zs = zs;
+      if (!window.__apiZs){ window.__apiZs = api; api = async (...a) => { const r = await window.__apiZs(...a);
+        if (window.__zs && /^\/me\/sessions/.test(a[0]) && r && r.sessions) r.sessions.forEach(s => { if (!s.ended_at) s.zero_since = window.__zs; });
+        return r; }; } }); await p.waitForTimeout(1200); }
     else await p.evaluate(id => document.getElementById(id).classList.remove('hidden'), id);
     await L.esc(p); await L.mouseBack(p);
     L.check(id + ': Esc и «назад» не закрывают ни его, ни окно под ним', await vis(p, id) && await vis(p, 'rankOverlay'));
-    if (id === 'zeroOverlay'){ await p.evaluate(() => { delete activeSession.zero_since; }); await p.waitForTimeout(1200); }
+    if (id === 'zeroOverlay'){ await p.evaluate(() => { window.__zs = null; delete activeSession.zero_since; }); await p.waitForTimeout(1200); }
     else await p.evaluate(id => document.getElementById(id).classList.add('hidden'), id);
     await L.esc(p);
     L.check(id + ' ушёл — Esc снова закрывает окна', !await vis(p, id) && !await vis(p, 'rankOverlay'));

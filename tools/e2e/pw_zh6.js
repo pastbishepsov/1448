@@ -76,9 +76,9 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   check('возврат позиции: Lay\'s на складе +1, чек помечен «часть отменена», Woda на месте', stock(`Lay''s`) === lays0 && stock('Woda 0.5') === woda0 - 2 && afterPos.some(r => /часть отменена/.test(r)), afterPos.slice(0, 3).join(' | '));
   await page.click('#salesTable tr:has-text("Чек · 2 позиции") button:has-text("Вернуть чек")');
   await sleep(200);
-  await page.click('#salesTable tr:has-text("Чек · 2 позиции") button:has-text("Точно — весь чек?")');
+  await page.click('#salesTable tr:has-text("Чек · 2 позиции") .rfPick button.danger'); // З11-и2: «Вернуть N zł наличными» — как платили
   await sleep(1400);
-  check('«Вернуть чек» arm-паттерном: Woda вернулась на склад', stock('Woda 0.5') === woda0, String(stock('Woda 0.5')));
+  check('«Вернуть чек» → «Вернуть … наличными»: Woda вернулась на склад', stock('Woda 0.5') === woda0, String(stock('Woda 0.5')));
 
   // ── и1: «При выходе» — в долг гостю за ПК ──
   await page.click('#s-goods .segs button[data-m="later"]');
