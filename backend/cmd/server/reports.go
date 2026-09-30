@@ -586,6 +586,9 @@ func handleReportMoney(c *gin.Context) {
 		// К8 (Р4/Р7): компенсации за проблемы с ПК — рост обязательства клуба,
 		// не выручка и не выручка со знаком минус; отдельной строкой.
 		"incidents": incidentsReport(p.From, p.To),
+		// З11-и4 (№15): «Дебиторка сейчас» — снимок, от периода не зависит;
+		// списанные за период (не отменённые) — «Потери → долги» по дню списания
+		"debts": gin.H{"receivable": receivablesNow(), "written_off": writtenOffIn(p.From, p.To)},
 	})
 }
 

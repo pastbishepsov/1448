@@ -1589,7 +1589,9 @@ function feedLine(m){
         + (+d.refund_pln < +d.amount_pln ? ' (снято ' + fmtPLN(d.refund_pln||0) + ', отыграно ' + fmtPLN(d.unrecovered_pln||0) + ')' : '')
       : (d.nickname||'гость') + ' внёс ' + (+d.amount_pln||0) + ' zł (+' + (d.coins||0) + ' монет)';
     case 'sale': {
-      if (d.kind === 'void') return 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł' + (d.unpaid ? ' (долг списан)' : '');
+      if (d.kind === 'void') return 'отмена продажи: ' + (d.name||'товар') + ' · ' + (+d.total_pln||0) + ' zł' + (d.unpaid ? ' (в долг — денег не брали)' : '');
+      if (d.kind === 'write_off') return '🧾 долг ' + (d.nickname||'гостя') + ' списан: ' + fmtPLN(d.total_pln||0) + ' zł — «Потери → долги»'; // З11-и4
+      if (d.kind === 'write_off_cancel') return '🧾 долг ' + (d.nickname||'гостя') + ' вернули: ' + fmtPLN(d.total_pln||0) + ' zł — снова ждёт расчёта';
       if (d.kind === 'settle') return '🧾 ' + (d.nickname||'гость') + ' рассчитался: ' + fmtPLN(d.total_pln||0) + ' zł · ' + (PAY_RU[d.method]||d.method||'') // Ж6-и1
         + [d.kitchen_pln > 0 ? 'кухня ' + fmtPLN(d.kitchen_pln) : '', d.bar_pln > 0 ? 'бар ' + fmtPLN(d.bar_pln) : ''].filter(Boolean).map(x => ' · ' + x).join('');
       const what = (d.items > 1 ? 'чек (' + d.items + '): ' : '') + (d.name||'товар') + (d.items > 1 ? '' : (d.qty > 1 ? ' ×' + d.qty : '')); // Ж6-и2
@@ -2940,6 +2942,8 @@ function renderUserDrawer(){
     ${s.no_show_count ? `<tr><td class="muted">No-show</td><td>🕳 ${s.no_show_count} — брони сгорали без прихода</td></tr>` : ''}
     ${s.unpaid_pln > 0 ? `<tr><td class="muted">Должен</td><td><span class="debtline">🧾 ${fmtPLN(s.unpaid_pln)} zł</span> <span class="muted">— ${[s.kitchen_unpaid_count ? 'кухня ' + fmtPLN(s.kitchen_unpaid_pln) + ' zł (' + s.kitchen_unpaid_count + ')' : '', s.bar_unpaid_count ? 'бар ' + fmtPLN(s.bar_unpaid_pln) + ' zł (' + s.bar_unpaid_count + ')' : ''].filter(Boolean).join(' · ')}</span>
         · <a href="#" class="lnk" onclick="event.preventDefault(); uFormToggle('debt')">рассчитать</a></td></tr>` : ''}
+    ${(s.debt_written_off || []).map(w => `<tr class="woRow"><td class="muted">Долг списан</td><td><b>${fmtPLN(w.total_pln)} zł</b> <span class="muted">— ${woParts(w)} · ${fmtDate(w.created_at)} ${hhmm(w.created_at)}${w.by ? ' · ' + esc(w.by) : ''}</span>${isOwner()
+        ? ` <button class="btn ghost mini" onclick="armButton(this, 'Ещё раз — вернуть ${fmtPLN(w.total_pln)} zł в долг', () => debtRestore('${w.id}'))">Вернуть долг</button>` : ''}</td></tr>`).join('')}
     ${s.deposited_pln !== undefined ? `<tr><td class="muted">Внесено всего</td><td>${(+s.deposited_pln).toLocaleString('ru-RU')} zł</td></tr>` : ''}
     ${(u.first_name || u.last_name) ? `<tr><td class="muted">Имя</td><td>${esc(((u.first_name||'') + ' ' + (u.last_name||'')).trim())}</td></tr>` : ''}
     ${u.phone ? `<tr><td class="muted">Телефон</td><td>${esc(u.phone)}</td></tr>` : ''}
@@ -2991,6 +2995,38 @@ function renderUserDrawer(){
 }
 
 let settleM = 'cash', uDebt = null; // Ж6-и1
+/* З11-и4 (№15; решения основателя 30.09): списать долг гостя — одной кнопкой, без причины, только владелец; склад не
+   трогаем, сумма — «Потери → долги». Вернуть — там же, в карточке: долг снова открыт и рассчитывается как обычно. */
+function woParts(w){
+  return [w.kitchen_count ? 'кухня ' + fmtPLN(w.kitchen_pln) + ' (' + w.kitchen_count + ')' : '',
+          w.bar_count ? 'бар ' + fmtPLN(w.bar_pln) + ' (' + w.bar_count + ')' : ''].filter(Boolean).join(' · ');
+}
+async function debtWriteOff(){
+  return once('wo:' + drawerUserId, async () => {
+    try{
+      const d = await api('/admin/users/' + drawerUserId + '/debt/write-off', {method:'POST'});
+      toast('✓ Долг ' + (d.nickname || 'гостя') + ' списан: ' + fmtPLN((d.write_off || {}).total_pln) + ' zł — в «Потерях → долги», склад не трогали');
+      uForm = null; uDebt = null;
+      await loadUserDrawer();
+      if (curTab === 'goods') renderGoods();
+      kitBadgeLoad();
+      refresh();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+async function debtRestore(id){
+  return once('wor:' + id, async () => {
+    try{
+      const d = await api('/admin/debt-write-offs/' + id + '/cancel', {method:'POST'});
+      toast('✓ Долг ' + (d.nickname || 'гостя') + ' вернули: ' + fmtPLN((d.restored || {}).total_pln) + ' zł — рассчитай, когда заплатит');
+      if (drawerUserId) await loadUserDrawer();
+      if (curTab === 'goods') renderGoods();
+      if (curTab === 'stats') renderReports();
+      kitBadgeLoad();
+      refresh();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
 async function settleDebt(){
   return once('settle:' + drawerUserId, async () => {
     try{
@@ -3224,6 +3260,9 @@ function uFormHtml(){
       </div>
       <button class="btn" style="width:100%; justify-content:center" onclick="armButton(this, 'Ещё раз — рассчитать ' + fmtPLN(${st.unpaid_pln}) + ' zł', () => settleDebt())"><span data-ic="coins"></span>Рассчитать ${fmtPLN(st.unpaid_pln)} zł · ${PAY_RU[settleM]}</button>
       <div class="muted">Кухня и бар закрываются вместе; сумма попадёт в выручку смены сейчас. Кошельком товары не платятся (Ж-Р8).</div>
+      ${isOwner() ? `<button class="btn ghost" style="width:100%; justify-content:center; border:1px solid var(--acc3); color:var(--acc3)" id="woBtn"
+          onclick="armButton(this, 'Ещё раз — списать ' + fmtPLN(${st.unpaid_pln}) + ' zł', () => debtWriteOff())"><span data-ic="cross"></span>Списать долг ${fmtPLN(st.unpaid_pln)} zł</button>
+      <div class="muted">Гость ушёл и не заплатит — долг уйдёт в «Потери → долги», склад не трогаем. Заплатит потом — «Вернуть долг» здесь же, в карточке.</div>` : ''}
     </div>`;
   }
   // Ж5-и2 (№19): посадка из карточки — тот же POST /computers/:id/session с
@@ -4015,6 +4054,7 @@ const AUD_GROUPS = {
           'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
           'kitchen_done','kitchen_pay','kitchen_cancel', // кухню считают у той же стойки (ревью 26.08)
           'sale_paid','settle','kitchen_order','shift_close', // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
+          'debt_write_off','debt_restore', // З11-и4: списание долга гостя и его возврат
           'cash_collect','cash_correct','cash_event_void', // З8-и2: инкассация, коррекция остатка, отмена события ящика
           'expense_create','expense_update','expense_storno', // З9-и2: расходы (видит только владелец)
           'owner_repay','owner_repay_void', // З9-и3б
@@ -4029,7 +4069,7 @@ const AUD_GROUPS = {
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release'], // Ж4-и3
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
-  goods: ['sale','sale_void','sale_paid','settle','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
+  goods: ['sale','sale_void','sale_paid','settle','debt_write_off','debt_restore','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
           'supply_receive','supply_edit','supply_cancel'], // З10-и4: приёмка
   staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close','login_failed'], // ревью 26.08; Ж6-и4: сдача кассы
 };
@@ -4051,6 +4091,7 @@ const AUD_LABEL = {
   shift_tpl_delete:'смена: удалена', shift_assign:'график: назначен',
   shift_unassign:'график: снят',
   sale:'продажа', sale_void:'отмена продажи', sale_paid:'расчёт долга', settle:'рассчитался у стойки', // Ж6
+  debt_write_off:'долг списан', debt_restore:'долг возвращён', // З11-и4
   staff_card:'персонал: карточка',
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
   work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка', shift_close:'сдача кассы', // Ж6-и4
@@ -4095,6 +4136,7 @@ const AUD_ICON = {
   shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',
   shift_assign:'cal', shift_unassign:'out',
   sale:'box', sale_void:'cross', sale_paid:'coins', settle:'coins', shift_close:'coins', kitchen_order:'box', // Ж6
+  debt_write_off:'cross', debt_restore:'coins', // З11-и4
   cash_collect:'coins', cash_correct:'wrench', cash_event_void:'cross', // З8-и2
   expense_create:'coins', expense_update:'edit', expense_storno:'cross', counterparty_create:'users', // З9-и2
   owner_repay:'coins', owner_repay_void:'cross', // З9-и3б
@@ -4619,7 +4661,7 @@ function paintKitchen(){
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
         ${chip(o.status)}
         <b>${esc(o.name)}${o.qty>1?' ×'+o.qty:''}</b>
-        <span class="muted">${fmtPLN(o.total_pln)} zł · ${o.pay_method ? 'оплачен: ' + (PAY_RU[o.pay_method]||o.pay_method) : 'расчёт у стойки после игры'}</span>
+        <span class="muted">${fmtPLN(o.total_pln)} zł · ${o.pay_method ? 'оплачен: ' + (PAY_RU[o.pay_method]||o.pay_method) : o.written_off ? 'долг списан — ушёл, не заплатив' : 'расчёт у стойки после игры'}</span>
         <span class="muted">${esc(o.nickname||'гость')}${o.computer ? ' · нести к ' + esc(o.computer) : ' · заберёт у стойки'}</span>
         <span class="muted" style="margin-left:auto">${hhmm(o.created_at)}</span>
       </div>
@@ -4996,7 +5038,7 @@ async function voidSale(id, quiet, how, pln){ // З11-и2: how — как вер
     const todo = d.unpaid ? '' : refundTodo(d.refund_method, pln);
     // З6-и1: отмена расчёта кухни склад не трогает (выпитое не вернуть) — заказ снова ждёт оплаты
     if (!quiet) toast((d && d.kitchen_unpaid ? '✓ Оплата заказа кухни отменена — заказ снова ждёт оплаты, склад не тронут'
-                                             : d.unpaid ? '✓ Долг списан — товар вернулся на склад' : '✓ Продажа отменена — товар вернулся на склад')
+                                             : d.unpaid ? '✓ Продажа в долг отменена — товар вернулся на склад' : '✓ Продажа отменена — товар вернулся на склад')
                       + (todo ? ' · ' + todo : ''));
     renderGoods();
     refresh();
@@ -5025,6 +5067,7 @@ function paintSales(d){
   groups.forEach(g => { if (g.items) g.items.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); }); // позиции — в порядке чека
   const guestCell = x => x.nickname ? (x.user_id ? `<a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${x.user_id}')">${esc(x.nickname)}</a>` : esc(x.nickname)) : '—';
   const payCell = x => x.voided ? '<span class="muted">' + (PAY_RU[x.method] || esc(x.method)) + '</span>'
+    : x.written_off ? '<span class="muted" title="З11-и4: долг списал владелец — гость ушёл, не заплатив; вернуть — в карточке гостя">долг списан</span>'
     : x.unpaid ? `<span class="debtline" title="Ж-Р8: рассчитается у стойки при выходе">в долг</span>${x.user_id ? ` · <a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${x.user_id}','debt')">рассчитать</a>` : ''}`
     : (PAY_RU[x.method] || esc(x.method)) + (x.postpaid ? ' <span class="muted" title="продано в долг, рассчитано ' + (x.paid_at ? hhmm(x.paid_at) : '') + '">· был долг</span>' : '');
   const oneRow = x => `<tr${x.voided ? ' style="opacity:.45"' : ''}>
@@ -5034,7 +5077,7 @@ function paintSales(d){
         <td class="muted">${payCell(x)}</td>
         <td class="muted">${guestCell(x)}</td>
         <td class="muted">${esc(x.admin || '—')}</td>
-        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}','${x.unpaid ? '' : x.method}',${+x.total_pln || 0})">${x.unpaid ? 'Списать' : 'Отменить'}</button>`}</td>
+        <td>${x.voided || x.written_off ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}','${x.unpaid ? '' : x.method}',${+x.total_pln || 0})">Отменить</button>`}</td>
       </tr>`;
   const receiptRows = g => {
     if (g.items.length === 1) return oneRow(g.items[0]);
@@ -5048,11 +5091,11 @@ function paintSales(d){
         <td class="muted">${payCell(live[0] || f)}</td>
         <td class="muted">${guestCell(f)}</td>
         <td class="muted">${esc(f.admin || '—')}</td>
-        <td onclick="event.stopPropagation()">${allVoid ? '' : `<button class="btn ghost mini" onclick="armVoidReceipt(this,'${g.rid}','${live[0] && !live[0].unpaid ? live[0].method : ''}',${total})">${live[0] && live[0].unpaid ? 'Списать чек' : 'Вернуть чек'}</button>`}</td>
+        <td onclick="event.stopPropagation()">${allVoid || live[0].written_off ? '' : `<button class="btn ghost mini" onclick="armVoidReceipt(this,'${g.rid}','${live[0] && !live[0].unpaid ? live[0].method : ''}',${total})">${live[0] && live[0].unpaid ? 'Отменить чек' : 'Вернуть чек'}</button>`}</td>
       </tr>` + (open ? g.items.map(x => `<tr class="rcp"${x.voided ? ' style="opacity:.45"' : ''}>
         <td></td><td>${esc(x.name)}${x.qty > 1 ? ' ×' + x.qty : ''}${x.voided ? ' — отменена' : ''}</td>
         <td>${fmtPLN(x.total_pln)} zł</td><td></td><td></td><td></td>
-        <td>${x.voided ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}','${x.unpaid ? '' : x.method}',${+x.total_pln || 0})">${x.unpaid ? 'Списать' : 'Вернуть'}</button>`}</td>
+        <td>${x.voided || x.written_off ? '' : `<button class="btn ghost mini" onclick="armVoid(this,'${x.id}','${x.unpaid ? '' : x.method}',${+x.total_pln || 0})">${x.unpaid ? 'Отменить' : 'Вернуть'}</button>`}</td>
       </tr>`).join('') : '');
   };
   setHTML('salesTable', rows.length === 0
@@ -5070,9 +5113,9 @@ function armVoidReceipt(btn, rid, paid, pln){ // З11-и2: один способ
 }
 const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK', wallet:'кошелёк', later:'при выходе'};
 
-/* отмена продажи — деньги уходят из выручки смены; З11-и2: второй шаг — «как вернули», у долга — «Точно списать?» */
+/* отмена продажи — деньги уходят из выручки смены; З11-и2: второй шаг — «как вернули», у долга — «Точно отменить?» */
 function armVoid(btn, id, paid, pln){
-  refundPick(btn, {paid, pln, confirm: 'Точно списать?', run: how => voidSale(id, false, how, pln)});
+  refundPick(btn, {paid, pln, confirm: 'Точно отменить?', run: how => voidSale(id, false, how, pln)});
 }
 
 function paintGoodsTable(){
@@ -5725,6 +5768,8 @@ function paintMoney(d){
   const pk = d.packages || {liability_pln:0, minutes_left:0, guests:0, period_pln:0, period_count:0, period_minutes:0}; // Е2-и6
   const ic = d.incidents || {period_count:0, compensated:0, comp_minutes:0, comp_pln:0, open:0}; // К8
   const gm = d.goods_margin || {}, sv = d.stock_value || {}; // З10-и8 (№70)
+  const rcv = (d.debts || {}).receivable || {total_pln:0, guests:0, gone_pln:0, gone_guests:0, items:[]}; // З11-и4 (№15)
+  const wof = (d.debts || {}).written_off || {pln:0, count:0, guests:0, items:[]};
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln,
@@ -5742,9 +5787,12 @@ function paintMoney(d){
        ${repKpi('Депозитов', t.deposits, k.deposits, {was:w.deposits})}
        ${repKpi('Платили гостей', t.guests, k.guests, {was:w.guests})}
        ${repKpi('Продано штук', t.goods_items, undefined, {title:t.goods_sales + ' продаж за период'})}
-       ${repKpi('Потери', fmtPLN(loss.pln + lostDep) + ' zł', undefined,
+       ${repKpi('Потери', fmtPLN(loss.pln + lostDep + (+wof.pln || 0)) + ' zł', undefined,
                 {title:'склад: списано корректировкой, а не через кассу — ' + loss.units + ' шт за ' + loss.moves + ' движений, ' + fmtPLN(loss.pln) + ' zł'
-                       + ' · отыграно по ошибочным депозитам — ' + fmtPLN(lostDep) + ' zł'})}
+                       + ' · отыграно по ошибочным депозитам — ' + fmtPLN(lostDep) + ' zł · списанные долги — ' + fmtPLN(wof.pln || 0) + ' zł'})}
+       ${wof.count > 0 ? repKpi('— списанные долги', fmtPLN(wof.pln) + ' zł', undefined, // З11-и4 (№15; решения основателя 30.09)
+                {title:'выдали гостям за ПК в долг и не получили: ' + repPlural(wof.count, 'списание', 'списания', 'списаний') + ' у ' + repPlural(wof.guests, 'гостя', 'гостей', 'гостей')
+                       + ' — по дню списания. Склад не трогали: товар съеден. Заплатят потом — «Вернуть долг» в карточке гостя'}) : ''}
        ${repKpi('— склад по себестоимости', fmtPLN(loss.cost_pln || 0) + ' zł', undefined, // З10-и7 (№70)
                 {title:'списано корректировкой — по цене закупки партий, из которых ушло: ' + loss.units + ' шт, по рознице ' + fmtPLN(loss.pln) + ' zł'
                        + (loss.no_cost_units ? ' · без себестоимости: ' + loss.no_cost_units + ' шт' : '')})}
@@ -5787,6 +5835,12 @@ function paintMoney(d){
        ${repKpi('— кухня', fmtPLN(wal.spent_kitchen_pln || 0) + ' zł', undefined,
                 {title:'заказы кухни кошельком (Г7) — тоже не выручка'})}
      </div>
+     <div class="kpis" id="repDebt">
+       ${repKpi('Дебиторка сейчас', fmtPLN(rcv.total_pln) + ' zł', undefined, // З11-и4 (№15)
+                {title:'гости должны за выданное в долг — бар и кухня «при выходе»: ' + repPlural(rcv.guests, 'гость', 'гостя', 'гостей') + '. Снимок на сейчас — от периода не зависит'})}
+       ${rcv.gone_guests > 0 ? repKpi('— ушли, не рассчитавшись', fmtPLN(rcv.gone_pln) + ' zł', undefined,
+                {title:repPlural(rcv.gone_guests, 'гость', 'гостя', 'гостей') + ' без сессии: сами не рассчитаются — позвать или списать долг в карточке'}) : ''}
+     </div>
      <div class="kpis">
        ${repKpi('Долг временем', fmtPLN(pk.liability_pln || 0) + ' zł', undefined,
                 {title:'обязательство клуба по НЕотыгранным минутам пакетов, по цене продажи · '
@@ -5823,6 +5877,7 @@ function paintMoney(d){
          <td>${a.deposits} · ${fmtPLN(a.deposits_pln)} zł</td><td>${a.sales} · ${fmtPLN(a.goods_pln)} zł</td>
          <td>${a.packs || 0} · ${fmtPLN(a.packs_pln)} zł</td></tr>`),
         'За этот период денег не принимали')}
+     ${repDebtHtml(rcv, wof)}
      <div class="sect" id="repReturns">Возвраты за прошлый месяц</div>
      <div id="repRetBody"><div class="muted">Считаю возвраты…</div></div>`;
   loadReturns(); // З11-и3: всегда прошлый месяц — свой запрос, период отчёта его не меняет
@@ -5844,6 +5899,23 @@ function repGoodsCells(g){
 // маржа словами: «1 740,00 zł · 64,4%»; неизвестна — «—»
 function repMarginTxt(x){
   return x.margin_pln == null ? '—' : fmtPLN(x.margin_pln) + ' zł' + (x.margin_pct == null ? '' : '&nbsp;· ' + x.margin_pct.toLocaleString('ru-RU') + '%');
+}
+/* З11-и4 (№15; решения основателя 30.09): «Дебиторка сейчас» — кто сколько должен за выданное в долг (снимок, от периода
+   не зависит): ушедшие, не рассчитавшись, — первыми и оранжевым; «Списано за период» — «Потери → долги» по дню списания.
+   Строка — карточка гостя с формой долга: рассчитать, списать или вернуть. На телефоне строка — карточка с подписями. */
+function repDebtHtml(rcv, wof){
+  const L = t => `<span class="repL">${t}</span>`;
+  return `<div class="sect" id="repDebtList">Дебиторка сейчас</div>
+     <div class="muted" style="margin:-4px 0 10px">Снимок на сейчас — от периода не зависит. Нажми на гостя — карточка: рассчитать, списать или вернуть долг.</div>
+     ${repTable(['Гость', 'Должен', 'Что', 'С какого', 'Где'], (rcv.items || []).map(x => `<tr onclick="openUserDrawer('${x.user_id}','debt')" style="cursor:pointer">
+       <td><b>${esc(x.nickname || '—')}</b></td><td>${L('должен')}<b>${fmtPLN(x.total_pln)} zł</b></td>
+       <td>${L('что')}<span>${woParts(x)}</span></td><td>${L('с какого')}${retDay(x.since, true)} ${hhmm(x.since)}</td>
+       <td>${L('где')}${x.computer ? 'за ' + esc(x.computer) : '<span class="retOld">ушёл, не рассчитавшись</span>'}</td></tr>`), 'Никто ничего не должен')}
+     ${(rcv.items || []).length < (rcv.guests || 0) ? `<div class="muted">Показаны ${(rcv.items || []).length} из ${rcv.guests} — итог выше по всем</div>` : ''}
+     ${wof.count ? `<div class="sect" id="repWriteOffs">Списано за период</div>
+     ${repTable(['Когда', 'Гость', 'Сумма', 'Что', 'Кто списал'], (wof.items || []).map(x => `<tr onclick="openUserDrawer('${x.user_id}')" style="cursor:pointer">
+       <td>${L('когда')}${retDay(x.created_at, true)} ${hhmm(x.created_at)}</td><td><b>${esc(x.nickname || '—')}</b></td>
+       <td>${L('сумма')}<b>${fmtPLN(x.total_pln)} zł</b></td><td>${L('что')}<span>${woParts(x)}</span></td><td>${L('кто списал')}${esc(x.by || '—')}</td></tr>`), '')}` : ''}`;
 }
 /* З11-и3 (№17; З-Р12; решение основателя 30.09): «Возвраты за <прошлый месяц>» — всегда прошлый месяц, от периода
    отчёта не зависит (свой запрос, returns.go). Возврат — в день отмены, как бы давно ни платили: оплаченное до этого
@@ -8284,6 +8356,8 @@ const PAL_WORDS = [
    sub:'Отчёты → Деньги: себестоимость проданного, маржа, склад сейчас', ic:'chart', run:() => palGoMargin()},
   {who:'owner', words:['возврат', 'возвраты', 'вернули деньги', 'вернули гостю'], name:'Возвраты', // З11-и3
    sub:'Отчёты → Деньги: возвраты за прошлый месяц — сколько, как и за что', ic:'coins', run:() => palGoReturns()},
+  {who:'owner', words:['дебиторка', 'должники', 'долги гостей', 'кто должен', 'списать долг', 'списанные долги'], name:'Дебиторка', // З11-и4
+   sub:'Отчёты → Деньги: кто сколько должен сейчас, списанные долги', ic:'coins', run:() => palGoDebt()},
   {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
@@ -8308,6 +8382,15 @@ function palGoMargin(){
   let n = 0;
   const t = setInterval(() => {
     const el = document.getElementById('repMargin');
+    if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
+  }, 100);
+}
+// З11-и4: дебиторка — ряд под кошельками в «Деньгах»: ждём, пока отчёт встанет, и показываем его
+function palGoDebt(){
+  palGoReport('money');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('repDebt');
     if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
   }, 100);
 }

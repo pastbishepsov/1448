@@ -284,8 +284,8 @@ func handleAdminAudit(c *gin.Context) {
 				by = *s.VoidedBy
 			}
 			vt := "отмена: " + fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)
-			if s.PaidAt == nil {
-				vt += " · долг списан, денег не брали"
+			if s.PaidAt == nil { // З11-и4: «долг списан» — это списание владельцем, а тут продажу в долг отменили
+				vt += " · денег не брали, товар вернулся на склад"
 			} else if s.RefundMethod != nil { // З11-и1: как вернули
 				vt += " · " + refundRu(*s.RefundMethod)
 			}

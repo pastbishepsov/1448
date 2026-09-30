@@ -578,8 +578,10 @@ func saleOut(s *models.Sale, nick map[string]string) gin.H {
 		"id": s.ID, "name": s.Name, "qty": s.Qty, "price_pln": s.PricePLN,
 		"total_pln": s.TotalPLN, "method": s.Method, "created_at": s.CreatedAt,
 		"admin": nick[s.CreatedBy.String()], "voided": s.VoidedAt != nil,
-		// Ж6 (Ж-Р8): в долг — paid_at пуст, деньги придут при расчёте у стойки
-		"paid_at": s.PaidAt, "unpaid": s.PaidAt == nil && s.VoidedAt == nil, "postpaid": s.Postpaid,
+		// Ж6 (Ж-Р8): в долг — paid_at пуст, деньги придут при расчёте у стойки;
+		// З11-и4: списанный владельцем долг — уже не «в долг», а «долг списан»
+		"paid_at": s.PaidAt, "unpaid": s.PaidAt == nil && s.VoidedAt == nil && s.WriteOffID == nil, "postpaid": s.Postpaid,
+		"written_off": s.WriteOffID != nil,
 	}
 	if s.ReceiptID != nil {
 		row["receipt_id"] = s.ReceiptID // Ж6-и2: чек — позиции одной продажи
@@ -848,8 +850,8 @@ const salesFeedLimit = 300
 // salesFeedWhere — окно ленты (Ж6, Ж-Р8): проданное в окне И рассчитанное в
 // окне (долг вчерашней смены, закрытый сегодня, — сегодняшние деньги), а
 // неоплаченный долг висит в ленте любого дня, пока гость не рассчитается (как
-// «ждут оплаты» у кухни).
-const salesFeedWhere = "(created_at >= ? AND created_at < ?) OR (paid_at >= ? AND paid_at < ?) OR (paid_at IS NULL AND voided_at IS NULL)"
+// «ждут оплаты» у кухни). З11-и4: списанный — не висит, он в ленте дня продажи.
+const salesFeedWhere = "(created_at >= ? AND created_at < ?) OR (paid_at >= ? AND paid_at < ?) OR (" + barDebtWhere + ")"
 
 // GET /admin/sales?date=YYYY-MM-DD — лента продаж (staff).
 // Роли, решение №3 трека Б: admin видит только текущие клубные сутки,
@@ -880,8 +882,8 @@ func handleAdminSales(c *gin.Context) {
 	paid := "voided_at IS NULL AND paid_at >= ? AND paid_at < ?"
 	db.Model(&models.Sale{}).
 		Select("COUNT(*) AS n, COUNT(*) FILTER (WHERE voided_at IS NOT NULL) AS voided, "+
-			"COUNT(*) FILTER (WHERE voided_at IS NULL AND paid_at IS NULL) AS unpaid, "+
-			"COALESCE(SUM(total_pln) FILTER (WHERE voided_at IS NULL AND paid_at IS NULL), 0) AS unpaid_pln, "+
+			"COUNT(*) FILTER (WHERE "+barDebtWhere+") AS unpaid, "+
+			"COALESCE(SUM(total_pln) FILTER (WHERE "+barDebtWhere+"), 0) AS unpaid_pln, "+
 			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method <> 'wallet'), 0) AS total, "+
 			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method = 'wallet'), 0) AS wallet", from, to, from, to).
 		Where(salesFeedWhere, from, to, from, to).Scan(&sum)
@@ -932,7 +934,7 @@ func voidSaleTx(tx *gorm.DB, sale *models.Sale, adminID uuid.UUID, now time.Time
 	// «отменить» возвращал деньги на кошелёк и товар на склад дважды
 	// (ревью 26.08).
 	res := tx.Model(&models.Sale{}).
-		Where("id = ? AND voided_at IS NULL", sale.ID).
+		Where("id = ? AND voided_at IS NULL AND write_off_id IS NULL", sale.ID). // З11-и4: списанный долг не отменяется
 		Updates(map[string]any{"voided_at": now, "voided_by": adminID, "refund_method": refund})
 	if res.Error != nil {
 		return res.Error
@@ -1006,6 +1008,10 @@ func handleAdminSaleVoid(c *gin.Context) {
 		goodFail(c, http.StatusConflict, "already_void")
 		return
 	}
+	if sale.WriteOffID != nil { // З11-и4
+		c.JSON(http.StatusConflict, gin.H{"code": "written_off", "message": writtenOffMsg})
+		return
+	}
 	if !saleVoidAllowed(c, &sale) {
 		return
 	}
@@ -1032,7 +1038,7 @@ func handleAdminSaleVoid(c *gin.Context) {
 	}
 	payload := map[string]any{"kind": "void", "name": sale.Name, "total_pln": sale.TotalPLN, "refund_method": refund}
 	if sale.PaidAt == nil {
-		payload["unpaid"] = true // долг списан вместе с товаром — денег не возвращаем
+		payload["unpaid"] = true // продажа в долг отменена, товар вернулся — денег не брали
 	}
 	if kitchen {
 		payload["kitchen_unpaid"] = true // заказ кухни снова ждёт оплаты, склад не тронут
@@ -1055,6 +1061,10 @@ func handleAdminReceiptVoid(c *gin.Context) {
 	for i := range sales {
 		if sales[i].VoidedAt == nil {
 			live = append(live, &sales[i])
+		}
+		if sales[i].WriteOffID != nil { // З11-и4: чек в списанном долге — сначала вернуть долг
+			c.JSON(http.StatusConflict, gin.H{"code": "written_off", "message": writtenOffMsg})
+			return
 		}
 	}
 	if len(live) == 0 {

@@ -103,8 +103,9 @@ func kitchenOrderOut(o *models.KitchenOrder, compName string) gin.H {
 		"total_pln": o.TotalPLN, "status": o.Status,
 		"created_at": o.CreatedAt, "status_at": o.StatusAt,
 		"can_cancel": o.Status == models.KitchenNew,
-		// Р10: выдан, но ещё не рассчитан у стойки
-		"unpaid": o.Status == models.KitchenDone && o.PaidAt == nil,
+		// Р10: выдан, но ещё не рассчитан у стойки; З11-и4: списанный владельцем — уже не ждёт оплаты
+		"unpaid":      o.Status == models.KitchenDone && o.PaidAt == nil && o.WriteOffID == nil,
+		"written_off": o.WriteOffID != nil,
 	}
 	if o.PayMethod != nil {
 		row["pay_method"] = *o.PayMethod
@@ -117,6 +118,7 @@ func kitchenOrderOut(o *models.KitchenOrder, compName string) gin.H {
 
 // unpaidKitchen — выданные и не рассчитанные заказы гостя (Р10): их видно в
 // карточке гостя, в «ждут оплаты» и в напоминании при завершении сессии.
+// З11-и4: списанные — нет.
 func unpaidKitchen(userID uuid.UUID) (int64, float64) {
 	var agg struct {
 		Cnt int64
@@ -124,7 +126,7 @@ func unpaidKitchen(userID uuid.UUID) (int64, float64) {
 	}
 	db.Model(&models.KitchenOrder{}).
 		Select("COUNT(*) AS cnt, COALESCE(SUM(total_pln),0) AS sum").
-		Where("user_id = ? AND status = ? AND paid_at IS NULL", userID, models.KitchenDone).
+		Where("user_id = ? AND "+kitchenDebtWhere, userID).
 		Scan(&agg)
 	return agg.Cnt, roundPLN(agg.Sum)
 }
@@ -232,8 +234,8 @@ func handleGetMyKitchenOrders(c *gin.Context) {
 	userID := c.GetString("user_id")
 	uid, _ := uuid.Parse(userID)
 	var orders []models.KitchenOrder
-	db.Where("user_id = ? AND (status IN ? OR (status = ? AND paid_at IS NULL) OR created_at > ?)",
-		userID, kitchenOpenStatuses, models.KitchenDone, time.Now().Add(-24*time.Hour)).
+	db.Where("user_id = ? AND (status IN ? OR ("+kitchenDebtWhere+") OR created_at > ?)", // З11-и4: списанные не висят
+		userID, kitchenOpenStatuses, time.Now().Add(-24*time.Hour)).
 		Order("created_at DESC").Limit(20).Find(&orders)
 	out := make([]gin.H, 0, len(orders))
 	for i := range orders {
@@ -386,11 +388,11 @@ func handleAdminKitchenOrders(c *gin.Context) {
 	reportHour := int(settingInt64("report_hour", 8))
 	from, to, _, _ := shiftWindow("", reportHour, time.Now())
 	var live, closed []models.KitchenOrder
-	db.Where("status IN ? OR (status = ? AND paid_at IS NULL)", kitchenOpenStatuses, models.KitchenDone).
+	db.Where("status IN ? OR ("+kitchenDebtWhere+")", kitchenOpenStatuses).
 		Order("created_at").Find(&live)
-	closedQ := func() *gorm.DB {
+	closedQ := func() *gorm.DB { // З11-и4: списанный долг — закрыт, как оплаченный
 		return db.Model(&models.KitchenOrder{}).
-			Where("created_at >= ? AND created_at < ? AND (status = ? OR (status = ? AND paid_at IS NOT NULL))",
+			Where("created_at >= ? AND created_at < ? AND (status = ? OR (status = ? AND (paid_at IS NOT NULL OR write_off_id IS NOT NULL)))",
 				from, to, models.KitchenCancelled, models.KitchenDone)
 	}
 	var closedTotal int64
@@ -412,7 +414,7 @@ func handleAdminKitchenOrders(c *gin.Context) {
 		row["nickname"] = nick[o.UserID.String()]
 		row["user_id"] = o.UserID // Ж6-и1: «рассчитать всё» ведёт в карточку гостя
 		out = append(out, row)
-		if o.Status == models.KitchenDone && o.PaidAt == nil {
+		if o.Status == models.KitchenDone && o.PaidAt == nil && o.WriteOffID == nil {
 			unpaid++
 			unpaidSum += o.TotalPLN
 		}
@@ -491,6 +493,10 @@ func handleAdminKitchenPay(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"code": "already_paid", "message": "Заказ уже оплачен"})
 		return
 	}
+	if o.WriteOffID != nil { // З11-и4
+		c.JSON(http.StatusConflict, gin.H{"code": "written_off", "message": writtenOffMsg})
+		return
+	}
 	var req kitchenPayRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		goodFail(c, http.StatusBadRequest, "invalid_request")
@@ -510,7 +516,7 @@ func handleAdminKitchenPay(c *gin.Context) {
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.KitchenOrder{}).
-			Where("id = ? AND status = ? AND paid_at IS NULL", o.ID, models.KitchenDone).
+			Where("id = ? AND "+kitchenDebtWhere, o.ID).
 			Updates(map[string]any{"pay_method": req.Method, "paid_at": now, "paid_by": adminID})
 		if res.Error != nil {
 			return res.Error

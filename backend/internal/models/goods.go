@@ -64,6 +64,9 @@ type Sale struct {
 	// З11-и1 (миграция 079): как вернули деньги отменённой продажи — cash | card |
 	// blik | wallet | none (у неоплаченного долга — всегда none).
 	RefundMethod *string `json:"refund_method,omitempty" gorm:"size:8"`
+	// З11-и4 (миграция 080): долг по продаже списан этим списанием (DebtWriteOff) —
+	// не висит в долге гостя, не рассчитывается и не отменяется, пока списание стоит.
+	WriteOffID *uuid.UUID `json:"write_off_id,omitempty" gorm:"type:uuid"`
 }
 
 // SaleMethodLater — продажа в долг (Ж6): товар выдан, деньги — при расчёте.

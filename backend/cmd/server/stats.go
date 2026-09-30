@@ -71,19 +71,19 @@ func handleAdminStatsShift(c *gin.Context) {
 		Count(&walletCount)
 	saleCount := money.GoodsSales + walletCount
 	// Ж6: долг, выданный в эту смену и ещё не рассчитанный — не выручка, но
-	// владелец должен видеть, сколько «висит» (бар + кухня)
+	// владелец должен видеть, сколько «висит» (бар + кухня); З11-и4: списанный — не висит
 	var unpaidPLN float64
 	var unpaidCount int64
 	db.Model(&models.Sale{}).Select("COALESCE(SUM(total_pln),0)").
-		Where("created_at >= ? AND created_at < ? AND paid_at IS NULL AND voided_at IS NULL", from, to).Scan(&unpaidPLN)
+		Where("created_at >= ? AND created_at < ? AND "+barDebtWhere, from, to).Scan(&unpaidPLN)
 	db.Model(&models.Sale{}).
-		Where("created_at >= ? AND created_at < ? AND paid_at IS NULL AND voided_at IS NULL", from, to).Count(&unpaidCount)
+		Where("created_at >= ? AND created_at < ? AND "+barDebtWhere, from, to).Count(&unpaidCount)
 	var kUnpaid struct {
 		Cnt int64
 		Sum float64
 	}
 	db.Model(&models.KitchenOrder{}).Select("COUNT(*) AS cnt, COALESCE(SUM(total_pln),0) AS sum").
-		Where("created_at >= ? AND created_at < ? AND status = ? AND paid_at IS NULL", from, to, models.KitchenDone).Scan(&kUnpaid)
+		Where("created_at >= ? AND created_at < ? AND "+kitchenDebtWhere, from, to).Scan(&kUnpaid)
 	unpaidPLN += kUnpaid.Sum
 	unpaidCount += kUnpaid.Cnt
 

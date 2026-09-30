@@ -89,7 +89,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page.click('#cartSellBtn');
   await sleep(1500);
   const later = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, rows: [...document.querySelectorAll('#salesTable tr')].slice(1).map(r => r.textContent.replace(/\s+/g, ' ').trim()), total: document.getElementById('salesTotal').textContent }));
-  check('в долг → тост «🧾 В долг: Woda — сумма · Guest29 · должен всего …», строка «в долг · рассчитать», в итогах «в долг: … (не выручка)»', /В долг: Woda/.test(later.toast) && /должен всего/.test(later.toast) && later.rows.some(r => /Woda 0.5/.test(r) && /в долг/.test(r) && /рассчитать/.test(r) && /Списать/.test(r)) && /в долг: .*не выручка/.test(later.total), later.toast + ' || ' + later.total);
+  check('в долг → тост «🧾 В долг: Woda — сумма · Guest29 · должен всего …», строка «в долг · рассчитать · Отменить» (З11-и4: «списать» — это списание долга владельцем), в итогах «в долг: … (не выручка)»', /В долг: Woda/.test(later.toast) && /должен всего/.test(later.toast) && later.rows.some(r => /Woda 0.5/.test(r) && /в долг/.test(r) && /рассчитать/.test(r) && /Отменить/.test(r)) && /в долг: .*не выручка/.test(later.total), later.toast + ' || ' + later.total);
   // ── и3: заказ кухни от стойки ──
   await page.evaluate(() => nav('kitchen'));
   await sleep(1200);

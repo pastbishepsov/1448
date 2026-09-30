@@ -371,6 +371,9 @@ func main() {
 		own.GET("/owner-debt", handleOwnerDebt)                      // З9-и3б: клуб должен владельцу и возвраты
 		own.POST("/owner-repayments", handleOwnerRepay)              // З9-и3б: вернули владельцу — из кассы или с банка
 		own.POST("/owner-repayments/:id/void", handleOwnerRepayVoid) // З9-и3б: отмена ошибочного возврата
+		// З11-и4: долг гостя — списать одной кнопкой и вернуть списанный
+		own.POST("/users/:id/debt/write-off", handleDebtWriteOff)
+		own.POST("/debt-write-offs/:id/cancel", handleDebtWriteOffCancel)
 		// Смены и график персонала (Б11): правит только owner
 		own.POST("/shifts", handleAdminShiftCreate)
 		own.PATCH("/shifts/:id", handleAdminShiftUpdate)

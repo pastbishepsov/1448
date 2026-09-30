@@ -25,6 +25,14 @@ import (
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
+// Открытый долг — одно правило для карточки, расчёта, кухни, ленты продаж и
+// отчётов: бар — продано в долг и не рассчитано; кухня — выдано «при выходе» и
+// не рассчитано. З11-и4: списанное владельцем (write_off_id) — уже не долг.
+const (
+	barDebtWhere     = "paid_at IS NULL AND voided_at IS NULL AND write_off_id IS NULL"
+	kitchenDebtWhere = "status = 'done' AND paid_at IS NULL AND write_off_id IS NULL"
+)
+
 // guestDebtInfo — что гость должен клубу прямо сейчас.
 type guestDebtInfo struct {
 	KitchenCount int64   `json:"kitchen_count"`
@@ -34,7 +42,8 @@ type guestDebtInfo struct {
 	TotalPLN     float64 `json:"total_pln"`
 }
 
-// unpaidBar — неоплаченные живые продажи гостя (Ж6: method=later без paid_at).
+// unpaidBar — неоплаченные живые продажи гостя (Ж6: method=later без paid_at;
+// З11-и4: и не списанные).
 func unpaidBar(userID uuid.UUID) (int64, float64) {
 	var agg struct {
 		Cnt int64
@@ -42,7 +51,7 @@ func unpaidBar(userID uuid.UUID) (int64, float64) {
 	}
 	db.Model(&models.Sale{}).
 		Select("COUNT(*) AS cnt, COALESCE(SUM(total_pln),0) AS sum").
-		Where("user_id = ? AND paid_at IS NULL AND voided_at IS NULL", userID).
+		Where("user_id = ? AND "+barDebtWhere, userID).
 		Scan(&agg)
 	return agg.Cnt, roundPLN(agg.Sum)
 }
@@ -75,11 +84,11 @@ var errNoDebt = fmt.Errorf("no_debt")
 // Ничего не должен — errNoDebt, ни одной строки не трогаем.
 func settleGuestTx(tx *gorm.DB, userID, adminID uuid.UUID, method string, now time.Time) (*settleResult, error) {
 	r := &settleResult{Method: method}
-	if err := tx.Where("user_id = ? AND paid_at IS NULL AND voided_at IS NULL", userID).
+	if err := tx.Where("user_id = ? AND "+barDebtWhere, userID).
 		Order("created_at").Find(&r.Bar).Error; err != nil {
 		return nil, err
 	}
-	if err := tx.Where("user_id = ? AND status = ? AND paid_at IS NULL", userID, models.KitchenDone).
+	if err := tx.Where("user_id = ? AND "+kitchenDebtWhere, userID).
 		Order("created_at").Find(&r.Kitchen).Error; err != nil {
 		return nil, err
 	}
@@ -89,12 +98,12 @@ func settleGuestTx(tx *gorm.DB, userID, adminID uuid.UUID, method string, now ti
 	for i := range r.Bar {
 		s := &r.Bar[i]
 		res := tx.Model(&models.Sale{}).
-			Where("id = ? AND paid_at IS NULL AND voided_at IS NULL", s.ID).
+			Where("id = ? AND "+barDebtWhere, s.ID).
 			Updates(map[string]any{"method": method, "paid_at": now, "paid_by": adminID})
 		if res.Error != nil {
 			return nil, res.Error
 		}
-		if res.RowsAffected == 0 { // параллельно рассчитали или отменили — не считаем
+		if res.RowsAffected == 0 { // параллельно рассчитали, отменили или списали — не считаем
 			continue
 		}
 		s.Method, s.PaidAt, s.PaidBy = method, &now, &adminID
@@ -103,7 +112,7 @@ func settleGuestTx(tx *gorm.DB, userID, adminID uuid.UUID, method string, now ti
 	for i := range r.Kitchen {
 		o := &r.Kitchen[i]
 		res := tx.Model(&models.KitchenOrder{}).
-			Where("id = ? AND status = ? AND paid_at IS NULL", o.ID, models.KitchenDone).
+			Where("id = ? AND "+kitchenDebtWhere, o.ID).
 			Updates(map[string]any{"pay_method": method, "paid_at": now, "paid_by": adminID})
 		if res.Error != nil {
 			return nil, res.Error
@@ -218,9 +227,9 @@ func handleAdminUserDebt(c *gin.Context) {
 		return
 	}
 	var bar []models.Sale
-	db.Where("user_id = ? AND paid_at IS NULL AND voided_at IS NULL", user.ID).Order("created_at").Find(&bar)
+	db.Where("user_id = ? AND "+barDebtWhere, user.ID).Order("created_at").Find(&bar)
 	var kitchen []models.KitchenOrder
-	db.Where("user_id = ? AND status = ? AND paid_at IS NULL", user.ID, models.KitchenDone).Order("created_at").Find(&kitchen)
+	db.Where("user_id = ? AND "+kitchenDebtWhere, user.ID).Order("created_at").Find(&kitchen)
 	items := make([]gin.H, 0, len(bar)+len(kitchen))
 	for i := range kitchen {
 		o := &kitchen[i]

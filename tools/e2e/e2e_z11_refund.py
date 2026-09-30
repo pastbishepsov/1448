@@ -161,7 +161,7 @@ acts = [x.get("text", "") for x in audit("boss", limit=150) if x.get("kind") in 
 check("журнал: у отмены — как вернули («вернули наличными», «денег не возвращали», «возврат … на карту», «возврат 10.00 zł наличными»)",
       texts.get(f"deposit_void:{d2}", "").endswith("· вернули наличными") and texts.get(f"deposit_void:{d3}", "").endswith("· денег не возвращали")
       and texts.get(f"sale_void:{s2}", "").endswith("· вернули на карту") and texts.get(f"sale_void:{s4}", "").endswith("· денег не возвращали")
-      and texts.get(f"sale_void:{sd}", "").endswith("· долг списан, денег не брали")
+      and texts.get(f"sale_void:{sd}", "").endswith("· денег не брали, товар вернулся на склад")
       and any(t.endswith(f", возврат {price:.2f} zł на карту") for t in acts) and any(f"{A} ×1 · возврат 10.00 zł наличными" in t for t in acts),
       J([texts.get(f"deposit_void:{d2}"), texts.get(f"sale_void:{s4}"), acts[:3]], 600))
 old = sql("SELECT (SELECT count(*) FROM deposits WHERE voided_at IS NOT NULL AND refund_method IS NULL AND method IN ('cash','card','blik')) + "

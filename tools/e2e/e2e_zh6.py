@@ -187,7 +187,7 @@ check("кошелёк гостя не тронут расчётом", wallet(g29
 aud = api("GET", "/admin/audit?kind=sale_paid,settle&limit=20", None, a1)[1]["items"]
 check("журнал: строки sale_paid (расчёт: …) и settle (рассчитался у стойки)", any(i["kind"] == "sale_paid" and "расчёт:" in i["text"] for i in aud) and any(i["kind"] == "settle" and "кухня" in i["text"] and "бар" in i["text"] for i in aud), json.dumps([(i['kind'], i['text']) for i in aud[:4]], ensure_ascii=False)[:300])
 
-# ── отмена неоплаченной продажи: склад назад, долг списан, денег нет ──
+# ── отмена неоплаченной продажи: склад назад, денег не брали (З11-и4: «долг списан» — это списание владельцем) ──
 s, d = api("POST", f"/admin/computers/{P9['id']}/session", {"guest_id": g29, "planned_min": 60}, a1); api("POST", "/me/sessions/ready", {}, gt)
 stockC0 = stock(GC["id"])
 s, d = api("POST", "/admin/sales", {"good_id": GC["id"], "method": "later", "guest_id": g29}, a1)
@@ -196,7 +196,7 @@ s, d = api("POST", f"/admin/sales/{later2}/void", {}, a1)
 check("отмена продажи в долг → 200 unpaid=true, склад вернулся, долг 0, в кошелёк ничего не «вернулось»", s == 200 and d.get("unpaid") is True and stock(GC["id"]) == stockC0 and near(card_stats(g29).get("unpaid_pln", 0), 0)
       and sql(f"SELECT count(*) FROM wallet_transactions WHERE ref_id='{later2}'") == "0", f"{s} {d}")
 aud = api("GET", "/admin/audit?kind=sale_void&limit=5", None, a1)[1]["items"]
-check("журнал: отмена долга помечена «долг списан, денег не брали»", any("долг списан" in i["text"] for i in aud), json.dumps([i['text'] for i in aud[:2]], ensure_ascii=False)[:200])
+check("журнал: отмена продажи в долг помечена «денег не брали, товар вернулся на склад»", any("денег не брали, товар вернулся на склад" in i["text"] for i in aud), json.dumps([i['text'] for i in aud[:2]], ensure_ascii=False)[:200])
 
 # ── B: корзина / чек (и2) ──
 sA, sB, sC = stock(GA["id"]), stock(GB["id"]), stock(GC["id"])
@@ -234,11 +234,11 @@ check("повторная отмена чека → 409 already_void", s == 409 
 check("выручка вернулась к значению до чека", near(revenue_today()[0], goods4), f"{revenue_today()[0]} vs {goods4}")
 s, d = api("POST", "/admin/receipts/00000000-0000-0000-0000-000000000000/void", {}, a1)
 check("неизвестный чек → 404", s == 404, str(s))
-# чек в долг и «Списать чек»
+# чек в долг и «Отменить чек»
 s, d = api("POST", "/admin/sales", {"items": [{"good_id": GA["id"]}, {"good_id": GC["id"]}], "method": "later", "guest_id": g29}, a1)
 check("чек из 2 позиций в долг → receipt.unpaid, debt.bar_count 2", s == 201 and d["receipt"]["unpaid"] and d["debt"]["bar_count"] == 2, f"{s} {d.get('code')}")
 s, v = api("POST", f"/admin/receipts/{d['receipt']['id']}/void", {}, a1)
-check("списание чека в долг → 200, долг 0, склад как был", s == 200 and near(card_stats(g29).get("unpaid_pln", 0), 0) and stock(GA["id"]) == sA and stock(GC["id"]) == sC, f"{s}")
+check("отмена чека в долг → 200, долг 0, склад как был", s == 200 and near(card_stats(g29).get("unpaid_pln", 0), 0) and stock(GA["id"]) == sA and stock(GC["id"]) == sC, f"{s}")
 
 # ── сводка смены: unpaid_pln (долг за смену) ──
 s, d = api("POST", "/admin/sales", {"good_id": GA["id"], "method": "later", "guest_id": g29}, a1)

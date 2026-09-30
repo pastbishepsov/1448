@@ -508,6 +508,10 @@ func handleAdminUserCard(c *gin.Context) {
 		stats["bar_unpaid_pln"] = debt.BarPLN
 		stats["unpaid_pln"] = debt.TotalPLN
 	}
+	// З11-и4: списанный и не возвращённый долг — «Долг списан … · Вернуть долг» (кнопка — у владельца)
+	if wos := activeWriteOffs(user.ID); len(wos) > 0 {
+		stats["debt_written_off"] = wos
+	}
 	if ownerView {
 		stats["deposited_pln"] = depSum
 	}

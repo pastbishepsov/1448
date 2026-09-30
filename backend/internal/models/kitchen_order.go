@@ -49,6 +49,9 @@ type KitchenOrder struct {
 	StatusAt   time.Time  `json:"status_at"`
 	StatusBy   *uuid.UUID `json:"status_by,omitempty"   gorm:"type:uuid"`
 	CreatedAt  time.Time  `json:"created_at"`
+	// З11-и4 (миграция 080): выданный заказ «при выходе» списан этим списанием
+	// (DebtWriteOff) — не ждёт оплаты, пока списание стоит.
+	WriteOffID *uuid.UUID `json:"write_off_id,omitempty" gorm:"type:uuid"`
 }
 
 func (o *KitchenOrder) BeforeCreate(tx *gorm.DB) error {
