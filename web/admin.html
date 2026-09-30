@@ -392,6 +392,9 @@
   .repNeg, .repNeg b{color:var(--acc3)}
   .repL{display:none}
   @media (max-width:640px){ .repL{display:inline; color:var(--dim); margin-right:4px} }
+  /* З11-и3: «Возвраты за прошлый месяц» — оплачено до этого месяца: дата оранжевым; на телефоне плитки итогов переносятся */
+  .retOld{color:var(--orange)}
+  @media (max-width:640px){ .retK .kpi{white-space:normal} }
   /* З11-и2: «как вернули» у отмены — выбор на месте кнопки «Отменить», на узком месте переносится */
   .rfPick{display:inline-flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; white-space:normal; max-width:100%}
   .rfPick .btn{white-space:nowrap}
@@ -5819,7 +5822,10 @@ function paintMoney(d){
         `<tr><td><b>${esc(a.nickname||'—')}</b></td><td title="${moneyParts(a)}">${fmtPLN(a.revenue_pln)} zł</td>
          <td>${a.deposits} · ${fmtPLN(a.deposits_pln)} zł</td><td>${a.sales} · ${fmtPLN(a.goods_pln)} zł</td>
          <td>${a.packs || 0} · ${fmtPLN(a.packs_pln)} zł</td></tr>`),
-        'За этот период денег не принимали')}`;
+        'За этот период денег не принимали')}
+     <div class="sect" id="repReturns">Возвраты за прошлый месяц</div>
+     <div id="repRetBody"><div class="muted">Считаю возвраты…</div></div>`;
+  loadReturns(); // З11-и3: всегда прошлый месяц — свой запрос, период отчёта его не меняет
 }
 
 // З10-и8 (№70; решение основателя 29.09): числа строки «Что покупают» и «По категориям» — выручка как была; продано на,
@@ -5838,6 +5844,51 @@ function repGoodsCells(g){
 // маржа словами: «1 740,00 zł · 64,4%»; неизвестна — «—»
 function repMarginTxt(x){
   return x.margin_pln == null ? '—' : fmtPLN(x.margin_pln) + ' zł' + (x.margin_pct == null ? '' : '&nbsp;· ' + x.margin_pct.toLocaleString('ru-RU') + '%');
+}
+/* З11-и3 (№17; З-Р12; решение основателя 30.09): «Возвраты за <прошлый месяц>» — всегда прошлый месяц, от периода
+   отчёта не зависит (свой запрос, returns.go). Возврат — в день отмены, как бы давно ни платили: оплаченное до этого
+   месяца — с датой оплаты оранжевым (его выручка ушла из того месяца задним числом). Живые деньги — наличными, на
+   карту, по BLIK; на кошелёк — отдельно; «не возвращали» — сколько и на сколько платили. Наличные — ещё и по дням в
+   «Бухгалтерия» → «Касса». На телефоне строка — карточка, у чисел подписи (.repL). */
+const RET_PAID = {cash:'наличными', card:'картой', blik:'по BLIK', wallet:'кошельком'};
+function retWhat(x){
+  return x.kind === 'deposit' ? 'Пополнение' : x.kind === 'package' ? 'Пакет «' + esc(x.name) + '»' : esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '');
+}
+function retDay(iso, year){ const s = String(iso || ''); return s.slice(8, 10) + '.' + s.slice(5, 7) + (year ? '.' + s.slice(0, 4) : ''); }
+async function loadReturns(){
+  const box = document.getElementById('repRetBody');
+  if (!box) return;
+  let d;
+  try{ d = await api('/admin/reports/returns'); }
+  catch(e){ if (box.isConnected){ box.innerHTML = repEmpty('Возвраты не загрузились: ' + esc(e.message)); mountIcons(box); } return; }
+  if (!box.isConnected) return; // отчёт успели перерисовать — у нового свой запрос
+  const t = d.totals || {}, m = tplMonth(d.month + '-01'), items = d.items || [], L = s => `<span class="repL">${s}</span>`;
+  const cnt = n => repPlural(n, 'возврат', 'возврата', 'возвратов');
+  document.getElementById('repReturns').textContent = 'Возвраты за ' + m;
+  box.innerHTML = `<div class="muted" style="margin:-4px 0 10px">Всегда прошлый месяц — период выше его не меняет. Возврат — в день отмены, как бы давно ни платили; сумма — сколько отдали гостю.</div>`
+    + (!t.count ? repEmpty('За ' + m + ' возвратов не было') : `<div class="kpis retK">
+       ${repKpi('Вернули', fmtPLN(t.live_pln) + ' zł', undefined, {title:'живыми деньгами — ' + cnt(t.live_count) + ': наличными из ящика, на карту и по BLIK'})}
+       ${t.cash_count ? repKpi('— наличными', fmtPLN(t.cash_pln) + ' zł', undefined, {title:cnt(t.cash_count) + ' из ящика — по дням в «Бухгалтерия» → «Касса»'}) : ''}
+       ${t.card_count ? repKpi('— на карту', fmtPLN(t.card_pln) + ' zł', undefined, {title:cnt(t.card_count) + ' через терминал'}) : ''}
+       ${t.blik_count ? repKpi('— по BLIK', fmtPLN(t.blik_pln) + ' zł', undefined, {title:cnt(t.blik_count)}) : ''}
+       ${t.wallet_count ? repKpi('На кошелёк', fmtPLN(t.wallet_pln) + ' zł', undefined,
+          {title:cnt(t.wallet_count) + ' оплаченного кошельком — из клуба деньги не ушли, снова вырос долг клуба перед гостями'}) : ''}
+       ${t.none_count ? repKpi('Не возвращали', t.none_count, undefined,
+          {title:'отменили, денег гостю не отдавали — оплачено было ' + fmtPLN(t.none_paid_pln) + ' zł'}) : ''}
+       ${t.earlier_count ? repKpi('Из прошлых месяцев', fmtPLN(t.earlier_pln) + ' zł', undefined,
+          {title:cnt(t.earlier_count) + ' по операциям, оплаченным раньше: выручка тех месяцев стала меньше задним числом, а деньги отдали в этом'}) : ''}
+     </div>
+     ${repTable(['Когда', 'Что', 'Гость', 'Оплачено', 'Вернули', 'Кто отменил'], items.map(x => `<tr>
+       <td>${L('когда')}${retDay(x.voided_at)} ${hhmm(x.voided_at)}</td><td><b>${retWhat(x)}</b></td>
+       <td>${L('гость')}${x.guest ? esc(x.guest) : '<span class="muted">—</span>'}</td>
+       <td>${L('оплачено')}<span>${fmtPLN(x.paid_pln)} zł ${RET_PAID[x.paid_method] || esc(x.paid_method)} · ${x.earlier
+         ? '<span class="retOld" title="оплачено до этого месяца — выручка того месяца стала меньше задним числом">' + retDay(x.paid_at, true) + '</span>' : retDay(x.paid_at)}</span></td>
+       <td>${L('вернули')}${x.refund_method === 'none' ? '<span class="muted">не возвращали</span>'
+         : '<span><b>' + fmtPLN(x.refund_pln) + ' zł</b> ' + (REFUND_WAY[x.refund_method] || esc(x.refund_method)) + '</span>'}</td>
+       <td>${L('кто отменил')}${esc(x.voided_by || '—')}</td></tr>`), '')}
+     ${d.items_total > items.length ? `<div class="muted">Показаны последние ${items.length} из ${d.items_total} — итоги выше по всем</div>` : ''}`);
+  box.dataset.ready = '1';
+  mountIcons(box);
 }
 
 function paintGuests(d){
@@ -6085,7 +6136,7 @@ function paintAcc(){
         <button class="btn ghost mini" onclick="accCustom()"><span data-ic="chart"></span>Показать</button>
       </div>
     </div>
-    <div class="muted" style="margin:-4px 0 12px">${per.from ? ruDate(per.from) + (per.to !== per.from ? ' — ' + ruDate(per.to) : '') : ''} · клубные сутки · нажми на день — сдачи, инкассации, коррекции, расходы из кассы и возвраты владельцу</div>
+    <div class="muted" style="margin:-4px 0 12px">${per.from ? ruDate(per.from) + (per.to !== per.from ? ' — ' + ruDate(per.to) : '') : ''} · клубные сутки · нажми на день — сдачи, возвраты наличными, инкассации, коррекции, расходы из кассы и возвраты владельцу</div>
     ${days.length ? `<div class="tablewrap"><table class="accBook">
       <tr><th>День</th><th>На начало</th><th>Пришло</th><th>Возвраты</th><th>Инкассации</th><th>Расходы</th><th>Владельцу</th><th>Коррекции</th><th>Расхождения</th><th>На конец</th></tr>
       ${days.map(accRow).join('')}
@@ -6098,7 +6149,7 @@ function accRow(r){
     <td><b>${ruDate(r.date)}</b>${r.today ? '<span class="muted" style="margin-left:6px">сегодня</span>' : ''}</td>
     <td>${L('на начало')}${r.opening_pln == null ? '<span class="muted" title="' + (r.baseline ? 'ящик заведён в этот день' : 'ящика ещё не было') + '">—</span>' : fmtPLN(r.opening_pln)}</td>
     <td title="пополнения ${fmtPLN(r.deposits_pln)} · товары и кухня ${fmtPLN(r.goods_pln)} · пакеты ${fmtPLN(r.packs_pln)}">${L('пришло')}${fmtPLN(r.in_pln)}</td>
-    <td>${L('возвраты')}${r.refunds_pln ? '−' + fmtPLN(r.refunds_pln) : '0,00'}</td>
+    <td title="возвраты наличными по отменам — нажми на день: кто отдал, за что и кому">${L('возвраты')}${r.refunds_pln ? '−' + fmtPLN(r.refunds_pln) : '0,00'}</td>
     <td>${L('инкассации')}${r.collections_pln ? '−' + fmtPLN(r.collections_pln) : '0,00'}</td>
     <td title="расходы, оплаченные из кассы (З9-и3а)">${L('расходы')}${r.expenses_pln ? '−' + fmtPLN(r.expenses_pln) : '0,00'}</td>
     <td title="возвращено владельцу из кассы — долг клуба (З9-и3б)">${L('владельцу')}${r.owner_pln ? '−' + fmtPLN(r.owner_pln) : '0,00'}</td>
@@ -6125,12 +6176,17 @@ function accDetails(r){
     ? ' · отменил ' + esc(e.voided_by_nickname || '—') + ' ' + hhmm(e.voided_at)
     : ` <button class="btn ghost mini" onclick="event.stopPropagation(); armButton(this, 'Точно отменить?', () => accVoid('${e.id}'))">Отменить</button>`}</div>`).join('');
   // З9-и3б: возвраты владельцу из кассы — в минуту записи; отменённый — зачёркнут, кто и когда отменил
+  // З11-и3: возвраты наличными — кто отдал из ящика, сколько, за что и кому; оплачено раньше этого дня — с датой
+  const refs = (r.refunds || []).map(x => `<div>${hhmm(x.voided_at)} · <b>${esc(x.voided_by || '—')}</b> — ${fmtPLN(x.refund_pln)} zł: ${retWhat(x)}${
+    x.guest ? ' · гость ' + esc(x.guest) : ''} · <span class="muted">оплачено ${x.paid_pln !== x.refund_pln ? fmtPLN(x.paid_pln) + ' zł ' : ''}${
+    x.earlier ? ruDate(String(x.paid_at).slice(0, 10)) : 'в ' + hhmm(x.paid_at)} ${RET_PAID[x.paid_method] || esc(x.paid_method)}</span></div>`).join('');
   const own = (r.owner || []).map(o => `<div class="${o.voided_at ? 'accVoid' : ''}">${hhmm(o.created_at)} · <span class="accT"><b>${esc(o.nickname || '—')}</b> — вернули владельцу ${
     fmtPLN(o.amount_pln)} zł${o.note ? ' · ' + esc(o.note) : ''}</span>${o.voided_at
     ? ' · отменил ' + esc(o.voided_by_nickname || '—') + ' ' + hhmm(o.voided_at)
     : ` <button class="btn ghost mini" onclick="event.stopPropagation(); armButton(this, 'Точно отменить?', () => debtVoid('${o.id}', true, false))">Отменить</button>`}</div>`).join('');
   return (b ? `<div class="muted">Ящик заведён в ${hhmm(b.at)}: начальный остаток ${fmtPLN(b.pln)} zł, пересчитал ${esc(b.by || '—')}</div>` : '')
     + `<div class="dsub" style="margin-top:4px">Сдачи</div>${cos || '<div class="muted">сдач не было</div>'}`
+    + (refs ? `<div class="dsub">Возвраты наличными</div>${refs}` : '')
     + `<div class="dsub">Инкассации и коррекции</div>${evs || '<div class="muted">не было</div>'}`
     + (exps ? `<div class="dsub">Расходы из кассы</div>${exps}` : '')
     + (own ? `<div class="dsub">Возвраты владельцу из кассы</div>${own}` : '');
@@ -8226,6 +8282,8 @@ const PAL_WORDS = [
    sub:'Отчёты → Деньги', ic:'chart', run:() => palGoReport('money')},
   {who:'owner', words:['маржа', 'наценка', 'себестоимость проданного', 'стоимость склада', 'склад в деньгах', 'что покупают'], name:'Маржа и склад', // З10-и8
    sub:'Отчёты → Деньги: себестоимость проданного, маржа, склад сейчас', ic:'chart', run:() => palGoMargin()},
+  {who:'owner', words:['возврат', 'возвраты', 'вернули деньги', 'вернули гостю'], name:'Возвраты', // З11-и3
+   sub:'Отчёты → Деньги: возвраты за прошлый месяц — сколько, как и за что', ic:'coins', run:() => palGoReturns()},
   {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
@@ -8251,6 +8309,15 @@ function palGoMargin(){
   const t = setInterval(() => {
     const el = document.getElementById('repMargin');
     if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
+  }, 100);
+}
+// З11-и3: возвраты — последний блок «Денег», грузится своим запросом: ждём его и показываем
+function palGoReturns(){
+  palGoReport('money');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('repReturns'), b = document.getElementById('repRetBody');
+    if ((el && b && b.dataset.ready && !document.querySelector('#repBody .skel')) || ++n > 50){ clearInterval(t); if (el) el.scrollIntoView({block:'start'}); }
   }, 100);
 }
 // сводка смены — под отчётом: ждём, пока отчёт встанет, иначе он сдвинет её с экрана

@@ -6,7 +6,8 @@ package main
 // инкассации, коррекции, расхождения пересчётов, остаток на конец; ниже —
 // сдачи дня (кто, когда, должно, пересчитано, расхождение) и события ящика
 // (инкассации и коррекции, с отменёнными — пометкой). З9-и3а — расходы из кассы,
-// З9-и3б — возвраты владельцу из кассы (с отменёнными — пометкой).
+// З9-и3б — возвраты владельцу из кассы (с отменёнными — пометкой). З11-и3 —
+// возвраты наличными: кто, кому, за что и сколько отдал из ящика (returns.go).
 //
 // Остаток на момент t считается так же, как «должно быть» в сдаче: остаток
 // последней сдачи до t (пересчитанный, если пересчитывали) + движение с неё
@@ -96,12 +97,14 @@ func handleCashBook(c *gin.Context) {
 	var events []models.CashEvent
 	var tills []models.Expense         // З9-и3а: расходы из кассы — по моменту, когда ушли из ящика
 	var owners []models.OwnerRepayment // З9-и3б: возвраты владельцу из кассы — по минуте записи
+	var refunds []returnRow            // З11-и3: возвраты наличными — по моменту отмены
 	if len(wins) > 0 {
 		from, to := wins[0].From, wins[len(wins)-1].To
 		db.Where("created_at >= ? AND created_at < ?", from, to).Order("created_at").Find(&closeouts)
 		db.Where("created_at >= ? AND created_at < ?", from, to).Order("created_at").Find(&events)
 		expenseQ().Where("drawer_at >= ? AND drawer_at < ? AND storno_at IS NULL", from, to).Order("drawer_at").Find(&tills)
 		db.Where("method = ? AND created_at >= ? AND created_at < ?", models.RepayTill, from, to).Order("created_at").Find(&owners)
+		refunds = cashRefunds(returnsIn(db, from, to))
 	}
 	explained := map[uuid.UUID]int64{} // сдача → расходы, внесённые позже и объяснившие её расхождение
 	for i := range tills {
@@ -128,7 +131,7 @@ func handleCashBook(c *gin.Context) {
 			}
 		}
 	}
-	nick := nicknamesByID(ids)
+	nick := nicknamesByID(append(ids, returnUsers(refunds)...))
 	who := func(u *uuid.UUID) string {
 		if u == nil {
 			return ""
@@ -200,7 +203,16 @@ func handleCashBook(c *gin.Context) {
 			}
 			dayOwn = append(dayOwn, repaymentOut(r, nick))
 		}
+		dayRef := []gin.H{} // З11-и3: Σ — «возвраты» дня; «оплачено раньше» — до начала этого дня
+		for i := range refunds {
+			r := &refunds[i]
+			if r.VoidedAt.Before(w.From) || !r.VoidedAt.Before(w.To) {
+				continue
+			}
+			dayRef = append(dayRef, returnOut(*r, nick, w.From))
+		}
 		row["closeouts"], row["events"], row["expenses"], row["owner"] = dayCO, dayEv, dayExp, dayOwn
+		row["refunds"] = dayRef
 
 		var diff int64
 		switch {
