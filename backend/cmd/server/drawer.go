@@ -142,10 +142,11 @@ func drawerFlowFor(q *gorm.DB, actor *uuid.UUID, from, to time.Time) drawerFlow 
 		Goods: sum(grosz("total_pln")+"FROM sales WHERE method = 'cash' AND paid_at >= ? AND paid_at < ?",
 			"COALESCE(paid_by, created_by)"),
 		Packs: sum(grosz("price_pln")+"FROM user_packages WHERE method = 'cash' AND created_at >= ? AND created_at < ?", "created_by"),
-		Refunds: sum(refund+"FROM deposits WHERE method = 'cash' AND voided_at >= ? AND voided_at < ?", "voided_by") +
-			sum(grosz("total_pln")+"FROM sales WHERE method = 'cash' AND paid_at IS NOT NULL AND voided_at >= ? AND voided_at < ?",
+		// З11-и1: возврат из ящика — только наличный (как вернули; до З11 — как платили)
+		Refunds: sum(refund+"FROM deposits WHERE COALESCE(refund_method, method) = 'cash' AND voided_at >= ? AND voided_at < ?", "voided_by") +
+			sum(grosz("total_pln")+"FROM sales WHERE COALESCE(refund_method, method) = 'cash' AND paid_at IS NOT NULL AND voided_at >= ? AND voided_at < ?",
 				"voided_by") +
-			sum(refund+"FROM user_packages WHERE method = 'cash' AND voided_at >= ? AND voided_at < ?", "voided_by"),
+			sum(refund+"FROM user_packages WHERE COALESCE(refund_method, method) = 'cash' AND voided_at >= ? AND voided_at < ?", "voided_by"),
 		Collections: sum(event+"AND kind = 'collect' AND created_at >= ? AND created_at < ?", "created_by"),
 		// З9-и3а: расход из кассы — в момент, когда ушёл из ящика (drawer_at); сторно — вне ящика
 		Expenses: sum("SELECT COALESCE(SUM(gross_grosz), 0)::bigint FROM expenses WHERE storno_at IS NULL AND drawer_at >= ? AND drawer_at < ?", "created_by"),

@@ -13,6 +13,11 @@ package main
 // (Р8 трека Г: долгов нет), а уходит в отчёт строкой «отыграно по ошибочному
 // депозиту»; кэшбек-монеты за депозит забираются, но не ниже нуля.
 //
+// З11-и1 (№17; решения основателя 30.09): «как вернули» — refund_method в теле
+// (refunds.go); не сказали — как платили. На кошелёк депозит не возвращается —
+// он и есть кошелёк; другой способ, чем платили, выбирает владелец. Ящик
+// уменьшает только наличный возврат (drawer.go).
+//
 // Порядок в транзакции важен: сперва строка гостя берётся под замок
 // (FOR UPDATE — тем же замком пользуется walletApply), по ней считается план,
 // потом CAS по voided_at IS NULL — двойной клик и две стойки дают ровно одну
@@ -94,6 +99,15 @@ func handleAdminDepositVoid(c *gin.Context) {
 		depositVoidFail(c, http.StatusForbidden, code)
 		return
 	}
+	asked, ok := refundAsked(c)
+	if !ok {
+		return
+	}
+	refund, code := pickRefund(dep.Method, asked, refundByOwner(c))
+	if code != "" {
+		refundFail(c, code)
+		return
+	}
 
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
@@ -114,7 +128,7 @@ func handleAdminDepositVoid(c *gin.Context) {
 		res := tx.Model(&models.Deposit{}).
 			Where("id = ? AND voided_at IS NULL", dep.ID).
 			Updates(map[string]any{"voided_at": now, "voided_by": adminID,
-				"refund_grosz": plan.Refund, "coins_taken": plan.CoinsTaken})
+				"refund_grosz": plan.Refund, "coins_taken": plan.CoinsTaken, "refund_method": refund})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -158,7 +172,7 @@ func handleAdminDepositVoid(c *gin.Context) {
 
 	hub.AdminBroadcast("deposit", map[string]any{
 		"kind": "void", "nickname": nickname, "amount_pln": dep.AmountPLN,
-		"refund_pln": refundPLN, "unrecovered_pln": unrecoveredPLN, "coins": plan.CoinsTaken,
+		"refund_pln": refundPLN, "unrecovered_pln": unrecoveredPLN, "coins": plan.CoinsTaken, "refund_method": refund,
 	})
 	notifyUser(dep.UserID, "deposit_void", map[string]any{
 		"amount_pln": dep.AmountPLN, "refund_pln": refundPLN, "coins": plan.CoinsTaken,
@@ -173,5 +187,6 @@ func handleAdminDepositVoid(c *gin.Context) {
 		"unrecovered_pln": unrecoveredPLN,
 		"coins_taken":     plan.CoinsTaken,
 		"wallet_pln":      models.PLNFromGrosz(walletAfter),
+		"refund_method":   refund, // З11-и1
 	})
 }

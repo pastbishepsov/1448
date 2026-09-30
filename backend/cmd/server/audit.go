@@ -199,6 +199,9 @@ func handleAdminAudit(c *gin.Context) {
 			if d.CoinsTaken > 0 {
 				vt += fmt.Sprintf(" · забрано %d монет", d.CoinsTaken)
 			}
+			if d.RefundMethod != nil { // З11-и1: как вернули
+				vt += " · " + refundRu(*d.RefundMethod)
+			}
 			uid := d.UserID
 			items = append(items, item{"deposit_void:" + d.ID.String(), *d.VoidedAt, "deposit_void", by, &uid, vt})
 		}
@@ -283,6 +286,8 @@ func handleAdminAudit(c *gin.Context) {
 			vt := "отмена: " + fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)
 			if s.PaidAt == nil {
 				vt += " · долг списан, денег не брали"
+			} else if s.RefundMethod != nil { // З11-и1: как вернули
+				vt += " · " + refundRu(*s.RefundMethod)
 			}
 			items = append(items, item{"sale_void:" + s.ID.String(), *s.VoidedAt, "sale_void", by, s.UserID, vt})
 		}

@@ -264,7 +264,8 @@ func computerNameByID(id *uuid.UUID) string {
 // вместе со своей продажей в той же транзакции: кошелёк возвращается гостю,
 // выручка и ящик уменьшаются; refunded — отменённая продажа (nil — денег не было).
 // guestOnly — гостю можно только пока new.
-func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID) (code string, ok bool, refunded *models.Sale) {
+// refund — как вернули деньги оплаченного заказа (З11-и1, pickRefund): "" — как платили.
+func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID, refund string) (code string, ok bool, refunded *models.Sale) {
 	allowed := kitchenOpenStatuses
 	if byGuest {
 		allowed = []string{models.KitchenNew}
@@ -287,7 +288,7 @@ func cancelKitchenOrder(o *models.KitchenOrder, byGuest bool, adminID *uuid.UUID
 			if err := tx.First(&sale, "id = ?", *o.SaleID).Error; err != nil {
 				return err
 			}
-			switch err := voidSaleTx(tx, &sale, *adminID, now); {
+			switch err := voidSaleTx(tx, &sale, *adminID, now, refund); {
 			case err == nil:
 				refunded = &sale
 			case !errors.Is(err, errAlreadyVoid): // продажу уже отменили — деньги вернулись тогда
@@ -324,6 +325,8 @@ func refundWhere(method string) string {
 		return "на карту"
 	case "blik":
 		return "по BLIK"
+	case refundNone: // З11-и1
+		return "не возвращали"
 	}
 	return method
 }
@@ -343,7 +346,7 @@ func handleMyKitchenOrderCancel(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "order_not_found", "message": "Заказ не найден"})
 		return
 	}
-	if code, ok, _ := cancelKitchenOrder(&o, true, nil); !ok {
+	if code, ok, _ := cancelKitchenOrder(&o, true, nil, ""); !ok {
 		msg := "Заказ уже готовят — отменить может админ у стойки"
 		if code == "db_error" {
 			msg = "Не получилось, попробуй ещё раз"
@@ -567,6 +570,12 @@ func handleAdminKitchenCancel(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "order_not_found", "message": "Заказ не найден"})
 		return
 	}
+	asked, ok := refundAsked(c) // З11-и1: как вернули деньги оплаченного заказа
+	if !ok {
+		return
+	}
+	paid := false
+	refund := ""
 	if o.SaleID != nil {
 		var sale models.Sale
 		if db.First(&sale, "id = ?", *o.SaleID).Error == nil && sale.VoidedAt == nil {
@@ -576,10 +585,21 @@ func handleAdminKitchenCancel(c *gin.Context) {
 				c.JSON(http.StatusForbidden, gin.H{"code": code, "message": kitchenRefundErrors[code]})
 				return
 			}
+			paid = true
+			r, code := pickRefund(salePaid(&sale), asked, refundByOwner(c))
+			if code != "" {
+				refundFail(c, code)
+				return
+			}
+			refund = r
 		}
 	}
+	if !paid && asked != "" && asked != refundNone { // постоплата: денег ещё не брали
+		refundFail(c, "refund_unpaid")
+		return
+	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
-	code, ok, refunded := cancelKitchenOrder(&o, false, &adminID)
+	code, ok, refunded := cancelKitchenOrder(&o, false, &adminID, refund)
 	if !ok {
 		msg := "Заказ уже закрыт"
 		if code == "db_error" {
@@ -592,9 +612,18 @@ func handleAdminKitchenCancel(c *gin.Context) {
 		"order_id": o.ID, "name": o.Name, "qty": o.Qty, "status": models.KitchenCancelled})
 	what, out := fmt.Sprintf("%s ×%d", o.Name, o.Qty), gin.H{"cancelled": o.ID}
 	if refunded != nil {
-		what += fmt.Sprintf(" · возврат %.2f zł %s", refunded.TotalPLN, refundWhere(refunded.Method))
-		out["refund"] = gin.H{"method": refunded.Method, "pln": refunded.TotalPLN}
-		hub.AdminBroadcast("sale", map[string]any{"kind": "void", "name": refunded.Name, "total_pln": refunded.TotalPLN})
+		how := refunded.Method
+		if refunded.RefundMethod != nil { // З11-и1: как вернули на самом деле
+			how = *refunded.RefundMethod
+		}
+		if how == refundNone {
+			what += " · денег не возвращали"
+			out["refund"] = gin.H{"method": how, "pln": 0}
+		} else {
+			what += fmt.Sprintf(" · возврат %.2f zł %s", refunded.TotalPLN, refundWhere(how))
+			out["refund"] = gin.H{"method": how, "pln": refunded.TotalPLN}
+		}
+		hub.AdminBroadcast("sale", map[string]any{"kind": "void", "name": refunded.Name, "total_pln": refunded.TotalPLN, "refund_method": how})
 	}
 	logAdminAction(c, "kitchen_cancel", &o.UserID, what)
 	c.JSON(http.StatusOK, out)

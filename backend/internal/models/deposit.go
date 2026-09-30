@@ -25,6 +25,9 @@ type Deposit struct {
 	VoidedBy     *uuid.UUID `json:"voided_by,omitempty" gorm:"type:uuid"`
 	RefundGrosz  int64      `json:"refund_grosz"  gorm:"not null;default:0"`
 	CoinsTaken   int64      `json:"coins_taken"   gorm:"not null;default:0"`
+	// З11-и1 (миграция 079): как вернули деньги отменённого депозита — cash |
+	// card | blik | none; ящик уменьшает только cash.
+	RefundMethod *string `json:"refund_method,omitempty" gorm:"size:8"`
 }
 
 func (d *Deposit) BeforeCreate(tx *gorm.DB) error {

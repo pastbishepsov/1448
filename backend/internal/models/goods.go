@@ -61,6 +61,9 @@ type Sale struct {
 	PaidBy    *uuid.UUID `json:"paid_by,omitempty"    gorm:"type:uuid"`
 	Postpaid  bool       `json:"postpaid"             gorm:"not null;default:false"`
 	ReceiptID *uuid.UUID `json:"receipt_id,omitempty" gorm:"type:uuid"` // чек: общий id позиций одной продажи
+	// З11-и1 (миграция 079): как вернули деньги отменённой продажи — cash | card |
+	// blik | wallet | none (у неоплаченного долга — всегда none).
+	RefundMethod *string `json:"refund_method,omitempty" gorm:"size:8"`
 }
 
 // SaleMethodLater — продажа в долг (Ж6): товар выдан, деньги — при расчёте.

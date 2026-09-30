@@ -922,22 +922,29 @@ func canVoidSale(role, saleCreatedBy, userID string, saleAt, dayFrom, dayTo time
 // voidSaleTx — отмена одной продажи внутри транзакции: CAS по voided_at,
 // возврат на склад, возврат в кошелёк для «кошельком». Продажа в долг (Ж6)
 // без paid_at — денег не брали: только склад, долг гостя уменьшается сам.
-func voidSaleTx(tx *gorm.DB, sale *models.Sale, adminID uuid.UUID, now time.Time) error {
+// refund — как вернули деньги (З11-и1, pickRefund): "" — как платили; способ
+// ложится в строку продажи (sale.RefundMethod — и у переданной структуры).
+func voidSaleTx(tx *gorm.DB, sale *models.Sale, adminID uuid.UUID, now time.Time, refund string) error {
+	if refund == "" {
+		refund, _ = pickRefund(salePaid(sale), "", true)
+	}
 	// CAS по voided_at: проверка снаружи вне транзакции, и двойной клик по
 	// «отменить» возвращал деньги на кошелёк и товар на склад дважды
 	// (ревью 26.08).
 	res := tx.Model(&models.Sale{}).
 		Where("id = ? AND voided_at IS NULL", sale.ID).
-		Updates(map[string]any{"voided_at": now, "voided_by": adminID})
+		Updates(map[string]any{"voided_at": now, "voided_by": adminID, "refund_method": refund})
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
 		return errAlreadyVoid
 	}
+	sale.RefundMethod = &refund
 	// Г7: продажа «кошельком» — это выданный заказ кухни; отмена возвращает
-	// деньги в кошелёк гостя (иначе списание повисло бы без товара)
-	if sale.Method == "wallet" && sale.UserID != nil && sale.PaidAt != nil {
+	// деньги в кошелёк гостя (иначе списание повисло бы без товара). З11-и1:
+	// если так и вернули — владелец мог отдать и наличными или не возвращать
+	if refund == "wallet" && sale.Method == "wallet" && sale.UserID != nil && sale.PaidAt != nil {
 		saleID := sale.ID
 		if _, err := walletApply(tx, walletOp{
 			UserID: *sale.UserID, Kind: models.WalletTxRefund,
@@ -1002,10 +1009,19 @@ func handleAdminSaleVoid(c *gin.Context) {
 	if !saleVoidAllowed(c, &sale) {
 		return
 	}
+	asked, ok := refundAsked(c) // З11-и1: как вернули
+	if !ok {
+		return
+	}
+	refund, code := pickRefund(salePaid(&sale), asked, refundByOwner(c))
+	if code != "" {
+		refundFail(c, code)
+		return
+	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
 	kitchen := isKitchenSale(sale.ID) // З6-и1: до отмены — после неё связь с заказом сброшена
-	err := db.Transaction(func(tx *gorm.DB) error { return voidSaleTx(tx, &sale, adminID, now) })
+	err := db.Transaction(func(tx *gorm.DB) error { return voidSaleTx(tx, &sale, adminID, now, refund) })
 	if errors.Is(err, errAlreadyVoid) {
 		goodFail(c, http.StatusConflict, "already_void")
 		return
@@ -1014,7 +1030,7 @@ func handleAdminSaleVoid(c *gin.Context) {
 		goodFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
-	payload := map[string]any{"kind": "void", "name": sale.Name, "total_pln": sale.TotalPLN}
+	payload := map[string]any{"kind": "void", "name": sale.Name, "total_pln": sale.TotalPLN, "refund_method": refund}
 	if sale.PaidAt == nil {
 		payload["unpaid"] = true // долг списан вместе с товаром — денег не возвращаем
 	}
@@ -1022,7 +1038,7 @@ func handleAdminSaleVoid(c *gin.Context) {
 		payload["kitchen_unpaid"] = true // заказ кухни снова ждёт оплаты, склад не тронут
 	}
 	hub.AdminBroadcast("sale", payload)
-	c.JSON(http.StatusOK, gin.H{"voided": sale.ID, "unpaid": sale.PaidAt == nil, "kitchen_unpaid": kitchen})
+	c.JSON(http.StatusOK, gin.H{"voided": sale.ID, "unpaid": sale.PaidAt == nil, "kitchen_unpaid": kitchen, "refund_method": refund})
 }
 
 // POST /admin/receipts/:id/void — Ж6-и2: отменить чек целиком — все живые
@@ -1045,16 +1061,27 @@ func handleAdminReceiptVoid(c *gin.Context) {
 		goodFail(c, http.StatusConflict, "already_void")
 		return
 	}
-	for _, s := range live {
+	asked, ok := refundAsked(c) // З11-и1: как вернули — один способ на весь чек
+	if !ok {
+		return
+	}
+	refunds := make([]string, len(live))
+	for i, s := range live {
 		if !saleVoidAllowed(c, s) {
 			return
 		}
+		r, code := pickRefund(salePaid(s), asked, refundByOwner(c))
+		if code != "" {
+			refundFail(c, code)
+			return
+		}
+		refunds[i] = r
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
 	now := time.Now()
 	err := db.Transaction(func(tx *gorm.DB) error {
-		for _, s := range live {
-			if err := voidSaleTx(tx, s, adminID, now); err != nil && !errors.Is(err, errAlreadyVoid) {
+		for i, s := range live {
+			if err := voidSaleTx(tx, s, adminID, now, refunds[i]); err != nil && !errors.Is(err, errAlreadyVoid) {
 				return err
 			}
 		}
@@ -1072,6 +1099,7 @@ func handleAdminReceiptVoid(c *gin.Context) {
 		names = append(names, receiptItemName(s))
 		ids = append(ids, s.ID)
 	}
-	hub.AdminBroadcast("sale", map[string]any{"kind": "void", "name": "чек: " + strings.Join(names, ", "), "total_pln": roundPLN(total), "items": len(live)})
-	c.JSON(http.StatusOK, gin.H{"receipt_id": c.Param("id"), "voided": ids, "total_pln": roundPLN(total)})
+	hub.AdminBroadcast("sale", map[string]any{"kind": "void", "name": "чек: " + strings.Join(names, ", "), "total_pln": roundPLN(total),
+		"items": len(live), "refund_method": refunds[0]})
+	c.JSON(http.StatusOK, gin.H{"receipt_id": c.Param("id"), "voided": ids, "total_pln": roundPLN(total), "refund_method": refunds[0]})
 }

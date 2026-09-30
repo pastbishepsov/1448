@@ -75,6 +75,8 @@ type UserPackage struct {
 	// З8-и1: возврат при отмене выдачи — на кошелёк или наличными из ящика
 	// (до З11 — тем же способом, что и оплата), гроши.
 	RefundGrosz int64 `json:"refund_grosz" gorm:"not null;default:0"`
+	// З11-и1 (миграция 079): как вернули — cash | card | blik | wallet | none.
+	RefundMethod *string `json:"refund_method,omitempty" gorm:"size:8"`
 }
 
 func (p *UserPackage) BeforeCreate(tx *gorm.DB) error {

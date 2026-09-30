@@ -35,9 +35,11 @@ def from_db(r):
         "deposits_pln": cents(f"SELECT COALESCE(SUM(amount_pln),0) FROM deposits WHERE method='cash' AND {w('created_at')}"),
         "goods_pln": cents(f"SELECT COALESCE(SUM(total_pln),0) FROM sales WHERE method='cash' AND {w('paid_at')}"),
         "packs_pln": cents(f"SELECT COALESCE(SUM(price_pln),0) FROM user_packages WHERE method='cash' AND {w('created_at')}"),
-        "refunds_pln": cents(f"SELECT (SELECT COALESCE(SUM(refund_grosz),0) FROM deposits WHERE method='cash' AND {w('voided_at')})"
-                             f" / 100.0 + (SELECT COALESCE(SUM(total_pln),0) FROM sales WHERE method='cash' AND paid_at IS NOT NULL"
-                             f" AND {w('voided_at')}) + (SELECT COALESCE(SUM(refund_grosz),0) FROM user_packages WHERE method='cash'"
+        # З11-и1: из ящика уходит только наличный возврат — по способу возврата (до З11 — как платили)
+        "refunds_pln": cents(f"SELECT (SELECT COALESCE(SUM(refund_grosz),0) FROM deposits WHERE COALESCE(refund_method, method)='cash'"
+                             f" AND {w('voided_at')}) / 100.0 + (SELECT COALESCE(SUM(total_pln),0) FROM sales"
+                             f" WHERE COALESCE(refund_method, method)='cash' AND paid_at IS NOT NULL AND {w('voided_at')})"
+                             f" + (SELECT COALESCE(SUM(refund_grosz),0) FROM user_packages WHERE COALESCE(refund_method, method)='cash'"
                              f" AND {w('voided_at')}) / 100.0"),
         "collections_pln": cents(f"SELECT COALESCE(SUM(amount_grosz),0) / 100.0 FROM cash_events WHERE kind='collect' AND voided_at IS NULL AND {w('created_at')}"),
         "adjust_pln": cents(f"SELECT COALESCE(SUM(amount_grosz),0) / 100.0 FROM cash_events WHERE kind='correct' AND voided_at IS NULL AND {w('created_at')}"),
