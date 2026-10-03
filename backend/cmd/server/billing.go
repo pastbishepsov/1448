@@ -148,7 +148,7 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 		usePack := 0
 		if rest := delta - useGrant - int(useCoin); rest > 0 {
 			var perr error
-			usePack, perr = takePackageMinutes(tx, livePackagesFor(tx, s.UserID, zoneID, now), rest)
+			usePack, perr = takePackageMinutes(tx, livePackagesFor(tx, s.UserID, zoneID, now), rest, s.ID, now) // З12-и2: и строка расхода
 			if perr != nil {
 				return perr
 			}

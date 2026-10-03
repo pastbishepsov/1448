@@ -572,6 +572,8 @@ func handleReportMoney(c *gin.Context) {
 		"gifts": giftsIn(p.From, p.To),
 		// З12-и1 (№49): «Обязательства клуба» — снимок, от периода не зависит; «Сгорело» — за период
 		"liabilities": liabilitiesNow(), "burned": burnedIn(p.From, p.To),
+		// З12-и2 (№49): «Отработанная выручка» за период и «отдано временем» — на экран выйдет в «Прибыли» (З12-и4)
+		"earned": earnedIn(p.From, p.To),
 	})
 }
 

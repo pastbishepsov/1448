@@ -838,7 +838,9 @@ func livePackagesFor(tx *gorm.DB, userID uuid.UUID, zoneID *uuid.UUID, now time.
 // сколько снять удалось: пакетов могло не хватить, и остаток доплатит
 // кошелёк. UPDATE идёт под условием остатка — параллельная отмена выдачи или
 // вторая сессия того же гостя не уведут остаток в минус.
-func takePackageMinutes(tx *gorm.DB, packs []models.UserPackage, need int) (int, error) {
+// З12-и2: каждое списание — строка pack_spends (пакет, сессия, минуты, когда,
+// доля цены): по ним считается «Отработанная выручка» пакетов за период.
+func takePackageMinutes(tx *gorm.DB, packs []models.UserPackage, need int, sessionID uuid.UUID, now time.Time) (int, error) {
 	used := 0
 	for i := range packs {
 		if need <= 0 {
@@ -848,19 +850,50 @@ func takePackageMinutes(tx *gorm.DB, packs []models.UserPackage, need int) (int,
 		if take > need {
 			take = need
 		}
-		res := tx.Model(&models.UserPackage{}).
-			Where("id = ? AND minutes_left >= ?", packs[i].ID, take).
-			UpdateColumn("minutes_left", gorm.Expr("minutes_left - ?", take))
-		if res.Error != nil {
-			return used, res.Error
+		if take <= 0 {
+			continue
 		}
-		if res.RowsAffected == 0 {
+		var left []struct{ MinutesLeft int }
+		if err := tx.Raw(`UPDATE user_packages SET minutes_left = minutes_left - ? WHERE id = ? AND minutes_left >= ? RETURNING minutes_left`,
+			take, packs[i].ID, take).Scan(&left).Error; err != nil {
+			return used, err
+		}
+		if len(left) == 0 {
 			continue // остаток увели параллельно — просто идём дальше
+		}
+		p := &packs[i]
+		after := p.MinutesTotal - left[0].MinutesLeft // отыграно после этого списания — по базе, не по снимку
+		sid := sessionID
+		if err := tx.Create(&models.PackSpend{UserPackageID: p.ID, SessionID: &sid, Minutes: take, CreatedAt: now,
+			Grosz: packSpendGrosz(models.GroszFromPLN(p.PricePLN), p.MinutesTotal, after-take, after, p.Method == models.SaleMethodComp)}).Error; err != nil {
+			return used, err
 		}
 		used += take
 		need -= take
 	}
 	return used, nil
+}
+
+// packShareGrosz — цена отыгранных played минут пакета из total: доля цены, до
+// гроша, половина — вверх (чистая).
+func packShareGrosz(priceGrosz int64, total, played int) int64 {
+	if priceGrosz <= 0 || total <= 0 || played <= 0 {
+		return 0
+	}
+	if played > total {
+		played = total
+	}
+	return (2*priceGrosz*int64(played) + int64(total)) / (2 * int64(total))
+}
+
+// packSpendGrosz — сколько стоит списание: цена отыгранного после минус до
+// (чистая, тест). Так строки пакета в сумме дают ровно цену отыгранного, как бы
+// тики его ни резали. Подаренный пакет (З11-и5) — 0: денег за него не было.
+func packSpendGrosz(priceGrosz int64, total, before, after int, gift bool) int64 {
+	if gift || after <= before {
+		return 0
+	}
+	return packShareGrosz(priceGrosz, total, after) - packShareGrosz(priceGrosz, total, before)
 }
 
 // livePackMinutes — сколько минут пакетов гость может потратить в этой зоне
