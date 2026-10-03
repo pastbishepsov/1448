@@ -11,6 +11,8 @@ package main
 // (Р7). Штуки из партий без цены (и проданные до партий) — «без себестоимости»:
 // в маржу не входят ни ценой продажи, ни себестоимостью. Суммы — брутто, как
 // цены продажи и закупки (нетто для плательщика VAT — со ставками VAT, З13-и1).
+// З11-и5: подарки (comp) — не продажа: в марже и «Что покупают» их нет, они —
+// «Подарено» тем же счётом себестоимости (giftsEcon).
 
 import (
 	"fmt"
@@ -37,7 +39,7 @@ type goodsEcon struct {
 }
 
 // goodsEconSQL — продажи периода по ключу: %[1]s — ключ строки, %[2]s —
-// присоединение для него. Проданная штука — продажа по моменту продажи
+// присоединение для него, %[3]s — какие продажи (З11-и5: без подарков или только они). Проданная штука — продажа по моменту продажи
 // (created_at), любым способом, не отменённая; её партии — доли движений
 // продажи у стойки (sale_id) или заказа кухни, который она оплатила
 // (kitchen_order_id). Выручка — как у «Что покупают» до З10-и8: по расчёту
@@ -47,7 +49,7 @@ const goodsEconSQL = `WITH s AS (
            (created_at >= @from AND created_at < @to) AS sold,
            (method <> 'wallet' AND paid_at >= @from AND paid_at < @to) AS live
     FROM sales
-    WHERE voided_at IS NULL AND ((created_at >= @from AND created_at < @to) OR (paid_at >= @from AND paid_at < @to))),
+    WHERE voided_at IS NULL AND %[3]s AND ((created_at >= @from AND created_at < @to) OR (paid_at >= @from AND paid_at < @to))),
   mv AS (
     SELECT s.id AS sale_id, m.id AS move_id FROM s JOIN stock_moves m ON m.sale_id = s.id WHERE s.sold
     UNION ALL
@@ -75,8 +77,16 @@ func goodsEconBy(from, to time.Time, byCategory bool) []goodsEcon {
 		key, join = "COALESCE(g.category, '')", "LEFT JOIN goods g ON g.id = s.good_id"
 	}
 	var out []goodsEcon
-	db.Raw(fmt.Sprintf(goodsEconSQL, key, join), map[string]any{"from": from, "to": to}).Scan(&out)
+	db.Raw(fmt.Sprintf(goodsEconSQL, key, join, "method <> 'comp'"), map[string]any{"from": from, "to": to}).Scan(&out)
 	return out
+}
+
+// giftsEcon — подаренные товары за [from, to) (З11-и5): штуки, цена и
+// себестоимость по партиям — тем же счётом, что маржа, одной строкой.
+func giftsEcon(from, to time.Time) goodsEcon {
+	var out []goodsEcon
+	db.Raw(fmt.Sprintf(goodsEconSQL, "''", "", "method = 'comp'"), map[string]any{"from": from, "to": to}).Scan(&out)
+	return goodsEconTotal(out)
 }
 
 // goodsEconTotal — итог строк разреза (категории покрывают все продажи).

@@ -299,14 +299,15 @@ func compCapOK(c *gin.Context, adminID uuid.UUID, cp compensation) bool {
 		Grosz   int64
 		Minutes int64
 	}
+	since := clubDayStart(time.Now()) // Ж3: клубные сутки
 	db.Model(&models.Incident{}).
 		Select("COALESCE(SUM(comp_grosz),0) AS grosz, COALESCE(SUM(comp_minutes),0) AS minutes").
-		Where("resolved_by = ? AND compensated_at >= ?", adminID, clubDayStart(time.Now())).Scan(&used) // Ж3: клубные сутки
-	usedPLN := models.PLNFromGrosz(used.Grosz)
+		Where("resolved_by = ? AND compensated_at >= ?", adminID, since).Scan(&used)
+	usedPLN := models.PLNFromGrosz(used.Grosz + giftsGrosz(adminID, since)) // З11-и5 (Д6): потолок один — компенсации и подарки
 	switch compCapVerdict(usedPLN, models.PLNFromGrosz(cp.Grosz), capPLN, int(used.Minutes), cp.Minutes, capMin) {
 	case "cap_pln":
 		c.JSON(http.StatusForbidden, gin.H{"code": "day_cap", "message": fmt.Sprintf(
-			"Дневной лимит компенсаций админа: %d zł (уже выдано %.0f zł) — больше может только владелец", capPLN, usedPLN)})
+			"Дневной лимит компенсаций и подарков админа: %d zł (уже выдано %.0f zł) — больше может только владелец", capPLN, usedPLN)})
 		return false
 	case "cap_min":
 		c.JSON(http.StatusForbidden, gin.H{"code": "day_cap", "message": fmt.Sprintf(

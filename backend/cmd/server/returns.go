@@ -15,8 +15,8 @@ package main
 // фильтра за несколько месяцев, если его попросят.
 //
 // Что считается: отмены депозитов, продаж (и чеков, и расчётов кухни — это
-// продажи) и выданных пакетов, за которые брали деньги. Неоплаченный долг —
-// нет: денег не брали, возвращать нечего. Сумма — как у ящика (drawer.go):
+// продажи) и выданных пакетов, за которые брали деньги. Неоплаченный долг и
+// подарок (З11-и5) — нет: денег не брали, возвращать нечего. Сумма — как у ящика (drawer.go):
 // депозит — снятое с кошелька, продажа — вся цена, пакет — доля за
 // неотыгранное; «не возвращали» — ноль. Живые деньги — наличными, на карту, по
 // BLIK; на кошелёк — отдельно: из клуба деньги не ушли, снова выросло
@@ -73,13 +73,13 @@ SELECT 'sale', id, name, qty, receipt_id, user_id,
        ROUND(total_pln * 100)::bigint, method, paid_at,
        CASE WHEN COALESCE(refund_method, method) IN ('cash', 'card', 'blik', 'wallet') THEN ROUND(total_pln * 100)::bigint ELSE 0 END,
        COALESCE(refund_method, method), voided_at, voided_by
-  FROM sales WHERE paid_at IS NOT NULL AND voided_at >= ? AND voided_at < ?
+  FROM sales WHERE paid_at IS NOT NULL AND method <> 'comp' AND voided_at >= ? AND voided_at < ?
 UNION ALL
 SELECT 'package', id, name, 1, NULL::uuid, user_id,
        ROUND(price_pln * 100)::bigint, method, created_at,
        CASE WHEN COALESCE(refund_method, method) IN ('cash', 'card', 'blik', 'wallet') THEN refund_grosz ELSE 0 END,
        COALESCE(refund_method, method), voided_at, voided_by
-  FROM user_packages WHERE voided_at >= ? AND voided_at < ?
+  FROM user_packages WHERE method <> 'comp' AND voided_at >= ? AND voided_at < ?
 ORDER BY voided_at DESC, kind, id`
 
 // returnsIn — отмены с деньгами в [from, to), свежие сверху.

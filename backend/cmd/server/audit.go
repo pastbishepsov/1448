@@ -213,6 +213,9 @@ func handleAdminAudit(c *gin.Context) {
 	// Ж6-и1: продажа в долг помечена «(в долг)», её расчёт — отдельной строкой
 	// sale_paid в момент денег.
 	saleMethod := func(s *models.Sale) string {
+		if s.Method == models.SaleMethodComp { // З11-и5: подарок — за что
+			return compText(s.CompReason)
+		}
 		if s.PaidAt == nil && s.VoidedAt == nil {
 			return "в долг"
 		}
@@ -283,9 +286,15 @@ func handleAdminAudit(c *gin.Context) {
 			if s.VoidedBy != nil {
 				by = *s.VoidedBy
 			}
-			vt := "отмена: " + fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, s.Method)
+			how := s.Method
+			if s.Method == models.SaleMethodComp {
+				how = "подарено"
+			}
+			vt := "отмена: " + fmt.Sprintf("%s ×%d — %.2f zł (%s)", s.Name, s.Qty, s.TotalPLN, how)
 			if s.PaidAt == nil { // З11-и4: «долг списан» — это списание владельцем, а тут продажу в долг отменили
 				vt += " · денег не брали, товар вернулся на склад"
+			} else if s.Method == models.SaleMethodComp { // З11-и5
+				vt += " · подарок отменён, денег не было"
 			} else if s.RefundMethod != nil { // З11-и1: как вернули
 				vt += " · " + refundRu(*s.RefundMethod)
 			}

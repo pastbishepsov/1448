@@ -467,6 +467,8 @@
   .cartrow .sum{min-width:78px; text-align:right}
   .cartfoot{display:flex; align-items:center; gap:12px; margin-top:10px; padding-top:10px; border-top:1px solid var(--hair)}
   .cartfoot b{margin-left:auto; font-size:16px}
+  /* З11-и5: на узком экране подпись корзины — отдельной строкой, кнопка «Продать» / «Подарить» не уезжает за край */
+  @media (max-width:640px){ .cartfoot{flex-wrap:wrap} .cartfoot #cartHint{flex-basis:100%} }
   .gtile.incart{border-color:var(--acc); box-shadow:inset 0 0 0 1px var(--acc)}
   .gtile .inq{position:absolute; top:6px; right:8px; background:var(--acc); color:#fff; border-radius:99px; font-size:11px; font-weight:800; padding:1px 7px}
   .rcp td{padding-top:4px; padding-bottom:4px; color:var(--dim); font-size:12.5px} /* позиции раскрытого чека */
@@ -838,6 +840,7 @@
             <button data-m="card" onclick="saleMethod('card',this)">Карта</button>
             <button data-m="blik" onclick="saleMethod('blik',this)">BLIK</button>
             <button data-m="later" onclick="saleMethod('later',this)" title="Ж-Р8: в долг гостю за ПК — рассчитается у стойки при выходе, как кухня">При выходе</button>
+            <button data-m="comp" onclick="saleMethod('comp',this)" title="З11-и5: подарок — не выручка и не касса; причина обязательна, её увидит владелец">Подарено</button>
           </div>
           <input id="saleNick" class="input" placeholder="Кому: ник, телефон или имя — необязательно" autocomplete="off" style="min-width:250px" oninput="saleGuestTyped()">
           <span id="saleGuestChip" class="mchip hidden" title="продажи запишутся на этого гостя; ✕ — снять"></span>
@@ -849,6 +852,7 @@
         <!-- Ж6-и2: корзина — плитки складывают позиции, одна кнопка «Продать» → чек -->
         <div class="cart hidden" id="cartBox">
           <div class="cartrows" id="cartRows"></div>
+          <input id="saleWhy" class="input hidden" maxlength="200" placeholder="За что дарим — обязательно, её увидит владелец" style="width:100%; margin-top:8px"><!-- З11-и5 -->
           <div class="cartfoot">
             <span class="muted" id="cartHint"></span>
             <b id="cartTotal">0,00 zł</b>
@@ -1594,6 +1598,8 @@ function feedLine(m){
       if (d.kind === 'write_off_cancel') return '🧾 долг ' + (d.nickname||'гостя') + ' вернули: ' + fmtPLN(d.total_pln||0) + ' zł — снова ждёт расчёта';
       if (d.kind === 'settle') return '🧾 ' + (d.nickname||'гость') + ' рассчитался: ' + fmtPLN(d.total_pln||0) + ' zł · ' + (PAY_RU[d.method]||d.method||'') // Ж6-и1
         + [d.kitchen_pln > 0 ? 'кухня ' + fmtPLN(d.kitchen_pln) : '', d.bar_pln > 0 ? 'бар ' + fmtPLN(d.bar_pln) : ''].filter(Boolean).map(x => ' · ' + x).join('');
+      if (d.kind === 'comp') return '🎁 подарено: ' + (d.items > 1 ? 'чек (' + d.items + '): ' : '') + (d.name||'товар') + (d.items > 1 ? '' : (d.qty > 1 ? ' ×' + d.qty : ''))
+        + ' · ' + fmtPLN(d.total_pln||0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '') + (d.reason ? ' — ' + d.reason : ''); // З11-и5
       const what = (d.items > 1 ? 'чек (' + d.items + '): ' : '') + (d.name||'товар') + (d.items > 1 ? '' : (d.qty > 1 ? ' ×' + d.qty : '')); // Ж6-и2
       return (d.kind === 'later' ? 'в долг: ' : 'продано: ') + what
         + ' · ' + (+d.total_pln||0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '') + (d.kind === 'later' ? ' · рассчитается при выходе' : '');
@@ -3072,14 +3078,16 @@ function reserveLine(rows){
 }
 
 /* Е2-и4: выдача пакета гостю у стойки. */
-let issuePack = null, issueMethod = 'cash', uPacks = [], uPackMin = 0;
+let issuePack = null, issueMethod = 'cash', uPacks = [], uPackMin = 0, issueWhy = ''; // З11-и5: причина подарка
 async function submitPack(){
   return once('pack:' + drawerUserId, async () => { // один пакет на клик (ревью 26.08)
     if (!issuePack){ toast('⚠ Выбери пакет'); return; }
     try{
       const d = await api('/admin/users/' + drawerUserId + '/packages',
-        {method:'POST', body: JSON.stringify({package_id: issuePack, method: issueMethod})});
-      toast('✓ ' + d.package.name + ' — ' + d.package.minutes_total + ' мин на счету');
+        {method:'POST', body: JSON.stringify({package_id: issuePack, method: issueMethod, comp_reason: issueMethod === 'comp' ? issueWhy.trim() : undefined})});
+      toast((d.package.method === 'comp' ? '🎁 Подарен пакет ' : '✓ ') + d.package.name + ' — ' + d.package.minutes_total + ' мин на счету'
+        + (d.package.comp_reason ? ' · ' + d.package.comp_reason : ''));
+      issueWhy = '';
       uForm = null;
       await loadUserPacks();
       await loadUserDrawer();
@@ -3346,10 +3354,13 @@ function uFormHtml(){
         <button class="${issueMethod==='card'?'on':''}" onclick="issueMethod='card'; renderUserDrawer()">Карта</button>
         <button class="${issueMethod==='blik'?'on':''}" onclick="issueMethod='blik'; renderUserDrawer()">BLIK</button>
         <button class="${issueMethod==='wallet'?'on':''}" onclick="issueMethod='wallet'; renderUserDrawer()">Кошелёк</button>
+        <button class="${issueMethod==='comp'?'on':''}" onclick="issueMethod='comp'; renderUserDrawer()">Подарено</button>
       </div>
-      <button class="btn" style="width:100%; justify-content:center" onclick="submitPack()"><span data-ic="clock"></span>Выдать пакет</button>
+      ${issueMethod === 'comp' ? `<input id="packWhy" class="input" maxlength="200" placeholder="За что дарим — обязательно, её увидит владелец" value="${esc(issueWhy)}" oninput="issueWhy=this.value">` : ''}
+      <button class="btn" style="width:100%; justify-content:center" onclick="submitPack()"><span data-ic="clock"></span>${issueMethod === 'comp' ? 'Подарить пакет' : 'Выдать пакет'}</button>
       <div class="muted">${issueMethod === 'wallet'
         ? 'Спишем ' + fmtPLN(sel.price_pln) + ' zł с кошелька гостя. В выручку это не пойдёт — деньги клуб получил при пополнении.'
+        : issueMethod === 'comp' ? 'Подарок — не выручка и не касса: минуты гостю, причина — в журнал и владельцу' + (isOwner() ? '.' : '; у админа — в пределах дневного лимита компенсаций.')
         : 'Гость платит у стойки — сумма попадёт в выручку смены.'}</div>
       <div class="muted">Минуты пакета тратятся раньше кошелька и только в своей зоне.</div>
     </div>`;
@@ -4661,7 +4672,7 @@ function paintKitchen(){
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
         ${chip(o.status)}
         <b>${esc(o.name)}${o.qty>1?' ×'+o.qty:''}</b>
-        <span class="muted">${fmtPLN(o.total_pln)} zł · ${o.pay_method ? 'оплачен: ' + (PAY_RU[o.pay_method]||o.pay_method) : o.written_off ? 'долг списан — ушёл, не заплатив' : 'расчёт у стойки после игры'}</span>
+        <span class="muted">${fmtPLN(o.total_pln)} zł · ${o.pay_method === 'comp' ? 'подарено' : o.pay_method ? 'оплачен: ' + (PAY_RU[o.pay_method]||o.pay_method) : o.written_off ? 'долг списан — ушёл, не заплатив' : 'расчёт у стойки после игры'}</span>
         <span class="muted">${esc(o.nickname||'гость')}${o.computer ? ' · нести к ' + esc(o.computer) : ' · заберёт у стойки'}</span>
         <span class="muted" style="margin-left:auto">${hhmm(o.created_at)}</span>
       </div>
@@ -4691,6 +4702,7 @@ function paintKitchen(){
 /* ── Ж6-и3: заказ кухни от стойки. Гость — через общий резолвер (ник,
    телефон, имя; кандидаты при 409), позиция из ценника, «на сколько»;
    оплата — при выходе (Р10, только гостю за ПК) или сразу. ── */
+let kitNewWhy = ''; // З11-и5: причина подарка
 let kitNewOpen = false, kitNewGood = null, kitNewQty = 1, kitNewMethod = 'later', kitNewGuest = null, kitNewCands = [];
 function kitNewToggle(){ kitNewOpen = !kitNewOpen; if (kitNewOpen && !goodsData.length) api('/admin/goods').then(g => { goodsData = g.goods || []; paintKitNew(); }).catch(() => {}); paintKitNew(); }
 function paintKitNew(){
@@ -4714,10 +4726,11 @@ function paintKitNew(){
         `<option value="${x.id}"${x.id === kitNewGood ? ' selected' : ''}>${esc(x.name)} · ${fmtPLN(x.price_pln)} zł${x.stock <= 0 ? ' · нет на складе' : ''}</option>`).join('')}</select>
       <span class="qty" style="display:inline-flex; align-items:center; gap:4px"><button class="btn ghost mini" onclick="kitNewQty=Math.max(1,kitNewQty-1); paintKitNew()">−</button><b style="min-width:22px; text-align:center">${kitNewQty}</b><button class="btn ghost mini" onclick="kitNewQty=Math.min(5,kitNewQty+1); paintKitNew()">+</button></span>
     </div>
-    <div class="segs">${[['later','При выходе'],['cash','Нал'],['card','Карта'],['blik','BLIK'],['wallet','Кошелёк']].map(([m,l]) =>
+    <div class="segs">${[['later','При выходе'],['cash','Нал'],['card','Карта'],['blik','BLIK'],['wallet','Кошелёк'],['comp','Подарено']].map(([m,l]) =>
       `<button class="${kitNewMethod===m?'on':''}" onclick="kitNewMethod='${m}'; paintKitNew()">${l}</button>`).join('')}</div>
+    ${kitNewMethod === 'comp' ? `<input id="kitWhy" class="input" maxlength="200" placeholder="За что дарим — обязательно, её увидит владелец" value="${esc(kitNewWhy)}" oninput="kitNewWhy=this.value">` : ''}
     <button class="btn" style="width:100%; justify-content:center" onclick="kitNewSubmit()"><span data-ic="check"></span>Принять заказ${g ? ' · ' + fmtPLN(g.price_pln * kitNewQty) + ' zł' : ''}</button>
-    <div class="muted">${kitNewMethod === 'later' ? 'Рассчитается у стойки при выходе (Р10) — только гостю за ПК; заказ понесут к его машине' : 'Оплачен сразу — ' + (kitNewMethod === 'wallet' ? 'спишем с кошелька гостя (не выручка)' : 'сумма попадёт в выручку смены')}${kitNewGuest || typed ? '' : ' · сначала укажи гостя'}</div>
+    <div class="muted">${kitNewMethod === 'later' ? 'Рассчитается у стойки при выходе (Р10) — только гостю за ПК; заказ понесут к его машине' : 'Оплачен сразу — ' + (kitNewMethod === 'wallet' ? 'спишем с кошелька гостя (не выручка)' : kitNewMethod === 'comp' ? 'подарок: не выручка и не касса, причина — в журнал и владельцу' + (isOwner() ? '' : ', у админа — в пределах дневного лимита компенсаций') : 'сумма попадёт в выручку смены')}${kitNewGuest || typed ? '' : ' · сначала укажи гостя'}</div>
   </div>`;
   mountIcons(box);
 }
@@ -4734,6 +4747,10 @@ async function kitNewSubmit(){
     const inp = document.getElementById('kitGuest');
     const typed = inp ? inp.value.trim() : '';
     const body = {good_id: kitNewGood, qty: kitNewQty, method: kitNewMethod};
+    if (kitNewMethod === 'comp'){ // З11-и5: подарок — только с причиной
+      if (!kitNewWhy.trim()){ toast('⚠ У подарка нужна причина — за что дарим (её увидит владелец)'); const w = document.getElementById('kitWhy'); if (w) w.focus(); return; }
+      body.comp_reason = kitNewWhy.trim();
+    }
     if (kitNewGuest && (typed === kitNewGuest.nickname || !typed)) body.guest_id = kitNewGuest.id;
     else if (typed) body.guest = typed;
     else { toast('⚠ Укажи гостя: ник, телефон или имя'); return; }
@@ -4741,7 +4758,8 @@ async function kitNewSubmit(){
       const d = await api('/admin/kitchen/orders', {method:'POST', body:JSON.stringify(body)});
       const o = d.order || {};
       toast('🍔 ' + (o.name || 'заказ') + (o.qty > 1 ? ' ×' + o.qty : '') + ' — ' + fmtPLN(o.total_pln || 0) + ' zł · ' + (d.nickname || '')
-        + (o.computer ? ' · к ' + o.computer : '') + (d.debt ? ' · при выходе (должен ' + fmtPLN(d.debt.total_pln) + ' zł)' : ' · оплачен'));
+        + (o.computer ? ' · к ' + o.computer : '') + (d.debt ? ' · при выходе (должен ' + fmtPLN(d.debt.total_pln) + ' zł)' : o.pay_method === 'comp' ? ' · подарено: ' + body.comp_reason : ' · оплачен'));
+      if (o.pay_method === 'comp') kitNewWhy = '';
       kitNewGuest = d.nickname && kitNewGuest ? kitNewGuest : kitNewGuest; kitNewQty = 1; kitNewCands = [];
       if (inp) inp.value = kitNewGuest ? kitNewGuest.nickname : '';
       await kitBadgeLoad();
@@ -4921,9 +4939,12 @@ function paintCart(){
   const n = ids.reduce((a, id) => a + cart[id], 0);
   setText('cartHint', n + ' шт · ' + (saleM === 'later'
     ? (saleGuest ? 'в долг ' + saleGuest.nickname + ' — рассчитается при выходе' : 'в долг — укажи гостя за ПК')
+    : saleM === 'comp' ? 'подарок' + (saleGuest ? ' ' + saleGuest.nickname : '') + ' — не выручка и не касса' + (isOwner() ? '' : ', в пределах дневного лимита компенсаций') // З11-и5
     : (PAY_RU[saleM] || saleM) + (saleGuest ? ' · ' + saleGuest.nickname : '')));
+  const why = document.getElementById('saleWhy');
+  if (why) why.classList.toggle('hidden', saleM !== 'comp');
   const btn = document.getElementById('cartSellBtn');
-  if (btn) btn.innerHTML = '<span data-ic="box"></span>' + (saleM === 'later' ? 'В долг' : 'Продать') + ' · ' + fmtPLN(cartTotalPLN()) + ' zł';
+  if (btn) btn.innerHTML = '<span data-ic="box"></span>' + (saleM === 'later' ? 'В долг' : saleM === 'comp' ? 'Подарить' : 'Продать') + ' · ' + fmtPLN(cartTotalPLN()) + ' zł';
   mountIcons(box);
 }
 /* весь чек одним запросом; ошибка по гостю (кандидаты) — как у одиночной продажи */
@@ -4936,6 +4957,7 @@ async function cartSell(){
     if (saleGuest && typed === saleGuest.nickname) body.guest_id = saleGuest.id;
     else if (typed) body.guest = typed;
     if (saleM === 'later' && !body.guest_id && !body.guest){ toast('⚠ В долг — только на гостя за ПК: укажи, кому'); return; }
+    if (saleM === 'comp' && !(body.comp_reason = saleWhyText())) return; // З11-и5: подарок — только с причиной
     const box = document.getElementById('saleCands');
     try{
       const d = await api('/admin/sales', {method:'POST', body:JSON.stringify(body)});
@@ -4943,10 +4965,11 @@ async function cartSell(){
       if (box) box.innerHTML = '';
       if (d.nickname && !saleGuest && d.sale && d.sale.user_id) saleGuestSet(d.sale.user_id, d.nickname);
       const what = (r.count > 1 ? 'чек из ' + r.count + ' позиций' : (d.sale ? d.sale.name + (d.sale.qty > 1 ? ' ×' + d.sale.qty : '') : 'продажа'));
-      toast((r.unpaid ? '🧾 В долг: ' : '✓ ') + what + ' — ' + fmtPLN(r.total_pln || 0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '')
-        + (r.unpaid && d.debt ? ' · должен всего ' + fmtPLN(d.debt.total_pln) + ' zł' : ''),
+      toast((r.unpaid ? '🧾 В долг: ' : r.comp ? '🎁 Подарено: ' : '✓ ') + what + ' — ' + fmtPLN(r.total_pln || 0) + ' zł' + (d.nickname ? ' · ' + d.nickname : '')
+        + (r.unpaid && d.debt ? ' · должен всего ' + fmtPLN(d.debt.total_pln) + ' zł' : '') + (r.comp ? ' · ' + body.comp_reason : ''),
         () => voidReceipt(r.id, true));
       cart = {};
+      if (r.comp){ const w = document.getElementById('saleWhy'); if (w) w.value = ''; } // З11-и5: у следующего подарка — своя причина
       renderGoods();
       refresh(); // выручка в шапке
     }catch(e){
@@ -5008,6 +5031,7 @@ async function sellGood(id){
     if (!g || g.stock <= 0) return;
     const typed = document.getElementById('saleNick').value.trim();
     const body = {good_id:id, qty:1, method:saleM};
+    if (saleM === 'comp' && !(body.comp_reason = saleWhyText())) return; // З11-и5
     if (saleGuest && typed === saleGuest.nickname) body.guest_id = saleGuest.id;
     else if (typed) body.guest = typed;
     const box = document.getElementById('saleCands');
@@ -5035,10 +5059,10 @@ async function sellGood(id){
 async function voidSale(id, quiet, how, pln){ // З11-и2: how — как вернули; из тоста «Вернуть» — как платили
   try{
     const d = await api('/admin/sales/' + id + '/void', refundBody(how));
-    const todo = d.unpaid ? '' : refundTodo(d.refund_method, pln);
+    const todo = d.unpaid || d.comp ? '' : refundTodo(d.refund_method, pln); // З11-и5: у подарка денег не было
     // З6-и1: отмена расчёта кухни склад не трогает (выпитое не вернуть) — заказ снова ждёт оплаты
-    if (!quiet) toast((d && d.kitchen_unpaid ? '✓ Оплата заказа кухни отменена — заказ снова ждёт оплаты, склад не тронут'
-                                             : d.unpaid ? '✓ Продажа в долг отменена — товар вернулся на склад' : '✓ Продажа отменена — товар вернулся на склад')
+    if (!quiet) toast((d && d.kitchen_unpaid ? (d.comp ? '✓ Подарок отменён' : '✓ Оплата заказа кухни отменена') + ' — заказ снова ждёт оплаты, склад не тронут'
+                                             : d.unpaid ? '✓ Продажа в долг отменена — товар вернулся на склад' : d.comp ? '✓ Подарок отменён — товар вернулся на склад' : '✓ Продажа отменена — товар вернулся на склад')
                       + (todo ? ' · ' + todo : ''));
     renderGoods();
     refresh();
@@ -5052,6 +5076,7 @@ function paintSales(d){
   setText('salesTotal', (d.date || '') + ' · ' + fmtPLN(d.total_pln || 0) + ' zł' +
     (d.wallet_pln ? ' · кошельком: ' + fmtPLN(d.wallet_pln) + ' zł (не выручка)' : '') +
     (d.unpaid ? ' · в долг: ' + fmtPLN(d.unpaid_pln || 0) + ' zł (' + d.unpaid + ', не выручка)' : '') +
+    (d.comp ? ' · подарено: ' + fmtPLN(d.comp_pln || 0) + ' zł (' + d.comp + ', не выручка)' : '') + // З11-и5
     (d.voided ? ' · отменено: ' + d.voided : '') +
     // З8-и4: итог — по всем продажам суток, а список — последние 300 строк
     (d.total_count > (d.sales || []).length ? ' · в списке последние ' + (d.sales || []).length + ' из ' + d.total_count : ''));
@@ -5067,12 +5092,13 @@ function paintSales(d){
   groups.forEach(g => { if (g.items) g.items.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); }); // позиции — в порядке чека
   const guestCell = x => x.nickname ? (x.user_id ? `<a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${x.user_id}')">${esc(x.nickname)}</a>` : esc(x.nickname)) : '—';
   const payCell = x => x.voided ? '<span class="muted">' + (PAY_RU[x.method] || esc(x.method)) + '</span>'
+    : x.method === 'comp' ? '<span title="З11-и5: подарок — не выручка и не касса">подарено</span>'
     : x.written_off ? '<span class="muted" title="З11-и4: долг списал владелец — гость ушёл, не заплатив; вернуть — в карточке гостя">долг списан</span>'
     : x.unpaid ? `<span class="debtline" title="Ж-Р8: рассчитается у стойки при выходе">в долг</span>${x.user_id ? ` · <a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${x.user_id}','debt')">рассчитать</a>` : ''}`
     : (PAY_RU[x.method] || esc(x.method)) + (x.postpaid ? ' <span class="muted" title="продано в долг, рассчитано ' + (x.paid_at ? hhmm(x.paid_at) : '') + '">· был долг</span>' : '');
   const oneRow = x => `<tr${x.voided ? ' style="opacity:.45"' : ''}>
         <td class="muted">${hhmm(x.created_at)}</td>
-        <td><b>${esc(x.name)}</b>${x.qty > 1 ? ' ×' + x.qty : ''}${x.voided ? ' <span class="muted">— отменена</span>' : ''}</td>
+        <td><b>${esc(x.name)}</b>${x.qty > 1 ? ' ×' + x.qty : ''}${x.voided ? ' <span class="muted">— отменена</span>' : ''}${x.comp_reason ? ' <span class="muted">· ' + esc(x.comp_reason) + '</span>' : ''}</td>
         <td>${fmtPLN(x.total_pln)} zł</td>
         <td class="muted">${payCell(x)}</td>
         <td class="muted">${guestCell(x)}</td>
@@ -5111,7 +5137,13 @@ let lastSalesResp = null;
 function armVoidReceipt(btn, rid, paid, pln){ // З11-и2: один способ на весь чек
   refundPick(btn, {paid, pln, confirm: 'Точно — весь чек?', run: how => voidReceipt(rid, false, how, paid)});
 }
-const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK', wallet:'кошелёк', later:'при выходе'};
+const PAY_RU = {cash:'наличные', card:'карта', blik:'BLIK', wallet:'кошелёк', later:'при выходе', comp:'подарено'}; // З11-и5
+/* З11-и5 (№18; решение основателя 30.09): «Подарено» — причина обязательна; пусто — тост и курсор в поле причины */
+function saleWhyText(){
+  const w = document.getElementById('saleWhy'), v = w ? w.value.trim() : '';
+  if (!v){ toast('⚠ У подарка нужна причина — за что дарим (её увидит владелец)'); if (w){ w.classList.remove('hidden'); w.focus(); } }
+  return v;
+}
 
 /* отмена продажи — деньги уходят из выручки смены; З11-и2: второй шаг — «как вернули», у долга — «Точно отменить?» */
 function armVoid(btn, id, paid, pln){
@@ -5770,6 +5802,7 @@ function paintMoney(d){
   const gm = d.goods_margin || {}, sv = d.stock_value || {}; // З10-и8 (№70)
   const rcv = (d.debts || {}).receivable || {total_pln:0, guests:0, gone_pln:0, gone_guests:0, items:[]}; // З11-и4 (№15)
   const wof = (d.debts || {}).written_off || {pln:0, count:0, guests:0, items:[]};
+  const gif = d.gifts || {pln:0, count:0, guests:0, goods_pln:0, packs_pln:0, cost_pln:null, items:[]}; // З11-и5 (№18)
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln,
@@ -5801,6 +5834,14 @@ function paintMoney(d){
        ${lostDep > 0 || loss.deposit_voids > 0 ? repKpi('— по ошибочным депозитам', fmtPLN(lostDep) + ' zł', undefined,
                 {title:'гость успел потратить до отмены депозита — долгом не стало (Ж-Р4), с кошелька снят только остаток · '
                        + (loss.deposit_voids || 0) + ' отмен на ' + fmtPLN(loss.deposit_void_pln || 0) + ' zł за период'}) : ''}
+     </div>
+     <div class="kpis" id="repGifts">
+       ${repKpi('Подарено', fmtPLN(gif.pln || 0) + ' zł', undefined, // З11-и5 (№18; решение основателя 30.09)
+                {title:'по цене: ' + repPlural(gif.count || 0, 'подарок', 'подарка', 'подарков') + ' у ' + repPlural(gif.guests || 0, 'гостя', 'гостей', 'гостей')
+                       + ' — товары и кухня ' + fmtPLN(gif.goods_pln || 0) + ' zł, пакеты времени ' + fmtPLN(gif.packs_pln || 0) + ' zł. Не выручка и не касса'})}
+       ${repKpi('— по себестоимости', gif.cost_pln == null ? '—' : fmtPLN(gif.cost_pln) + ' zł', undefined,
+                {title:'подаренные товары — по цене закупки партий, из которых ушли: ' + (gif.costed_units || 0) + ' шт'
+                       + (gif.no_cost_units ? ' · без себестоимости: ' + gif.no_cost_units + ' шт' : '') + '; у пакетов времени себестоимости нет'})}
      </div>
      <div class="kpis" id="repMargin">
        ${repKpi('Продано товаров на', fmtPLN(gm.sold_pln || 0) + ' zł', undefined, // З10-и8 (№70; решение основателя 29.09)
@@ -5878,6 +5919,7 @@ function paintMoney(d){
          <td>${a.packs || 0} · ${fmtPLN(a.packs_pln)} zł</td></tr>`),
         'За этот период денег не принимали')}
      ${repDebtHtml(rcv, wof)}
+     ${repGiftsHtml(gif)}
      <div class="sect" id="repReturns">Возвраты за прошлый месяц</div>
      <div id="repRetBody"><div class="muted">Считаю возвраты…</div></div>`;
   loadReturns(); // З11-и3: всегда прошлый месяц — свой запрос, период отчёта его не меняет
@@ -5899,6 +5941,21 @@ function repGoodsCells(g){
 // маржа словами: «1 740,00 zł · 64,4%»; неизвестна — «—»
 function repMarginTxt(x){
   return x.margin_pln == null ? '—' : fmtPLN(x.margin_pln) + ' zł' + (x.margin_pct == null ? '' : '&nbsp;· ' + x.margin_pct.toLocaleString('ru-RU') + '%');
+}
+/* З11-и5 (№18; решение основателя 30.09): «Подарено за период» — что, кому, по какой цене, за что и кто подарил; причина
+   обязательна — ради неё список и есть. Строка — карточка гостя. На телефоне строка — карточка с подписями. */
+function repGiftsHtml(gif){
+  if (!(gif.count > 0)) return '';
+  const L = t => `<span class="repL">${t}</span>`;
+  return `<div class="sect" id="repGiftList">Подарено за период</div>
+     ${repTable(['Когда', 'Что', 'Гость', 'По цене', 'За что', 'Кто подарил'], (gif.items || []).map(x => `<tr${x.user_id ? ` onclick="openUserDrawer('${x.user_id}')" style="cursor:pointer"` : ''}>
+       <td>${L('когда')}${retDay(x.created_at, true)} ${hhmm(x.created_at)}</td>
+       <td><b>${x.kind === 'package' ? 'Пакет «' + esc(x.name) + '»' : esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '')}</b></td>
+       <td>${L('гость')}${x.guest ? esc(x.guest) : '<span class="muted">—</span>'}</td>
+       <td>${L('по цене')}${fmtPLN(x.price_pln)} zł</td>
+       <td>${L('за что')}<span>${esc(x.reason || '—')}</span></td>
+       <td>${L('кто подарил')}${esc(x.by || '—')}</td></tr>`), '')}
+     ${gif.items_total > (gif.items || []).length ? `<div class="muted">Показаны последние ${(gif.items || []).length} из ${gif.items_total}</div>` : ''}`;
 }
 /* З11-и4 (№15; решения основателя 30.09): «Дебиторка сейчас» — кто сколько должен за выданное в долг (снимок, от периода
    не зависит): ушедшие, не рассчитавшись, — первыми и оранжевым; «Списано за период» — «Потери → долги» по дню списания.
@@ -8358,6 +8415,8 @@ const PAL_WORDS = [
    sub:'Отчёты → Деньги: возвраты за прошлый месяц — сколько, как и за что', ic:'coins', run:() => palGoReturns()},
   {who:'owner', words:['дебиторка', 'должники', 'долги гостей', 'кто должен', 'списать долг', 'списанные долги'], name:'Дебиторка', // З11-и4
    sub:'Отчёты → Деньги: кто сколько должен сейчас, списанные долги', ic:'coins', run:() => palGoDebt()},
+  {who:'owner', words:['подарено', 'подарок', 'подарки', 'угостили', 'бесплатно', 'за счёт заведения'], name:'Подарено', // З11-и5
+   sub:'Отчёты → Деньги: подарки за период — по цене, по себестоимости и за что', ic:'chest', run:() => palGoGifts()},
   {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
@@ -8382,6 +8441,15 @@ function palGoMargin(){
   let n = 0;
   const t = setInterval(() => {
     const el = document.getElementById('repMargin');
+    if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
+  }, 100);
+}
+// З11-и5: подарки — ряд под «Потерями» в «Деньгах»: ждём, пока отчёт встанет, и показываем его
+function palGoGifts(){
+  palGoReport('money');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('repGifts');
     if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
   }, 100);
 }

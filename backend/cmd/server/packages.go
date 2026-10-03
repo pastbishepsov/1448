@@ -50,7 +50,7 @@ var packageErrors = map[string]string{
 	"has_sales":       "Пакет уже продавали — его нельзя удалить, только выключить",
 	"db_error":        "Не сохранилось — попробуй ещё раз",
 	// Е2-и2: выдача и покупка
-	"bad_method":      "Оплата: наличные, карта, BLIK или кошелёк",
+	"bad_method":      "Оплата: наличные, карта, BLIK, кошелёк — или «подарено» с причиной",
 	"pack_required":   "Не выбран пакет",
 	"pack_inactive":   "Пакет выключен — включи его в каталоге",
 	"not_enough":      "На кошельке не хватает — сначала пополни",
@@ -374,8 +374,9 @@ func daysSuffix(days int) string {
 // Посчитать его выручкой второй раз значило бы задвоить кассу.
 
 type issueRequest struct {
-	PackageID string `json:"package_id"`
-	Method    string `json:"method"` // cash | card | blik | wallet
+	PackageID  string `json:"package_id"`
+	Method     string `json:"method"`      // cash | card | blik | wallet | comp (З11-и5)
+	CompReason string `json:"comp_reason"` // З11-и5: за что подарили — обязательно при comp
 }
 
 // packageExpiry — до какого момента живут выданные минуты. Чистая функция
@@ -405,6 +406,9 @@ func userPackOut(p *models.UserPackage, now time.Time) gin.H {
 		"price_pln": p.PricePLN, "method": p.Method,
 		"created_at": p.CreatedAt, "live": packageLive(p, now),
 	}
+	if p.CompReason != nil {
+		out["comp_reason"] = *p.CompReason // З11-и5: за что подарили
+	}
 	if p.ExpiresAt != nil {
 		out["expires_at"] = p.ExpiresAt
 		out["days_left"] = daysLeft(*p.ExpiresAt, now)
@@ -427,9 +431,9 @@ func daysLeft(exp, now time.Time) int {
 
 // issuePackage — общая часть обоих каналов: снимок каталога → строка выдачи,
 // при оплате кошельком ещё и списание. Одна транзакция: пакет без денег и
-// деньги без пакета одинаково плохи.
+// деньги без пакета одинаково плохи. reason — за что подарили (З11-и5, у comp).
 func issuePackage(user *models.User, pack *models.TimePackage, zone models.Zone,
-	method string, by *uuid.UUID) (*models.UserPackage, int64, string) {
+	method string, by *uuid.UUID, reason *string) (*models.UserPackage, int64, string) {
 
 	now := time.Now()
 	up := models.UserPackage{
@@ -437,7 +441,7 @@ func issuePackage(user *models.User, pack *models.TimePackage, zone models.Zone,
 		Name: pack.Name, ZoneName: zone.Name,
 		MinutesTotal: pack.Minutes, MinutesLeft: pack.Minutes,
 		PricePLN: pack.PricePLN, Method: method,
-		ExpiresAt: packageExpiry(pack.DaysValid, now), CreatedBy: by,
+		ExpiresAt: packageExpiry(pack.DaysValid, now), CreatedBy: by, CompReason: reason,
 	}
 	price := models.GroszFromPLN(pack.PricePLN)
 	walletAfter := user.WalletGrosz
@@ -507,8 +511,12 @@ func handleAdminPackageIssue(c *gin.Context) {
 	if method == "" {
 		method = "cash"
 	}
-	if method != "cash" && method != "card" && method != "blik" && method != "wallet" {
+	if method != "cash" && method != "card" && method != "blik" && method != "wallet" && method != models.SaleMethodComp {
 		packFail(c, http.StatusBadRequest, "bad_method")
+		return
+	}
+	reason, ok := compAsked(c, method, req.CompReason) // З11-и5: подарок — только с причиной
+	if !ok {
 		return
 	}
 	pack, zone, code := livePackage(req.PackageID)
@@ -517,7 +525,14 @@ func handleAdminPackageIssue(c *gin.Context) {
 		return
 	}
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
-	up, walletAfter, code := issuePackage(user, pack, *zone, method, &adminID)
+	var why *string
+	if method == models.SaleMethodComp {
+		if !giftCapOK(c, adminID, models.GroszFromPLN(pack.PricePLN)) { // Д6: потолок компенсаций админа
+			return
+		}
+		why = &reason
+	}
+	up, walletAfter, code := issuePackage(user, pack, *zone, method, &adminID, why)
 	if code != "" {
 		status := http.StatusInternalServerError
 		if code == "not_enough" {
@@ -527,9 +542,13 @@ func handleAdminPackageIssue(c *gin.Context) {
 		return
 	}
 	target := user.ID
+	how := method
+	if method == models.SaleMethodComp {
+		how = compText(why) // З11-и5: в журнале — за что подарили
+	}
 	logAdminAction(c, "package_issue", &target,
 		fmt.Sprintf("%s · %s · %d мин · %.2f zł · %s", up.Name, up.ZoneName,
-			up.MinutesTotal, up.PricePLN, method))
+			up.MinutesTotal, up.PricePLN, how))
 	hub.AdminBroadcast("package", map[string]any{"kind": "issue", "user_id": user.ID.String()})
 	c.JSON(http.StatusCreated, gin.H{"package": userPackOut(up, time.Now()),
 		"wallet_pln": models.PLNFromGrosz(walletAfter)})
@@ -558,7 +577,7 @@ func handleMyPackageBuy(c *gin.Context) {
 		packFail(c, http.StatusBadRequest, code)
 		return
 	}
-	up, walletAfter, code := issuePackage(&user, pack, *zone, "wallet", &user.ID)
+	up, walletAfter, code := issuePackage(&user, pack, *zone, "wallet", &user.ID, nil)
 	if code != "" {
 		status := http.StatusInternalServerError
 		if code == "not_enough" {

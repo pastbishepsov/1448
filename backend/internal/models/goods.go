@@ -67,7 +67,12 @@ type Sale struct {
 	// З11-и4 (миграция 080): долг по продаже списан этим списанием (DebtWriteOff) —
 	// не висит в долге гостя, не рассчитывается и не отменяется, пока списание стоит.
 	WriteOffID *uuid.UUID `json:"write_off_id,omitempty" gorm:"type:uuid"`
+	// З11-и5 (миграция 081): Method = "comp" — подарок, не выручка и не ящик; за что подарили — обязательно.
+	CompReason *string `json:"comp_reason,omitempty" gorm:"size:200"`
 }
+
+// SaleMethodComp — «Подарено» (З11-и5): у продажи, выдачи пакета и заказа кухни от стойки.
+const SaleMethodComp = "comp"
 
 // SaleMethodLater — продажа в долг (Ж6): товар выдан, деньги — при расчёте.
 const SaleMethodLater = "later"

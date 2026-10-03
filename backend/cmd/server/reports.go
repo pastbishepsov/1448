@@ -319,9 +319,9 @@ const (
 var moneySources = [...]moneySource{
 	moneyDeposit: {"deposits", "created_at", "amount_pln", "created_by", "voided_at IS NULL"}, // Ж1: отменённый — не выручка
 	moneyGood: {"sales", "paid_at", "total_pln", "COALESCE(paid_by, created_by)",
-		"voided_at IS NULL AND method <> 'wallet'"}, // Р7 (Г7): кошельком — погашение обязательства, не выручка
+		"voided_at IS NULL AND method NOT IN ('wallet', 'comp')"}, // Р7 (Г7): кошельком — погашение обязательства; З11-и5: подарок — не выручка
 	moneyPack: {"user_packages", "created_at", "price_pln", "created_by",
-		"voided_at IS NULL AND method <> 'wallet'"},
+		"voided_at IS NULL AND method NOT IN ('wallet', 'comp')"},
 }
 
 // in — выручечные строки канала в окне [from, to).
@@ -540,8 +540,9 @@ func handleReportMoney(c *gin.Context) {
 		Guests int64
 		Min    int64
 	}
+	// З11-и5: подаренный пакет — минуты клуб должен, злотых за них не брал
 	db.Model(&models.UserPackage{}).
-		Select(`COALESCE(SUM(ROUND(price_pln * 100 * minutes_left / minutes_total)),0) AS grosz,
+		Select(`COALESCE(SUM(ROUND(price_pln * 100 * minutes_left / minutes_total)) FILTER (WHERE method <> 'comp'),0) AS grosz,
 		        COUNT(DISTINCT user_id) AS guests, COALESCE(SUM(minutes_left),0) AS min`).
 		Where(`voided_at IS NULL AND minutes_left > 0
 		       AND (expires_at IS NULL OR expires_at > now())`).
@@ -589,6 +590,8 @@ func handleReportMoney(c *gin.Context) {
 		// З11-и4 (№15): «Дебиторка сейчас» — снимок, от периода не зависит;
 		// списанные за период (не отменённые) — «Потери → долги» по дню списания
 		"debts": gin.H{"receivable": receivablesNow(), "written_off": writtenOffIn(p.From, p.To)},
+		// З11-и5 (№18): подарки периода — по цене и по себестоимости, с причинами; не выручка и не ящик
+		"gifts": giftsIn(p.From, p.To),
 	})
 }
 

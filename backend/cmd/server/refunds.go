@@ -46,8 +46,9 @@ func refundFail(c *gin.Context, code string) {
 }
 
 // pickRefund — как вернули деньги отмены (чистая, тест). paid — как платили
-// ("" — не платили: долг, неоплаченный заказ), asked — что выбрали ("" — как
-// платили), owner — отменяет владелец. Второе значение — код отказа.
+// ("" — не платили: долг, неоплаченный заказ; З11-и5: comp — подарок, денег тоже
+// не брали), asked — что выбрали ("" — как платили), owner — отменяет владелец.
+// Второе значение — код отказа.
 func pickRefund(paid, asked string, owner bool) (string, string) {
 	if asked == "" {
 		if !refundMethods[paid] {
@@ -60,7 +61,7 @@ func pickRefund(paid, asked string, owner bool) (string, string) {
 		return "", "bad_refund_method"
 	case asked == refundNone:
 		return refundNone, ""
-	case paid == "":
+	case !refundMethods[paid]: // долг, подарок, способ из старых данных — денег не брали
 		return "", "refund_unpaid"
 	case asked == "wallet" && paid != "wallet":
 		return "", "refund_wallet_only"

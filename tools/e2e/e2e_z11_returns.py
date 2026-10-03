@@ -3,7 +3,7 @@
 отмены с деньгами по дню отмены (возврат — операция своего дня), как бы давно ни платили; без month — прошлый месяц по
 клубным суткам, month=ГГГГ-ММ — любой не позже текущего. Итоги — живыми деньгами (наличными, на карту, по BLIK), на кошелёк,
 «не возвращали», «по операциям прошлых месяцев»; сумма — как у ящика: депозит — снятое с кошелька, продажа — цена, пакет —
-доля за неотыгранное. Неоплаченный долг — не возврат. Итоги сходятся с прямым SQL до гроша. Кассовая книга: у дня — список
+доля за неотыгранное. Неоплаченный долг и отменённый подарок (З11-и5) — не возврат. Итоги сходятся с прямым SQL до гроша. Кассовая книга: у дня — список
 возвратов наличными (кто, кому, за что, когда платили), сумма списка — «возвраты» дня.
 Данные: временный админ z11rt (на смене; ящик заводится, если его нет); гость Guest41 (кошелёк докладывается до цены пакета
 + 10 zł); гость Guest42 (кошелёк докладывается до 10 zł; за PC-08 — продажа в долг, отменяется до расчёта; сессия
@@ -97,14 +97,15 @@ check("«не возвращали» — вернули 0, оплачено 12 �
 
 
 def direct(mon, nextmon):
-    """Итоги месяца прямым SQL, в грошах — независимо от сервера; окно — клубные сутки месяца."""
+    """Итоги месяца прямым SQL, в грошах — независимо от сервера; окно — клубные сутки месяца; подарки (З11-и5) — не возврат."""
     f, t = at_club(mon + "-01", f"{RH:02d}:00"), at_club(nextmon + "-01", f"{RH:02d}:00")
     live = "('cash','card','blik','wallet')"
     q = f"""WITH r AS (
       SELECT COALESCE(refund_method, method) m, refund_grosz g, ROUND(amount_pln * 100)::bigint p, created_at pa FROM deposits WHERE voided_at >= {f} AND voided_at < {t}
       UNION ALL SELECT COALESCE(refund_method, method), ROUND(total_pln * 100)::bigint, ROUND(total_pln * 100)::bigint, paid_at FROM sales
-        WHERE paid_at IS NOT NULL AND voided_at >= {f} AND voided_at < {t}
-      UNION ALL SELECT COALESCE(refund_method, method), refund_grosz, ROUND(price_pln * 100)::bigint, created_at FROM user_packages WHERE voided_at >= {f} AND voided_at < {t})
+        WHERE paid_at IS NOT NULL AND method <> 'comp' AND voided_at >= {f} AND voided_at < {t}
+      UNION ALL SELECT COALESCE(refund_method, method), refund_grosz, ROUND(price_pln * 100)::bigint, created_at FROM user_packages
+        WHERE method <> 'comp' AND voided_at >= {f} AND voided_at < {t})
     SELECT concat_ws('|', count(*),
       COALESCE(SUM(g) FILTER (WHERE m IN ('cash','card','blik')), 0), count(*) FILTER (WHERE m IN ('cash','card','blik')),
       COALESCE(SUM(g) FILTER (WHERE m = 'cash'), 0), count(*) FILTER (WHERE m = 'cash'),

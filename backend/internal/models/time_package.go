@@ -77,6 +77,8 @@ type UserPackage struct {
 	RefundGrosz int64 `json:"refund_grosz" gorm:"not null;default:0"`
 	// З11-и1 (миграция 079): как вернули — cash | card | blik | wallet | none.
 	RefundMethod *string `json:"refund_method,omitempty" gorm:"size:8"`
+	// З11-и5 (миграция 081): Method = "comp" — подарок, не выручка и не ящик; за что подарили — обязательно.
+	CompReason *string `json:"comp_reason,omitempty" gorm:"size:200"`
 }
 
 func (p *UserPackage) BeforeCreate(tx *gorm.DB) error {

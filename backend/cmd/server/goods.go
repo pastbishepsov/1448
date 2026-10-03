@@ -68,7 +68,7 @@ var goodErrors = map[string]string{
 	"bad_description": fmt.Sprintf("Описание — до %d символов", maxGoodDescription),
 	"bad_qty":         fmt.Sprintf("Количество — от 1 до %d", maxSaleQty),
 	"too_many_items":  fmt.Sprintf("В чеке — до %d позиций", maxReceiptItems),
-	"bad_method":      "Оплата: наличные, карта, BLIK — или «при выходе» гостю за ПК",
+	"bad_method":      "Оплата: наличные, карта, BLIK, «при выходе» гостю за ПК — или «подарено» с причиной",
 	"bad_reason":      "Причина движения: supply или adjust",
 	"need_note":       "У корректировки должна быть причина — её увидит владелец",
 	"negative_stock":  "Остаток ушёл бы в минус",
@@ -564,10 +564,12 @@ type saleRequest struct {
 	GoodID   string     `json:"good_id"` // одна позиция (как до Ж6) …
 	Qty      int        `json:"qty"`
 	Items    []saleItem `json:"items"`    // … или корзина (Ж6-и2): все позиции одним чеком
-	Method   string     `json:"method"`   // cash | card | blik | later (Ж6-и1: в долг до выхода, только гостю за ПК)
+	Method   string     `json:"method"`   // cash | card | blik | later (Ж6-и1: в долг до выхода, только гостю за ПК) | comp (З11-и5)
 	Nickname string     `json:"nickname"` // строгий ник (как понимала админка до Ж5)
 	Guest    string     `json:"guest"`    // Ж5-и4: ник, телефон ИЛИ имя — через общий резолвер
 	GuestID  string     `json:"guest_id"` // Ж5-и4: выбран из списка кандидатов (409 guest_ambiguous)
+	// З11-и5: «Подарено» — за что (обязательно при method=comp)
+	CompReason string `json:"comp_reason"`
 }
 
 // maxReceiptItems — позиций в одном чеке; больше — это уже поставка, а не продажа
@@ -582,6 +584,9 @@ func saleOut(s *models.Sale, nick map[string]string) gin.H {
 		// З11-и4: списанный владельцем долг — уже не «в долг», а «долг списан»
 		"paid_at": s.PaidAt, "unpaid": s.PaidAt == nil && s.VoidedAt == nil && s.WriteOffID == nil, "postpaid": s.Postpaid,
 		"written_off": s.WriteOffID != nil,
+	}
+	if s.CompReason != nil {
+		row["comp_reason"] = *s.CompReason // З11-и5: за что подарили
 	}
 	if s.ReceiptID != nil {
 		row["receipt_id"] = s.ReceiptID // Ж6-и2: чек — позиции одной продажи
@@ -666,8 +671,12 @@ func handleAdminSaleCreate(c *gin.Context) {
 	if method == "" {
 		method = "cash"
 	}
-	if !saleMethodOK(method) && method != models.SaleMethodLater {
+	if !saleMethodOK(method) && method != models.SaleMethodLater && method != models.SaleMethodComp {
 		goodFail(c, http.StatusBadRequest, "bad_method")
+		return
+	}
+	reason, ok := compAsked(c, method, req.CompReason) // З11-и5: подарок — только с причиной
+	if !ok {
 		return
 	}
 
@@ -737,13 +746,26 @@ func handleAdminSaleCreate(c *gin.Context) {
 		if method == models.SaleMethodLater {
 			s.Postpaid = true // paid_at пуст — деньги при расчёте
 		} else {
-			paid := now
+			paid := now // З11-и5: у подарка — тоже: он закрыт в момент подарка, не долг
 			s.PaidAt = &paid
+		}
+		if method == models.SaleMethodComp {
+			r := reason
+			s.CompReason = &r
 		}
 		if guest != nil {
 			s.UserID = &guest.ID
 		}
 		sales = append(sales, s)
+	}
+	if method == models.SaleMethodComp { // З11-и5 (Д6): админ дарит в пределах дневного потолка компенсаций
+		var add int64
+		for i := range sales {
+			add += models.GroszFromPLN(sales[i].TotalPLN)
+		}
+		if !giftCapOK(c, adminID, add) {
+			return
+		}
 	}
 	var short *models.Good
 	err := db.Transaction(func(tx *gorm.DB) error {
@@ -797,6 +819,9 @@ func handleAdminSaleCreate(c *gin.Context) {
 	if method == models.SaleMethodLater {
 		payload["kind"] = "later" // в ленте: «в долг», не выручка
 	}
+	if method == models.SaleMethodComp {
+		payload["kind"], payload["reason"] = "comp", reason // З11-и5: «подарено», не выручка
+	}
 	hub.AdminBroadcast("sale", payload)
 
 	nick := nicknamesByID([]string{adminID.String()})
@@ -817,7 +842,7 @@ func handleAdminSaleCreate(c *gin.Context) {
 	resp := gin.H{
 		"sale": outSales[0], "good": goodsOut[0], // как до Ж6: первая (и обычно единственная) позиция
 		"receipt": gin.H{"id": receiptID, "total_pln": total, "items": outSales, "method": method,
-			"unpaid": method == models.SaleMethodLater, "count": len(outSales)},
+			"unpaid": method == models.SaleMethodLater, "comp": method == models.SaleMethodComp, "count": len(outSales)},
 		"goods": goodsOut,
 	}
 	if guest != nil {
@@ -876,16 +901,19 @@ func handleAdminSales(c *gin.Context) {
 	// (продано сегодня, рассчитано в другие сутки — деньги не этой смены),
 	// кухня кошельком — отдельно (Г7/Р7: не выручка).
 	var sum struct {
-		N, Voided, Unpaid        int64
-		Total, Wallet, UnpaidPln float64
+		N, Voided, Unpaid, Comps       int64
+		Total, Wallet, UnpaidPln, Comp float64
 	}
 	paid := "voided_at IS NULL AND paid_at >= ? AND paid_at < ?"
 	db.Model(&models.Sale{}).
 		Select("COUNT(*) AS n, COUNT(*) FILTER (WHERE voided_at IS NOT NULL) AS voided, "+
 			"COUNT(*) FILTER (WHERE "+barDebtWhere+") AS unpaid, "+
 			"COALESCE(SUM(total_pln) FILTER (WHERE "+barDebtWhere+"), 0) AS unpaid_pln, "+
-			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method <> 'wallet'), 0) AS total, "+
-			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method = 'wallet'), 0) AS wallet", from, to, from, to).
+			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method NOT IN ('wallet', 'comp')), 0) AS total, "+
+			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method = 'wallet'), 0) AS wallet, "+
+			// З11-и5: подарки смены — не выручка, отдельной строкой
+			"COUNT(*) FILTER (WHERE "+paid+" AND method = 'comp') AS comps, "+
+			"COALESCE(SUM(total_pln) FILTER (WHERE "+paid+" AND method = 'comp'), 0) AS comp", from, to, from, to, from, to, from, to).
 		Where(salesFeedWhere, from, to, from, to).Scan(&sum)
 
 	ids := make([]string, 0, len(sales)*2)
@@ -902,7 +930,7 @@ func handleAdminSales(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"date": key, "count": len(out), "total_count": sum.N, "sales": out,
 		"total_pln": roundPLN(sum.Total), "wallet_pln": roundPLN(sum.Wallet), "voided": sum.Voided,
-		"unpaid": sum.Unpaid, "unpaid_pln": roundPLN(sum.UnpaidPln)})
+		"unpaid": sum.Unpaid, "unpaid_pln": roundPLN(sum.UnpaidPln), "comp": sum.Comps, "comp_pln": roundPLN(sum.Comp)})
 }
 
 // canVoidSale — чистая (тест в goods_test.go): владелец отменяет любую продажу,
@@ -1044,7 +1072,8 @@ func handleAdminSaleVoid(c *gin.Context) {
 		payload["kitchen_unpaid"] = true // заказ кухни снова ждёт оплаты, склад не тронут
 	}
 	hub.AdminBroadcast("sale", payload)
-	c.JSON(http.StatusOK, gin.H{"voided": sale.ID, "unpaid": sale.PaidAt == nil, "kitchen_unpaid": kitchen, "refund_method": refund})
+	c.JSON(http.StatusOK, gin.H{"voided": sale.ID, "unpaid": sale.PaidAt == nil, "kitchen_unpaid": kitchen, "refund_method": refund,
+		"comp": sale.Method == models.SaleMethodComp}) // З11-и5: отменили подарок — денег не было
 }
 
 // POST /admin/receipts/:id/void — Ж6-и2: отменить чек целиком — все живые

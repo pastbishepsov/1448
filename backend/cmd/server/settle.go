@@ -214,6 +214,8 @@ func payMethodRU(m string) string {
 		return "кошельком"
 	case models.SaleMethodLater:
 		return "в долг"
+	case models.SaleMethodComp:
+		return "подарено" // З11-и5
 	}
 	return m
 }
@@ -260,7 +262,9 @@ func handleAdminKitchenOrderCreate(c *gin.Context) {
 		GuestID  string `json:"guest_id"`
 		GoodID   string `json:"good_id" binding:"required"`
 		Qty      int    `json:"qty"`
-		Method   string `json:"method"` // "" | later | cash | card | blik | wallet
+		Method   string `json:"method"` // "" | later | cash | card | blik | wallet | comp (З11-и5)
+		// З11-и5: за что подарили — обязательно при comp
+		CompReason string `json:"comp_reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		goodFail(c, http.StatusBadRequest, "invalid_request")
@@ -278,8 +282,12 @@ func handleAdminKitchenOrderCreate(c *gin.Context) {
 	if method == "" {
 		method = models.SaleMethodLater
 	}
-	if method != models.SaleMethodLater && method != "wallet" && !saleMethodOK(method) {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_method", "message": "Оплата: при выходе (гостю за ПК), наличные, карта, BLIK или кошелёк"})
+	if method != models.SaleMethodLater && method != "wallet" && method != models.SaleMethodComp && !saleMethodOK(method) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_method", "message": "Оплата: при выходе (гостю за ПК), наличные, карта, BLIK, кошелёк — или «подарено» с причиной"})
+		return
+	}
+	reason, ok := compAsked(c, method, req.CompReason) // З11-и5: подарок — только с причиной
+	if !ok {
 		return
 	}
 	guest := lookupGuestForAction(c, req.GuestID, req.Guest, req.Nickname) // 400/404/409 пишет сам
@@ -321,6 +329,9 @@ func handleAdminKitchenOrderCreate(c *gin.Context) {
 	}
 
 	adminID, _ := uuid.Parse(c.GetString("user_id"))
+	if method == models.SaleMethodComp && !giftCapOK(c, adminID, models.GroszFromPLN(roundPLN(g.PricePLN*float64(req.Qty)))) {
+		return // Д6: админ дарит в пределах дневного потолка компенсаций
+	}
 	now := time.Now()
 	goodID := g.ID
 	order := models.KitchenOrder{
@@ -338,6 +349,9 @@ func handleAdminKitchenOrderCreate(c *gin.Context) {
 			ClubID: g.ClubID, GoodID: &goodID, Name: g.Name, Qty: req.Qty,
 			PricePLN: g.PricePLN, TotalPLN: order.TotalPLN, Method: method,
 			UserID: &guest.ID, CreatedBy: adminID, PaidAt: &paid,
+		}
+		if method == models.SaleMethodComp { // З11-и5: подарок — продажа с причиной, не выручка
+			sale.CompReason = &reason
 		}
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
@@ -395,12 +409,20 @@ func handleAdminKitchenOrderCreate(c *gin.Context) {
 		"nickname": guest.Nickname, "computer": compName, "by_staff": true, "method": method,
 	})
 	if sale != nil && method != "wallet" {
-		hub.AdminBroadcast("sale", map[string]any{"name": sale.Name, "qty": sale.Qty,
-			"total_pln": sale.TotalPLN, "method": method, "nickname": guest.Nickname})
+		payload := map[string]any{"name": sale.Name, "qty": sale.Qty,
+			"total_pln": sale.TotalPLN, "method": method, "nickname": guest.Nickname}
+		if method == models.SaleMethodComp {
+			payload["kind"], payload["reason"] = "comp", reason
+		}
+		hub.AdminBroadcast("sale", payload)
 	}
 	target := guest.ID
+	how := payMethodRU(method)
+	if method == models.SaleMethodComp {
+		how = compText(&reason) // З11-и5: в журнале — за что подарили
+	}
 	logAdminAction(c, "kitchen_order", &target, fmt.Sprintf("%s ×%d · %.2f zł · %s%s", order.Name, order.Qty, order.TotalPLN,
-		payMethodRU(method), map[bool]string{true: " · к " + compName, false: ""}[compName != ""]))
+		how, map[bool]string{true: " · к " + compName, false: ""}[compName != ""]))
 	row := kitchenOrderOut(&order, compName)
 	row["nickname"] = guest.Nickname
 	resp := gin.H{"order": row, "nickname": guest.Nickname}
