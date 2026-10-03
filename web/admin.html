@@ -394,6 +394,8 @@
   @media (max-width:640px){ .repL{display:inline; color:var(--dim); margin-right:4px} }
   /* З11-и3: «Возвраты за прошлый месяц» — оплачено до этого месяца: дата оранжевым; на телефоне плитки итогов переносятся */
   .retOld{color:var(--orange)}
+  /* З12-и1: «Обязательства клуба сейчас» — итоговые строки состава светлее */
+  .tablewrap tr.liabSum td{background:rgba(255,255,255,.03)}
   @media (max-width:640px){ .retK .kpi{white-space:normal} }
   /* З11-и2: «как вернули» у отмены — выбор на месте кнопки «Отменить», на узком месте переносится */
   .rfPick{display:inline-flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; white-space:normal; max-width:100%}
@@ -5803,6 +5805,7 @@ function paintMoney(d){
   const rcv = (d.debts || {}).receivable || {total_pln:0, guests:0, gone_pln:0, gone_guests:0, items:[]}; // З11-и4 (№15)
   const wof = (d.debts || {}).written_off || {pln:0, count:0, guests:0, items:[]};
   const gif = d.gifts || {pln:0, count:0, guests:0, goods_pln:0, packs_pln:0, cost_pln:null, items:[]}; // З11-и5 (№18)
+  const lia = d.liabilities || {}, brn = d.burned || {}; // З12-и1 (№49)
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Выручка', fmtPLN(t.revenue_pln) + ' zł', k.revenue_pln,
@@ -5866,6 +5869,7 @@ function paintMoney(d){
        <div class="kpi">Карта <b>${fmtPLN(t.card_pln)} zł</b></div>
        <div class="kpi">BLIK <b>${fmtPLN(t.blik_pln)} zł</b></div>
      </div>
+     ${liabRow(lia, brn, 'repLiab')}
      <div class="kpis">
        ${repKpi('Кошельки гостей', fmtPLN(wal.liability_pln) + ' zł', undefined,
                 {title:'обязательство клуба: предоплата, ещё не отсиженная временем · гостей с балансом: ' + wal.guests_with_balance})}
@@ -5918,6 +5922,7 @@ function paintMoney(d){
          <td>${a.deposits} · ${fmtPLN(a.deposits_pln)} zł</td><td>${a.sales} · ${fmtPLN(a.goods_pln)} zł</td>
          <td>${a.packs || 0} · ${fmtPLN(a.packs_pln)} zł</td></tr>`),
         'За этот период денег не принимали')}
+     ${repLiabHtml(lia, brn)}
      ${repDebtHtml(rcv, wof)}
      ${repGiftsHtml(gif)}
      <div class="sect" id="repReturns">Возвраты за прошлый месяц</div>
@@ -5941,6 +5946,60 @@ function repGoodsCells(g){
 // маржа словами: «1 740,00 zł · 64,4%»; неизвестна — «—»
 function repMarginTxt(x){
   return x.margin_pln == null ? '—' : fmtPLN(x.margin_pln) + ' zł' + (x.margin_pct == null ? '' : '&nbsp;· ' + x.margin_pct.toLocaleString('ru-RU') + '%');
+}
+/* З12-и1 (№49; решение основателя 03.10 — сгоревшие монеты тоже): «Обязательства клуба» — сколько клуб должен гостям
+   сейчас одной цифрой: кошельки + пакеты + монеты + минуты − дебиторка (снимок, от периода не зависит); «Сгорело за
+   период» — обязательства, ушедшие без игры: просроченные пакеты и монеты, сгоревшие у неактивных. Ряд с составом — в
+   «Деньгах» и в «Бухгалтерия» → «Касса» (рядом с ящиком); разделы «Обязательства клуба сейчас» и «Сгорело за период» —
+   в «Деньгах». Числа — с сервера (liabilities.go), здесь ничего не досчитывается. */
+const bigPl = (n, one, few, many) => repPlural(n || 0, one, few, many).replace(/^-?\d+/, (n || 0).toLocaleString('ru-RU'));
+function liabRow(l, b, id, acc){
+  const p = b.packages || {}, c = b.coins || {};
+  return `<div class="kpis" id="${id}">
+       ${repKpi('Обязательства клуба', fmtPLN(l.net_pln || 0) + ' zł', undefined,
+                {title:'сколько клуб должен гостям сейчас — временем и деньгами — за вычетом того, что гости должны клубу. Снимок: от периода не зависит'})}
+       ${repKpi('Сгорело за период', fmtPLN(b.pln || 0) + ' zł', undefined,
+                {title:'обязательства, ушедшие без игры: просроченные пакеты и монеты, сгоревшие у неактивных гостей'})}
+       ${p.count > 0 ? repKpi('— пакеты', fmtPLN(p.pln || 0) + ' zł', undefined,
+                {title:repPlural(p.count, 'пакет', 'пакета', 'пакетов') + ', не отыграно ' + packHM(p.minutes || 0) + ' — по доле цены в момент срока'
+                       + (p.gift_minutes ? '; подаренные (' + packHM(p.gift_minutes) + ') — 0 zł, денег за них не было' : '')}) : ''}
+       ${c.count > 0 ? repKpi('— монеты', fmtPLN(c.pln || 0) + ' zł', undefined,
+                {title:bigPl(c.coins, 'монета', 'монеты', 'монет') + ' у ' + repPlural(c.guests || 0, 'гостя', 'гостей', 'гостей') + ' — по курсу погашения ' + (c.rate || 0) + ' = 1 zł'}) : ''}
+     </div>
+     <div class="muted liabLine" style="margin:-8px 0 14px">${liabParts(l)}${acc ? ' · <a href="#" class="lnk" onclick="event.preventDefault(); palGoLiab()">состав и что сгорело — в «Деньгах»</a>' : ''}</div>`;
+}
+// состав одной строкой: «кошельки 2 376,61 + пакеты 0,00 + монеты 3 459,00 + минуты 0,00 − дебиторка 0,00 zł»
+function liabParts(l){
+  const v = k => fmtPLN((l[k] || {}).pln || 0);
+  return `кошельки ${v('wallets')} + пакеты ${v('packages')} + монеты ${v('coins')} + минуты ${v('minutes')} − дебиторка ${v('receivable')} zł`;
+}
+function repLiabHtml(l, b){
+  const w = l.wallets || {}, p = l.packages || {}, c = l.coins || {}, m = l.minutes || {}, r = l.receivable || {};
+  const L = t => `<span class="repL">${t}</span>`, items = b.items || [];
+  const row = (what, pln, how, sum) => `<tr${sum ? ' class="liabSum"' : ''}><td>${sum ? '<b>' + what + '</b>' : what}</td>
+       <td>${L('сколько')}${sum ? '<b>' + pln + '</b>' : pln}</td><td>${L('как считаем')}<span>${how}</span></td></tr>`;
+  const gst = n => repPlural(n || 0, 'гостя', 'гостей', 'гостей');
+  return `<div class="sect" id="repLiabList">Обязательства клуба сейчас</div>
+     <div class="muted" style="margin:-4px 0 10px">Снимок на сейчас — от периода не зависит: что клуб должен гостям временем и деньгами и что гости должны клубу.</div>
+     ${repTable(['Что', 'Сколько', 'Как считаем'], [
+       row('Кошельки гостей', fmtPLN(w.pln || 0) + ' zł', 'деньги на счету у ' + gst(w.guests) + ' — ещё не потрачены'),
+       row('Пакеты времени', fmtPLN(p.pln || 0) + ' zł', 'не отыграно ' + packHM(p.minutes || 0) + ' у ' + gst(p.guests)
+           + ' — по доле цены; просроченные — в «Сгорело», подаренные — 0 zł'),
+       row('Монеты на руках', fmtPLN(c.pln || 0) + ' zł', bigPl(c.coins, 'монета', 'монеты', 'монет') + ' у ' + gst(c.guests)
+           + ' — по курсу погашения ' + (c.rate || 0) + ' = 1 zł'),
+       row('Минуты за монеты и компенсации', fmtPLN(m.pln || 0) + ' zł', 'выдано и не отыграно ' + packHM(m.minutes || 0) + ' — по тарифу выдачи'),
+       row('Клуб должен гостям', fmtPLN(l.owed_pln || 0) + ' zł', 'сумма четырёх строк выше', true),
+       row('Минус дебиторка', (r.pln ? '−' : '') + fmtPLN(r.pln || 0) + ' zł', 'гости должны клубу за выданное в долг: ' + repPlural(r.guests || 0, 'гость', 'гостя', 'гостей')),
+       row('Обязательства клуба', fmtPLN(l.net_pln || 0) + ' zł', 'одна цифра: что клуб должен гостям за вычетом дебиторки', true)], '')}
+     ${items.length ? `<div class="sect" id="repBurnList">Сгорело за период</div>
+     <div class="muted" style="margin:-4px 0 10px">Пакет — неотыгранный остаток в момент срока по доле цены, подаренный — 0 zł; монеты — у неактивных гостей, по нынешнему курсу погашения. Нажми на строку — карточка гостя.</div>
+     ${repTable(['Когда', 'Гость', 'Что', 'Сколько', 'Сгорело на'], items.map(x => `<tr onclick="openUserDrawer('${x.user_id}')" style="cursor:pointer">
+       <td>${L('когда')}${retDay(x.at, true)} ${hhmm(x.at)}</td>
+       <td><b>${esc(x.guest || '—')}</b></td>
+       <td>${L('что')}<span>${x.kind === 'package' ? 'Пакет «' + esc(x.name) + '»' + (x.gift ? ' · подарок' : '') : 'Монеты'}</span></td>
+       <td>${L('сколько')}${x.kind === 'package' ? packHM(x.qty) : bigPl(x.qty, 'монета', 'монеты', 'монет')}</td>
+       <td>${L('сгорело на')}${fmtPLN(x.pln)} zł</td></tr>`), '')}
+     ${b.items_total > items.length ? `<div class="muted">Показаны последние ${items.length} из ${b.items_total}</div>` : ''}` : ''}`;
 }
 /* З11-и5 (№18; решение основателя 30.09): «Подарено за период» — что, кому, по какой цене, за что и кто подарил; причина
    обязательна — ради неё список и есть. Строка — карточка гостя. На телефоне строка — карточка с подписями. */
@@ -6250,6 +6309,7 @@ function paintAcc(){
       <div class="kpi" title="возвраты налом ${fmtPLN(t.refunds_pln)} · инкассации ${fmtPLN(t.collections_pln)} · расходы из кассы ${fmtPLN(t.expenses_pln || 0)} · возвраты владельцу ${fmtPLN(t.owner_pln || 0)}">Ушло за период <b>${accPLN(t.out_pln)}</b></div>
       <div class="kpi" title="пересчёты при сдачах: пересчитанное минус ожидаемое">Расхождения <b>${accSigned(t.diff_pln)} zł</b></div>
     </div>
+    ${liabRow(d.liabilities || {}, d.burned || {}, 'accLiab', true)}
     ${now.baseline ? '<div class="muted" style="margin:-6px 0 12px">Ящик ещё не заведён: начальный остаток задаст первая сдача с пересчётом.</div>' : ''}
     <div class="toolrow">
       <button class="btn mini" id="accColBtn" onclick="accCollectDrawer()"><span data-ic="coins"></span>Инкассация</button>
@@ -8417,6 +8477,9 @@ const PAL_WORDS = [
    sub:'Отчёты → Деньги: кто сколько должен сейчас, списанные долги', ic:'coins', run:() => palGoDebt()},
   {who:'owner', words:['подарено', 'подарок', 'подарки', 'угостили', 'бесплатно', 'за счёт заведения'], name:'Подарено', // З11-и5
    sub:'Отчёты → Деньги: подарки за период — по цене, по себестоимости и за что', ic:'chest', run:() => palGoGifts()},
+  {who:'owner', words:['обязательства', 'обязательства клуба', 'сколько должны гостям', 'предоплата', 'долг временем', 'сгорело', 'сгоревшее',
+   'сгоревшие пакеты', 'сгоревшие монеты'], name:'Обязательства клуба', // З12-и1
+   sub:'Отчёты → Деньги: сколько клуб должен гостям сейчас и что сгорело за период', ic:'coins', run:() => palGoLiab()},
   {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
@@ -8441,6 +8504,15 @@ function palGoMargin(){
   let n = 0;
   const t = setInterval(() => {
     const el = document.getElementById('repMargin');
+    if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
+  }, 100);
+}
+// З12-и1: обязательства — ряд над кошельками в «Деньгах»: ждём, пока отчёт встанет, и показываем его
+function palGoLiab(){
+  palGoReport('money');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('repLiab');
     if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
   }, 100);
 }

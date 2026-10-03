@@ -397,35 +397,9 @@ func handleReportCoins(c *gin.Context) {
 	sr := spendRate()
 	cur, old := aggCoins(p), aggCoins(prev)
 
-	var onHand int64
-	db.Model(&models.User{}).Select("COALESCE(SUM(coins_balance),0)").Scan(&onHand)
-	// Ж2: выданные и ещё не отыгранные минуты — обязательство клуба временем,
-	// по обеим таблицам: пул без зоны (coin_minutes) и зонные гранты.
-	// З5-и2: и в злотых — зонные гранты по своему тарифу (rate_pln, снимок при
-	// выдаче), старый пул без зоны — по клубному тарифу: он годен везде.
-	var owedPool, owedZoned int64
-	var owedZonedPLN float64
-	db.Model(&models.User{}).Select("COALESCE(SUM(coin_minutes),0)").Scan(&owedPool)
-	db.Model(&models.MinuteGrant{}).Select("COALESCE(SUM(minutes_left),0)").Scan(&owedZoned)
-	var owedZones []struct {
-		ZoneName string
-		Minutes  int64
-		Pln      float64
-	}
-	db.Model(&models.MinuteGrant{}).Select("COALESCE(MAX(zone_name),'') AS zone_name, COALESCE(SUM(minutes_left),0) AS minutes, " +
-		"COALESCE(SUM(minutes_left * rate_pln / 60.0),0) AS pln").
-		Where("minutes_left > 0").Group("zone_id").Order("MAX(zone_name)").Scan(&owedZones)
-	owedRows := make([]gin.H, 0, len(owedZones))
-	for _, z := range owedZones {
-		owedZonedPLN += z.Pln
-		owedRows = append(owedRows, gin.H{"zone": z.ZoneName, "minutes": z.Minutes, "value_pln": round2(z.Pln)})
-	}
-	clubRate := 0.0
-	club, _ := defaultClub()
-	if club != nil {
-		clubRate = club.BaseRatePLN
-	}
-	owedPoolPLN := float64(owedPool) * clubRate / 60
+	onHand, _ := coinsOnHandNow()
+	mo := minutesOwedNow()
+	clubRate := mo.ClubRate
 
 	// сколько монет капает за час игры и какая это доля цены часа — та самая
 	// цифра, ради которой владелец и просил конвертер
@@ -479,12 +453,60 @@ func handleReportCoins(c *gin.Context) {
 			"value_pln": coinValuePLN(onHand, sr),
 		},
 		// Ж2: минуты, которые клуб ещё должен временем
-		"minutes_owed": gin.H{"total": owedPool + owedZoned, "pool": owedPool, "zoned": owedZoned, "by_zone": owedRows,
-			"value_pln": round2(owedZonedPLN + owedPoolPLN), "pool_value_pln": round2(owedPoolPLN), "club_rate_pln": clubRate},
+		"minutes_owed": gin.H{"total": mo.Pool + mo.Zoned, "pool": mo.Pool, "zoned": mo.Zoned, "by_zone": mo.ByZone,
+			"value_pln": mo.pln(), "pool_value_pln": round2(mo.PoolPLN), "club_rate_pln": clubRate},
 		"rates":       gin.H{"spend": sr, "buy": settingInt64("coins_per_pln", coinsPerPLN), "per_min": perMin},
 		"converter":   rows,
 		"redemptions": items,
 	})
+}
+
+// coinsOnHandNow — монеты на руках сейчас и у скольких: обязательство клуба монетами (снимок; З12-и1 — и в
+// «Обязательствах»).
+func coinsOnHandNow() (int64, int64) {
+	var r struct {
+		Coins   int64
+		Holders int64
+	}
+	db.Model(&models.User{}).Select("COALESCE(SUM(coins_balance),0) AS coins, COUNT(*) FILTER (WHERE coins_balance > 0) AS holders").Scan(&r)
+	return r.Coins, r.Holders
+}
+
+// minutesOwed — выданные и ещё не отыгранные минуты (Ж2): пул без зоны (coin_minutes) и зонные гранты.
+// З5-и2: и в злотых — зонные гранты по своему тарифу (rate_pln, снимок при выдаче), старый пул без зоны — по
+// клубному тарифу: он годен везде.
+type minutesOwed struct {
+	Pool, Zoned       int64
+	ZonedPLN, PoolPLN float64
+	ClubRate          float64
+	ByZone            []gin.H
+}
+
+func (m minutesOwed) pln() float64 { return round2(m.ZonedPLN + m.PoolPLN) }
+
+// minutesOwedNow — снимок «должны временем»: «Монеты» и «Обязательства клуба» (З12-и1) считают его одним кодом.
+func minutesOwedNow() minutesOwed {
+	var m minutesOwed
+	db.Model(&models.User{}).Select("COALESCE(SUM(coin_minutes),0)").Scan(&m.Pool)
+	db.Model(&models.MinuteGrant{}).Select("COALESCE(SUM(minutes_left),0)").Scan(&m.Zoned)
+	var zones []struct {
+		ZoneName string
+		Minutes  int64
+		Pln      float64
+	}
+	db.Model(&models.MinuteGrant{}).Select("COALESCE(MAX(zone_name),'') AS zone_name, COALESCE(SUM(minutes_left),0) AS minutes, " +
+		"COALESCE(SUM(minutes_left * rate_pln / 60.0),0) AS pln").
+		Where("minutes_left > 0").Group("zone_id").Order("MAX(zone_name)").Scan(&zones)
+	m.ByZone = make([]gin.H, 0, len(zones))
+	for _, z := range zones {
+		m.ZonedPLN += z.Pln
+		m.ByZone = append(m.ByZone, gin.H{"zone": z.ZoneName, "minutes": z.Minutes, "value_pln": round2(z.Pln)})
+	}
+	if club, _ := defaultClub(); club != nil {
+		m.ClubRate = club.BaseRatePLN
+	}
+	m.PoolPLN = float64(m.Pool) * m.ClubRate / 60
+	return m
 }
 
 // coinsPerHourFor — сколько монет стоит час в зоне (для списка зон в UI).

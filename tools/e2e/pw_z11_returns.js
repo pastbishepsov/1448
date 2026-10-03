@@ -5,7 +5,8 @@
 // оплаты. Палитра «возвраты» → «Возвраты» → блок на экране; у админа такого пункта нет. Телефон 360 — строки карточками с
 // подписями, без горизонтальной прокрутки.
 // Данные: позиция «z11w Возврат» (9 zł) заводится каждый прогон и в конце удаляется вместе с поставкой; продажи — владельцем:
-// X картой — отменена картой и сдвинута целиком в прошлый месяц (оплачена 5-го, отменена 25-го); Y картой — оплата сдвинута на
+// X картой — отменена картой и сдвинута целиком в прошлый месяц (оплачена 5-го, отменена в последнюю минуту месяца — в списке она
+// свежая, сколько бы отмен в месяце ни было); Y картой — оплата сдвинута на
 // 12-е прошлого месяца, владелец вернул наличными (−9 в ящике); Z налом — «не возвращали» (+9 остались): ящик в конце как в начале.
 const z = require('./_z');
 (async () => {
@@ -26,7 +27,8 @@ const z = require('./_z');
   const sell = async method => ((await z.api('POST', '/admin/sales', { good_id: good, qty: 1, method }, 'boss')).data.sale || {}).id;
   const voidS = async (id, how) => { const r = await z.api('POST', `/admin/sales/${id}/void`, { refund_method: how }, 'boss'); return r.status + ':' + (r.data.refund_method || r.data.code); };
   const x = await sell('card'), xv = await voidS(x, 'card');
-  z.sql(`UPDATE sales SET created_at = ${at(prev + '-05', '12:00')}, paid_at = ${at(prev + '-05', '12:00')}, voided_at = ${at(prev + '-25', '12:00')} WHERE id = '${x}'`);
+  z.sql(`UPDATE sales SET created_at = ${at(prev + '-05', '12:00')}, paid_at = ${at(prev + '-05', '12:00')}, `
+    + `voided_at = ${at(month + '-01', String(rh).padStart(2, '0') + ':00')} - interval '1 minute' WHERE id = '${x}'`);
   const y = await sell('card');
   z.sql(`UPDATE sales SET created_at = ${at(prev + '-12', '12:00')}, paid_at = ${at(prev + '-12', '12:00')} WHERE id = '${y}'`);
   const yv = await voidS(y, 'cash'), zz = await sell('cash'), zv = await voidS(zz, 'none');
@@ -39,6 +41,7 @@ const z = require('./_z');
   const title = 'Возвраты за ' + MONTHS[+prev.slice(5) - 1] + ' ' + prev.slice(0, 4);
   const dm = (iso, y) => iso.slice(8, 10) + '.' + iso.slice(5, 7) + (y ? '.' + iso.slice(0, 4) : '');
   const ret = (await z.api('GET', '/admin/reports/returns', undefined, 'boss')).data, t = ret.totals || {};
+  const xv0 = ((ret.items || []).find(i => i.id === x) || {}).voided_at || '', xWhen = xv0 ? dm(xv0) + ' ' + xv0.slice(11, 16) : '?';
   const boss = await z.openAdmin('boss');
   const block = () => boss.evaluate(async () => {
     for (let i = 0; i < 60 && !(document.getElementById('repRetBody') || {}).dataset?.ready; i++) await new Promise(r => setTimeout(r, 100));
@@ -52,9 +55,9 @@ const z = require('./_z');
   });
   await boss.evaluate(() => palGoReport('money')); await z.sleep(2500);
   const b1 = await block();
-  const xRow = ['25.' + prev.slice(5, 7) + ' 12:00', NAME, '—', '9,00 zł картой · ' + dm(prev + '-05'), '9,00 zł на карту', 'boss'];
+  const xRow = [xWhen, NAME, '—', '9,00 zł картой · ' + dm(prev + '-05'), '9,00 zł на карту', 'boss'];
   z.check(`«Деньги»: последний блок — «${title}»; «Вернули» (живыми деньгами) и «— на карту» — как в отчёте сервера; колонки «Когда · Что · Гость · `
-    + 'Оплачено · Вернули · Кто отменил»; строка X — отменена 25-го, оплачена 5-го картой, вернули 9,00 на карту, отменил boss',
+    + 'Оплачено · Вернули · Кто отменил»; строка X — отменена в последнюю минуту месяца, оплачена 5-го картой, вернули 9,00 на карту, отменил boss',
     b1.ready && b1.title === title && b1.kpis['Вернули'] === fmt(t.live_pln) && b1.kpis['— на карту'] === fmt(t.card_pln)
     && b1.head.join('|') === 'Когда|Что|Гость|Оплачено|Вернули|Кто отменил' && b1.rows.length === (ret.items || []).length
     && b1.rows.some(r => r.join('|') === xRow.join('|')), JSON.stringify({ b1: { ...b1, rows: b1.rows.slice(0, 3) }, want: xRow, t }));
@@ -110,7 +113,7 @@ const z = require('./_z');
     return { sw: document.documentElement.scrollWidth, fit: !!r && r.getBoundingClientRect().right <= innerWidth,
       kfit: [...document.querySelectorAll('#repRetBody .kpi')].every(k => k.getBoundingClientRect().right <= innerWidth),
       labels: r ? [...r.querySelectorAll('.repL')].filter(l => getComputedStyle(l).display !== 'none').map(l => l.textContent) : [] };
-  }, { name: NAME, when: '25.' + prev.slice(5, 7) });
+  }, { name: NAME, when: xWhen.slice(0, 5) });
   await z.sleep(300);
   await z.shot(ph, 'z11_returns_phone');
   z.check('телефон 360: строка возврата — карточка с подписями («когда · гость · оплачено · вернули · кто отменил»), без горизонтальной прокрутки',

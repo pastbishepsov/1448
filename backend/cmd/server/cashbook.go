@@ -244,5 +244,7 @@ func handleCashBook(c *gin.Context) {
 		"period": p.out(), "days": days, "totals": tot,
 		"opening_pln": plnPtr(first), "closing_pln": plnPtr(last),
 		"now": gin.H{"expected_pln": models.PLNFromGrosz(st.Expected), "baseline": st.Point == nil},
+		// З12-и1 (№49): рядом с ящиком — сколько клуб должен гостям (снимок) и что сгорело за период книги
+		"liabilities": liabilitiesNow(), "burned": burnedIn(p.From, p.To),
 	})
 }

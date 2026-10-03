@@ -10,7 +10,8 @@
 завершается); позиция «z11r Возврат» (12 zł) заводится каждый прогон и в конце удаляется вместе с поставкой; самый дешёвый
 пакет каталога. Продажа A картой сдвигается SQL-ом на 15-е прошлого месяца и отменяется владельцем наличными (−12 в ящике),
 продажа B налом отменяется «не возвращали» (+12 остаются) — ящик в конце как в начале; продажа G картой отменяется картой и
-сдвигается целиком в прошлый месяц (оплачена 10-го, отменена 20-го) — строка блока по умолчанию. Всё, что проверка продаёт,
+сдвигается целиком в прошлый месяц (оплачена 10-го, отменена в последнюю минуту месяца — в списке она свежая, сколько бы
+отмен в месяце ни было) — строка блока по умолчанию. Всё, что проверка продаёт,
 пополняет и выдаёт, по ходу отменяется."""
 from urllib.parse import quote
 
@@ -138,21 +139,21 @@ section("прошлый месяц — по умолчанию")
 sg = sell("card")
 rg = void(sg, "z11rt", "card")
 sql(f"UPDATE sales SET created_at = {at_club(prev + '-10', '12:00')}, paid_at = {at_club(prev + '-10', '12:00')}, "
-    f"voided_at = {at_club(prev + '-20', '12:00')} WHERE id = '{sg}'")
+    f"voided_at = {at_club(month + '-01', f'{RH:02d}:00')} - interval '1 minute' WHERE id = '{sg}'")
 s, old = api("GET", "/admin/reports/returns", None, "boss")
 G = next((x for x in old.get("items") or [] if x.get("id") == sg), {})
 s2, cur2 = api("GET", f"/admin/reports/returns?month={month}", None, "boss")
-check(f"без month — прошлый месяц {prev}: продажа, оплаченная 10-го и отменённая 20-го, — в нём (картой, не «из прошлых месяцев»); "
+check(f"без month — прошлый месяц {prev}: продажа, оплаченная 10-го и отменённая в последнюю минуту месяца, — в нём (картой, не «из прошлых месяцев»); "
       "в текущем месяце её нет — возврат живёт в дне отмены",
       rg == (200, "card") and s == 200 and old.get("month") == prev and (old.get("period") or {}).get("preset") == "prev_month"
       and G.get("refund_method") == "card" and near(G.get("refund_pln", 0), 12) and G.get("earlier") is False
-      and str(G.get("voided_at", "")).startswith(prev + "-20") and sg not in {x.get("id") for x in cur2.get("items") or []},
+      and sg not in {x.get("id") for x in cur2.get("items") or []},
       J([rg, s, old.get("month"), old.get("period"), G]))
 check("итоги прошлого месяца — как прямой SQL", api_totals(old.get("totals") or {}) == direct(prev, month)[:15],
       J([api_totals(old.get("totals") or {}), direct(prev, month)]))
 
 section("права и месяц")
-bad = [api("GET", "/admin/reports/returns?month=" + quote(m), None, "boss")[0] for m in (nxt, month[:5] + str(int(month[5:])), "август", month + "-01")]
+bad = [api("GET", "/admin/reports/returns?month=" + quote(m), None, "boss")[0] for m in (nxt, month[:5] + "1", "август", month + "-01")]
 check("админу — 403; будущий месяц, месяц без нуля, слово, дата — 400 bad_month",
       api("GET", "/admin/reports/returns", None, "z11rt")[0] == 403 and bad == [400, 400, 400, 400]
       and api("GET", f"/admin/reports/returns?month={nxt}", None, "boss")[1].get("code") == "bad_month", J(bad))

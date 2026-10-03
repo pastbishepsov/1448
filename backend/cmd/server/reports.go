@@ -496,13 +496,7 @@ func handleReportMoney(c *gin.Context) {
 	// кошельков — деньги, которые клуб ещё должен временем/кухней. Списания
 	// за период появятся со спринтов Г1 (session_spend) и Г7 (kitchen_spend) —
 	// они тоже НЕ выручка, иначе пополнение посчиталось бы дважды.
-	var wal struct {
-		Total  int64
-		Guests int64
-	}
-	db.Model(&models.User{}).
-		Select("COALESCE(SUM(wallet_grosz),0) AS total, COUNT(*) FILTER (WHERE wallet_grosz > 0) AS guests").
-		Scan(&wal)
+	wal := walletsNow()
 	var walSpent struct {
 		Grosz int64
 		Cnt   int64
@@ -530,23 +524,7 @@ func handleReportMoney(c *gin.Context) {
 		}
 	}
 
-	// Е2-и6: обязательство клуба по НЕОТЫГРАННЫМ минутам пакетов. Считаем по
-	// цене, за которую пакет продали (доля за остаток), а не по нынешней цене
-	// зоны: клуб должен ровно то время, которое гость купил, и переоценка
-	// задним числом превратила бы долг в фантазию. Просроченные не считаются —
-	// клуб их уже не должен.
-	var packLia struct {
-		Grosz  int64
-		Guests int64
-		Min    int64
-	}
-	// З11-и5: подаренный пакет — минуты клуб должен, злотых за них не брал
-	db.Model(&models.UserPackage{}).
-		Select(`COALESCE(SUM(ROUND(price_pln * 100 * minutes_left / minutes_total)) FILTER (WHERE method <> 'comp'),0) AS grosz,
-		        COUNT(DISTINCT user_id) AS guests, COALESCE(SUM(minutes_left),0) AS min`).
-		Where(`voided_at IS NULL AND minutes_left > 0
-		       AND (expires_at IS NULL OR expires_at > now())`).
-		Scan(&packLia)
+	packLia := packsOwedNow() // Е2-и6: «Долг временем»
 
 	c.JSON(http.StatusOK, gin.H{
 		"wallet": gin.H{
@@ -592,6 +570,8 @@ func handleReportMoney(c *gin.Context) {
 		"debts": gin.H{"receivable": receivablesNow(), "written_off": writtenOffIn(p.From, p.To)},
 		// З11-и5 (№18): подарки периода — по цене и по себестоимости, с причинами; не выручка и не ящик
 		"gifts": giftsIn(p.From, p.To),
+		// З12-и1 (№49): «Обязательства клуба» — снимок, от периода не зависит; «Сгорело» — за период
+		"liabilities": liabilitiesNow(), "burned": burnedIn(p.From, p.To),
 	})
 }
 

@@ -231,6 +231,17 @@ SELECT user_id,
 
 const maxReceivableItems = 100
 
+// receivablesTotal — итог «Дебиторки сейчас» и у скольких гостей, без списка (З12-и1: вычитается из
+// «Обязательств клуба»).
+func receivablesTotal() (int64, int64) {
+	var r struct {
+		Grosz  int64
+		Guests int64
+	}
+	db.Raw(`SELECT COALESCE(SUM(kitchen_grosz + bar_grosz), 0)::bigint AS grosz, COUNT(*) AS guests FROM (` + receivablesSQL + `) r`).Scan(&r)
+	return r.Grosz, r.Guests
+}
+
 // receivablesNow — «Дебиторка сейчас»: итог, сколько из него у ушедших и список.
 func receivablesNow() gin.H {
 	var rows []receivable
