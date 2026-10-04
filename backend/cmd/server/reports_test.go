@@ -148,6 +148,52 @@ func TestPrevPeriodМесяцНеВылезаетЗаКрай(t *testing.T) {
 	}
 }
 
+// З12-и4а: календарный месяц — прошлый целиком, сравнение с прошлым календарным месяцем целиком; текущий — как «Этот
+// месяц» (сравнение — тот же отрезок); будущий и не «ГГГГ-ММ» — ошибка.
+func TestMonthPeriod(t *testing.T) {
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		m                                  string
+		wantFrom, wantTo, prevFrom, prevTo string
+		wantErr                            string
+	}{
+		{m: "2026-08", wantFrom: "2026-08-01", wantTo: "2026-08-18", prevFrom: "2026-07-01", prevTo: "2026-07-18"},
+		{m: "2026-07", wantFrom: "2026-07-01", wantTo: "2026-07-31", prevFrom: "2026-06-01", prevTo: "2026-06-30"},
+		{m: "2026-03", wantFrom: "2026-03-01", wantTo: "2026-03-31", prevFrom: "2026-02-01", prevTo: "2026-02-28"},
+		{m: "2026-01", wantFrom: "2026-01-01", wantTo: "2026-01-31", prevFrom: "2025-12-01", prevTo: "2025-12-31"},
+		{m: "2026-09", wantErr: "bad_month"},
+		{m: "2026-13", wantErr: "bad_month"},
+		{m: "август", wantErr: "bad_month"},
+	}
+	for _, tc := range cases {
+		p, code := monthPeriod(tc.m, 8, now)
+		if code != tc.wantErr {
+			t.Errorf("monthPeriod(%q) код = %q, ожидался %q", tc.m, code, tc.wantErr)
+			continue
+		}
+		if tc.wantErr != "" {
+			continue
+		}
+		pr := prevPeriod(p, 8)
+		d := func(x time.Time) string { return x.Format("2006-01-02") }
+		got := d(p.FromDay) + ".." + d(p.ToDay) + " / " + d(pr.FromDay) + ".." + d(pr.ToDay)
+		if want := tc.wantFrom + ".." + tc.wantTo + " / " + tc.prevFrom + ".." + tc.prevTo; got != want {
+			t.Errorf("monthPeriod(%q): %s, ожидалось %s", tc.m, got, want)
+		}
+		if p.From.Hour() != 8 || p.To.Hour() != 8 {
+			t.Errorf("%q: окно %s..%s не по клубным суткам", tc.m, p.From, p.To)
+		}
+	}
+	// 1 сентября в 03:00 клубные сутки ещё августовские: сентябрь — будущий, август — текущий, по 31-е
+	night := time.Date(2026, 9, 1, 3, 0, 0, 0, time.UTC)
+	if _, code := monthPeriod("2026-09", 8, night); code != "bad_month" {
+		t.Errorf("ночью 1 сентября «2026-09» — код %q, ожидался bad_month", code)
+	}
+	if p, code := monthPeriod("2026-08", 8, night); code != "" || p.Preset != "month" || p.ToDay.Format("2006-01-02") != "2026-08-31" {
+		t.Errorf("ночью 1 сентября «2026-08» = %s (%s, код %q), ожидался текущий месяц по 2026-08-31", p.ToDay.Format("2006-01-02"), p.Preset, code)
+	}
+}
+
 func sh(name string, start, end, mask int, active bool) models.Shift {
 	return models.Shift{Name: name, StartMin: start, EndMin: end, DaysMask: mask, Active: active}
 }

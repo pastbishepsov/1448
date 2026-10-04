@@ -206,7 +206,7 @@ func prevPeriod(p period, reportHour int) period {
 			last = endOfMonth
 		}
 		return makePeriod(first, last, reportHour, "prev")
-	case "prev_month":
+	case "prev_month", "cal_month": // З12-и4а: прошлый календарный месяц — целиком
 		first := p.FromDay.AddDate(0, -1, 0)
 		return makePeriod(first, first.AddDate(0, 1, -1), reportHour, "prev")
 	case "year":
@@ -222,13 +222,40 @@ var periodErrors = map[string]string{
 	"bad_range":  "Конец периода раньше начала",
 	"too_long":   fmt.Sprintf("Период длиннее %d дней", maxPeriodDays),
 	"bad_preset": "Неизвестный период",
+	"bad_month":  "Месяц — в формате ГГГГ-ММ и не позже текущего",
+}
+
+// monthPeriod — календарный месяц «ГГГГ-ММ» (З12-и4а, решение основателя 04.10: «Обзор» — по месяцам). Прошлый месяц —
+// целиком, сравнение — с прошлым календарным месяцем целиком; текущий — по сегодняшние клубные сутки, как пресет
+// «Этот месяц» (сравнение — тот же отрезок прошлого месяца); будущий — ошибка.
+func monthPeriod(m string, reportHour int, now time.Time) (period, string) {
+	loc := now.Location()
+	first, err := time.ParseInLocation("2006-01", m, loc)
+	if err != nil {
+		return period{}, "bad_month"
+	}
+	cur := clubDayOf(now, reportHour)
+	curFirst := time.Date(cur.Year(), cur.Month(), 1, 0, 0, 0, 0, loc)
+	switch {
+	case first.After(curFirst):
+		return period{}, "bad_month"
+	case first.Equal(curFirst):
+		return makePeriod(curFirst, cur, reportHour, "month"), ""
+	}
+	return makePeriod(first, first.AddDate(0, 1, -1), reportHour, "cal_month"), ""
 }
 
 // periodFromQuery — общий разбор для всех отчётов: период, предыдущий период
 // и граница клубных суток. При ошибке сам отвечает 400 и возвращает false.
 func periodFromQuery(c *gin.Context) (period, period, int, bool) {
 	reportHour := int(settingInt64("report_hour", 8))
-	p, code := resolvePeriod(c.Query("preset"), c.Query("from"), c.Query("to"), reportHour, time.Now())
+	var p period
+	var code string
+	if m := c.Query("month"); m != "" { // З12-и4а: календарный месяц — главнее пресета и дат
+		p, code = monthPeriod(m, reportHour, time.Now())
+	} else {
+		p, code = resolvePeriod(c.Query("preset"), c.Query("from"), c.Query("to"), reportHour, time.Now())
+	}
 	if code != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": periodErrors[code]})
 		return period{}, period{}, 0, false

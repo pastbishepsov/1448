@@ -411,6 +411,11 @@
   .ovNow .kpi i{font-style:normal; font-size:11.5px; font-weight:600; color:var(--dim); margin-left:10px}
   .ovNow .kpi:hover i{color:var(--txt)}
   .ovBusy{opacity:.55; transition:opacity .15s}
+  /* З12-и4а: ‹ месяц › — стрелки узкие, имя месяца одной ширины, дальше текущего месяца не листается */
+  .ovMonth{gap:4px}
+  .ovMonth .ovArr{padding:7px 13px; font-size:15px; line-height:1}
+  .ovMonth #ovMonthName{min-width:132px}
+  .ovMonth button:disabled{opacity:.35; cursor:default}
   .ovPnl th.n, .ovPnl td.n{text-align:right}
   .ovPnl tr.ovRow{cursor:pointer}
   .ovPnl tr.ovRow:focus-visible{outline:2px solid var(--acc); outline-offset:-2px}
@@ -6303,15 +6308,39 @@ async function renderStats(){
    клубным суткам (длиннее месяца, на телефоне — длиннее двух недель — по неделям с понедельника), подсказка у столбиков,
    «Числа таблицей»; «Прибыль за период» — строки со сравнением, строка раскрывает состав; «Отработано за период» —
    отработанная выручка (З12-и2) и отдано временем. Числа — с сервера (GET /admin/reports/profit, profit.go); здесь дни
-   только складываются в недели. ── */
-let ovPeriod = {preset:'d30'}, ovData = null, ovOpen = null, ovSeq = 0, ovPaints = 0;
+   только складываются в недели.
+   З12-и4а (решение основателя 04.10: «давай лучше сделаем по месяцам, но всегда можно отфильтровать от даты до даты»):
+   период — календарный месяц, ‹ › листают месяцы (дальше текущего — нет), по умолчанию — этот месяц; прошлый месяц
+   сравнивается с позапрошлым целиком, текущий — с тем же отрезком прошлого; свой период — с какой даты по какую. ── */
+let ovPeriod = {month:''}, ovCur = '', ovData = null, ovOpen = null, ovSeq = 0, ovPaints = 0; // month '' — этот месяц
 const ovPhone = matchMedia('(max-width:640px)');
 ovPhone.addEventListener('change', () => { if (curTab === 'acc' && accTab === 'ov' && ovData) paintOv(); }); // дни ↔ недели
 const OV_LINES = [['income', 'Доходы'], ['returns', '− Возвраты'], ['cogs', '− Себестоимость проданного и подаренного'],
   ['losses', '− Потери склада'], ['gross', '= Валовая прибыль'], ['expenses', '− Расходы'], ['result', '= Результат']];
 const ovMoney = v => (v < 0 ? '−' : '') + fmtPLN(Math.abs(v || 0)); // минус — длинным знаком, плюс не пишем
-function ovQuery(){ return ovPeriod.preset ? 'preset=' + ovPeriod.preset : 'from=' + ovPeriod.from + '&to=' + ovPeriod.to; }
-function ovPreset(p){ ovPeriod = {preset:p}; renderOv(); }
+function ovQuery(){ return ovPeriod.from ? 'from=' + ovPeriod.from + '&to=' + ovPeriod.to : ovPeriod.month ? 'month=' + ovPeriod.month : 'preset=month'; }
+// месяц, вокруг которого смотрим: выбранный, этот или — у своего периода — месяц его конца
+function ovRef(){ return ovPeriod.from ? ovPeriod.to.slice(0, 7) : ovPeriod.month || ovCur; }
+function ovAddMonth(m, k){
+  if (!m) return '';
+  const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1 + k, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function ovMonthName(m){ if (!m) return 'Этот месяц'; const n = MONTHS_NOM[+m.slice(5, 7) - 1]; return n[0].toUpperCase() + n.slice(1) + ' ' + m.slice(0, 4); }
+function ovMonthGo(m){ ovPeriod = {month: m && m !== ovCur ? m : ''}; renderOv(); }
+function ovStep(k){
+  const m = ovAddMonth(ovRef(), k);
+  if (!m || (ovCur && m > ovCur)) return; // дальше текущего месяца не листаем
+  ovMonthGo(m);
+}
+function ovMonthHtml(){
+  const ref = ovRef(), last = !ref || !ovCur || ref >= ovCur;
+  return `<div class="segs ovMonth" id="ovMonth">
+      <button class="ovArr" onclick="ovStep(-1)" aria-label="Предыдущий месяц" title="Предыдущий месяц">‹</button>
+      <button id="ovMonthName" class="${ovPeriod.from ? '' : 'on'}" onclick="ovMonthGo(ovRef())" title="${ovPeriod.from ? 'показать месяц целиком' : 'календарный месяц — стрелки листают соседние'}">${ovMonthName(ref)}</button>
+      <button class="ovArr" onclick="ovStep(1)" aria-label="Следующий месяц" title="Следующий месяц"${last ? ' disabled' : ''}>›</button>
+    </div>`;
+}
 function ovCustom(){
   const f = dateOf('ovFrom', 'Начало периода');
   if (f === null) return;
@@ -6324,9 +6353,10 @@ function ovCustom(){
 async function renderOv(){
   const box = document.getElementById('accBody'), seq = ++ovSeq, main = document.getElementById('ovMain');
   if (!ovData || !main) box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
-  else { // прежние числа видны бледно, пока считается новый период
+  else { // прежние числа видны бледно, пока считается новый период; месяц в переключателе — уже новый
     main.classList.add('ovBusy');
-    document.querySelectorAll('#ovPresets button').forEach(b => b.classList.toggle('on', b.dataset.p === ovPeriod.preset));
+    const sw = document.getElementById('ovMonth');
+    if (sw) sw.outerHTML = ovMonthHtml();
   }
   let d;
   try{ d = await api('/admin/reports/profit?' + ovQuery()); }
@@ -6338,6 +6368,7 @@ async function renderOv(){
     return;
   }
   if (seq !== ovSeq || accTab !== 'ov' || curTab !== 'acc') return; // пока считалось, ушли с «Обзора» или выбрали другой период
+  if (!ovPeriod.from && !ovPeriod.month) ovCur = ((d.period || {}).from || '').slice(0, 7); // какой месяц у клуба текущий — по серверу
   ovData = d;
   paintOv();
 }
@@ -6350,11 +6381,11 @@ function paintOv(){
     ${ovNowHtml()}
     <div class="sect">За период</div>
     <div class="toolrow">
-      <div class="segs" id="ovPresets">${ACC_PRESETS.map(([p, n]) => `<button data-p="${p}" class="${ovPeriod.preset === p ? 'on' : ''}" onclick="ovPreset('${p}')">${n}</button>`).join('')}</div>
+      ${ovMonthHtml()}
       <div class="segs" style="align-items:center">
-        <input id="ovFrom" ${DATE_FIELD} aria-label="Начало периода" value="${ovPeriod.preset ? '' : ruDate(ovPeriod.from)}" onkeydown="if(event.key==='Enter')ovCustom()">
+        <input id="ovFrom" ${DATE_FIELD} aria-label="Начало периода" value="${ovPeriod.from ? ruDate(ovPeriod.from) : ''}" onkeydown="if(event.key==='Enter')ovCustom()">
         <span class="muted" style="align-self:center">—</span>
-        <input id="ovTo" ${DATE_FIELD} aria-label="Конец периода" value="${ovPeriod.preset ? '' : ruDate(ovPeriod.to)}" onkeydown="if(event.key==='Enter')ovCustom()">
+        <input id="ovTo" ${DATE_FIELD} aria-label="Конец периода" value="${ovPeriod.from ? ruDate(ovPeriod.to) : ''}" onkeydown="if(event.key==='Enter')ovCustom()">
         <button class="btn ghost mini" onclick="ovCustom()"><span data-ic="chart"></span>Показать</button>
       </div>
     </div>
@@ -6510,7 +6541,11 @@ function ovDetails(key){
   }
   return '<div>Валовая прибыль − расходы</div><div class="muted">Сколько клуб заработал за период по деньгам.</div>';
 }
-function ovExp(){ expPeriod = Object.assign({}, ovPeriod); accTabSet('exp'); } // «Расходы» — за тот же период
+function ovExp(){ // «Расходы» — за тот же период: свой — как есть, прошлый месяц — его датами, этот — «Этот месяц»
+  const m = ovPeriod.month, last = m ? new Date(+m.slice(0, 4), +m.slice(5, 7), 0).getDate() : 0;
+  expPeriod = ovPeriod.from ? {from:ovPeriod.from, to:ovPeriod.to} : m ? {from:m + '-01', to:m + '-' + String(last).padStart(2, '0')} : {preset:'month'};
+  accTabSet('exp');
+}
 function ovEarnedHtml(e){
   const g = e.given || {}, packs = Math.round(((e.packs_pln || 0) + (e.estimate_pln || 0)) * 100) / 100;
   return `<div class="sect" id="ovEarnHead">Отработано за период</div>
