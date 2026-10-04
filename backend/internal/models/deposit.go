@@ -28,11 +28,17 @@ type Deposit struct {
 	// З11-и1 (миграция 079): как вернули деньги отменённого депозита — cash |
 	// card | blik | none; ящик уменьшает только cash.
 	RefundMethod *string `json:"refund_method,omitempty" gorm:"size:8"`
+	// З13-и1 (миграция 083): снимок ставки пополнения (настройка acc_topup_vat) на момент пополнения — по ней VAT
+	// в режиме «при пополнении»; NULL — пополнение до ставок.
+	VatPct *int `json:"vat_pct,omitempty" gorm:"column:vat_pct"`
 }
 
 func (d *Deposit) BeforeCreate(tx *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
+	}
+	if d.VatPct == nil { // З13-и1: снимок ставки пополнения; настройки нет — VatDefault
+		d.VatPct = vatSnapshot(tx, "SELECT value FROM settings WHERE key = 'acc_topup_vat'")
 	}
 	return nil
 }

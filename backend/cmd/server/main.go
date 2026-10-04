@@ -385,6 +385,9 @@ func main() {
 		own.GET("/stats/shift", handleAdminStatsShift) // сводка смены (Б10)
 		own.GET("/settings", handleAdminSettingsGet)
 		own.PUT("/settings", handleAdminSettingsPut)
+		// З13-и1: ставки VAT — список для экрана и ставка всей категории позиций одной кнопкой
+		own.GET("/vat/rates", handleVatRates)
+		own.PUT("/vat/goods", handleGoodsVat)
 		own.GET("/board/token", handleAdminBoardTokenGet)       // Ж8-и3 (Ж-Р12): токен и ссылка табло
 		own.POST("/board/token", handleAdminBoardTokenRotate)   // выпустить новый
 		own.DELETE("/board/token", handleAdminBoardTokenDelete) // выключить табло

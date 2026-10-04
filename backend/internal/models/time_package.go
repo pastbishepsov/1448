@@ -33,6 +33,9 @@ type TimePackage struct {
 	Active    bool      `json:"active"     gorm:"not null"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// З13-и1 (миграция 083): ставка VAT пакета, % (−1 — zw); без default в теге — ставку ставит ручка (как у зоны).
+	VatPct int `json:"vat_pct" gorm:"column:vat_pct;not null"`
 }
 
 func (p *TimePackage) BeforeCreate(tx *gorm.DB) error {
@@ -79,11 +82,16 @@ type UserPackage struct {
 	RefundMethod *string `json:"refund_method,omitempty" gorm:"size:8"`
 	// З11-и5 (миграция 081): Method = "comp" — подарок, не выручка и не ящик; за что подарили — обязательно.
 	CompReason *string `json:"comp_reason,omitempty" gorm:"size:200"`
+	// З13-и1 (миграция 083): снимок ставки VAT пакета на момент выдачи; NULL — выдача до ставок.
+	VatPct *int `json:"vat_pct,omitempty" gorm:"column:vat_pct"`
 }
 
 func (p *UserPackage) BeforeCreate(tx *gorm.DB) error {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	if p.VatPct == nil { // З13-и1: снимок ставки пакета
+		p.VatPct = vatSnapshot(tx, "SELECT vat_pct FROM time_packages WHERE id = ?", p.PackageID)
 	}
 	return nil
 }

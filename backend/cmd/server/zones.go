@@ -42,6 +42,7 @@ var zoneErrors = map[string]string{
 	// Е2-и1: пакеты привязаны к зоне (Р10), и у гостей на руках купленные
 	// минуты именно этой зоны. Молча снести её нельзя.
 	"has_packages": "На эту зону есть пакеты времени — сначала выключи или удали их",
+	"bad_vat":      vatBadMessage, // З13-и1
 }
 
 func zoneFail(c *gin.Context, status int, code string) {
@@ -96,7 +97,8 @@ func handleAdminZones(c *gin.Context) {
 		z := zones[i]
 		out = append(out, gin.H{"id": z.ID, "name": z.Name, "rate_pln": z.RatePLN,
 			"sort": z.Sort, "computers": byZone[z.ID.String()],
-			"coins_per_hour": coinsPerHourFor(z.RatePLN)}) // В4-2: конвертер считает сам
+			"coins_per_hour": coinsPerHourFor(z.RatePLN), // В4-2: конвертер считает сам
+			"vat_pct":        z.VatPct})                  // З13-и1
 	}
 	club, _ := defaultClub()
 	base := 0.0
@@ -111,6 +113,7 @@ type zoneRequest struct {
 	Name    string   `json:"name"`
 	RatePLN *float64 `json:"rate_pln"`
 	Sort    *int     `json:"sort"`
+	VatPct  *int     `json:"vat_pct"` // З13-и1: ставка VAT времени за ПК; не прислана — 23 у новой, прежняя у старой
 }
 
 // POST /admin/zones — новая зона (owner).
@@ -133,12 +136,17 @@ func handleAdminZoneCreate(c *gin.Context) {
 		return
 	}
 	rate = round2(rate) // хвост float (0,1 + 0,2) — в ответе то же, что в базе
+	vat, vok := vatFromRequest(req.VatPct, models.VatDefault)
+	if !vok {
+		zoneFail(c, http.StatusBadRequest, "bad_vat")
+		return
+	}
 	club, ok := defaultClub()
 	if !ok {
 		zoneFail(c, http.StatusConflict, "no_club")
 		return
 	}
-	z := models.Zone{ClubID: club.ID, Name: strings.TrimSpace(req.Name), RatePLN: rate}
+	z := models.Zone{ClubID: club.ID, Name: strings.TrimSpace(req.Name), RatePLN: rate, VatPct: vat}
 	if req.Sort != nil {
 		z.Sort = *req.Sort
 	}
@@ -150,8 +158,8 @@ func handleAdminZoneCreate(c *gin.Context) {
 		zoneFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
-	logAdminAction(c, "zone_create", nil, fmt.Sprintf("%s · %.2f zł/ч", z.Name, z.RatePLN))
-	c.JSON(http.StatusCreated, gin.H{"zone": gin.H{"id": z.ID, "name": z.Name, "rate_pln": z.RatePLN, "sort": z.Sort}})
+	logAdminAction(c, "zone_create", nil, fmt.Sprintf("%s · %.2f zł/ч · VAT %s", z.Name, z.RatePLN, models.VatLabel(z.VatPct)))
+	c.JSON(http.StatusCreated, gin.H{"zone": gin.H{"id": z.ID, "name": z.Name, "rate_pln": z.RatePLN, "sort": z.Sort, "vat_pct": z.VatPct}})
 }
 
 // PATCH /admin/zones/:id — имя, цена, порядок (owner).
@@ -183,6 +191,11 @@ func handleAdminZoneUpdate(c *gin.Context) {
 		return
 	}
 	rate = round2(rate)
+	vat, vok := vatFromRequest(req.VatPct, z.VatPct)
+	if !vok {
+		zoneFail(c, http.StatusBadRequest, "bad_vat")
+		return
+	}
 	changes := []string{}
 	if name != z.Name {
 		changes = append(changes, z.Name+" → "+name)
@@ -190,7 +203,10 @@ func handleAdminZoneUpdate(c *gin.Context) {
 	if rate != z.RatePLN {
 		changes = append(changes, fmt.Sprintf("цена %.2f → %.2f zł/ч", z.RatePLN, rate))
 	}
-	updates := map[string]any{"name": name, "rate_pln": rate}
+	if vat != z.VatPct {
+		changes = append(changes, "VAT "+models.VatLabel(z.VatPct)+" → "+models.VatLabel(vat))
+	}
+	updates := map[string]any{"name": name, "rate_pln": rate, "vat_pct": vat}
 	if req.Sort != nil {
 		updates["sort"] = *req.Sort
 	}
@@ -208,7 +224,7 @@ func handleAdminZoneUpdate(c *gin.Context) {
 	if len(changes) > 0 {
 		logAdminAction(c, "zone_update", nil, strings.Join(changes, ", "))
 	}
-	c.JSON(http.StatusOK, gin.H{"zone": gin.H{"id": z.ID, "name": name, "rate_pln": rate}})
+	c.JSON(http.StatusOK, gin.H{"zone": gin.H{"id": z.ID, "name": name, "rate_pln": rate, "vat_pct": vat}})
 }
 
 // DELETE /admin/zones/:id — удалить пустую зону (owner).

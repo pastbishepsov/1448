@@ -98,6 +98,11 @@ var settingBounds = map[string][2]int64{
 	"mouse_dpi":                 {0, 32000}, // С2-и1 (SENS.md, Р2): DPI мыши клуба; 0 = не задан, сенсу не пересчитываем
 	"mousepad_cm":               {0, 200},   // С4-и3 (SENS.md, №13): ширина коврика клуба, см — эталон для замера DPI свайпом; 0 = не задана
 	"pack_warn_days":            {0, 30},   // Е2-и5: за сколько дней сказать, что пакет сгорает; 0 = молчать
+
+	// З13-и1 (решения основателя 04.10): «Бухгалтерия» — VAT; вопросы бухгалтеру — настройки владельца
+	"acc_vat_payer":  {0, 1},    // плательщик VAT — 1, освобождён — 0
+	"acc_vat_moment": {0, 1},    // VAT у пополнения: 0 — при трате (bon różnego przeznaczenia), 1 — при пополнении
+	"acc_topup_vat":  {-1, 100}, // ставка пополнения для «при пополнении»; только из models.VatRates (−1 — zw)
 }
 
 // settingDefaults — значение каждой числовой настройки, пока у неё нет строки
@@ -137,6 +142,16 @@ var settingDefaults = map[string]int64{
 	"ready_wait_min":            readyWaitMinDef,
 	"mouse_dpi":                 mouseDPIDef,   // С2-и1
 	"mousepad_cm":               mousepadCmDef, // С4-и3
+
+	// З13-и1: плательщик VAT; VAT при трате (решение основателя 04.10); ставка пополнения — 23 %
+	"acc_vat_payer":  1,
+	"acc_vat_moment": 0,
+	"acc_topup_vat":  models.VatDefault,
+}
+
+// settingChoices — настройки, у которых не диапазон, а список (З13-и1): ставка пополнения — только из ставок VAT.
+var settingChoices = map[string]func(int64) bool{
+	"acc_topup_vat": func(v int64) bool { return models.ValidVat(int(v)) },
 }
 
 // currentSettings — действующие значения: строка из settings или значение по
@@ -177,6 +192,10 @@ func handleAdminSettingsPut(c *gin.Context) {
 		if val < bounds[0] || val > bounds[1] {
 			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_value",
 				"message": fmt.Sprintf("%s: значение от %d до %d", key, bounds[0], bounds[1])})
+			return
+		}
+		if ok := settingChoices[key]; ok != nil && !ok(val) { // З13-и1
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_value", "message": key + ": " + vatBadMessage})
 			return
 		}
 	}

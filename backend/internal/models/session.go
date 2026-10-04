@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type SessionStatus string
@@ -72,7 +73,19 @@ type Session struct {
 
 	CreatedAt time.Time `json:"created_at"`
 
+	// З13-и1 (миграция 083): снимок ставки VAT зоны ПК на начало сессии — по ней время с кошелька в режиме «VAT при
+	// трате»; NULL — сессия до ставок.
+	VatPct *int `json:"vat_pct,omitempty" gorm:"column:vat_pct"`
+
 	// Связи
 	User     *User     `json:"user,omitempty" gorm:"foreignKey:UserID"`
 	Computer *Computer `json:"computer,omitempty" gorm:"foreignKey:ComputerID"`
+}
+
+// BeforeCreate — З13-и1: снимок ставки VAT зоны ПК; ПК без зоны — VatDefault.
+func (s *Session) BeforeCreate(tx *gorm.DB) error {
+	if s.VatPct == nil {
+		s.VatPct = vatSnapshot(tx, "SELECT z.vat_pct FROM computers c JOIN zones z ON z.id = c.zone_id WHERE c.id = ?", s.ComputerID)
+	}
+	return nil
 }

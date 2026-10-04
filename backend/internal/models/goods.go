@@ -27,6 +27,10 @@ type Good struct {
 	PhotoType *string    `json:"-"          gorm:"size:32"` // MIME фото; байты НЕ в модели —
 	PhotoAt   *time.Time `json:"-"`                         // читаются/пишутся только raw-SQL (kitchen.go)
 	CreatedAt time.Time  `json:"created_at"`
+
+	// З13-и1 (миграция 083): ставка VAT позиции (товар и кухня), % (−1 — zw); без default в теге — ставку ставит
+	// ручка (как у зоны).
+	VatPct int `json:"vat_pct" gorm:"column:vat_pct;not null"`
 }
 
 func (g *Good) BeforeCreate(tx *gorm.DB) error {
@@ -69,6 +73,8 @@ type Sale struct {
 	WriteOffID *uuid.UUID `json:"write_off_id,omitempty" gorm:"type:uuid"`
 	// З11-и5 (миграция 081): Method = "comp" — подарок, не выручка и не ящик; за что подарили — обязательно.
 	CompReason *string `json:"comp_reason,omitempty" gorm:"size:200"`
+	// З13-и1 (миграция 083): снимок ставки VAT позиции на момент продажи; NULL — продажа до ставок.
+	VatPct *int `json:"vat_pct,omitempty" gorm:"column:vat_pct"`
 }
 
 // SaleMethodComp — «Подарено» (З11-и5): у продажи, выдачи пакета и заказа кухни от стойки.
@@ -80,6 +86,9 @@ const SaleMethodLater = "later"
 func (s *Sale) BeforeCreate(tx *gorm.DB) error {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
+	}
+	if s.VatPct == nil { // З13-и1: снимок ставки позиции — у стойки, расчёт кухни, расчёт при выходе
+		s.VatPct = vatSnapshot(tx, "SELECT vat_pct FROM goods WHERE id = ?", s.GoodID)
 	}
 	return nil
 }

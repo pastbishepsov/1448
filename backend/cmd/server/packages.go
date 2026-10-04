@@ -49,6 +49,7 @@ var packageErrors = map[string]string{
 	"pack_not_found":  "Пакет не найден",
 	"has_sales":       "Пакет уже продавали — его нельзя удалить, только выключить",
 	"db_error":        "Не сохранилось — попробуй ещё раз",
+	"bad_vat":         vatBadMessage, // З13-и1
 	// Е2-и2: выдача и покупка
 	"bad_method":      "Оплата: наличные, карта, BLIK, кошелёк — или «подарено» с причиной",
 	"pack_required":   "Не выбран пакет",
@@ -103,6 +104,7 @@ func packOut(p *models.TimePackage, zoneName string, zoneRate float64) gin.H {
 		"minutes": p.Minutes, "price_pln": p.PricePLN, "days_valid": p.DaysValid,
 		"sort": p.Sort, "active": p.Active,
 		"hour_pln": packageHourPLN(p.Minutes, p.PricePLN),
+		"vat_pct":  p.VatPct, // З13-и1
 	}
 	// Выгода считается от цены часа ЗОНЫ: без неё «45 zł за 3 часа» ни о чём
 	// не говорит ни гостю, ни админу у стойки.
@@ -162,6 +164,7 @@ type packageRequest struct {
 	DaysValid *int     `json:"days_valid"`
 	Sort      *int     `json:"sort"`
 	Active    *bool    `json:"active"`
+	VatPct    *int     `json:"vat_pct"` // З13-и1: ставка VAT пакета; не прислана — 23 у нового, прежняя у старого
 }
 
 // POST /admin/packages — новый пакет (owner).
@@ -190,6 +193,11 @@ func handleAdminPackageCreate(c *gin.Context) {
 		return
 	}
 	price = round2(price) // хвост float (0,1 + 0,2) — в ответе то же, что в базе
+	vat, vok := vatFromRequest(req.VatPct, models.VatDefault)
+	if !vok {
+		packFail(c, http.StatusBadRequest, "bad_vat")
+		return
+	}
 	zone, code := packageZone(req.ZoneID)
 	if code != "" {
 		status := http.StatusBadRequest
@@ -206,7 +214,7 @@ func handleAdminPackageCreate(c *gin.Context) {
 	}
 	p := models.TimePackage{
 		ClubID: club.ID, ZoneID: zone.ID, Name: strings.TrimSpace(req.Name),
-		Minutes: minutes, PricePLN: price, DaysValid: days, Active: true,
+		Minutes: minutes, PricePLN: price, DaysValid: days, Active: true, VatPct: vat,
 	}
 	if req.Sort != nil {
 		p.Sort = *req.Sort
@@ -259,6 +267,11 @@ func handleAdminPackageUpdate(c *gin.Context) {
 		return
 	}
 	price = round2(price)
+	vat, vok := vatFromRequest(req.VatPct, p.VatPct)
+	if !vok {
+		packFail(c, http.StatusBadRequest, "bad_vat")
+		return
+	}
 	zones := zoneIndex()
 	zone := zones[p.ZoneID]
 	if strings.TrimSpace(req.ZoneID) != "" {
@@ -286,7 +299,10 @@ func handleAdminPackageUpdate(c *gin.Context) {
 	if zone.ID != p.ZoneID {
 		changes = append(changes, "зона: "+zone.Name)
 	}
-	p.Name, p.Minutes, p.PricePLN, p.DaysValid, p.ZoneID = name, minutes, price, days, zone.ID
+	if vat != p.VatPct {
+		changes = append(changes, "VAT "+models.VatLabel(p.VatPct)+" → "+models.VatLabel(vat))
+	}
+	p.Name, p.Minutes, p.PricePLN, p.DaysValid, p.ZoneID, p.VatPct = name, minutes, price, days, zone.ID, vat
 	if req.Sort != nil {
 		p.Sort = *req.Sort
 	}

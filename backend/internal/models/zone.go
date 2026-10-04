@@ -17,6 +17,10 @@ type Zone struct {
 	Sort      int       `json:"sort"      gorm:"not null;default:0"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// З13-и1 (миграция 083): ставка VAT времени за ПК этой зоны, % (−1 — zw). Без default в теге: GORM не шлёт
+	// нулевое значение колонки с default, и зона с 0 % получила бы 23 % из базы — ставку ставит ручка.
+	VatPct int `json:"vat_pct" gorm:"column:vat_pct;not null"`
 }
 
 func (z *Zone) BeforeCreate(tx *gorm.DB) error {

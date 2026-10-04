@@ -79,6 +79,7 @@ var goodErrors = map[string]string{
 	"already_void":    "Продажа уже отменена",
 	"not_yours":       "Чужую продажу отменяет владелец",
 	"too_old":         "Продажа не с текущей смены — отменяет владелец",
+	"bad_vat":         vatBadMessage, // З13-и1
 }
 
 func goodFail(c *gin.Context, status int, code string) {
@@ -96,6 +97,7 @@ func goodOut(g *models.Good) gin.H {
 		"low": g.LowStock > 0 && g.Stock <= g.LowStock,
 		// Г7: карточка позиции для гостевой кухни
 		"description": g.Description, "photo": goodPhotoURL(g),
+		"vat_pct": g.VatPct, // З13-и1
 	}
 }
 
@@ -132,6 +134,7 @@ type goodRequest struct {
 	LowStock    *int     `json:"low_stock"`
 	Sort        *int     `json:"sort"`
 	Active      *bool    `json:"active"`
+	VatPct      *int     `json:"vat_pct"` // З13-и1: ставка VAT позиции; не прислана — 23 у новой, прежняя у старой
 }
 
 const maxGoodDescription = 500 // символов; описание — пара строк на плитке, не статья
@@ -182,10 +185,15 @@ func handleAdminGoodCreate(c *gin.Context) {
 		goodFail(c, http.StatusBadRequest, "bad_stock")
 		return
 	}
+	vat, vok := vatFromRequest(req.VatPct, models.VatDefault)
+	if !vok {
+		goodFail(c, http.StatusBadRequest, "bad_vat")
+		return
+	}
 	g := models.Good{ // остаток — движением «начальный остаток» ниже (З10-и1)
 		ClubID: club.ID, Name: strings.TrimSpace(req.Name),
 		Category: category, PricePLN: price,
-		LowStock: low, Active: true,
+		LowStock: low, Active: true, VatPct: vat,
 	}
 	if req.Description != nil {
 		d := strings.TrimSpace(*req.Description)
@@ -257,12 +265,20 @@ func handleAdminGoodUpdate(c *gin.Context) {
 		return
 	}
 	price = round2(price)
+	vat, vok := vatFromRequest(req.VatPct, g.VatPct)
+	if !vok {
+		goodFail(c, http.StatusBadRequest, "bad_vat")
+		return
+	}
 	changes := []string{}
 	if name != g.Name {
 		changes = append(changes, g.Name+" → "+name)
 	}
 	if price != g.PricePLN {
 		changes = append(changes, fmt.Sprintf("цена %.2f → %.2f zł", g.PricePLN, price))
+	}
+	if vat != g.VatPct {
+		changes = append(changes, "VAT "+models.VatLabel(g.VatPct)+" → "+models.VatLabel(vat))
 	}
 	if category != g.Category && category == "" {
 		changes = append(changes, "категория убрана")
@@ -272,7 +288,7 @@ func handleAdminGoodUpdate(c *gin.Context) {
 	if low != g.LowStock {
 		changes = append(changes, fmt.Sprintf("порог %d → %d", g.LowStock, low))
 	}
-	g.Name, g.Category, g.PricePLN, g.LowStock = name, category, price, low
+	g.Name, g.Category, g.PricePLN, g.LowStock, g.VatPct = name, category, price, low, vat
 	if req.Description != nil { // Г7: описание для плитки кухни
 		d := strings.TrimSpace(*req.Description)
 		if len([]rune(d)) > maxGoodDescription {
