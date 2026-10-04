@@ -347,6 +347,8 @@ func main() {
 		own.GET("/reports/returns", handleReportReturns)       // З11-и3: возвраты месяца по дню отмены
 		own.POST("/cash/events/:id/void", handleCashEventVoid) // З8-и2: отмена события ящика
 		own.GET("/cash/book", handleCashBook)                  // З8-и3: кассовая книга по клубным дням
+		// З12-и3: «Прибыль» за период — доходы, возвраты, себестоимость, потери, расходы, результат
+		own.GET("/reports/profit", handleReportProfit)
 		// З9-и1: расходы, категории и контрагенты — только владелец (З-Р29)
 		own.GET("/expense-categories", handleExpenseCategories)
 		own.POST("/expense-categories", handleExpenseCategoryCreate)      // З9-и4: своя категория
