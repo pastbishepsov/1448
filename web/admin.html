@@ -396,6 +396,34 @@
   .retOld{color:var(--orange)}
   /* З12-и1: «Обязательства клуба сейчас» — итоговые строки состава светлее */
   .tablewrap tr.liabSum td{background:rgba(255,255,255,.03)}
+  /* З12-и4: «Обзор» бухгалтерии — две серии на одной оси: доходы синим, затраты акцентом (пара проверена на панели —
+     различима и при дальтонизме), между столбиками пары — 2 px, легенда над графиком; «Сейчас» — плитки-кнопки во
+     вкладки; строки «Прибыли за период» раскрывают состав; пока считается новый период — прежние числа бледные */
+  .chart.pair .bar{gap:2px}
+  .chart.pair .bar i{width:min(14px, calc(50% - 1px))}
+  .chart.pair .bar i.inc, .chart.pair .bar.on i.inc, .chleg i.inc{background:#3987e5}
+  .chart.pair .bar i.out, .chart.pair .bar.on i.out, .chleg i.out{background:var(--acc)}
+  .chart.pair .bar.on{background:rgba(255,255,255,.05); border-radius:6px 6px 0 0}
+  .chleg{display:flex; gap:16px; justify-content:flex-end; font-size:12px; color:var(--dim); margin:-2px 0 8px}
+  .chleg span{display:inline-flex; align-items:center; gap:6px}
+  .chleg i{display:inline-block; width:10px; height:10px; border-radius:3px}
+  .ovNow .kpi{font-family:inherit; text-align:left}
+  .ovNow .kpi i{font-style:normal; font-size:11.5px; font-weight:600; color:var(--dim); margin-left:10px}
+  .ovNow .kpi:hover i{color:var(--txt)}
+  .ovBusy{opacity:.55; transition:opacity .15s}
+  .ovPnl th.n, .ovPnl td.n{text-align:right}
+  .ovPnl tr.ovRow{cursor:pointer}
+  .ovPnl tr.ovRow:focus-visible{outline:2px solid var(--acc); outline-offset:-2px}
+  .ovPnl tr.ovSum td{background:rgba(255,255,255,.03)}
+  .ovPnl tr.ovDet td{white-space:normal; background:var(--card); line-height:1.7}
+  .kpi b.ovNeg, .ovPnl td.ovNeg, .ovPnl td.ovNeg b{color:var(--acc3)}
+  @media (max-width:640px){
+    .ovPnl tr.ovSum{background:var(--card)}
+    .ovPnl tr.ovSum td{background:none}
+    .ovPnl tr.ovDet td{display:block; width:100%}
+    .ovK .kpi{white-space:normal}
+    .ovK .kpi b, .ovK .kpi > i{white-space:nowrap}
+  }
   @media (max-width:640px){ .retK .kpi{white-space:normal} }
   /* З11-и2: «как вернули» у отмены — выбор на месте кнопки «Отменить», на узком месте переносится */
   .rfPick{display:inline-flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; white-space:normal; max-width:100%}
@@ -997,9 +1025,10 @@
       </section>
 
       <section id="s-acc" class="hidden">
-        <!-- З8-и3 (№78): «Бухгалтерия» — только владельцу; вкладки (пока одна — «Касса»):
-             ящик клуба по клубным дням, инкассации, коррекции остатка. -->
-        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button><button data-t="pur" onclick="accTabSet('pur')">Закупки</button><button data-t="refs" onclick="accTabSet('refs')">Справочники</button></div></div>
+        <!-- З8-и3 (№78): «Бухгалтерия» — только владельцу. З12-и4 (решение основателя 04.10): вход — «Обзор» (сейчас,
+             доходы, затраты и результат за период с графиком, «Прибыль за период», отработанное), дальше — «Касса» (ящик
+             клуба по клубным дням, инкассации, коррекции остатка), «Расходы», «Закупки», «Справочники». -->
+        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="ov" onclick="accTabSet('ov')">Обзор</button><button data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button><button data-t="pur" onclick="accTabSet('pur')">Закупки</button><button data-t="refs" onclick="accTabSet('refs')">Справочники</button></div></div>
         <div id="accBody"><div class="skel"></div><div class="skel"></div></div>
       </section>
 
@@ -1446,6 +1475,8 @@ function navRev(){
 
 function nav(t){
   if (OWNER_SECTIONS.includes(t) && !isOwner()) return;
+  if (t === 'acc' && curTab !== 'acc' && !accKeep) accTab = 'ov'; // З12-и4: в «Бухгалтерию» входят через «Обзор»
+  accKeep = false;
   curTab = t;
   localStorage.setItem('1448a_tab', t); // раздел переживает перезагрузку (А7)
   SECTIONS.forEach(x => {
@@ -6265,6 +6296,235 @@ async function renderStats(){
   renderReports(); // В1: отчёты за период
 }
 
+/* ── З12-и4 (№74; решение основателя 04.10 — «общий дайджест, когда входишь в бухгалтерию, где будет график общих
+   данных, а потом уже возможность нажать на каждую вкладку»): «Бухгалтерия» → «Обзор», только владельцу, первая вкладка —
+   с неё начинается вход в раздел. «Сейчас»: в ящике, ждут внесения, поставки ждут цен, обязательства клуба — плитки ведут
+   во вкладки. За период: доходы, затраты и результат с ростом к прошлому периоду; «Доходы и затраты» — две серии по
+   клубным суткам (длиннее месяца, на телефоне — длиннее двух недель — по неделям с понедельника), подсказка у столбиков,
+   «Числа таблицей»; «Прибыль за период» — строки со сравнением, строка раскрывает состав; «Отработано за период» —
+   отработанная выручка (З12-и2) и отдано временем. Числа — с сервера (GET /admin/reports/profit, profit.go); здесь дни
+   только складываются в недели. ── */
+let ovPeriod = {preset:'d30'}, ovData = null, ovOpen = null, ovSeq = 0, ovPaints = 0;
+const ovPhone = matchMedia('(max-width:640px)');
+ovPhone.addEventListener('change', () => { if (curTab === 'acc' && accTab === 'ov' && ovData) paintOv(); }); // дни ↔ недели
+const OV_LINES = [['income', 'Доходы'], ['returns', '− Возвраты'], ['cogs', '− Себестоимость проданного и подаренного'],
+  ['losses', '− Потери склада'], ['gross', '= Валовая прибыль'], ['expenses', '− Расходы'], ['result', '= Результат']];
+const ovMoney = v => (v < 0 ? '−' : '') + fmtPLN(Math.abs(v || 0)); // минус — длинным знаком, плюс не пишем
+function ovQuery(){ return ovPeriod.preset ? 'preset=' + ovPeriod.preset : 'from=' + ovPeriod.from + '&to=' + ovPeriod.to; }
+function ovPreset(p){ ovPeriod = {preset:p}; renderOv(); }
+function ovCustom(){
+  const f = dateOf('ovFrom', 'Начало периода');
+  if (f === null) return;
+  const t = dateOf('ovTo', 'Конец периода');
+  if (t === null) return;
+  if (!f){ toast('⚠ Укажи дату начала'); return; }
+  if (t && t < f){ toast('⚠ Конец периода раньше начала'); return; }
+  ovPeriod = {from:f, to:t || f}; renderOv();
+}
+async function renderOv(){
+  const box = document.getElementById('accBody'), seq = ++ovSeq, main = document.getElementById('ovMain');
+  if (!ovData || !main) box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  else { // прежние числа видны бледно, пока считается новый период
+    main.classList.add('ovBusy');
+    document.querySelectorAll('#ovPresets button').forEach(b => b.classList.toggle('on', b.dataset.p === ovPeriod.preset));
+  }
+  let d;
+  try{ d = await api('/admin/reports/profit?' + ovQuery()); }
+  catch(e){
+    if (seq !== ovSeq || accTab !== 'ov' || curTab !== 'acc') return;
+    const m = document.getElementById('ovMain');
+    if (m){ m.classList.remove('ovBusy'); toast('⚠ Обзор не посчитался: ' + e.message); }
+    else { box.innerHTML = repEmpty('Обзор не посчитался: ' + esc(e.message)); mountIcons(box); }
+    return;
+  }
+  if (seq !== ovSeq || accTab !== 'ov' || curTab !== 'acc') return; // пока считалось, ушли с «Обзора» или выбрали другой период
+  ovData = d;
+  paintOv();
+}
+function paintOv(){
+  const box = document.getElementById('accBody'), d = ovData || {}, w = d.prev || {}, k = d.delta || {};
+  const i = d.income || {}, r = d.returns || {}, c = d.cogs || {}, l = d.losses || {}, x = d.expenses || {};
+  ovPaints++;
+  box.innerHTML = `
+    <div class="sect">Сейчас</div>
+    ${ovNowHtml()}
+    <div class="sect">За период</div>
+    <div class="toolrow">
+      <div class="segs" id="ovPresets">${ACC_PRESETS.map(([p, n]) => `<button data-p="${p}" class="${ovPeriod.preset === p ? 'on' : ''}" onclick="ovPreset('${p}')">${n}</button>`).join('')}</div>
+      <div class="segs" style="align-items:center">
+        <input id="ovFrom" ${DATE_FIELD} aria-label="Начало периода" value="${ovPeriod.preset ? '' : ruDate(ovPeriod.from)}" onkeydown="if(event.key==='Enter')ovCustom()">
+        <span class="muted" style="align-self:center">—</span>
+        <input id="ovTo" ${DATE_FIELD} aria-label="Конец периода" value="${ovPeriod.preset ? '' : ruDate(ovPeriod.to)}" onkeydown="if(event.key==='Enter')ovCustom()">
+        <button class="btn ghost mini" onclick="ovCustom()"><span data-ic="chart"></span>Показать</button>
+      </div>
+    </div>
+    <div id="ovMain">
+      <div class="muted" id="ovLabel" style="margin:-4px 0 12px">${ovLabel(d.period || {}, d.prev_period || {})}</div>
+      <div class="kpis ovK" id="ovKpis">
+        ${repKpi('Доходы', fmtPLN(i.pln) + ' zł', k.income, {was:fmtPLN(w.income_pln) + ' zł',
+          title:'оплачено за период живыми деньгами: пополнения ' + fmtPLN(i.deposits_pln) + ' · товары и кухня ' + fmtPLN(i.goods_pln) + ' · пакеты ' + fmtPLN(i.packs_pln)})}
+        ${repKpi('Затраты', fmtPLN(d.costs_pln) + ' zł', k.costs, {invert:true, was:fmtPLN(w.costs_pln) + ' zł',
+          title:'возвраты ' + fmtPLN(r.pln) + ' · себестоимость ' + fmtPLN(c.pln) + ' · потери склада ' + fmtPLN(l.pln) + ' · расходы ' + fmtPLN(x.pln)})}
+        <div class="kpi" title="доходы минус затраты · в прошлом периоде: ${ovMoney(w.result_pln)} zł">Результат <b${d.result_pln < 0 ? ' class="ovNeg"' : ''}>${ovMoney(d.result_pln)} zł</b>${ovDiff(d.result_pln, w.result_pln)}</div>
+      </div>
+      ${ovChartHtml(d)}
+      <div class="sect" id="ovPnlHead">Прибыль за период</div>
+      <div class="muted" style="margin:-4px 0 10px">Нажми на строку — из чего она.</div>
+      <div class="tablewrap" id="ovPnlBox">${ovPnlHtml()}</div>
+      ${ovEarnedHtml(d.earned || {})}
+    </div>`;
+  mountIcons(box);
+}
+function ovLabel(p, pv){
+  const span = x => x.from ? repDate(x.from) + (x.to !== x.from ? ' — ' + repDate(x.to) : '') : '';
+  return span(p) + ' · ' + repPlural(p.days || 0, 'день', 'дня', 'дней') + ' · сравнение с ' + span(pv) + ' · клубные сутки';
+}
+// рост у результата и валовой — в злотых: они бывают меньше нуля, процент от них врёт
+function ovDiff(cur, was){
+  const v = Math.round(((cur || 0) - (was || 0)) * 100) / 100;
+  return `<i class="dlt${v > 0 ? ' up' : v < 0 ? ' dn' : ''}" title="к прошлому периоду">${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtPLN(Math.abs(v))} zł</i>`;
+}
+// «Сейчас» — снимок, от периода не зависит; плитка ведёт туда, где с этим работают
+function ovNowHtml(){
+  const d = ovData || {}, now = d.now || {}, l = d.liabilities || {};
+  const tile = (go, label, val, to, title) => `<button class="kpi" onclick="${go}" title="${title}">${label} <b>${val}</b><i>${to} ›</i></button>`;
+  return `<div class="kpis ovNow ovK" id="ovNow" data-k="${accDue}|${accSup}">
+      ${tile("accTabSet('cash')", 'В ящике сейчас', now.baseline ? '—' : fmtPLN(now.drawer_pln) + ' zł', 'Касса', now.baseline
+        ? 'ящик ещё не заведён: начальный остаток задаст первая сдача с пересчётом' : 'должно быть в ящике — кассовая книга по дням, инкассации, коррекции')}
+      ${accDue ? tile("accTabSet('exp')", 'Ждут внесения', accDue, 'Расходы', 'регулярные расходы, чей срок наступил') : ''}
+      ${accSup ? tile("accTabSet('pur')", 'Поставки ждут цен', accSup, 'Закупки', 'принятые поставки без цены — себестоимость их товара не посчитается') : ''}
+      ${tile('palGoLiab()', 'Обязательства клуба', fmtPLN(l.net_pln) + ' zł', 'Деньги',
+        'сколько клуб должен гостям сейчас — временем и деньгами — за вычетом дебиторки; состав и что сгорело — в «Отчёты → Деньги»')}
+    </div>`;
+}
+function ovChartHtml(d){
+  const n = (d.period || {}).days || 0;
+  if (!d.days) return '<div class="muted" id="ovChartNote" style="margin:0 0 14px">График — для периода до 92 дней; итоги и строки ниже — за весь период.</div>';
+  if (n < 2) return '<div class="muted" id="ovChartNote" style="margin:0 0 14px">За один день графика нет — итоги дня выше, строки — ниже.</div>';
+  const weeks = n > (ovPhone.matches ? 14 : 31);
+  return `<div class="sect" id="ovChartHead">Доходы и затраты по ${weeks ? 'неделям' : 'дням'}</div>` + ovChart(ovItems(d.days, weeks), weeks);
+}
+// ряд сервера → столбики: по дню или по неделе с понедельника (крайние недели периода бывают неполными); суммы — в грошах
+function ovItems(days, weeks){
+  const G = v => Math.round((v || 0) * 100), out = [];
+  for (const x of days){
+    const dow = (new Date(x.date + 'T12:00:00').getDay() + 6) % 7; // 0 — понедельник
+    if (!out.length || !weeks || dow === 0) out.push({from:x.date, to:x.date, n:0, inc:0, ret:0, cogs:0, loss:0, exp:0});
+    const b = out[out.length - 1];
+    b.to = x.date; b.n++;
+    b.inc += G(x.income_pln); b.ret += G(x.returns_pln); b.cogs += G(x.cogs_pln); b.loss += G(x.losses_pln); b.exp += G(x.expenses_pln);
+  }
+  out.forEach(b => { b.out = b.ret + b.cogs + b.loss + b.exp; });
+  return out;
+}
+/* две серии на одной оси от нуля: доходы — синим, затраты — акцентом (пара проверена на панели — различима и при
+   дальтонизме); легенда над графиком, у столбиков подписей нет — числа в подсказке и в «Числа таблицей»; подсказка и
+   клавиатура — общие с графиками отчётов (chTip) */
+function ovChart(items, weeks){
+  const n = items.length, max = Math.max(0, ...items.map(b => Math.max(b.inc, b.out))) / 100;
+  if (!max) return repEmpty('За этот период ни доходов, ни затрат');
+  const step = repNiceStep(max / 3), k = Math.ceil(max / step - 1e-9), top = k * step;
+  const h = v => (v / top * 100).toFixed(2), P = g => fmtPLN(g / 100) + ' zł', L = t => `<span class="repL">${t}</span>`;
+  const col = (g, c) => `<i class="${c}" style="height:${g > 0 ? 'max(2px, ' + h(g / 100) + '%)' : '0'}"></i>`;
+  const when = b => repDate(b.from) + (b.to !== b.from ? ' — ' + repDate(b.to) : '') + (weeks && b.n < 7 ? ' · ' + repPlural(b.n, 'день', 'дня', 'дней') : '');
+  const parts = b => [['возвраты', b.ret], ['себестоимость', b.cogs], ['потери', b.loss], ['расходы', b.exp]]
+    .filter(([, g]) => g).map(([t, g]) => t + ' ' + fmtPLN(g / 100)).join(' · ');
+  const cols = `grid-template-columns:repeat(${n},minmax(0,1fr))`, every = Math.ceil(n / (ovPhone.matches ? 5 : 12));
+  const unit = weeks ? 'неделям' : 'дням';
+  return `<figure class="chart pair" id="ovChart">
+    <div class="chleg"><span><i class="inc"></i>Доходы</span><span><i class="out"></i>Затраты</span></div>
+    <div class="plot">
+      <div class="ygrid">${Array.from({length: k + 1}, (_, j) => `<div class="yt" style="bottom:${h(j * step)}%"><span>${esc(repTickPLN(j * step) + (j === k ? ' zł' : ''))}</span></div>`).join('')}</div>
+      <div class="bars" style="${cols}" tabindex="0" aria-label="Доходы и затраты по ${unit} — стрелки ← → по ${unit}">${items.map(b => {
+        const full = 'доходы ' + P(b.inc) + ' · затраты ' + P(b.out), more = 'результат ' + accSigned((b.inc - b.out) / 100) + ' zł' + (parts(b) ? ' · ' + parts(b) : '');
+        return `<div class="bar" data-from="${b.from}" data-to="${b.to}" data-inc="${b.inc}" data-out="${b.out}" data-date="${esc(when(b))}" data-full="${esc(full)}" data-more="${esc(more)}">`
+          + col(b.inc, 'inc') + col(b.out, 'out') + '</div>'; }).join('')}</div>
+    </div>
+    <div class="xax" style="${cols}">${items.map((b, j) => `<span>${(n - 1 - j) % every === 0 ? esc(repDate(b.from)) : ''}</span>`).join('')}</div>
+    <details class="chtable"><summary>Числа таблицей</summary><div class="tablewrap"><table>
+      <tr><th>${weeks ? 'Неделя' : 'День'}</th><th>Доходы</th><th>Затраты</th><th>Результат</th></tr>
+      ${items.map(b => `<tr><td>${esc(when(b))}</td><td>${L('доходы')}${P(b.inc)}</td><td>${L('затраты')}${P(b.out)}</td><td>${L('результат')}${accSigned((b.inc - b.out) / 100)} zł</td></tr>`).join('')}
+    </table></div></details>
+  </figure>`;
+}
+function ovPnlHtml(){
+  const d = ovData || {}, w = d.prev || {}, k = d.delta || {}, L = t => `<span class="repL">${t}</span>`;
+  const cur = {income:(d.income || {}).pln, returns:(d.returns || {}).pln, cogs:(d.cogs || {}).pln, losses:(d.losses || {}).pln,
+               gross:d.gross_pln, expenses:(d.expenses || {}).pln, result:d.result_pln};
+  return `<table class="ovPnl" id="ovPnl"><tr><th>Строка</th><th class="n">За период</th><th class="n">Прошлый период</th><th class="n">Изменение</th></tr>
+    ${OV_LINES.map(([key, name]) => {
+      const sum = key === 'gross' || key === 'result', v = cur[key] || 0, was = w[key + '_pln'] || 0, open = ovOpen === key;
+      return `<tr class="ovRow${sum ? ' ovSum' : ''}${open ? ' on' : ''}" data-k="${key}" tabindex="0" aria-expanded="${open}" onclick="ovToggle('${key}')"
+          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); ovToggle('${key}', true)}">
+        <td>${sum ? '<b>' + name + '</b>' : name}</td>
+        <td class="n${v < 0 ? ' ovNeg' : ''}">${L('за период')}${sum ? '<b>' + ovMoney(v) + '</b>' : fmtPLN(v)}</td>
+        <td class="n${was < 0 ? ' ovNeg' : ''}">${L('прошлый')}${ovMoney(was)}</td>
+        <td class="n">${L('изменение')}${sum ? ovDiff(v, was) : dlt(k[key], key !== 'income')}</td>
+      </tr>${open ? `<tr class="ovDet"><td colspan="4">${ovDetails(key)}</td></tr>` : ''}`; }).join('')}
+  </table>`;
+}
+function ovToggle(key, kb){
+  ovOpen = ovOpen === key ? null : key;
+  const b = document.getElementById('ovPnlBox');
+  if (!b) return;
+  b.innerHTML = ovPnlHtml();
+  const r = kb && b.querySelector(`tr.ovRow[data-k="${key}"]`); // с клавиатуры фокус остаётся на строке
+  if (r) r.focus({preventScroll:true});
+}
+// состав строки — из того же ответа сервера; ссылки ведут во вкладки, где с этим работают
+function ovDetails(key){
+  const d = ovData || {}, P = v => '<b>' + fmtPLN(v) + ' zł</b>', pl = (n, a, b, c) => repPlural(n || 0, a, b, c);
+  const go = (t, name) => `<a href="#" class="lnk" onclick="event.preventDefault(); event.stopPropagation(); ${t}">${name}</a>`;
+  if (key === 'income'){
+    const x = d.income || {};
+    return `<div>Пополнения — ${P(x.deposits_pln)} · ${pl(x.deposits, 'пополнение', 'пополнения', 'пополнений')}</div>
+      <div>Товары и кухня — ${P(x.goods_pln)} · ${pl(x.sales, 'продажа', 'продажи', 'продаж')}</div>
+      <div>Пакеты времени — ${P(x.packs_pln)} · ${pl(x.packs, 'пакет', 'пакета', 'пакетов')}</div>
+      <div class="muted">Оплачено за период живыми деньгами — наличными, картой, по BLIK. Оплаты с кошелька и подарки — не доход: деньги пришли пополнением. Отменённое потом — тоже доход своего дня, возврат вычитается в день отмены.</div>`;
+  }
+  if (key === 'returns'){
+    const x = d.returns || {};
+    return `<div>Наличными — ${P(x.cash_pln)} · на карту — ${P(x.card_pln)} · по BLIK — ${P(x.blik_pln)}</div>
+      <div>${pl(x.count, 'отмена', 'отмены', 'отмен')} с возвратом денег — в день отмены, как бы давно ни платили</div>
+      <div class="muted">Возврат на кошелёк и «не возвращали» — не возврат денег. Наличные по дням — в ${go("accTabSet('cash')", '«Кассе»')}.</div>`;
+  }
+  if (key === 'cogs'){
+    const x = d.cogs || {};
+    return `<div>Проданное — ${P(x.sold_pln)} · ${pl(x.sold_units, 'штука', 'штуки', 'штук')}</div>
+      <div>Подаренное — ${P(x.gifts_pln)} · ${pl(x.gift_units, 'штука', 'штуки', 'штук')}</div>
+      ${x.no_cost_units ? `<div class="muted">Без себестоимости — ${pl(x.no_cost_units, 'штука', 'штуки', 'штук')}: у партии нет цены, в строку не вошли. Цены поставок — в ${go("accTabSet('pur')", '«Закупках»')}.</div>` : ''}
+      <div class="muted">По партиям, как маржа: проданное любым способом — и с кошелька, и в долг; отменённая продажа себестоимости не даёт — товар вернулся на склад.</div>`;
+  }
+  if (key === 'losses'){
+    const x = d.losses || {};
+    return `<div>Бой и недостача — ${P(x.pln)} · ${pl(x.units, 'штука', 'штуки', 'штук')} по себестоимости партий</div>
+      ${x.no_cost_units ? `<div class="muted">Без цены партии — ${pl(x.no_cost_units, 'штука', 'штуки', 'штук')}: в строку не вошли.</div>` : ''}`;
+  }
+  if (key === 'gross') return '<div>Доходы − возвраты − себестоимость − потери склада</div><div class="muted">Что осталось от доходов после возвратов и стоимости товара.</div>';
+  if (key === 'expenses'){
+    const x = d.expenses || {}, cats = x.by_category || [];
+    return (cats.length ? cats.map(c => `<div>${esc(c.category)} — ${P(c.pln)} · ${pl(c.count, 'расход', 'расхода', 'расходов')}</div>`).join('')
+        : '<div class="muted">За период расходов не было</div>')
+      + (x.purchases_pln ? `<div class="muted">Закупки товара за период — ${fmtPLN(x.purchases_pln)} zł: не расход, они в себестоимости проданного.</div>` : '')
+      + `<div class="muted">По дню операции, без сторно, оплаченные и нет. Все расходы этого периода — во вкладке ${go('ovExp()', '«Расходы»')}.</div>`;
+  }
+  return '<div>Валовая прибыль − расходы</div><div class="muted">Сколько клуб заработал за период по деньгам.</div>';
+}
+function ovExp(){ expPeriod = Object.assign({}, ovPeriod); accTabSet('exp'); } // «Расходы» — за тот же период
+function ovEarnedHtml(e){
+  const g = e.given || {}, packs = Math.round(((e.packs_pln || 0) + (e.estimate_pln || 0)) * 100) / 100;
+  return `<div class="sect" id="ovEarnHead">Отработано за период</div>
+    <div class="muted" style="margin:-4px 0 10px">Сколько заработано тем, что гости играли, ели и пили, — по моменту игры, продажи и выдачи. Пополнения и проданные пакеты — предоплата: выручкой они станут, когда их отыграют.</div>
+    <div class="kpis ovK" id="ovEarned">
+      ${repKpi('Отработанная выручка', fmtPLN(e.pln) + ' zł', undefined, {title:'время с кошелька + минуты пакетов по их цене + товары у стойки + кухня'})}
+      ${repKpi('Отдано временем', fmtPLN(g.pln) + ' zł · ' + packHM(g.minutes), undefined,
+        {title:'минуты за монеты и компенсации, сыгранные за период, — по тарифу зоны; не выручка: денег за них не было'})}
+    </div>
+    <div class="muted" id="ovEarnParts" style="margin:-8px 0 14px">время с кошелька ${fmtPLN(e.wallet_pln)} + пакеты ${fmtPLN(packs)} + товары ${fmtPLN(e.goods_pln)} + кухня ${fmtPLN(e.kitchen_pln)} zł${
+      e.estimate_minutes ? ' · в пакетах — ' + packHM(e.estimate_minutes) + ' до учёта расхода, по средней цене минуты: ' + fmtPLN(e.estimate_pln) + ' zł' : ''}${
+      e.gift_minutes ? ' · с подаренных пакетов — ' + packHM(e.gift_minutes) + ', 0 zł' : ''}</div>`;
+}
+
 /* ── З8-и3 (№78): «Бухгалтерия» → «Касса», только владельцу. Кассовая книга по клубным дням: на начало,
    пришло (в подсказке — пополнения · товары и кухня · пакеты), возвраты, инкассации, коррекции,
    расхождения пересчётов, на конец; строка дня раскрывает сдачи и события ящика. Инкассация, коррекция
@@ -6288,6 +6548,7 @@ function accCustom(){
 }
 async function renderAcc(){
   document.querySelectorAll('#accTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === accTab)); // З9-и2
+  if (accTab === 'ov') return renderOv(); // З12-и4
   if (accTab === 'exp') return renderExp();
   if (accTab === 'refs') return renderRefs(); // З9-и4
   if (accTab === 'pur') return renderPur(); // З10-и6
@@ -6451,13 +6712,14 @@ async function accVoid(id){
    Шторка расхода: дата, категория, контрагент (нового нет в справочнике — заведётся при записи), сумма брутто и
    VAT, способ, оплачен, документ, заметка, фото документа (браузер сжимает до 500 КБ; показывается только
    владельцу — по токену, не ссылкой). Правка — там же, удаления нет — сторно с причиной. Сервер — expenses.go. ── */
-let accTab = (() => { try{ const v = localStorage.getItem('1448a_acctab'); return v === 'exp' || v === 'refs' || v === 'pur' ? v : 'cash'; }catch(e){ return 'cash'; } })();
+// З12-и4 (решение основателя 04.10): в «Бухгалтерию» входят через «Обзор» — вкладка больше не запоминается; accGo
+// (палитра, ссылки) ведёт сразу в нужную вкладку: accKeep не даёт nav сбросить её на «Обзор»
+let accTab = 'ov', accKeep = false;
 function accTabSet(t){
   accTab = t;
-  try{ localStorage.setItem('1448a_acctab', t); }catch(e){}
   renderAcc();
 }
-function accGo(t){ accTab = t; try{ localStorage.setItem('1448a_acctab', t); }catch(e){} nav('acc'); }
+function accGo(t){ accTab = t; accKeep = true; nav('acc'); }
 
 /* ── З9-и5 (№67, Д10; решение основателя 28.09 — только ежемесячные): регулярные расходы. Шаблон заводится в
    «Справочниках»; когда наступил его день месяца (нет такого — последний), месяц ждёт внесения: блок «Ждут внесения»
@@ -6480,6 +6742,8 @@ function accBadgeSet(n, sup){
   }
   if (t){ if (n) t.dataset.n = n; else delete t.dataset.n; } // число на вкладке — псевдоэлементом: текст вкладки тот же
   if (tp){ if (accSup) tp.dataset.n = accSup; else delete tp.dataset.n; } // З10-и6: у «Закупок» — своё число (решение 28.09)
+  const on = document.getElementById('ovNow'); // З12-и4: плитки «Сейчас» в «Обзоре» — с теми же числами
+  if (on && on.dataset.k !== accDue + '|' + accSup) on.outerHTML = ovNowHtml();
 }
 function dueBlock(list){
   if (!list || !list.length) return '';
@@ -8451,6 +8715,9 @@ const PAL_ACTIONS = [
    новые разделы трека (расходы, бухгалтерия, выгрузка) добавляют сюда свои. who: owner — только
    владельцу, admin — только админу. Совпадение — с начала слова или внутри, не по буквам вразброс. */
 const PAL_WORDS = [
+  {who:'owner', words:['прибыль', 'результат', 'валовая прибыль', 'обзор', 'дайджест', 'доходы и затраты', 'доходы и расходы',
+   'отработанная выручка', 'отдано временем'], name:'Прибыль', // З12-и4
+   sub:'Бухгалтерия → Обзор: доходы, затраты и результат за период', ic:'chart', run:() => palGoProfit()},
   {who:'owner', words:['касса', 'кассовая книга', 'ящик', 'инкассация', 'коррекция'], name:'Касса', // З8-и3
    sub:'Бухгалтерия → ящик по дням, инкассации', ic:'coins', run:() => accGo('cash')},
   {who:'owner', words:['расход', 'расходы', 'аренда', 'коммуналка', 'контрагент', 'счёт', 'фактура'], name:'Расходы', // З9-и2
@@ -8505,6 +8772,16 @@ function palGoMargin(){
   const t = setInterval(() => {
     const el = document.getElementById('repMargin');
     if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
+  }, 100);
+}
+// З12-и4: «Прибыль» — таблица «Обзора»: ждём, пока он посчитается, и показываем её
+function palGoProfit(){
+  const p0 = ovPaints;
+  accGo('ov');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('ovPnl');
+    if ((el && ovPaints > p0) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
   }, 100);
 }
 // З12-и1: обязательства — ряд над кошельками в «Деньгах»: ждём, пока отчёт встанет, и показываем его

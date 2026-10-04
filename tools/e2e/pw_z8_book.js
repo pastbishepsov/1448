@@ -38,6 +38,7 @@ const z = require('./_z');
   const toast = async () => { await z.sleep(1600); return (await z.text(boss, '#toast')) || ''; };
   if (!z.check('владелец: в рейле «Бухгалтерия»', await boss.isVisible('#r-acc'))) return z.done();
   await boss.click('#r-acc'); await z.sleep(1800);
+  await boss.click('#accTabs button[data-t="cash"]'); await z.sleep(1800); // З12-и4: вход — «Обзор», книга — во вкладке «Касса»
   const d7 = await book('preset=d7'), k0 = await kpis();
   const now0 = d7.now.expected_pln;
   z.check(`«В ящике сейчас» — «должно быть» сдачи: ${await F(now0)} zł; пришло и ушло — итоги недели`,
@@ -112,7 +113,7 @@ const z = require('./_z');
   z.check('палитра владельца: «касс» → «Касса», Enter — «Бухгалтерия»', oi[0] === 'Касса' && await boss.evaluate(() => curTab) === 'acc', JSON.stringify(oi));
 
   const ph = await z.openAdmin('boss', { viewport: { width: 360, height: 780 } });
-  await z.nav(ph, 'acc');
+  await ph.evaluate(() => accGo('cash')); await z.sleep(1800); // З12-и4: вход — «Обзор», книга — во вкладке «Касса»
   const pr = await ph.evaluate(() => { const r = document.getElementById('rail'), bs = [...r.querySelectorAll('button')].filter(b => b.offsetParent);
     const c = document.querySelector('#accBody tr.accDay'), lab = c ? [...c.querySelectorAll('.accL')].filter(x => x.offsetParent).map(x => x.textContent) : [];
     return { fits: r.scrollWidth <= r.clientWidth && bs.every(b => b.getBoundingClientRect().right <= innerWidth), n: bs.length, lab, page: document.documentElement.scrollWidth }; });

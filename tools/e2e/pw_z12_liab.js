@@ -88,7 +88,7 @@ const z = require('./_z');
   z.check('строка сгоревшего открывает карточку гостя', dt.includes(GUEST), dt);
   await boss.evaluate(() => closeDrawer());
 
-  await boss.evaluate(() => nav('acc')); await z.sleep(2500);
+  await boss.evaluate(() => accGo('cash')); await z.sleep(2500); // З12-и4: вход в «Бухгалтерию» — «Обзор», ряд — в «Кассе»
   const book = (await z.api('GET', '/admin/cash/book?' + await boss.evaluate(() => accQuery()), undefined, 'boss')).data;
   const BL = book.liabilities || {}, BB = book.burned || {};
   const k2 = await kpis(boss, 'accLiab');
@@ -124,7 +124,7 @@ const z = require('./_z');
     + '(«сколько · как считаем», «когда · что · сколько · сгорело на»), без горизонтальной прокрутки',
     pr.sw <= 360 && pr.kfit && pc.sw <= 360 && pc.fit && pc.bfit && pc.labels.join('|') === 'сколько|как считаем'
     && pc.blabels.join('|') === 'когда|что|сколько|сгорело на', JSON.stringify({ pr, pc }));
-  await ph.evaluate(() => nav('acc')); await z.sleep(2500);
+  await ph.evaluate(() => accGo('cash')); await z.sleep(2500);
   const pa = await ph.evaluate(() => { const e = document.getElementById('accLiab'); if (e) e.scrollIntoView({ block: 'center' });
     return { sw: document.documentElement.scrollWidth, kfit: !!e && [...e.querySelectorAll('.kpi')].every(k => k.getBoundingClientRect().right <= innerWidth) }; });
   await z.sleep(300);

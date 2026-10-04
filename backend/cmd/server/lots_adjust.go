@@ -187,11 +187,14 @@ func lossesByCost(from, to time.Time) (int64, int64) {
 		Cost  int64
 		Units int64
 	}
-	db.Raw(`SELECT COALESCE(SUM(-lm.qty * l.price_grosz), 0) AS cost, COALESCE(SUM(-lm.qty), 0) AS units
-		FROM stock_moves m JOIN lot_moves lm ON lm.stock_move_id = m.id JOIN stock_lots l ON l.id = lm.lot_id
-		WHERE m.created_at >= ? AND m.created_at < ? AND m.reason = 'adjust' AND m.delta < 0 AND l.price_grosz IS NOT NULL`, from, to).Scan(&r)
+	db.Raw(`SELECT COALESCE(SUM(-lm.qty * l.price_grosz), 0) AS cost, COALESCE(SUM(-lm.qty), 0) AS units `+lossCostFrom, from, to).Scan(&r)
 	return r.Cost, r.Units
 }
+
+// lossCostFrom — списанное корректировкой из партий с ценой за [from, to): потери по себестоимости — в «Деньгах»,
+// в «Прибыли» и по дням «Обзора» (З12-и4) одними условиями.
+const lossCostFrom = `FROM stock_moves m JOIN lot_moves lm ON lm.stock_move_id = m.id JOIN stock_lots l ON l.id = lm.lot_id
+		WHERE m.created_at >= ? AND m.created_at < ? AND m.reason = 'adjust' AND m.delta < 0 AND l.price_grosz IS NOT NULL`
 
 // supplyTimes — время приёмки поставки партии (для «поставка от …»).
 func supplyTimes(id *uuid.UUID) map[uuid.UUID]time.Time {

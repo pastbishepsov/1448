@@ -38,14 +38,14 @@ type goodsEcon struct {
 	SoldCost int64 // продано на — только эти штуки: база маржи
 }
 
-// goodsEconSQL — продажи периода по ключу: %[1]s — ключ строки, %[2]s —
+// goodsEconSQL — продажи периода по ключу (З12-и4: и по клубным суткам продажи — s.created_at): %[1]s — ключ строки, %[2]s —
 // присоединение для него, %[3]s — какие продажи (З11-и5: без подарков или только они). Проданная штука — продажа по моменту продажи
 // (created_at), любым способом, не отменённая; её партии — доли движений
 // продажи у стойки (sale_id) или заказа кухни, который она оплатила
 // (kitchen_order_id). Выручка — как у «Что покупают» до З10-и8: по расчёту
 // (paid_at), без кошелька.
 const goodsEconSQL = `WITH s AS (
-    SELECT id, name, good_id, qty, ROUND(total_pln * 100)::bigint AS total,
+    SELECT id, name, good_id, qty, created_at, ROUND(total_pln * 100)::bigint AS total,
            (created_at >= @from AND created_at < @to) AS sold,
            (method <> 'wallet' AND paid_at >= @from AND paid_at < @to) AS live
     FROM sales

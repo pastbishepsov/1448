@@ -23,3 +23,14 @@ func TestProfitLines(t *testing.T) {
 		t.Errorf("cogs() = %d, ждали 900", got)
 	}
 }
+
+// З12-и4: затраты дня в ряду «Обзора» — возвраты, себестоимость, потери и расходы; доход в них не входит.
+func TestProfitDayCosts(t *testing.T) {
+	d := profitDay{Income: 10000, Returns: 800, Cogs: 900, Losses: 300, Expenses: 5000}
+	if got := d.costs(); got != 7000 {
+		t.Errorf("costs() = %d, ждали 7000", got)
+	}
+	if got := (profitDay{Income: 500}).costs(); got != 0 {
+		t.Errorf("день без затрат: costs() = %d, ждали 0", got)
+	}
+}
