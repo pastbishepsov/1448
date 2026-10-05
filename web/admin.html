@@ -422,6 +422,11 @@
   .ovPnl tr.ovSum td{background:rgba(255,255,255,.03)}
   .ovPnl tr.ovDet td{white-space:normal; background:var(--card); line-height:1.7}
   .kpi b.ovNeg, .ovPnl td.ovNeg, .ovPnl td.ovNeg b{color:var(--acc3)}
+  /* З13-и3: «Продажи по ставкам VAT» — по дням раскрывается под таблицей, как «Числа таблицей» у графика */
+  .ovVatDays{margin:0 0 16px}
+  .ovVatDays summary{cursor:pointer; font-size:12px; color:var(--dim); width:max-content}
+  .ovVatDays summary:hover{color:var(--txt)}
+  .ovVatDays .tablewrap{margin-top:6px}
   @media (max-width:640px){
     .ovPnl tr.ovSum{background:var(--card)}
     .ovPnl tr.ovSum td{background:none}
@@ -6363,6 +6368,7 @@ async function renderStats(){
    период — календарный месяц, ‹ › листают месяцы (дальше текущего — нет), по умолчанию — этот месяц; прошлый месяц
    сравнивается с позапрошлым целиком, текущий — с тем же отрезком прошлого; свой период — с какой даты по какую. ── */
 let ovPeriod = {month:''}, ovCur = '', ovData = null, ovOpen = null, ovSeq = 0, ovPaints = 0; // month '' — этот месяц
+let ovVat = null; // З13-и3: продажи по ставкам VAT того же периода (GET /admin/reports/vat)
 const ovPhone = matchMedia('(max-width:640px)');
 ovPhone.addEventListener('change', () => { if (curTab === 'acc' && accTab === 'ov' && ovData) paintOv(); }); // дни ↔ недели
 const OV_LINES = [['income', 'Доходы'], ['returns', '− Возвраты'], ['cogs', '− Себестоимость проданного и подаренного'],
@@ -6408,8 +6414,8 @@ async function renderOv(){
     const sw = document.getElementById('ovMonth');
     if (sw) sw.outerHTML = ovMonthHtml();
   }
-  let d;
-  try{ d = await api('/admin/reports/profit?' + ovQuery()); }
+  let d, v;
+  try{ [d, v] = await Promise.all([api('/admin/reports/profit?' + ovQuery()), api('/admin/reports/vat?' + ovQuery()).catch(() => null)]); }
   catch(e){
     if (seq !== ovSeq || accTab !== 'ov' || curTab !== 'acc') return;
     const m = document.getElementById('ovMain');
@@ -6420,6 +6426,7 @@ async function renderOv(){
   if (seq !== ovSeq || accTab !== 'ov' || curTab !== 'acc') return; // пока считалось, ушли с «Обзора» или выбрали другой период
   if (!ovPeriod.from && !ovPeriod.month) ovCur = ((d.period || {}).from || '').slice(0, 7); // какой месяц у клуба текущий — по серверу
   ovData = d;
+  ovVat = v; // З13-и3
   paintOv();
 }
 function paintOv(){
@@ -6453,6 +6460,7 @@ function paintOv(){
       <div class="muted" style="margin:-4px 0 10px">Нажми на строку — из чего она.</div>
       <div class="tablewrap" id="ovPnlBox">${ovPnlHtml()}</div>
       ${ovEarnedHtml(d.earned || {})}
+      ${ovVatHtml(ovVat)}
     </div>`;
   mountIcons(box);
 }
@@ -6608,6 +6616,43 @@ function ovEarnedHtml(e){
     <div class="muted" id="ovEarnParts" style="margin:-8px 0 14px">время с кошелька ${fmtPLN(e.wallet_pln)} + пакеты ${fmtPLN(packs)} + товары ${fmtPLN(e.goods_pln)} + кухня ${fmtPLN(e.kitchen_pln)} zł${
       e.estimate_minutes ? ' · в пакетах — ' + packHM(e.estimate_minutes) + ' до учёта расхода, по средней цене минуты: ' + fmtPLN(e.estimate_pln) + ' zł' : ''}${
       e.gift_minutes ? ' · с подаренных пакетов — ' + packHM(e.gift_minutes) + ', 0 zł' : ''}</div>`;
+}
+/* З13-и3 (OWNER.md, трек З; №72 «а»; решения основателя 04.10, З-Р37): «Продажи по ставкам VAT» за период — для сверки
+   с фискальной кассой: по ставкам брутто, нетто и VAT, «Итого», из чего (время, пакеты, товары и кухня, пополнения,
+   подарки, возвраты) и по дням — как дневные отчёты кассы. Как считали — по настройкам «Экономика → Бухгалтерия» (VAT
+   при трате или при пополнении, плательщик, подарки). Числа — с сервера (GET /admin/reports/vat, vat.go). */
+const OV_VAT_KINDS = [['time', 'время с кошелька'], ['packs', 'пакеты'], ['sales', 'товары и кухня'], ['deposits', 'пополнения'],
+  ['gifts', 'подарки по себестоимости'], ['returns', 'возвраты']];
+const OV_VAT_PAYS = [['cash', 'наличные'], ['card', 'карта'], ['blik', 'BLIK'], ['wallet', 'кошелёк'], ['comp', 'подарки']]; // у возврата — как вернули
+function ovVatHow(st){
+  if (!st.payer) return 'Клуб освобождён от VAT — всё «zw», без VAT.';
+  return (st.moment === 'topup'
+    ? 'VAT при пополнении: пополнения — по ставке пополнения, пакеты, товары и кухня за живые деньги — по своей ставке, с кошелька — без VAT.'
+    : 'VAT при трате: время с кошелька — по ставке зоны, пакеты — при выдаче, товары и кухня — при оплате, и с кошелька; пополнения — без VAT.')
+    + (st.gifts ? ' Подарки товаров — по себестоимости.' : '') + ' Возвраты — минусом в день отмены.';
+}
+function ovVatHtml(v){
+  if (!v) return '';
+  const st = v.settings || {}, rates = v.rates || [], t = v.total || {}, L = x => `<span class="repL">${x}</span>`, P = x => ovMoney(x) + ' zł';
+  const head = `<div class="sect" id="ovVatHead">Продажи по ставкам VAT</div>
+    <div class="muted" id="ovVatHow" style="margin:-4px 0 10px">${ovVatHow(st)} Как считать — в <a href="#" class="lnk" onclick="event.preventDefault(); palGoVat()">«Экономика» → «Бухгалтерия»</a>.</div>`;
+  if (!rates.length) return head + '<div class="muted" id="ovVatEmpty" style="margin:0 0 16px">За период продаж нет.</div>';
+  const kinds = OV_VAT_KINDS.filter(([k]) => ((v.kinds || {})[k] || {}).pln).map(([k, n]) => n + ' ' + P(v.kinds[k].pln)).join(' · ');
+  const pays = OV_VAT_PAYS.filter(([k]) => (v.methods || {})[k]).map(([k, n]) => n + ' ' + P(v.methods[k])).join(' · ');
+  const days = (v.days || []).filter(x => (x.rates || []).length);
+  const cell = (x, c) => `<td class="n${x < 0 ? ' ovNeg' : ''}">${L(c)}${P(x)}</td>`;
+  return head + `<div class="tablewrap"><table class="ovPnl ovVat" id="ovVat"><tr><th>Ставка</th><th class="n">Брутто</th><th class="n">Нетто</th><th class="n">VAT</th></tr>
+      ${rates.map(r => `<tr data-r="${r.vat_pct}"><td>${esc(r.label)}</td>${cell(r.gross_pln, 'брутто')}${cell(r.net_pln, 'нетто')}${cell(r.vat_pln, 'VAT')}</tr>`).join('')}
+      <tr class="ovSum" data-r="total"><td><b>Итого</b></td>${cell(t.gross_pln, 'брутто')}${cell(t.net_pln, 'нетто')}${cell(t.vat_pln, 'VAT')}</tr>
+    </table></div>
+    <div class="muted" id="ovVatParts" style="margin:6px 0 2px">Из чего: ${kinds || 'ничего'}.</div>
+    <div class="muted" id="ovVatPays" style="margin:0 0 10px">По способам — для сверки с терминалом: ${pays || 'ничего'}.</div>
+    ${days.length ? `<details class="ovVatDays" id="ovVatDays"><summary>По дням — для сверки с дневными отчётами кассы</summary><div class="tablewrap"><table class="ovPnl">
+      <tr><th>День</th>${rates.map(r => `<th class="n">${esc(r.label)}</th>`).join('')}<th class="n">Брутто</th><th class="n">VAT</th></tr>
+      ${days.map(x => `<tr data-d="${x.date}"><td>${repDate(x.date)}</td>${rates.map(r => {
+        const c = (x.rates || []).find(y => y.vat_pct === r.vat_pct);
+        return c ? cell(c.gross_pln, esc(r.label)) : `<td class="n">${L(esc(r.label))}—</td>`; }).join('')}${cell(x.gross_pln, 'брутто')}${cell(x.vat_pln, 'VAT')}</tr>`).join('')}
+    </table></div></details>` : (v.days ? '' : '<div class="muted" style="margin:0 0 16px">По дням — для периода до 92 дней; итоги выше — за весь период.</div>')}`;
 }
 
 /* ── З8-и3 (№78): «Бухгалтерия» → «Касса», только владельцу. Кассовая книга по клубным дням: на начало,
@@ -8530,10 +8575,12 @@ const SETTINGS_GROUPS = [
     ['mouse_dpi', 'set_mousedpi', 'DPI мыши клуба (0 — не задан; задан — сенса гостя пересчитывается под неё, cm/360 тот же)', 0, 32000, 50],
     ['mousepad_cm', 'set_mousepad', 'Ширина коврика, см (0 — не задана; тогда гостю предложат лист A4)', 0, 200]]},
   // З13-и2 (З-Р37): вопросы бухгалтеру — настройки владельца; по умолчанию — самый частый вариант
-  {t:'Бухгалтерия', why:'Как клуб платит VAT — по этому считаются VAT и выгрузка бухгалтеру. Решает бухгалтер: уточните у своего бухгалтера. По умолчанию — самый частый вариант: плательщик VAT, VAT при трате.', f:[
+  {t:'Бухгалтерия', why:'Как клуб платит VAT — по этому считаются «Продажи по ставкам VAT» в «Обзоре» и выгрузка бухгалтеру. Решает бухгалтер: уточните у своего бухгалтера. По умолчанию — самый частый вариант: плательщик VAT, VAT при трате.', f:[
     ['acc_vat_payer', 'set_vatpayer', 'Плательщик VAT', 0, 1, 0, [[1, 'Да — czynny podatnik VAT'], [0, 'Нет — освобождён (zwolniony z VAT)']]],
     ['acc_vat_moment', 'set_vatmoment', 'Когда VAT с пополнения кошелька', 0, 1, 0, [[0, 'При трате — bon różnego przeznaczenia'], [1, 'При пополнении — bon jednego przeznaczenia']]],
-    ['acc_topup_vat', 'set_topupvat', 'Ставка VAT пополнения — для «при пополнении»', -1, 100, 0, 'vat']]},
+    ['acc_topup_vat', 'set_topupvat', 'Ставка VAT пополнения — для «при пополнении»', -1, 100, 0, 'vat'],
+    // З13-и3: подарок товара — по себестоимости (nieodpłatne przekazanie towarów), если так решит бухгалтер
+    ['acc_gift_vat', 'set_giftvat', 'Подарки товаров в VAT (nieodpłatne przekazanie towarów)', 0, 1, 0, [[0, 'Нет — подарки без VAT'], [1, 'Да — по себестоимости']]]]},
 ];
 const SETTINGS_SAVE_HTML = '<span data-ic="save"></span>Сохранить';
 let settingsLoaded = {}; // значения с сервера — правка сравнивается с ними
@@ -8557,7 +8604,7 @@ function paintSettings(){
         : `<input id="${id}" class="input" type="number" min="${min}" max="${max}"${step ? ` step="${step}"` : ''} value="${esc(settingsLoaded[key] ?? '')}" oninput="settingsDirty()">`}
       ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>` : ''}${
         key === 'acc_vat_moment' ? `<div class="setwarn hidden" id="setVatWarn">⚠ Меняет расчёт VAT и за прошлые месяцы: продажи по ставкам и выгрузка за них посчитаются по-новому. Меняйте вместе с бухгалтером, лучше с первого числа. «Сохранить» переспросит.</div>` : ''}${
-        key === 'acc_topup_vat' ? '<div class="setnote" id="setVatNote"></div>' : ''}`).join('')}
+        key === 'acc_gift_vat' ? '<div class="setnote" id="setVatNote"></div>' : ''}`).join('')}
   </div>`).join('');
   settingsDirty();
 }
@@ -8572,10 +8619,14 @@ function settingOptions(opts, cur){
 /* З13-и2: что значат выбранные в «Бухгалтерии» варианты — простыми словами, по тому, что выбрано сейчас (и до «Сохранить») */
 function vatNoteHtml(){
   const val = id => Number((document.getElementById(id) || {}).value);
-  if (val('set_vatpayer') === 0) return 'Клуб <b>освобождён от VAT</b>: в выгрузке не будет колонок VAT. Ставки у зон, пакетов и позиций остаются — пригодятся, если клуб станет плательщиком.';
-  if (val('set_vatmoment') === 1) return `VAT — <b>с пополнения</b>, по ставке ${esc(vatLabel(val('set_topupvat')))}; траты с кошелька его уже не начисляют. Продажи и пакеты за живые деньги — по своей ставке.`;
-  return 'Пополнение кошелька — <b>без VAT</b>. VAT — когда гость тратит: время — по ставке зоны, пакет — по ставке пакета, товары и кухня — по ставке позиции.';
+  if (val('set_vatpayer') === 0) return 'Клуб <b>освобождён от VAT</b>: продажи — «zw», в выгрузке не будет колонок VAT. Ставки у зон, пакетов и позиций остаются — пригодятся, если клуб станет плательщиком.';
+  const gifts = val('set_giftvat') === 1 ? ' Подарки товаров — в VAT по себестоимости, по ставке позиции.' : ''; // З13-и3
+  if (val('set_vatmoment') === 1) return `VAT — <b>с пополнения</b>, по ставке ${esc(vatLabel(val('set_topupvat')))}; траты с кошелька его уже не начисляют. Продажи и пакеты за живые деньги — по своей ставке.` + gifts;
+  return 'Пополнение кошелька — <b>без VAT</b>. VAT — когда гость тратит: время — по ставке зоны, пакет — по ставке пакета, товары и кухня — при оплате, по ставке позиции.' + gifts;
 }
+// З13-и2: плательщик, момент VAT и (З13-и3) подарки пересчитывают и прошлые месяцы — предупреждение и взвод; ставка
+// пополнения — снимок в каждом пополнении, прошлое не трогает
+const vatCalcChanged = ch => ['acc_vat_payer', 'acc_vat_moment', 'acc_gift_vat'].some(k => k in ch);
 // что изменилось против сервера: {ключ: число}; пустое поле — NaN, его не пропустит проверка
 function settingsChanged(){
   const out = {};
@@ -8599,7 +8650,7 @@ function settingsDirty(){
   document.getElementById('setBar').classList.toggle('dirty', n > 0);
   document.getElementById('setUndo').classList.toggle('hidden', n === 0);
   document.getElementById('setRhourWarn')?.classList.toggle('hidden', !('report_hour' in ch));
-  document.getElementById('setVatWarn')?.classList.toggle('hidden', !('acc_vat_payer' in ch || 'acc_vat_moment' in ch)); // З13-и2
+  document.getElementById('setVatWarn')?.classList.toggle('hidden', !vatCalcChanged(ch)); // З13-и2
   const note = document.getElementById('setVatNote');
   if (note) note.innerHTML = vatNoteHtml();
 }
@@ -8624,7 +8675,7 @@ async function saveSettings(btn){
   };
   // граница суток переписывает прошлые отчёты — сохраняем со взводом; З13-и2: смена расчёта VAT — тоже
   if ('report_hour' in ch && btn) armButton(btn, '<span data-ic="save"></span>Ещё раз — сдвинуть границу суток', go);
-  else if (('acc_vat_payer' in ch || 'acc_vat_moment' in ch) && btn) armButton(btn, '<span data-ic="save"></span>Ещё раз — сменить расчёт VAT', go);
+  else if (vatCalcChanged(ch) && btn) armButton(btn, '<span data-ic="save"></span>Ещё раз — сменить расчёт VAT', go);
   else go();
 }
 
@@ -8902,6 +8953,9 @@ const PAL_WORDS = [
    sub:'Отчёты → Деньги: сколько клуб должен гостям сейчас и что сгорело за период', ic:'coins', run:() => palGoLiab()},
   {who:'owner', words:['vat', 'ндс', 'налог', 'ставка vat', 'плательщик vat', 'освобождён от vat', 'czynny', 'zwolniony', 'bon'], name:'Ставки VAT', // З13-и2
    sub:'Экономика → Бухгалтерия: плательщик VAT, когда VAT с пополнения; ставки — у зон, пакетов и позиций', ic:'gear', run:() => palGoVat()},
+  {who:'owner', words:['продажи по ставкам', 'vat за период', 'vat за месяц', 'ндс за месяц', 'фискальная касса', 'сверка с кассой',
+   'отчёт кассы', 'kasa fiskalna', 'raport dobowy'], name:'Продажи по ставкам VAT', // З13-и3
+   sub:'Бухгалтерия → Обзор: брутто, нетто и VAT по ставкам и по дням — сверка с фискальной кассой', ic:'chart', run:() => palGoVatSales()},
   {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
@@ -8964,6 +9018,16 @@ function palGoDebt(){
   const t = setInterval(() => {
     const el = document.getElementById('repDebt');
     if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
+  }, 100);
+}
+// З13-и3: «Продажи по ставкам VAT» — блок «Обзора»: ждём, пока он посчитается, и показываем его
+function palGoVatSales(){
+  const p0 = ovPaints;
+  accGo('ov');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('ovVatHead');
+    if ((el && ovPaints > p0) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'start'}); }
   }, 100);
 }
 // З13-и2: «Ставки VAT» — карточка «Бухгалтерия» в «Экономике»: ждём, пока настройки встанут, и показываем её

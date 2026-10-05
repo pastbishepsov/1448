@@ -349,6 +349,8 @@ func main() {
 		own.GET("/cash/book", handleCashBook)                  // З8-и3: кассовая книга по клубным дням
 		// З12-и3: «Прибыль» за период — доходы, возвраты, себестоимость, потери, расходы, результат
 		own.GET("/reports/profit", handleReportProfit)
+		// З13-и3: продажи по ставкам VAT за период — по настройкам «Бухгалтерии», по дням — для сверки с фискальной кассой
+		own.GET("/reports/vat", handleReportVat)
 		// З9-и1: расходы, категории и контрагенты — только владелец (З-Р29)
 		own.GET("/expense-categories", handleExpenseCategories)
 		own.POST("/expense-categories", handleExpenseCategoryCreate)      // З9-и4: своя категория

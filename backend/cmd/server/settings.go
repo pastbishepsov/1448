@@ -103,6 +103,7 @@ var settingBounds = map[string][2]int64{
 	"acc_vat_payer":  {0, 1},    // плательщик VAT — 1, освобождён — 0
 	"acc_vat_moment": {0, 1},    // VAT у пополнения: 0 — при трате (bon różnego przeznaczenia), 1 — при пополнении
 	"acc_topup_vat":  {-1, 100}, // ставка пополнения для «при пополнении»; только из models.VatRates (−1 — zw)
+	"acc_gift_vat":   {0, 1},    // З13-и3: подарки товаров в VAT — 1 по себестоимости, 0 — нет
 }
 
 // settingDefaults — значение каждой числовой настройки, пока у неё нет строки
@@ -147,6 +148,7 @@ var settingDefaults = map[string]int64{
 	"acc_vat_payer":  1,
 	"acc_vat_moment": 0,
 	"acc_topup_vat":  models.VatDefault,
+	"acc_gift_vat":   0, // З13-и3: подарки — без VAT (решение основателя 04.10, план З13)
 }
 
 // settingChoices — настройки, у которых не диапазон, а список (З13-и1): ставка пополнения — только из ставок VAT.
