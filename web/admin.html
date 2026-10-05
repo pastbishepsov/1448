@@ -455,6 +455,16 @@
   .setcard .input.changed{border-color:var(--acc); box-shadow:0 0 0 1px rgba(255,39,64,.28)}
   .setwarn{font-size:12px; line-height:1.4; color:var(--orange); background:rgba(251,146,60,.08);
     border:1px solid rgba(251,146,60,.32); border-radius:9px; padding:8px 10px}
+  /* З13-и2: «Бухгалтерия» — что значат выбранные варианты, простыми словами */
+  .setnote{font-size:12px; line-height:1.45; color:var(--dim); background:rgba(255,255,255,.03);
+    border:1px solid var(--hair); border-radius:9px; padding:8px 10px}
+  .setnote b{color:var(--txt)}
+  /* З13-и2: ставка VAT в шторке позиции и «ко всей категории» рядом; на телефоне кнопка уходит строкой ниже */
+  .uform .vatrow{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .uform .vatrow .input{flex:1 1 120px; width:auto; min-width:0}
+  /* З13-и2: в списках на телефоне шапки нет — у ставки своя подпись */
+  .vatL{display:none}
+  @media (max-width:640px){ .vatL{display:inline; color:var(--dim); margin-right:4px} }
   .setbar{position:sticky; bottom:8px; z-index:4; display:flex; gap:10px; align-items:center; flex-wrap:wrap;
     background:rgba(15,15,18,.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
     border:1px solid var(--hair); border-radius:12px; padding:9px 12px}
@@ -4884,6 +4894,7 @@ function saleMethod(m, btn){
 }
 
 async function renderGoods(){
+  vatLoad(); // З13-и2: ставки VAT для шторки позиции — владельцу, не дожидаясь (до ответа — тот же список на месте)
   try{
     const [g, sl, sp] = await Promise.all([api('/admin/goods'), api('/admin/sales'),
       api('/admin/supplies').catch(() => ({supplies: []}))]); // З10-и4
@@ -5192,11 +5203,12 @@ function paintGoodsTable(){
   const owner = isOwner();
   setHTML('goodsTable', goodsData.length === 0
     ? '<div class="empty"><span data-ic="box"></span>Ценник пуст</div>'
-    : `<table><tr><th>Позиция</th><th>Категория</th><th>Цена</th><th>Остаток</th><th></th></tr>
+    : `<table><tr><th>Позиция</th><th>Категория</th><th>Цена</th>${owner ? '<th>VAT</th>' : ''}<th>Остаток</th><th></th></tr>
       ${goodsData.map(g => `<tr${g.active ? '' : ' style="opacity:.5"'}>
         <td><b>${esc(g.name)}</b>${g.active ? '' : ' <span class="muted">— выключена</span>'}</td>
         <td class="muted">${esc(g.category || '—')}</td>
         <td>${fmtPLN(g.price_pln)} zł</td>
+        ${owner ? `<td class="muted"><span class="vatL">VAT</span>${esc(vatLabel(g.vat_pct))}</td>` : ''}
         <td${g.low ? ' style="color:var(--orange)"' : ''}>${g.stock}${g.low ? ' · заканчивается' : ''}</td>
         <td style="white-space:nowrap">
           <button class="btn ghost mini" onclick="stockDrawer('${g.id}')"><span data-ic="box"></span>Склад</button>
@@ -5211,9 +5223,15 @@ function editGood(id){
   openDrawer(isNew ? 'Новая позиция' : g.name, `
   <div class="uform">
     <input id="gd_name" class="input" placeholder="Название (Кола 0.5)" value="${esc(g.name||'')}">
-    <input id="gd_cat" class="input" placeholder="Категория (Напитки)" value="${esc(g.category||'')}">
+    <input id="gd_cat" class="input" placeholder="Категория (Напитки)" value="${esc(g.category||'')}" oninput="goodVatCatSync()">
     <textarea id="gd_desc" class="input" rows="2" placeholder="Описание для плитки кухни (гость видит его под названием)">${esc(g.description||'')}</textarea>
     <input id="gd_price" class="input" type="number" step="0.01" min="0.01" placeholder="Цена, zł" value="${g.price_pln ?? ''}">
+    <label class="muted" style="margin-bottom:-6px" for="gd_vat">Ставка VAT — уточните у своего бухгалтера</label>
+    <div class="vatrow">
+      <select id="gd_vat" class="input"${isNew ? ' data-auto="1"' : ''} onchange="delete this.dataset.auto">${vatOptions(isNew ? goodCatVat(g.category) : g.vat_pct)}</select>
+      <button class="btn ghost mini" id="gd_vatcat" onclick="goodVatCat(this)">${goodVatCatText(g.category)}</button>
+    </div>
+    <div class="muted" style="margin-top:-4px">Ставка — для новых продаж: у прошлых своя, на момент продажи.</div>
     <input id="gd_low" class="input" type="number" min="0" placeholder="Порог «заканчивается» (0 — не следим)" value="${g.low_stock ?? 0}">
     ${isNew ? '<input id="gd_stock" class="input" type="number" min="0" placeholder="Начальный остаток" value="0">' : ''}
     <input id="gd_sort" class="input" type="number" placeholder="Порядок (меньше = выше)" value="${g.sort ?? 100}">
@@ -5252,6 +5270,7 @@ async function saveGood(id){
   if (!(body.price_pln > 0)){ toast('⚠ Нужна цена больше нуля'); return; }
   const stockEl = document.getElementById('gd_stock');
   if (stockEl) body.stock = parseInt(stockEl.value || '0', 10);
+  vatPut(body, 'gd_vat', goodsData.find(x => x.id === id)); // З13-и2
   try{
     await api(id ? '/admin/goods/' + id : '/admin/goods',
               {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
@@ -5259,6 +5278,37 @@ async function saveGood(id){
     closeDrawer();
     renderGoods();
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* З13-и2: ставка VAT позиции. «Ко всей категории» — ставка из шторки всем позициям категории из поля, одной кнопкой
+   со взводом (PUT /admin/vat/goods); новой позиции ставка подставляется по категории — если у всей категории она
+   одна, — пока её не выбрали руками. */
+function goodCatVat(cat){
+  cat = (cat || '').trim();
+  const rates = [...new Set(goodsData.filter(g => (g.category || '') === cat).map(g => g.vat_pct))];
+  return rates.length === 1 ? rates[0] : vatDefault;
+}
+function goodVatCatText(cat){
+  cat = (cat || '').trim();
+  return cat ? 'Ко всей категории «' + esc(cat) + '»' : 'Ко всем без категории';
+}
+function goodVatCatSync(){
+  const cat = document.getElementById('gd_cat').value;
+  const btn = document.getElementById('gd_vatcat'), sel = document.getElementById('gd_vat');
+  if (btn){ clearTimeout(btn._t); btn.dataset.armed = ''; btn.innerHTML = goodVatCatText(cat); } // взвод — на прежнюю категорию, снимаем
+  if (sel && sel.dataset.auto) sel.innerHTML = vatOptions(goodCatVat(cat));
+}
+function goodVatCat(btn){
+  const cat = document.getElementById('gd_cat').value.trim(), vat = Number(document.getElementById('gd_vat').value);
+  const n = goodsData.filter(g => (g.category || '') === cat).length;
+  if (!n){ toast('⚠ ' + (cat ? 'В категории «' + cat + '»' : 'Без категории') + ' позиций пока нет'); return; }
+  armButton(btn, `Всем ${n} — ${esc(vatLabel(vat))}?`, async () => {
+    try{
+      const d = await api('/admin/vat/goods', {method:'PUT', body: JSON.stringify({category: cat, vat_pct: vat})});
+      toast(`✓ ${cat ? '«' + cat + '»' : 'Без категории'}: VAT ${vatLabel(vat)} — ${d.changed ? 'поменяли у ' + d.changed + ' из ' + d.total : 'уже у всех ' + d.total}`);
+      renderGoods();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
 }
 
 function armDeleteGood(btn, id){
@@ -8177,6 +8227,36 @@ function armDemote(btn, id, nick){
   });
 }
 
+/* З13-и2 (OWNER.md, трек З): ставка VAT на экране — у зоны, пакета и позиции. Список ставок — с сервера
+   (GET /admin/vat/rates: закон поменяет ставки — меняется одна строка на сервере); пока он не пришёл — тот же
+   список здесь. −1 — «zw», освобождено от VAT. Меняет только владелец. */
+let vatRates = [{vat_pct:23, label:'23 %'}, {vat_pct:8, label:'8 %'}, {vat_pct:5, label:'5 %'}, {vat_pct:0, label:'0 %'}, {vat_pct:-1, label:'zw'}];
+let vatDefault = 23, vatLoading = null;
+function vatLoad(){ // один раз за страницу; не дошло — останется список выше, следующий заход спросит снова
+  if (!isOwner()) return Promise.resolve();
+  return vatLoading || (vatLoading = api('/admin/vat/rates').then(d => {
+    if (d && Array.isArray(d.rates) && d.rates.length){ vatRates = d.rates; vatDefault = d.default ?? vatDefault; }
+  }).catch(() => { vatLoading = null; }));
+}
+function vatLabel(v){
+  if (v === null || v === undefined || v === '') return '—';
+  const r = vatRates.find(x => x.vat_pct === +v);
+  return r ? r.label : (+v === -1 ? 'zw' : v + ' %');
+}
+// <option> ставок; ставки, которой в списке больше нет, — отдельной строкой: «Сохранить» её не подменит
+function vatOptions(cur){
+  cur = cur ?? vatDefault;
+  const list = vatRates.some(r => r.vat_pct === cur) ? vatRates : vatRates.concat([{vat_pct:cur, label:vatLabel(cur)}]);
+  return list.map(r => `<option value="${r.vat_pct}"${r.vat_pct === cur ? ' selected' : ''}>${esc(r.label)}</option>`).join('');
+}
+// в тело правки — ставка из выбора, если запись новая или ставку поменяли; не трогали — не шлём, сервер оставит прежнюю
+function vatPut(body, selId, was){
+  const el = document.getElementById(selId);
+  if (!el) return;
+  const v = Number(el.value);
+  if (!was || v !== was.vat_pct) body.vat_pct = v;
+}
+
 /* ── В4-этап 5: зоны с ценой. Раньше зона была просто подписью на ПК, а тариф
    один на весь клуб и нигде не редактировался — VIP стоил столько же, сколько
    обычное место. Теперь цена часа живёт в зоне, а сессия берёт цену той зоны,
@@ -8191,10 +8271,11 @@ async function renderZones(){
       + (d.without_zone ? ' — таких сейчас ' + d.without_zone : ''));
     setHTML('zonesTable', zonesCache.length === 0
       ? '<div class="empty"><span data-ic="monitor"></span>Зон нет — все ПК на клубном тарифе</div>'
-      : `<table><tr><th>Зона</th><th>Цена часа</th><th>Час в монетах</th><th>Компьютеров</th><th></th></tr>
+      : `<table><tr><th>Зона</th><th>Цена часа</th><th>VAT</th><th>Час в монетах</th><th>Компьютеров</th><th></th></tr>
       ${zonesCache.map(z => `<tr>
         <td><b>${esc(z.name)}</b></td>
         <td>${fmtPLN(z.rate_pln)} zł</td>
+        <td class="muted"><span class="vatL">VAT</span>${esc(vatLabel(z.vat_pct))}</td>
         <td class="muted" title="цена часа × курс погашения — считает конвертер">${z.coins_per_hour}</td>
         <td class="muted">${z.computers}</td>
         <td style="white-space:nowrap">
@@ -8217,12 +8298,13 @@ async function renderPackages(){
       : (packsCache.length ? 'Гость видит только включённые' : 'Пакет — купленный запас минут: «3 часа за 45 zł»'));
     setHTML('packsTable', packsCache.length === 0
       ? '<div class="empty"><span data-ic="clock"></span>Пакетов нет — гости платят по часам</div>'
-      : `<table><tr><th>Пакет</th><th>Зона</th><th>Время</th><th>Цена</th><th>Час выходит</th><th>Срок</th><th></th></tr>
+      : `<table><tr><th>Пакет</th><th>Зона</th><th>Время</th><th>Цена</th><th>VAT</th><th>Час выходит</th><th>Срок</th><th></th></tr>
       ${packsCache.map(p => `<tr${p.active ? '' : ' style="opacity:.5"'}>
         <td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="muted">— выключен</span>'}</td>
         <td class="muted">${esc(p.zone || '—')}</td>
         <td>${packDur(p.minutes)}</td>
         <td>${fmtPLN(p.price_pln)} zł</td>
+        <td class="muted"><span class="vatL">VAT</span>${esc(vatLabel(p.vat_pct))}</td>
         <td${p.save_pln > 0 ? '' : ' style="color:var(--orange)"'}>${fmtPLN(p.hour_pln)} zł${
           p.save_pln > 0 ? ' <span class="muted">· выгода ' + fmtPLN(p.save_pln) + ' zł</span>'
                          : (p.save_pln === undefined ? '' : ' <span class="muted">· дешевле по часам!</span>')}</td>
@@ -8263,6 +8345,8 @@ function packFormHtml(p, isNew){
     <label class="muted" style="margin-bottom:-6px">Цена пакета, zł</label>
     <input id="pk_price" class="input" type="number" step="0.01" min="0.01" value="${p.price_pln ?? ''}" oninput="packHint()">
     <div class="muted" id="pk_hint">${packHintText(p.minutes ?? 180, p.price_pln || 0)}</div>
+    <label class="muted" style="margin-bottom:-6px" for="pk_vat">Ставка VAT — уточните у своего бухгалтера</label>
+    <select id="pk_vat" class="input">${vatOptions(p.vat_pct)}</select>
     <label class="muted" style="margin-bottom:-6px">Сгорает через, дней (0 — бессрочно)</label>
     <input id="pk_days" class="input" type="number" min="0" max="3650" value="${p.days_valid ?? 0}">
     <label class="muted" style="margin-bottom:-6px">Порядок в списке</label>
@@ -8275,7 +8359,7 @@ function packFormHtml(p, isNew){
       ${isNew ? '' : `<button class="btn ghost mini danger" onclick="armPackDelete(this,'${p.id}')">Удалить</button>`}
       <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
     </div>
-    ${isNew ? '' : '<div class="muted">Правка каталога не трогает уже выданное: у купленного пакета своя цена и свой срок — тот, с которым его продали.</div>'}
+    ${isNew ? '' : '<div class="muted">Правка каталога не трогает уже выданное: у купленного пакета своя цена, свой срок и своя ставка VAT — те, с которыми его продали.</div>'}
   </div>`;
 }
 
@@ -8289,6 +8373,7 @@ function packRepaint(){
     days_valid: +(document.getElementById('pk_days')||{}).value || 0,
     sort: +(document.getElementById('pk_sort')||{}).value || 100,
     active: (document.getElementById('pk_active')||{}).checked,
+    vat_pct: document.getElementById('pk_vat') ? Number(document.getElementById('pk_vat').value) : p.vat_pct, // З13-и2: смена зоны выбор не сбрасывает
     id: p.id, zone_id: packZone,
   };
   setHTML('drawerBody', packFormHtml(cur, !p.id));
@@ -8329,6 +8414,7 @@ async function savePack(id){
   if (!body.name){ toast('⚠ Нужно название'); return; }
   if (!(body.minutes > 0)){ toast('⚠ Нужны минуты'); return; }
   if (!(body.price_pln > 0)){ toast('⚠ Нужна цена больше нуля'); return; }
+  vatPut(body, 'pk_vat', packsCache.find(x => x.id === id)); // З13-и2
   try{
     await api(id ? '/admin/packages/' + id : '/admin/packages',
               {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
@@ -8362,9 +8448,11 @@ function zoneEdit(id){
     <input id="zn_name" class="input" placeholder="VIP, Симрейсинг, Утренняя" value="${esc(z.name||'')}" maxlength="32">
     <label class="muted" style="margin-bottom:-6px">Цена часа, zł</label>
     <input id="zn_rate" class="input" type="number" step="0.01" min="0.01" value="${z.rate_pln ?? ''}">
+    <label class="muted" style="margin-bottom:-6px" for="zn_vat">Ставка VAT за время — уточните у своего бухгалтера</label>
+    <select id="zn_vat" class="input">${vatOptions(z.vat_pct)}</select>
     <label class="muted" style="margin-bottom:-6px">Порядок в списке</label>
     <input id="zn_sort" class="input" type="number" value="${z.sort ?? 0}">
-    <div class="muted">Цена действует на новые сессии. Уже начатые досчитываются по своей — она записана в сессии.</div>
+    <div class="muted">Цена и ставка VAT действуют на новые сессии. Уже начатые досчитываются по своим — они записаны в сессии.</div>
     <div style="display:flex; gap:10px">
       <button class="btn mini" onclick="zoneSave('${z.id||''}')"><span data-ic="save"></span>Сохранить</button>
       <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
@@ -8377,9 +8465,11 @@ async function zoneSave(id){
   const sort = parseInt(document.getElementById('zn_sort').value || '0', 10);
   if (!name){ toast('⚠ Нужно название зоны'); return; }
   if (!(rate > 0)){ toast('⚠ Нужна цена часа больше нуля'); return; }
+  const body = {name, rate_pln: rate, sort};
+  vatPut(body, 'zn_vat', zonesCache.find(x => x.id === id)); // З13-и2
   try{
     await api(id ? '/admin/zones/' + id : '/admin/zones',
-              {method: id ? 'PATCH' : 'POST', body: JSON.stringify({name, rate_pln: rate, sort})});
+              {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
     toast('✓ Зона сохранена');
     closeDrawer();
     renderZones();
@@ -8398,7 +8488,8 @@ function armZoneDelete(btn, id){
 /* ── Настройки экономики (А5, только owner) ──
    З7-и1 (№41): карточки по смыслу из одного списка — [ключ, id поля, подпись, от, до, шаг].
    id полей прежние (на них опираются проверки), границы — те же, что settingBounds на
-   сервере. «Алерты» (З22-и1) и «Бухгалтерия» встанут сюда же своими карточками. */
+   сервере. «Алерты» (З22-и1) встанут сюда же своей карточкой.
+   З13-и2: у настройки-выбора седьмой элемент — варианты [значение, подпись] или 'vat' (ставки VAT с сервера). */
 const SETTINGS_GROUPS = [
   {t:'Монеты и XP', why:'Сколько гость получает за игру и пополнение, по какому курсу монеты меняются на минуты и когда тают.', f:[
     ['xp_per_min', 'set_xp', 'XP за минуту игры', 1, 1000],
@@ -8438,17 +8529,22 @@ const SETTINGS_GROUPS = [
   {t:'Мышь и коврик', why:'Железо зала для студии сенсы: под эту мышь пересчитывается сенса гостя, коврик — эталон длины для замера DPI.', f:[
     ['mouse_dpi', 'set_mousedpi', 'DPI мыши клуба (0 — не задан; задан — сенса гостя пересчитывается под неё, cm/360 тот же)', 0, 32000, 50],
     ['mousepad_cm', 'set_mousepad', 'Ширина коврика, см (0 — не задана; тогда гостю предложат лист A4)', 0, 200]]},
+  // З13-и2 (З-Р37): вопросы бухгалтеру — настройки владельца; по умолчанию — самый частый вариант
+  {t:'Бухгалтерия', why:'Как клуб платит VAT — по этому считаются VAT и выгрузка бухгалтеру. Решает бухгалтер: уточните у своего бухгалтера. По умолчанию — самый частый вариант: плательщик VAT, VAT при трате.', f:[
+    ['acc_vat_payer', 'set_vatpayer', 'Плательщик VAT', 0, 1, 0, [[1, 'Да — czynny podatnik VAT'], [0, 'Нет — освобождён (zwolniony z VAT)']]],
+    ['acc_vat_moment', 'set_vatmoment', 'Когда VAT с пополнения кошелька', 0, 1, 0, [[0, 'При трате — bon różnego przeznaczenia'], [1, 'При пополнении — bon jednego przeznaczenia']]],
+    ['acc_topup_vat', 'set_topupvat', 'Ставка VAT пополнения — для «при пополнении»', -1, 100, 0, 'vat']]},
 ];
 const SETTINGS_SAVE_HTML = '<span data-ic="save"></span>Сохранить';
 let settingsLoaded = {}; // значения с сервера — правка сравнивается с ними
-const settingsFields = () => SETTINGS_GROUPS.flatMap(g => g.f.map(([key, id, label, min, max, step]) => [key, id, label, min, max, step || 0, g.t]));
+const settingsFields = () => SETTINGS_GROUPS.flatMap(g => g.f.map(([key, id, label, min, max, step, opts]) => [key, id, label, min, max, step || 0, g.t, opts]));
 
 async function renderSettings(){
   renderZones();    // В4-5: цены зон живут здесь же, в «Экономике»
   renderPackages(); // Е2-и4: и пакеты времени — там же, это тот же прайс
   renderBoardBox(); // Ж8-и3: табло зала — токен и ссылка
   try{
-    const d = await api('/admin/settings');
+    const [d] = await Promise.all([api('/admin/settings'), vatLoad()]); // З13-и2: ставки — для «ставки пополнения»
     settingsLoaded = d.settings || {};
     paintSettings();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -8456,11 +8552,29 @@ async function renderSettings(){
 function paintSettings(){
   document.getElementById('setGrid').innerHTML = SETTINGS_GROUPS.map(g => `<div class="setcard">
     <h4>${esc(g.t)}</h4><div class="why">${esc(g.why)}</div>
-    ${g.f.map(([key, id, label, min, max, step]) => `<label for="${id}">${esc(label)}</label>
-      <input id="${id}" class="input" type="number" min="${min}" max="${max}"${step ? ` step="${step}"` : ''} value="${esc(settingsLoaded[key] ?? '')}" oninput="settingsDirty()">
-      ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>` : ''}`).join('')}
+    ${g.f.map(([key, id, label, min, max, step, opts]) => `<label for="${id}">${esc(label)}</label>
+      ${opts ? `<select id="${id}" class="input" onchange="settingsDirty()">${settingOptions(opts, settingsLoaded[key])}</select>`
+        : `<input id="${id}" class="input" type="number" min="${min}" max="${max}"${step ? ` step="${step}"` : ''} value="${esc(settingsLoaded[key] ?? '')}" oninput="settingsDirty()">`}
+      ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>` : ''}${
+        key === 'acc_vat_moment' ? `<div class="setwarn hidden" id="setVatWarn">⚠ Меняет расчёт VAT и за прошлые месяцы: продажи по ставкам и выгрузка за них посчитаются по-новому. Меняйте вместе с бухгалтером, лучше с первого числа. «Сохранить» переспросит.</div>` : ''}${
+        key === 'acc_topup_vat' ? '<div class="setnote" id="setVatNote"></div>' : ''}`).join('')}
   </div>`).join('');
   settingsDirty();
+}
+// З13-и2: настройка-выбор — варианты [значение, подпись] или 'vat' (ставки VAT с сервера); значения нет в списке —
+// отдельной строкой, чтобы «Сохранить» его не подменил
+function settingOptions(opts, cur){
+  const list = opts === 'vat' ? vatRates.map(r => [r.vat_pct, r.label]) : opts;
+  const all = cur === undefined || list.some(([v]) => String(v) === String(cur)) ? list
+    : list.concat([[cur, opts === 'vat' ? vatLabel(cur) : String(cur)]]);
+  return all.map(([v, t]) => `<option value="${v}"${String(v) === String(cur) ? ' selected' : ''}>${esc(t)}</option>`).join('');
+}
+/* З13-и2: что значат выбранные в «Бухгалтерии» варианты — простыми словами, по тому, что выбрано сейчас (и до «Сохранить») */
+function vatNoteHtml(){
+  const val = id => Number((document.getElementById(id) || {}).value);
+  if (val('set_vatpayer') === 0) return 'Клуб <b>освобождён от VAT</b>: в выгрузке не будет колонок VAT. Ставки у зон, пакетов и позиций остаются — пригодятся, если клуб станет плательщиком.';
+  if (val('set_vatmoment') === 1) return `VAT — <b>с пополнения</b>, по ставке ${esc(vatLabel(val('set_topupvat')))}; траты с кошелька его уже не начисляют. Продажи и пакеты за живые деньги — по своей ставке.`;
+  return 'Пополнение кошелька — <b>без VAT</b>. VAT — когда гость тратит: время — по ставке зоны, пакет — по ставке пакета, товары и кухня — по ставке позиции.';
 }
 // что изменилось против сервера: {ключ: число}; пустое поле — NaN, его не пропустит проверка
 function settingsChanged(){
@@ -8485,6 +8599,9 @@ function settingsDirty(){
   document.getElementById('setBar').classList.toggle('dirty', n > 0);
   document.getElementById('setUndo').classList.toggle('hidden', n === 0);
   document.getElementById('setRhourWarn')?.classList.toggle('hidden', !('report_hour' in ch));
+  document.getElementById('setVatWarn')?.classList.toggle('hidden', !('acc_vat_payer' in ch || 'acc_vat_moment' in ch)); // З13-и2
+  const note = document.getElementById('setVatNote');
+  if (note) note.innerHTML = vatNoteHtml();
 }
 async function saveSettings(btn){
   const ch = settingsChanged(), n = Object.keys(ch).length;
@@ -8505,8 +8622,9 @@ async function saveSettings(btn){
       toast(`✓ Сохранено настроек: ${n} — в журнале «было → стало»`);
     }catch(e){ toast('⚠ ' + e.message); }
   };
-  // граница суток переписывает прошлые отчёты — сохраняем со взводом
+  // граница суток переписывает прошлые отчёты — сохраняем со взводом; З13-и2: смена расчёта VAT — тоже
   if ('report_hour' in ch && btn) armButton(btn, '<span data-ic="save"></span>Ещё раз — сдвинуть границу суток', go);
+  else if (('acc_vat_payer' in ch || 'acc_vat_moment' in ch) && btn) armButton(btn, '<span data-ic="save"></span>Ещё раз — сменить расчёт VAT', go);
   else go();
 }
 
@@ -8782,6 +8900,8 @@ const PAL_WORDS = [
   {who:'owner', words:['обязательства', 'обязательства клуба', 'сколько должны гостям', 'предоплата', 'долг временем', 'сгорело', 'сгоревшее',
    'сгоревшие пакеты', 'сгоревшие монеты'], name:'Обязательства клуба', // З12-и1
    sub:'Отчёты → Деньги: сколько клуб должен гостям сейчас и что сгорело за период', ic:'coins', run:() => palGoLiab()},
+  {who:'owner', words:['vat', 'ндс', 'налог', 'ставка vat', 'плательщик vat', 'освобождён от vat', 'czynny', 'zwolniony', 'bon'], name:'Ставки VAT', // З13-и2
+   sub:'Экономика → Бухгалтерия: плательщик VAT, когда VAT с пополнения; ставки — у зон, пакетов и позиций', ic:'gear', run:() => palGoVat()},
   {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
   {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
@@ -8844,6 +8964,15 @@ function palGoDebt(){
   const t = setInterval(() => {
     const el = document.getElementById('repDebt');
     if ((el && !document.querySelector('#repBody .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'center'}); }
+  }, 100);
+}
+// З13-и2: «Ставки VAT» — карточка «Бухгалтерия» в «Экономике»: ждём, пока настройки встанут, и показываем её
+function palGoVat(){
+  nav('settings');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('set_vatpayer');
+    if (el || ++n > 40){ clearInterval(t); if (el) el.closest('.setcard').scrollIntoView({block:'center'}); }
   }, 100);
 }
 // З11-и3: возвраты — последний блок «Денег», грузится своим запросом: ждём его и показываем

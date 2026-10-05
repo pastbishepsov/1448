@@ -1,8 +1,8 @@
-// З7-и1 (№41), браузер: «Экономика» — семь карточек по смыслу, у каждой строка «на что влияет»; «Сохранить» без
-// правок ничего не отправляет; правка одной настройки подсвечена, уходит одна и одной строкой в журнал; у часа
+// З7-и1 (№41), браузер: «Экономика» — карточки по смыслу (с З13-и2 — восемь: и «Бухгалтерия»), у каждой строка «на что
+// влияет»; «Сохранить» без правок ничего не отправляет; правка одной настройки подсвечена, уходит одна и одной строкой в журнал; у часа
 // границы суток — предупреждение про прошлые отчёты и взвод на «Сохранить». Таблица settings в конце — как была.
 const z = require('./_z');
-const CARDS = ['Монеты и XP', 'Лимиты персонала', 'Клубные сутки и сегменты', 'Сессия у ПК', 'Брони', 'Стрики и ДР', 'Мышь и коврик'];
+const CARDS = ['Монеты и XP', 'Лимиты персонала', 'Клубные сутки и сегменты', 'Сессия у ПК', 'Брони', 'Стрики и ДР', 'Мышь и коврик', 'Бухгалтерия'];
 (async () => {
   const orig = z.rows("SELECT key || '|' || value FROM settings").map(r => r.split('|'));
   z.atEnd(() => {
@@ -20,13 +20,13 @@ const CARDS = ['Монеты и XP', 'Лимиты персонала', 'Клу�
   await z.nav(page, 'settings');
   const cards = await page.evaluate(() => [...document.querySelectorAll('#setGrid .setcard')].map(c => ({
     t: (c.querySelector('h4') || {}).textContent, why: ((c.querySelector('.why') || {}).textContent || '').trim(),
-    ids: [...c.querySelectorAll('input')].map(i => i.id) })));
-  z.check('семь карточек: ' + CARDS.join(' · '), JSON.stringify(cards.map(c => c.t)) === JSON.stringify(CARDS), JSON.stringify(cards.map(c => c.t)));
-  z.check('у каждой карточки — строка «на что влияет»', cards.length === 7 && cards.every(c => c.why.length > 20), JSON.stringify(cards.map(c => c.why)));
+    ids: [...c.querySelectorAll('input, select')].map(i => i.id) })));
+  z.check('восемь карточек: ' + CARDS.join(' · '), JSON.stringify(cards.map(c => c.t)) === JSON.stringify(CARDS), JSON.stringify(cards.map(c => c.t)));
+  z.check('у каждой карточки — строка «на что влияет»', cards.length === 8 && cards.every(c => c.why.length > 20), JSON.stringify(cards.map(c => c.why)));
   const where = id => (cards.find(c => c.ids.includes(id)) || {}).t;
-  z.check('поля на своих местах: час суток — «Клубные сутки», кейсы админа — «Лимиты персонала», DPI — «Мышь и коврик», 31 поле',
+  z.check('поля на своих местах: час суток — «Клубные сутки», кейсы админа — «Лимиты персонала», DPI — «Мышь и коврик», плательщик VAT — «Бухгалтерия», 34 поля',
     where('set_rhour') === 'Клубные сутки и сегменты' && where('set_casecap') === 'Лимиты персонала' && where('set_mousedpi') === 'Мышь и коврик'
-    && cards.reduce((n, c) => n + c.ids.length, 0) === 31, JSON.stringify(cards.map(c => [c.t, c.ids.length])));
+    && where('set_vatpayer') === 'Бухгалтерия' && cards.reduce((n, c) => n + c.ids.length, 0) === 34, JSON.stringify(cards.map(c => [c.t, c.ids.length])));
   await z.shot(page, 'z7_settings');
 
   const a0 = audit();
