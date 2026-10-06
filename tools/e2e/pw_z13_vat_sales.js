@@ -56,9 +56,9 @@ const z = require('./_z');
     + 'есть 23 % и 8 %', b0.head && JSON.stringify(b0.rows) === JSON.stringify(want(V))
     && (V.rates || []).some(r => r.vat_pct === 23) && (V.rates || []).some(r => r.vat_pct === 8), JSON.stringify({ rows: b0.rows, want: want(V) }));
   z.check('как считали — «VAT при трате…», «Возвраты — минусом в день отмены», ссылка «Как считать — в «Экономика» → «Бухгалтерия»»; '
-    + '«Из чего:» — виды, «По способам — для сверки с терминалом:» — способы',
+    + '«Из чего:» — виды, «По способам оплаты:» — способы',
     /^VAT при трате: время с кошелька — по ставке зоны/.test(b0.how) && /Возвраты — минусом в день отмены/.test(b0.how)
-    && /Как считать — в «Экономика» → «Бухгалтерия»/.test(b0.how) && /^Из чего: .*товары и кухня/.test(b0.parts) && /^По способам — для сверки с терминалом: .*карта/.test(b0.pays),
+    && /Как считать — в «Экономика» → «Бухгалтерия»/.test(b0.how) && /^Из чего: .*товары и кухня/.test(b0.parts) && /^По способам оплаты: .*карта/.test(b0.pays),
     JSON.stringify(b0));
   await boss.evaluate(() => { const e = document.getElementById('ovVatHead'); if (e) e.scrollIntoView({ block: 'start' }); });
   await z.sleep(300);

@@ -218,16 +218,18 @@ type vatCell struct {
 
 // vatAgg — продажи по ставкам за период.
 type vatAgg struct {
-	Days    map[string]map[int]*vatCell // день → ставка
-	Rates   map[int]*vatCell            // ставка за период: суммы дней
-	Kinds   map[string]*vatCell         // вид: брутто и операций (VAT по видам не считается)
-	Methods map[string]int64            // способ: брутто
+	Days       map[string]map[int]*vatCell // день → ставка
+	Rates      map[int]*vatCell            // ставка за период: суммы дней
+	Kinds      map[string]*vatCell         // вид: брутто и операций (VAT по видам не считается)
+	Methods    map[string]int64            // способ: брутто
+	DayMethods map[string]map[string]int64 // З13-и4: день → способ: брутто (лист «Продажи по дням и ставкам»)
 }
 
 // vatSum — строки по дням и ставкам (чистая, тест): освобождённому от VAT всё — «zw»; VAT дня по ставке — из брутто
 // дня (vatOf), за период — сумма дней.
 func vatSum(rows []vatRow, payer bool) vatAgg {
-	a := vatAgg{Days: map[string]map[int]*vatCell{}, Rates: map[int]*vatCell{}, Kinds: map[string]*vatCell{}, Methods: map[string]int64{}}
+	a := vatAgg{Days: map[string]map[int]*vatCell{}, Rates: map[int]*vatCell{}, Kinds: map[string]*vatCell{}, Methods: map[string]int64{},
+		DayMethods: map[string]map[string]int64{}}
 	cell := func(m map[int]*vatCell, r int) *vatCell {
 		if m[r] == nil {
 			m[r] = &vatCell{}
@@ -251,6 +253,10 @@ func vatSum(rows []vatRow, payer bool) vatAgg {
 		a.Kinds[x.Kind].Gross += x.G
 		a.Kinds[x.Kind].N += x.N
 		a.Methods[x.Method] += x.G
+		if a.DayMethods[x.D] == nil {
+			a.DayMethods[x.D] = map[string]int64{}
+		}
+		a.DayMethods[x.D][x.Method] += x.G
 	}
 	for _, day := range a.Days {
 		for r, c := range day {

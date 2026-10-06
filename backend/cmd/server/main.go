@@ -351,6 +351,8 @@ func main() {
 		own.GET("/reports/profit", handleReportProfit)
 		// З13-и3: продажи по ставкам VAT за период — по настройкам «Бухгалтерии», по дням — для сверки с фискальной кассой
 		own.GET("/reports/vat", handleReportVat)
+		// З13-и4: выгрузка бухгалтеру — XLSX или архив CSV, заголовки PL или RU
+		own.GET("/export", handleExport)
 		// З9-и1: расходы, категории и контрагенты — только владелец (З-Р29)
 		own.GET("/expense-categories", handleExpenseCategories)
 		own.POST("/expense-categories", handleExpenseCategoryCreate)      // З9-и4: своя категория

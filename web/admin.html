@@ -4124,7 +4124,8 @@ const AUD_GROUPS = {
           'owner_repay','owner_repay_void', // З9-и3б
           'expense_category_create','expense_category_update','counterparty_update','expense_methods', // З9-и4: справочники
           'expense_template_create','expense_template_update', // З9-и5: регулярные расходы (всё это видит только владелец)
-          'supply_price', 'lot_price'], // З10-и6, З10-и7: цены поставки и партий без поставки — только владелец
+          'supply_price', 'lot_price', // З10-и6, З10-и7: цены поставки и партий без поставки — только владелец
+          'export'], // З13-и4: выгрузка бухгалтеру — только владелец
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -4134,7 +4135,8 @@ const AUD_GROUPS = {
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','sale_paid','settle','debt_write_off','debt_restore','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
-          'supply_receive','supply_edit','supply_cancel'], // З10-и4: приёмка
+          'supply_receive','supply_edit','supply_cancel', // З10-и4: приёмка
+          'goods_vat'], // З13-и2: ставка VAT всей категории
   staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close','login_failed'], // ревью 26.08; Ж6-и4: сдача кассы
 };
 const AUD_LABEL = {
@@ -4175,6 +4177,8 @@ const AUD_LABEL = {
   supply_receive:'приёмка', supply_edit:'приёмка: правка', supply_cancel:'приёмка: отмена', // З10-и4
   supply_price:'закупка: цены', // З10-и6
   lot_price:'партия: цена', // З10-и7
+  goods_vat:'товары: ставка VAT категории', // З13-и2
+  export:'выгрузка бухгалтеру', // З13-и4
   // Эти виды сервер писал давно, а журнал печатал их сырым английским
   // идентификатором (ревью 26.08).
   guest_update:'гость: правка данных', password_reset:'сброс пароля',
@@ -4218,6 +4222,8 @@ const AUD_ICON = {
   supply_receive:'box', supply_edit:'edit', supply_cancel:'cross', // З10-и4
   supply_price:'coins', // З10-и6
   lot_price:'coins', // З10-и7
+  goods_vat:'edit', // З13-и2
+  export:'save', // З13-и4
   guest_update:'edit', password_reset:'users', // ревью 26.08
   pc_hold:'clock', pc_unhold:'check', pc_release:'check', // Ж4-и3
   seat_cancel:'cross', session_move:'monitor',
@@ -6646,7 +6652,7 @@ function ovVatHtml(v){
       <tr class="ovSum" data-r="total"><td><b>Итого</b></td>${cell(t.gross_pln, 'брутто')}${cell(t.net_pln, 'нетто')}${cell(t.vat_pln, 'VAT')}</tr>
     </table></div>
     <div class="muted" id="ovVatParts" style="margin:6px 0 2px">Из чего: ${kinds || 'ничего'}.</div>
-    <div class="muted" id="ovVatPays" style="margin:0 0 10px">По способам — для сверки с терминалом: ${pays || 'ничего'}.</div>
+    <div class="muted" id="ovVatPays" style="margin:0 0 10px">По способам оплаты: ${pays || 'ничего'}.</div>
     ${days.length ? `<details class="ovVatDays" id="ovVatDays"><summary>По дням — для сверки с дневными отчётами кассы</summary><div class="tablewrap"><table class="ovPnl">
       <tr><th>День</th>${rates.map(r => `<th class="n">${esc(r.label)}</th>`).join('')}<th class="n">Брутто</th><th class="n">VAT</th></tr>
       ${days.map(x => `<tr data-d="${x.date}"><td>${repDate(x.date)}</td>${rates.map(r => {

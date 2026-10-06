@@ -104,6 +104,12 @@ var settingBounds = map[string][2]int64{
 	"acc_vat_moment": {0, 1},    // VAT у пополнения: 0 — при трате (bon różnego przeznaczenia), 1 — при пополнении
 	"acc_topup_vat":  {-1, 100}, // ставка пополнения для «при пополнении»; только из models.VatRates (−1 — zw)
 	"acc_gift_vat":   {0, 1},    // З13-и3: подарки товаров в VAT — 1 по себестоимости, 0 — нет
+	// З13-и4: файл выгрузки — CSV: разделитель (0 «;», 1 «,», 2 табуляция), десятичный знак (0 «,», 1 «.»),
+	// кодировка (0 UTF-8 с BOM, 1 Windows-1250); даты в CSV и XLSX (0 ДД.ММ.ГГГГ, 1 ГГГГ-ММ-ДД)
+	"acc_csv_sep":     {0, 2},
+	"acc_csv_decimal": {0, 1},
+	"acc_csv_enc":     {0, 1},
+	"acc_date_fmt":    {0, 1},
 }
 
 // settingDefaults — значение каждой числовой настройки, пока у неё нет строки
@@ -149,6 +155,11 @@ var settingDefaults = map[string]int64{
 	"acc_vat_moment": 0,
 	"acc_topup_vat":  models.VatDefault,
 	"acc_gift_vat":   0, // З13-и3: подарки — без VAT (решение основателя 04.10, план З13)
+	// З13-и4: как в польском Excel — «;», десятичная запятая, UTF-8 с BOM, ДД.ММ.ГГГГ
+	"acc_csv_sep":     0,
+	"acc_csv_decimal": 0,
+	"acc_csv_enc":     0,
+	"acc_date_fmt":    0,
 }
 
 // settingChoices — настройки, у которых не диапазон, а список (З13-и1): ставка пополнения — только из ставок VAT.
