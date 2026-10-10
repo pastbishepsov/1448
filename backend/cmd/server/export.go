@@ -380,6 +380,7 @@ func exportJournal(ops []exportOp, lang int) xsheet {
 			cText(o.Doc), cText(o.Descr), qty, cMoney(o.Sum), taxed, rate, net, vat, cMoney(o.Drawer), cText(who(o.WhoID)),
 			cText(note), cText(o.ID)}})
 	}
+	sh.n = len(sh.rows)
 	return sh
 }
 
@@ -456,6 +457,7 @@ func exportVatDays(p period, a vatAgg, lang int) xsheet {
 		}
 		sh.rows = append(sh.rows, line(cDay(d), a.Days[k], a.DayMethods[k], false))
 	}
+	sh.n = len(sh.rows)
 	sh.rows = append(sh.rows, line(cText(tr(lang, "h_total")), a.Rates, a.Methods, true))
 	return sh
 }
@@ -490,7 +492,14 @@ var exportAboutWords = map[string][2]string{
 	"rules_gifts": {"подарки товаров — по себестоимости партий, по ставке позиции", "nieodpłatne przekazanie towarów — wg kosztu zakupu partii, wg stawki towaru"},
 	"rules_zw":    {"клуб освобождён от VAT: все продажи — «zw», VAT ноль", "klub zwolniony z VAT: cała sprzedaż — «zw», VAT zero"},
 	"sheets":      {"Листы", "Arkusze"},
-	"sheets_v":    {"«%s» — строк: %d; «%s» — дней с продажами: %d", "«%s» — wierszy: %d; «%s» — dni ze sprzedażą: %d"},
+	"sheets_rows": {"строк", "wierszy"}, "sheets_days": {"дней с продажами", "dni ze sprzedażą"},
+	"sheets_docs": {"документов", "dokumentów"},
+	"at_end":      {"На конец периода", "Na koniec okresu"},
+	"at_end_now":  {"период ещё идёт — на момент выгрузки", "okres trwa — stan w chwili eksportu"},
+	"kpkw":        {"Номера KP/KW", "Numeracja KP/KW"},
+	"kpkw_0":      {"с начала месяца: KP 1/%02d/%d, KW 1/%02d/%d", "od początku miesiąca: KP 1/%02d/%d, KW 1/%02d/%d"},
+	"kpkw_1":      {"с начала года: KP 1/%d, KW 1/%d", "od początku roku: KP 1/%d, KW 1/%d"},
+	"kpkw_2":      {"без номеров", "bez numerów"},
 	"sums":        {"Суммы", "Kwoty"},
 	"sums_v": {"в злотых (PLN), брутто со знаком: + пришло или продано, − возвращено или потрачено; «Касса» — движение наличных в ящике клуба",
 		"w złotych (PLN), brutto ze znakiem: + wpływ lub sprzedaż, − zwrot lub wydatek; «Kasa» — ruch gotówki w kasie klubu"},
@@ -498,14 +507,28 @@ var exportAboutWords = map[string][2]string{
 	"vat_note_v": {"по каждой операции, до гроша; итог по ставкам — лист «Продажи по дням и ставкам», из брутто дня, как касса: разница — гроши округления",
 		"dla każdej operacji, do grosza; suma wg stawek — arkusz «Sprzedaż wg dni i stawek», z brutto dnia, jak kasa: różnica — grosze zaokrągleń"},
 	"expenses_note": {"Расходы", "Wydatki"},
-	"expenses_note_v": {"по дню операции, без сторно, оплаченные и нет; VAT — по документу; закупка товара — отдельной операцией",
-		"wg daty operacji, bez storn, opłacone i nie; VAT — z dokumentu; zakup towaru — osobna operacja"},
+	"expenses_note_v": {"по дню операции, без сторно, оплаченные и нет; VAT — по документу; закупка товара — отдельной операцией; лист «Расходы» — все расходы периода, сторнированные — строками с пометкой, в итог не входят",
+		"wg daty operacji, bez storn, opłacone i nie; VAT — z dokumentu; zakup towaru — osobna operacja; arkusz «Wydatki» — wszystkie wydatki okresu, stornowane — wierszami z adnotacją, poza sumą"},
+	"earned_note": {"Отработано", "Przychód wykonany"},
+	"earned_note_v": {"время с кошелька, пакеты по мере игры (до журнала расхода пакетов — оценка по средней цене минуты), товары у стойки и кухня в момент выдачи; пополнения и проданные пакеты — предоплата, сюда не входят; «отдано временем» (монеты, компенсации) — не выручка, рядом",
+		"czas gry z portfela, pakiety w miarę wykorzystania (sprzed ewidencji zużycia pakietów — szacunek wg średniej ceny minuty), towary i kuchnia w chwili wydania; doładowania i sprzedane pakiety to przedpłata — tu nie wchodzą; czas oddany (monety, rekompensaty) — nie przychód, obok"},
+	"cash_note": {"Касса", "Raport kasowy"},
+	"cash_note_v": {"наличные ящика клуба по дням: остаток на начало, наличные за день по видам — одним документом KP (как дневной отчёт кассы), возвраты наличными, расходы из кассы, возвраты владельцу, инкассации и коррекции — каждый своим документом, расхождение пересчётов дня — строкой, остаток на конец; номера — по порядку на момент выгрузки: правка прошлых дней сдвигает номера после неё",
+		"gotówka w kasie klubu wg dni: stan na początek, gotówka za dzień wg rodzaju — jednym dokumentem KP (jak raport dobowy kasy fiskalnej), zwroty gotówką, wydatki z kasy, zwroty właścicielowi, wypłaty (inkaso) i korekty — każdy osobnym dokumentem, różnica kasowa dnia — wierszem, stan na koniec; numery — kolejno w chwili eksportu: korekta minionych dni przesuwa numery po niej"},
+	"stock_note": {"Склад", "Magazyn"},
+	"stock_note_v": {"остатки по партиям на конец периода, цена закупки за штуку — брутто; партий без цены — %d шт., в стоимость не вошли",
+		"stan partii na koniec okresu, cena zakupu za szt. — brutto; w partiach bez ceny — %d szt., poza wartością"},
+	"owed_note": {"Предоплаты и долги", "Przedpłaty i należności"},
+	"owed_note_v": {"кошельки и неотыгранные пакеты (по доле цены, подаренные — 0 zł) — что клуб должен гостям за оплаченное; долги гостей — бар в долг и выданная кухня, не рассчитанные и не списанные",
+		"portfele i niewykorzystane pakiety (proporcjonalnie do ceny, nieodpłatne — 0 zł) — co klub winien klientom za opłacone; należności od klientów — bar na kredyt i wydana kuchnia, nierozliczone i niespisane"},
 }
 
 func ta(lang int, key string) string { return exportAboutWords[key][lang] }
 
-// exportAbout — лист «О выгрузке»: как посчитано.
-func exportAbout(p period, reportHour int, cfg vatConfig, a vatAgg, ops, days int, made time.Time, by, format string, lang int) xsheet {
+// exportAbout — лист «О выгрузке»: как посчитано; data — листы выгрузки, у каждого — сколько строк данных; end — «на
+// конец периода»; noCost — штук в партиях без цены на этот момент.
+func exportAbout(p period, reportHour int, cfg vatConfig, a vatAgg, data []xsheet, made, end time.Time, scheme int, noCost int64,
+	by, format string, lang int) xsheet {
 	var club models.Club
 	db.First(&club, "is_active = ?", true)
 	sh := xsheet{name: tr(lang, "sheet_about"), file: []string{"o_vygruzke", "o_eksporcie"}[lang],
@@ -559,10 +582,38 @@ func exportAbout(p period, reportHour int, cfg vatConfig, a vatAgg, ops, days in
 		rules = ta(lang, "rules_zw") + "; " + rules
 	}
 	add("rules", cText(rules))
-	add("sheets", cText(fmt.Sprintf(ta(lang, "sheets_v"), tr(lang, "sheet_ops"), ops, tr(lang, "sheet_vat"), days)))
+	list := make([]string, 0, len(data))
+	for _, d := range data {
+		unit := ta(lang, "sheets_rows")
+		switch d.name {
+		case tr(lang, "sheet_vat"):
+			unit = ta(lang, "sheets_days")
+		case tr(lang, "sheet_cash"):
+			unit = ta(lang, "sheets_docs")
+		}
+		list = append(list, fmt.Sprintf("«%s» — %s: %d", d.name, unit, d.n))
+	}
+	add("sheets", cText(strings.Join(list, "; ")))
+	atEnd := end.In(p.FromDay.Location()).Format("02.01.2006 15:04")
+	if end.Equal(made) {
+		atEnd += " — " + ta(lang, "at_end_now")
+	}
+	add("at_end", cText(atEnd))
+	kpkw := ta(lang, "kpkw_2")
+	switch scheme {
+	case kpkwMonth:
+		kpkw = fmt.Sprintf(ta(lang, "kpkw_0"), int(p.FromDay.Month()), p.FromDay.Year(), int(p.FromDay.Month()), p.FromDay.Year())
+	case kpkwYear:
+		kpkw = fmt.Sprintf(ta(lang, "kpkw_1"), p.FromDay.Year(), p.FromDay.Year())
+	}
+	add("kpkw", cText(kpkw))
 	add("sums", cText(ta(lang, "sums_v")))
 	add("vat_note", cText(ta(lang, "vat_note_v")))
 	add("expenses_note", cText(ta(lang, "expenses_note_v")))
+	add("earned_note", cText(ta(lang, "earned_note_v")))
+	add("cash_note", cText(ta(lang, "cash_note_v")))
+	add("stock_note", cText(fmt.Sprintf(ta(lang, "stock_note_v"), noCost)))
+	add("owed_note", cText(ta(lang, "owed_note_v")))
 	return sh
 }
 
@@ -571,16 +622,19 @@ func exportAbout(p period, reportHour int, cfg vatConfig, a vatAgg, ops, days in
 // exportFormat — как писать файл по настройкам «Бухгалтерии» (З13-и4): разделитель CSV (0 «;», 1 «,», 2 табуляция),
 // десятичный знак (0 «,», 1 «.»), кодировка (0 UTF-8 с BOM, 1 Windows-1250), даты (0 ДД.ММ.ГГГГ, 1 ГГГГ-ММ-ДД).
 func exportFormat(now time.Time) bookFormat {
-	set := func(key string) int64 { // строку руками в базе не туда — как по умолчанию, а не паника на индексе
-		v, b := settingInt64(key, settingDefaults[key]), settingBounds[key]
-		if v < b[0] || v > b[1] {
-			return settingDefaults[key]
-		}
-		return v
-	}
+	set := exportSetting
 	f := bookFormat{sep: []rune{';', ',', '\t'}[set("acc_csv_sep")], decimal: []byte{',', '.'}[set("acc_csv_decimal")],
 		w1250: set("acc_csv_enc") == 1, iso: set("acc_date_fmt") == 1, now: now}
 	return f
+}
+
+// exportSetting — числовая настройка выгрузки; строку руками в базе не туда — как по умолчанию, а не паника на индексе.
+func exportSetting(key string) int64 {
+	v, b := settingInt64(key, settingDefaults[key]), settingBounds[key]
+	if v < b[0] || v > b[1] {
+		return settingDefaults[key]
+	}
+	return v
 }
 
 // exportFormatText — формат для «О выгрузке» (чистая, тест).
@@ -649,12 +703,18 @@ func handleExport(c *gin.Context) {
 	a := vatSum(vatRowsIn(p, reportHour, cfg), cfg.Payer)
 	ops := exportOpsIn(p, reportHour, cfg)
 	journal, days := exportJournal(ops, lang), exportVatDays(p, a, lang)
+	// З13-и5: листы на тех же функциях, что экраны; «на конец периода» — конец последних суток или «сейчас»
+	book, end, scheme := cashBookIn(p, reportHour, now), periodEnd(p, now), int(exportSetting("acc_kpkw"))
+	stock, noCost := sheetStock(end, lang)
+	data := []xsheet{journal, days, sheetEarned(p, reportHour, now, lang), sheetExpenses(p, lang), sheetPurchases(p, lang),
+		sheetCash(p, reportHour, now, book, scheme, lang), sheetCloseouts(p, book, lang), sheetReturns(p, lang),
+		sheetWriteOffs(p, lang), sheetGifts(p, lang), stock, sheetOwed(owedAtMoment(end), end, lang)}
 	by := ""
 	if me, err := uuid.Parse(c.GetString("user_id")); err == nil {
 		by = nicknamesByID([]string{me.String()})[me.String()]
 	}
-	about := exportAbout(p, reportHour, cfg, a, len(journal.rows), len(days.rows)-1, now, by, exportFormatText(format, f, lang), lang)
-	sheets := []xsheet{about, journal, days}
+	about := exportAbout(p, reportHour, cfg, a, data, now, end, scheme, noCost, by, exportFormatText(format, f, lang), lang)
+	sheets := append([]xsheet{about}, data...)
 	var buf bytes.Buffer
 	var err error
 	ctype := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

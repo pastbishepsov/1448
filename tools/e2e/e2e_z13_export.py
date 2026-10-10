@@ -298,9 +298,10 @@ st, ctype, disp, data = raw()
 book, styles = xlsx(data)
 OPS = book.get("Wszystkie operacje") or EMPTY
 ops = table(OPS)
-check("файл XLSX «1448-eksport-<день>_<день>.xlsx»: три листа — «O eksporcie», «Wszystkie operacje», «Sprzedaż wg dni i stawek»",
+check("файл XLSX «1448-eksport-<день>_<день>.xlsx»: первые три листа — «O eksporcie», «Wszystkie operacje», «Sprzedaż wg dni i stawek» "
+      "(дальше — листы З13-и5)",
       st == 200 and ctype.startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-      and f'filename="1448-eksport-{D}_{D}.xlsx"' in disp and list(book) == ["O eksporcie", "Wszystkie operacje", "Sprzedaż wg dni i stawek"],
+      and f'filename="1448-eksport-{D}_{D}.xlsx"' in disp and list(book)[:3] == ["O eksporcie", "Wszystkie operacje", "Sprzedaż wg dni i stawek"],
       J([st, ctype, disp, list(book)]))
 HEAD = ["Lp.", "Dzień", "Data i godzina", "Operacja", "Forma płatności", "Klient lub kontrahent", "Dokument", "Opis", "Ilość", "Kwota brutto",
         "Sprzedaż opodatkowana", "Stawka VAT", "Netto", "VAT", "Kasa", "Kto", "Uwagi", "ID operacji"]
@@ -383,9 +384,10 @@ body = z.read(files[1]) if len(files) > 1 else b""
 crows = list(csv.reader(io.StringIO(body.decode("utf-8-sig")), delimiter=";"))
 ch = crows[0] if crows else []
 cops = [dict(zip(ch, r)) for r in crows[1:]]
-check("архив CSV «1448-vygruzka-<день>_<день>.zip»: три файла по листам, UTF-8 с BOM, строки через CRLF, «;», русская шапка",
+check("архив CSV «1448-vygruzka-<день>_<день>.zip»: файл на лист, первые три — по листам З13-и4, UTF-8 с BOM, строки через CRLF, «;», "
+      "русская шапка",
       st == 200 and ctype == "application/zip" and f'filename="1448-vygruzka-{D}_{D}.zip"' in disp
-      and files == ["01_o_vygruzke.csv", "02_vse_operacii.csv", "03_prodazhi_po_dnyam.csv"] and body.startswith(b"\xef\xbb\xbf") and b"\r\n" in body
+      and files[:3] == ["01_o_vygruzke.csv", "02_vse_operacii.csv", "03_prodazhi_po_dnyam.csv"] and body.startswith(b"\xef\xbb\xbf") and b"\r\n" in body
       and ch[:4] == ["№", "Клубный день", "Время", "Операция"] and ch[9:11] == ["Сумма брутто", "Облагается VAT"], J([st, ctype, disp, files, ch]))
 csum = lambda names: sum(money(o["Сумма брутто"]) for o in cops if o["Операция"] in names)
 check("CSV по-русски — те же строки и суммы, что XLSX: даты ДД.ММ.ГГГГ, деньги с запятой",

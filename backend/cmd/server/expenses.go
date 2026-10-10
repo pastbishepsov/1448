@@ -590,6 +590,13 @@ func reloadExpense(id uuid.UUID) *models.Expense {
 	return &e
 }
 
+// expensesOfPeriod — расходы периода по дню операции, со сторнированными: «Расходы» на экране и лист выгрузки
+// «Расходы» (З13-и5) — одним запросом.
+func expensesOfPeriod(p period) *gorm.DB {
+	return expenseQ().Model(&models.Expense{}).Where("op_date >= ? AND op_date <= ?",
+		p.FromDay.Format("2006-01-02"), p.ToDay.Format("2006-01-02"))
+}
+
 // GET /admin/expenses?preset=…|from=…&to=…[&category_id][&method][&counterparty_id]
 // — расходы по дню операции (owner): список (сторнированные — с пометкой) и
 // итоги без сторно — всего и по категориям.
@@ -598,8 +605,7 @@ func handleExpenseList(c *gin.Context) {
 	if !ok {
 		return
 	}
-	q := expenseQ().Model(&models.Expense{}).Where("op_date >= ? AND op_date <= ?",
-		p.FromDay.Format("2006-01-02"), p.ToDay.Format("2006-01-02"))
+	q := expensesOfPeriod(p)
 	for col, code := range map[string]string{"category_id": "bad_category", "counterparty_id": "bad_counterparty"} {
 		if v := strings.TrimSpace(c.Query(col)); v != "" {
 			id, err := uuid.Parse(v)

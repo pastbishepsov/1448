@@ -72,10 +72,17 @@ SELECT
     WHERE ` + sessionCounted + ` AND coin_minutes_used > 0 AND started_at >= @from AND started_at < @to)::bigint AS given
 FROM e, a`
 
-// earnedIn — «Отработанная выручка» за [from, to) и «отдано временем».
-func earnedIn(from, to time.Time) gin.H {
+// earnedAggIn — части «Отработанной выручки» за [from, to): одна функция для «Обзора» и для листа выгрузки
+// «Отработано по дням» (З13-и5).
+func earnedAggIn(from, to time.Time) earnedAgg {
 	var e earnedAgg
 	db.Raw(earnedSQL, map[string]any{"from": from, "to": to}).Scan(&e)
+	return e
+}
+
+// earnedIn — «Отработанная выручка» за [from, to) и «отдано временем».
+func earnedIn(from, to time.Time) gin.H {
+	e := earnedAggIn(from, to)
 	pln := models.PLNFromGrosz
 	return gin.H{
 		"pln":        pln(e.total()),

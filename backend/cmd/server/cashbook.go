@@ -80,19 +80,39 @@ func plnPtr(g *int64) any {
 	return models.PLNFromGrosz(*g)
 }
 
-// GET /admin/cash/book?preset=…|from=…&to=… — кассовая книга по клубным дням (owner).
-func handleCashBook(c *gin.Context) {
-	p, _, reportHour, ok := periodFromQuery(c)
-	if !ok {
-		return
-	}
-	if p.Days > maxBookDays {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "too_long", "message": "Кассовая книга — не длиннее 92 дней"})
-		return
-	}
-	now := time.Now()
-	wins := bookWindows(p, reportHour, now)
+// bookDay — день кассовой книги: окно, движение наличных, остатки, расхождение пересчётов и то, из чего день
+// сложился. Opening/Closing nil — ящика ещё не было; Start — нулевая точка, если ящик заведён в этот день (Base —
+// её остаток, от него считается расхождение дня).
+type bookDay struct {
+	bookWindow
+	Flow             drawerFlow
+	Opening, Closing *int64
+	Diff             int64
+	Today            bool
+	Start            *models.ShiftCloseout
+	Base             int64
+	Closeouts        []*models.ShiftCloseout
+	Events           []*models.CashEvent      // с отменёнными — их строка с пометкой
+	Tills            []*models.Expense        // расходы из кассы — по моменту, когда ушли из ящика
+	Owners           []*models.OwnerRepayment // возвраты владельцу из кассы, с отменёнными
+	Refunds          []returnRow              // возвраты наличными — по моменту отмены
+}
 
+// cashBook — кассовая книга периода: дни, итоги и остатки на начало и конец. Одна функция для экрана (З8-и3) и
+// для листов выгрузки «Касса» и «Сдачи касс» (З13-и5): цифры сходятся.
+type cashBook struct {
+	Days        []bookDay
+	Total       drawerFlow
+	Diff        int64
+	First, Last *int64              // остаток на начало периода и на конец последнего дня
+	Explained   map[uuid.UUID]int64 // сдача → расходы, внесённые позже и объяснившие её расхождение
+	Nick        map[string]string   // ники всех, кто в книге (и кто вносил расходы из кассы)
+	Cats        map[string]string   // категории расходов
+}
+
+// cashBookIn — кассовая книга периода p по клубным дням до «сейчас».
+func cashBookIn(p period, reportHour int, now time.Time) cashBook {
+	wins := bookWindows(p, reportHour, now)
 	var closeouts []models.ShiftCloseout
 	var events []models.CashEvent
 	var tills []models.Expense         // З9-и3а: расходы из кассы — по моменту, когда ушли из ящика
@@ -106,75 +126,131 @@ func handleCashBook(c *gin.Context) {
 		db.Where("method = ? AND created_at >= ? AND created_at < ?", models.RepayTill, from, to).Order("created_at").Find(&owners)
 		refunds = cashRefunds(returnsIn(db, from, to))
 	}
-	explained := map[uuid.UUID]int64{} // сдача → расходы, внесённые позже и объяснившие её расхождение
+	b := cashBook{Explained: map[uuid.UUID]int64{}, Cats: categoryNames()}
 	for i := range tills {
 		if x := tills[i].ExplainsCloseout; x != nil {
-			explained[*x] += tills[i].GrossGrosz
+			b.Explained[*x] += tills[i].GrossGrosz
 		}
 	}
-	catNames := categoryNames()
 	ids := []string{}
+	add := func(us ...*uuid.UUID) {
+		for _, u := range us {
+			if u != nil {
+				ids = append(ids, u.String())
+			}
+		}
+	}
 	for i := range closeouts {
 		ids = append(ids, closeouts[i].UserID.String())
 	}
 	for i := range events {
-		for _, u := range []*uuid.UUID{events[i].CreatedBy, events[i].VoidedBy} {
-			if u != nil {
-				ids = append(ids, u.String())
-			}
-		}
+		add(events[i].CreatedBy, events[i].VoidedBy)
 	}
 	for i := range owners {
-		for _, u := range []*uuid.UUID{owners[i].CreatedBy, owners[i].VoidedBy} {
-			if u != nil {
-				ids = append(ids, u.String())
-			}
-		}
+		add(owners[i].CreatedBy, owners[i].VoidedBy)
 	}
-	nick := nicknamesByID(append(ids, returnUsers(refunds)...))
-	who := func(u *uuid.UUID) string {
-		if u == nil {
-			return ""
-		}
-		return nick[u.String()]
+	for i := range tills {
+		add(tills[i].CreatedBy)
 	}
+	b.Nick = nicknamesByID(append(ids, returnUsers(refunds)...))
 
-	days := make([]gin.H, 0, len(wins))
-	var total drawerFlow
-	var totalDiff int64
 	opening := drawerBalanceAt(db, p.From) // начало первого дня
-	first, last := opening, opening
+	b.First, b.Last = opening, opening
 	for wi, w := range wins {
-		f := drawerFlowFor(db, nil, w.From, w.To)
-		closing := drawerBalanceAt(db, w.To)
-		row := f.out()
-		row["date"], row["from"], row["to"] = w.Day.Format("2006-01-02"), w.From, w.To
-		row["today"] = wi == len(wins)-1 && !w.To.Before(now)
-		row["opening_pln"], row["closing_pln"] = plnPtr(opening), plnPtr(closing)
-
-		dayCO := []gin.H{}
+		d := bookDay{bookWindow: w, Opening: opening, Flow: drawerFlowFor(db, nil, w.From, w.To), Closing: drawerBalanceAt(db, w.To)}
+		d.Today = wi == len(wins)-1 && !w.To.Before(now)
+		in := func(t time.Time) bool { return !t.Before(w.From) && t.Before(w.To) }
 		var start *models.ShiftCloseout // нулевая точка этого дня
 		for i := range closeouts {
 			co := &closeouts[i]
-			if co.CreatedAt.Before(w.From) || !co.CreatedAt.Before(w.To) {
+			if !in(co.CreatedAt) {
 				continue
 			}
-			r := closeoutOut(co)
-			r["nickname"] = nick[co.UserID.String()]
-			if x := explained[co.ID]; x > 0 {
-				r["explained_pln"] = models.PLNFromGrosz(x)
-			}
-			dayCO = append(dayCO, r)
+			d.Closeouts = append(d.Closeouts, co)
 			if start == nil && opening == nil && co.OpeningGrosz != nil {
 				start = co
 			}
 		}
-		dayEv := []gin.H{}
 		for i := range events {
-			e := &events[i]
-			if e.CreatedAt.Before(w.From) || !e.CreatedAt.Before(w.To) {
-				continue
+			if in(events[i].CreatedAt) {
+				d.Events = append(d.Events, &events[i])
 			}
+		}
+		for i := range tills {
+			if in(*tills[i].DrawerAt) {
+				d.Tills = append(d.Tills, &tills[i])
+			}
+		}
+		for i := range owners {
+			if in(owners[i].CreatedAt) {
+				d.Owners = append(d.Owners, &owners[i])
+			}
+		}
+		for i := range refunds { // З11-и3: Σ — «возвраты» дня; «оплачено раньше» — до начала этого дня
+			if in(refunds[i].VoidedAt) {
+				d.Refunds = append(d.Refunds, refunds[i])
+			}
+		}
+		switch {
+		case opening != nil && d.Closing != nil:
+			d.Diff = bookDiff(*opening, *d.Closing, d.Flow)
+		case start != nil && d.Closing != nil: // ящик заведён сегодня: считаем от начального остатка
+			d.Start, d.Base = start, drawerClosing(start.ExpectedGrosz, start.CountedGrosz)
+			d.Diff = bookDiff(d.Base, *d.Closing, drawerFlowFor(db, nil, start.CreatedAt, w.To))
+		}
+		b.Days = append(b.Days, d)
+
+		b.Total.Deposits += d.Flow.Deposits
+		b.Total.Goods += d.Flow.Goods
+		b.Total.Packs += d.Flow.Packs
+		b.Total.Refunds += d.Flow.Refunds
+		b.Total.Collections += d.Flow.Collections
+		b.Total.Expenses += d.Flow.Expenses
+		b.Total.Owner += d.Flow.Owner
+		b.Total.Adjust += d.Flow.Adjust
+		b.Diff += d.Diff
+		opening, b.Last = d.Closing, d.Closing
+	}
+	return b
+}
+
+// GET /admin/cash/book?preset=…|from=…&to=… — кассовая книга по клубным дням (owner).
+func handleCashBook(c *gin.Context) {
+	p, _, reportHour, ok := periodFromQuery(c)
+	if !ok {
+		return
+	}
+	if p.Days > maxBookDays {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "too_long", "message": "Кассовая книга — не длиннее 92 дней"})
+		return
+	}
+	now := time.Now()
+	b := cashBookIn(p, reportHour, now)
+	who := func(u *uuid.UUID) string {
+		if u == nil {
+			return ""
+		}
+		return b.Nick[u.String()]
+	}
+
+	days := make([]gin.H, 0, len(b.Days))
+	for _, d := range b.Days {
+		row := d.Flow.out()
+		row["date"], row["from"], row["to"] = d.Day.Format("2006-01-02"), d.From, d.To
+		row["today"] = d.Today
+		row["opening_pln"], row["closing_pln"] = plnPtr(d.Opening), plnPtr(d.Closing)
+
+		dayCO := []gin.H{}
+		for _, co := range d.Closeouts {
+			r := closeoutOut(co)
+			r["nickname"] = b.Nick[co.UserID.String()]
+			if x := b.Explained[co.ID]; x > 0 {
+				r["explained_pln"] = models.PLNFromGrosz(x)
+			}
+			dayCO = append(dayCO, r)
+		}
+		dayEv := []gin.H{}
+		for _, e := range d.Events {
 			r := cashEventOut(e)
 			r["nickname"] = who(e.CreatedBy)
 			if e.VoidedBy != nil {
@@ -183,12 +259,8 @@ func handleCashBook(c *gin.Context) {
 			dayEv = append(dayEv, r)
 		}
 		dayExp := []gin.H{}
-		for i := range tills {
-			e := &tills[i]
-			if e.DrawerAt.Before(w.From) || !e.DrawerAt.Before(w.To) {
-				continue
-			}
-			r := gin.H{"id": e.ID, "category": catNames[e.CategoryID.String()], "amount_pln": models.PLNFromGrosz(e.GrossGrosz),
+		for _, e := range d.Tills {
+			r := gin.H{"id": e.ID, "category": b.Cats[e.CategoryID.String()], "amount_pln": models.PLNFromGrosz(e.GrossGrosz),
 				"note": e.Note, "doc_no": e.DocNo, "op_date": e.OpDate.Format("2006-01-02"), "created_at": e.CreatedAt, "drawer_at": e.DrawerAt}
 			if e.ExplainsCloseout != nil {
 				r["explains_closeout"] = *e.ExplainsCloseout
@@ -196,53 +268,27 @@ func handleCashBook(c *gin.Context) {
 			dayExp = append(dayExp, r)
 		}
 		dayOwn := []gin.H{}
-		for i := range owners {
-			r := &owners[i]
-			if r.CreatedAt.Before(w.From) || !r.CreatedAt.Before(w.To) {
-				continue
-			}
-			dayOwn = append(dayOwn, repaymentOut(r, nick))
+		for _, r := range d.Owners {
+			dayOwn = append(dayOwn, repaymentOut(r, b.Nick))
 		}
 		dayRef := []gin.H{} // З11-и3: Σ — «возвраты» дня; «оплачено раньше» — до начала этого дня
-		for i := range refunds {
-			r := &refunds[i]
-			if r.VoidedAt.Before(w.From) || !r.VoidedAt.Before(w.To) {
-				continue
-			}
-			dayRef = append(dayRef, returnOut(*r, nick, w.From))
+		for _, r := range d.Refunds {
+			dayRef = append(dayRef, returnOut(r, b.Nick, d.From))
 		}
 		row["closeouts"], row["events"], row["expenses"], row["owner"] = dayCO, dayEv, dayExp, dayOwn
 		row["refunds"] = dayRef
-
-		var diff int64
-		switch {
-		case opening != nil && closing != nil:
-			diff = bookDiff(*opening, *closing, f)
-		case start != nil && closing != nil: // ящик заведён сегодня: считаем от начального остатка
-			base := drawerClosing(start.ExpectedGrosz, start.CountedGrosz)
-			diff = bookDiff(base, *closing, drawerFlowFor(db, nil, start.CreatedAt, w.To))
-			row["baseline"] = gin.H{"pln": models.PLNFromGrosz(base), "by": nick[start.UserID.String()], "at": start.CreatedAt}
+		if d.Start != nil {
+			row["baseline"] = gin.H{"pln": models.PLNFromGrosz(d.Base), "by": b.Nick[d.Start.UserID.String()], "at": d.Start.CreatedAt}
 		}
-		row["diff_pln"] = models.PLNFromGrosz(diff)
+		row["diff_pln"] = models.PLNFromGrosz(d.Diff)
 		days = append(days, row)
-
-		total.Deposits += f.Deposits
-		total.Goods += f.Goods
-		total.Packs += f.Packs
-		total.Refunds += f.Refunds
-		total.Collections += f.Collections
-		total.Expenses += f.Expenses
-		total.Owner += f.Owner
-		total.Adjust += f.Adjust
-		totalDiff += diff
-		opening, last = closing, closing
 	}
-	tot := total.out()
-	tot["diff_pln"] = models.PLNFromGrosz(totalDiff)
+	tot := b.Total.out()
+	tot["diff_pln"] = models.PLNFromGrosz(b.Diff)
 	st := drawerAt(db, now)
 	c.JSON(http.StatusOK, gin.H{
 		"period": p.out(), "days": days, "totals": tot,
-		"opening_pln": plnPtr(first), "closing_pln": plnPtr(last),
+		"opening_pln": plnPtr(b.First), "closing_pln": plnPtr(b.Last),
 		"now": gin.H{"expected_pln": models.PLNFromGrosz(st.Expected), "baseline": st.Point == nil},
 		// З12-и1 (№49): рядом с ящиком — сколько клуб должен гостям (снимок) и что сгорело за период книги
 		"liabilities": liabilitiesNow(), "burned": burnedIn(p.From, p.To),

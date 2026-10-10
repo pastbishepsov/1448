@@ -47,6 +47,7 @@ type xsheet struct {
 	widths     []int
 	rows       []xrow
 	table      bool
+	n          int // строк данных без итогов — для «О выгрузке» (З13-и5)
 }
 
 // bookFormat — как писать файл: CSV — разделитель, десятичный знак, Windows-1250; даты — ГГГГ-ММ-ДД (iso) или ДД.ММ.ГГГГ.
