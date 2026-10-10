@@ -177,10 +177,22 @@ check("filter=money: все с деньгами, Guest29 (30 zł) есть, Gues
 n = api("GET", "/admin/users?filter=new", None, a1)[1]
 ids = {u["id"] for u in n["users"]}
 nd = n.get("new_days", 14)  # З5-и1 (З-Р10): новые — первое появление (первая сессия, без сессий — регистрация) не раньше seg_new_days назад
-stale = sql(f"SELECT count(*) FROM users WHERE id IN ({','.join(repr(i) for i in ids) or 'NULL'}) AND COALESCE((SELECT MIN(s.started_at) FROM sessions s "
-            f"WHERE s.user_id = users.id AND s.status <> 'cancelled'), users.registered_at) < now() - interval '{nd} days'")
-check(f"filter=new: Guest29 (сессия сегодня) есть, Guest28 (без визитов, регистрация 400 дней назад) нет, у всех первое появление не раньше {nd} дней",
-      g29 in ids and g28 not in ids and stale == "0" and set(n.get("first_seen", {})) == ids, f"{n['count']} · давних {stale}")
+FIRST = "COALESCE((SELECT MIN(s.started_at) FROM sessions s WHERE s.user_id = users.id AND s.status <> 'cancelled'), users.registered_at)"
+stale = sql(f"SELECT count(*) FROM users WHERE id IN ({','.join(repr(i) for i in ids) or 'NULL'}) AND {FIRST} < now() - interval '{nd} days'")
+# Не от календаря: у Guest29 первое появление — его первая сессия на стенде (с каждым днём старше), поэтому «новый» он или нет —
+# по правилу; заведомо новый и заведомо давний — Guest28 без визитов: регистрация вчера и 400 дней назад (поиском — мимо лимита в 100 строк)
+new_ids = lambda q: {u["id"] for u in api("GET", f"/admin/users?filter=new&q={q}", None, a1)[1]["users"]}
+visits28 = sql(f"SELECT count(*) FROM sessions WHERE user_id = '{g28}' AND status <> 'cancelled'")
+sql(f"UPDATE users SET registered_at = now() - interval '1 day' WHERE id = '{g28}'")
+fresh28 = g28 in new_ids("Guest28")
+sql(f"UPDATE users SET registered_at = now() - interval '400 days' WHERE id = '{g28}'")  # как в reset()
+old28 = g28 in new_ids("Guest28")
+want29 = sql(f"SELECT {FIRST} >= now() - interval '{nd} days' FROM users WHERE id = '{g29}'") == "t"
+in29 = g29 in new_ids("Guest29")
+check(f"filter=new: гость без визитов (Guest28) с регистрацией вчера — новый, 400 дней назад — нет; Guest29 — по своему первому появлению; "
+      f"у всех в списке первое появление не раньше {nd} дней",
+      visits28 == "0" and fresh28 and not old28 and in29 == want29 and stale == "0" and set(n.get("first_seen", {})) == ids,
+      f"{n['count']} · давних {stale} · Guest28 вчера/давно: {fresh28}/{old28} · Guest29 {in29} (ждали {want29}) · визитов Guest28 {visits28}")
 w = api("GET", "/admin/users?sort=wallet", None, a1)[1]
 vals = [u["wallet_grosz"] for u in w["users"]]
 check("sort=wallet: по убыванию (dir по умолчанию desc)", vals == sorted(vals, reverse=True) and w.get("dir") == "desc", str(vals[:5]))
