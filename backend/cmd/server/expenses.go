@@ -69,6 +69,9 @@ var expenseErrors = map[string]string{
 	"counterparty_not_found": "Контрагент не найден",
 	"method_off":             "Этот способ оплаты выключен — включи его в «Справочниках» или выбери другой",
 	"need_method":            "Хотя бы один способ оплаты должен остаться включённым",
+	// З13-и6: профили учёта
+	"bad_kpir_col": "Колонка KPiR — одна из: " + kpirColsText(),
+	"bad_account":  fmt.Sprintf("Счёт — до %d символов", maxAccount),
 	// З9-и5: регулярные расходы
 	"bad_template_name":  fmt.Sprintf("Название шаблона — 1–%d символов", maxTemplateName),
 	"template_exists":    "Шаблон с таким названием уже есть",

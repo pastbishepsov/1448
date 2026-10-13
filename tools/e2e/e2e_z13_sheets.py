@@ -15,7 +15,8 @@
 подарок; пакет картой; поставка «z13h Кола» 10 шт у контрагента «z13h Hurtownia» (NIP 111-222-33-32, живёт между
 прогонами) с ценами 6 × 2,50 + 4 × 2,80; расход «из кассы» 7,40 zł с VAT 1,38 (документ «z13h-1»), инкассация 2 zł в банк,
 коррекция остатка +3 zł; временный z13hx на смене сдаёт кассу с недостачей 1 zł. В уборке — отмены, сторно и отмена
-списания; позиция «z13h Кола» удаляется `drop_good` вместе с поставкой; настройка `acc_kpkw` возвращается."""
+списания; позиция «z13h Кола» удаляется `drop_good` вместе с поставкой; настройки `acc_kpkw` и `acc_form` (проверка идёт на
+KPiR по умолчанию — лист профиля вторым, З13-и6) возвращаются."""
 import csv, io, urllib.error, urllib.request, xml.etree.ElementTree as ET, zipfile
 from datetime import date, timedelta
 
@@ -28,20 +29,21 @@ CP_NAME, CP_NIP = f"{MARK} Hurtownia", "111-222-33-32"
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 RID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
 KPKW0 = (rows("SELECT value FROM settings WHERE key = 'acc_kpkw'") or [None])[0]
+FORM0 = (rows("SELECT value FROM settings WHERE key = 'acc_form'") or [None])[0]  # З13-и6: проверка — на KPiR по умолчанию
 made = {"deps": []}
-SHEETS = ["O eksporcie", "Wszystkie operacje", "Sprzedaż wg dni i stawek", "Przychód wykonany wg dni", "Wydatki", "Zakupy towarów",
+SHEETS = ["O eksporcie", "Zapisy do KPiR", "Wszystkie operacje", "Sprzedaż wg dni i stawek", "Przychód wykonany wg dni", "Wydatki", "Zakupy towarów",
           "Raport kasowy", "Rozliczenia zmian", "Zwroty", "Należności spisane", "Przekazane nieodpłatnie", "Magazyn na koniec okresu",
           "Stan przedpłat i należności"]
-FILES_RU = ["01_o_vygruzke.csv", "02_vse_operacii.csv", "03_prodazhi_po_dnyam.csv", "04_otrabotano_po_dnyam.csv", "05_rashody.csv",
-            "06_zakupki.csv", "07_kassa.csv", "08_sdachi_kass.csv", "09_vozvraty.csv", "10_spisannye_dolgi.csv", "11_podareno.csv",
-            "12_sklad_na_konec.csv", "13_predoplaty_i_dolgi.csv"]
+FILES_RU = ["01_o_vygruzke.csv", "02_zapisi_kpir.csv", "03_vse_operacii.csv", "04_prodazhi_po_dnyam.csv", "05_otrabotano_po_dnyam.csv",
+            "06_rashody.csv", "07_zakupki.csv", "08_kassa.csv", "09_sdachi_kass.csv", "10_vozvraty.csv", "11_spisannye_dolgi.csv",
+            "12_podareno.csv", "13_sklad_na_konec.csv", "14_predoplaty_i_dolgi.csv"]
 
 
-def kpkw(v):
+def kpkw(v, key="acc_kpkw"):
     if v is None:
-        sql("DELETE FROM settings WHERE key = 'acc_kpkw'")
+        sql(f"DELETE FROM settings WHERE key = '{key}'")
     else:
-        sql(f"INSERT INTO settings (key, value) VALUES ('acc_kpkw', '{v}') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
+        sql(f"INSERT INTO settings (key, value) VALUES ('{key}', '{v}') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
 
 
 def gone():
@@ -63,11 +65,13 @@ def gone():
     for gid in rows(f"SELECT id FROM goods WHERE name LIKE '{MARK} %'"):
         drop_good(gid)
     kpkw(KPKW0)
+    kpkw(FORM0, "acc_form")
 
 
 gone()
 at_end(gone)
 kpkw(None)  # по умолчанию — номера с начала месяца
+kpkw(None, "acc_form")  # и KPiR: лист профиля — второй (З13-и6)
 g = lambda v: round((v or 0) * 100)
 D, Y = club_day(0), club_day(-1)
 DAY, YDAY, MONTH = f"from={D}&to={D}", f"from={Y}&to={Y}", f"month={D[:7]}"
@@ -205,12 +209,13 @@ check("данные записались: поставка оценена, по�
       and X2 and s_cash[0] == 201 and vs[0] == 200 and gift[0] == 201 and pk and ex[0] == 201 and ce[0] == 201 and cc[0] == 201 and co[0] == 200,
       J([A, sid, sp[0], x1[0], wo, X2, s_cash[0], vs, gift[0], pk, ex[0], ce, cc, co], 900))
 
-section("листы: тринадцать по порядку — в XLSX и в архиве CSV")
+section("листы: четырнадцать по порядку — в XLSX и в архиве CSV")
 E1 = book_of(DAY)
 csv_ru = unzip(raw(DAY, "csv", "ru")[1])
-check("XLSX по-польски: «O eksporcie», «Wszystkie operacje», «Sprzedaż wg dni i stawek» и десять листов З13-и5 — по порядку",
+check("XLSX по-польски: «O eksporcie», «Zapisy do KPiR» (профиль З13-и6), «Wszystkie operacje», «Sprzedaż wg dni i stawek» и десять "
+      "листов З13-и5 — по порядку",
       list(E1) == SHEETS, J(list(E1)))
-check("архив CSV по-русски — тринадцать файлов по листам, латиницей и по порядку", csv_ru and csv_ru.namelist() == FILES_RU,
+check("архив CSV по-русски — четырнадцать файлов по листам, латиницей и по порядку", csv_ru and csv_ru.namelist() == FILES_RU,
       J(csv_ru.namelist() if csv_ru else None))
 
 section("«Отработано по дням» — «Отработанная выручка» «Обзора»")

@@ -14,6 +14,8 @@ package main
 //	«Продажи по дням и ставкам» — «Продажи по ставкам VAT» (vat.go) по дням: брутто, нетто и VAT по ставкам, итог и
 //	по способам оплаты, строка «Итого».
 //
+// З13-и6: сразу после «О выгрузке» — листы профиля учёта (export_profiles.go), за ними — эти два и листы З13-и5.
+//
 // Одна цифра везде: журнал считается теми же правилами, что экраны — доходы и возвраты как «Прибыль» (З12-и3),
 // облагаемое — как «Продажи по ставкам VAT» (З13-и3), движение ящика — как кассовая книга (drawer.go), расходы — по дню
 // операции без сторно, как «Прибыль» и «Расходы». Файл — workbook.go.
@@ -471,8 +473,8 @@ var exportAboutWords = map[string][2]string{
 	"day_v": {"с %02d:00 до %02d:00 следующего дня", "od %02d:00 do %02d:00 dnia następnego"},
 	"made":  {"Сделана", "Wygenerowano"}, "format": {"Формат", "Format"}, "lang": {"Язык", "Język"},
 	"lang_v":  {"русский", "polski"},
-	"profile": {"Профиль учёта", "Profil ewidencji"}, "profile_v": {"универсальный: все операции", "uniwersalny: wszystkie operacje"},
-	"payer": {"Плательщик VAT", "Podatnik VAT"}, "payer_yes": {"да — czynny podatnik VAT", "tak — czynny podatnik VAT"},
+	"profile": {"Профиль учёта", "Profil ewidencji"}, // З13-и6: значения и строки профиля — export_profiles.go
+	"payer":   {"Плательщик VAT", "Podatnik VAT"}, "payer_yes": {"да — czynny podatnik VAT", "tak — czynny podatnik VAT"},
 	"payer_no":     {"нет — освобождён (zwolniony z VAT)", "nie — zwolniony z VAT"},
 	"moment":       {"VAT с пополнения кошелька", "VAT od doładowań portfela"},
 	"moment_spend": {"при трате — bon różnego przeznaczenia", "przy wykorzystaniu — bon różnego przeznaczenia"},
@@ -525,24 +527,31 @@ var exportAboutWords = map[string][2]string{
 
 func ta(lang int, key string) string { return exportAboutWords[key][lang] }
 
-// exportAbout — лист «О выгрузке»: как посчитано; data — листы выгрузки, у каждого — сколько строк данных; end — «на
-// конец периода»; noCost — штук в партиях без цены на этот момент.
-func exportAbout(p period, reportHour int, cfg vatConfig, a vatAgg, data []xsheet, made, end time.Time, scheme int, noCost int64,
-	by, format string, lang int) xsheet {
+// exportAbout — лист «О выгрузке»: как посчитано; pd — профиль учёта (З13-и6); data — листы выгрузки, у каждого —
+// сколько строк данных; end — «на конец периода»; noCost — штук в партиях без цены на этот момент.
+func exportAbout(p period, reportHour int, cfg vatConfig, a vatAgg, pd profileData, data []xsheet, made, end time.Time, scheme int,
+	noCost int64, by, format string, lang int) xsheet {
 	var club models.Club
 	db.First(&club, "is_active = ?", true)
+	req := requisitesNow()
+	firm, address := firmOf(req, club) // З13-и6: реквизиты фирмы; не заданы — название и адрес клуба
 	sh := xsheet{name: tr(lang, "sheet_about"), file: []string{"o_vygruzke", "o_eksporcie"}[lang],
 		head: []string{tr(lang, "h_item"), tr(lang, "h_value")}, widths: []int{32, 110}}
 	add := func(key string, v xcell) { sh.rows = append(sh.rows, xrow{cells: []xcell{cText(ta(lang, key)), v}}) }
 	add("club", cText(club.Name))
-	add("address", cText(club.Address))
-	add("nip", cText(ta(lang, "nip_none")))
+	add("firm", cText(firm))
+	nip := ta(lang, "nip_none")
+	if req.NIP != "" {
+		nip = req.NIP
+	}
+	add("nip", cText(nip))
+	add("address", cText(address))
 	add("period", cText(p.FromDay.Format("02.01.2006")+" — "+p.ToDay.Format("02.01.2006")))
 	add("day", cText(fmt.Sprintf(ta(lang, "day_v"), reportHour, reportHour)))
 	add("made", cText(made.In(p.FromDay.Location()).Format("02.01.2006 15:04")+" · "+by)) // по часам клуба, как журнал
 	add("format", cText(format))
 	add("lang", cText(ta(lang, "lang_v")))
-	add("profile", cText(ta(lang, "profile_v")))
+	sh.rows = append(sh.rows, profileAbout(pd, lang)...)
 	payer, moment, gifts := "payer_yes", "moment_spend", "gifts_no"
 	if !cfg.Payer {
 		payer = "payer_no"
@@ -700,20 +709,28 @@ func handleExport(c *gin.Context) {
 	now := time.Now()
 	f := exportFormat(now)
 	cfg := vatConfigNow()
-	a := vatSum(vatRowsIn(p, reportHour, cfg), cfg.Payer)
+	vrows := vatRowsIn(p, reportHour, cfg)
+	a := vatSum(vrows, cfg.Payer)
 	ops := exportOpsIn(p, reportHour, cfg)
+	pd := loadProfile(p, cfg, vrows) // З13-и6: форма учёта, продажи по частям, расходы периода
 	journal, days := exportJournal(ops, lang), exportVatDays(p, a, lang)
 	// З13-и5: листы на тех же функциях, что экраны; «на конец периода» — конец последних суток или «сейчас»
 	book, end, scheme := cashBookIn(p, reportHour, now), periodEnd(p, now), int(exportSetting("acc_kpkw"))
 	stock, noCost := sheetStock(end, lang)
-	data := []xsheet{journal, days, sheetEarned(p, reportHour, now, lang), sheetExpenses(p, lang), sheetPurchases(p, lang),
-		sheetCash(p, reportHour, now, book, scheme, lang), sheetCloseouts(p, book, lang), sheetReturns(p, lang),
-		sheetWriteOffs(p, lang), sheetGifts(p, lang), stock, sheetOwed(owedAtMoment(end), end, lang)}
+	cash := sheetCash(p, reportHour, now, book, scheme, lang)
+	// З13-и6: листы профиля — сразу после «О выгрузке»; у полной бухгалтерии «Касса» переезжает к реестрам
+	data, moved := profileSheets(pd, cash, p.FromDay.Location(), lang)
+	data = append(data, journal, days, sheetEarned(p, reportHour, now, lang), sheetExpenses(p, pd.Form, lang), sheetPurchases(p, lang))
+	if !moved {
+		data = append(data, cash)
+	}
+	data = append(data, sheetCloseouts(p, book, lang), sheetReturns(p, lang), sheetWriteOffs(p, lang), sheetGifts(p, lang), stock,
+		sheetOwed(owedAtMoment(end), end, lang))
 	by := ""
 	if me, err := uuid.Parse(c.GetString("user_id")); err == nil {
 		by = nicknamesByID([]string{me.String()})[me.String()]
 	}
-	about := exportAbout(p, reportHour, cfg, a, data, now, end, scheme, noCost, by, exportFormatText(format, f, lang), lang)
+	about := exportAbout(p, reportHour, cfg, a, pd, data, now, end, scheme, noCost, by, exportFormatText(format, f, lang), lang)
 	sheets := append([]xsheet{about}, data...)
 	var buf bytes.Buffer
 	var err error

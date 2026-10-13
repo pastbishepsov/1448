@@ -224,20 +224,27 @@ func counterpartiesByID() map[string]models.Counterparty {
 	return out
 }
 
-func sheetExpenses(p period, lang int) xsheet {
+// sheetExpenses — «Расходы»; form — форма учёта (З13-и6): у KPiR после категории — её колонка KPiR, у полной — счёт.
+func sheetExpenses(p period, form, lang int) xsheet {
 	sh := xsheet{name: tr(lang, "sheet_expenses"), file: []string{"rashody", "wydatki"}[lang], table: true,
 		head: []string{tr(lang, "x_date"), tr(lang, "x_cat"), tr(lang, "x_purchase"), tr(lang, "x_party"), tr(lang, "x_nip"),
 			tr(lang, "h_doc"), tr(lang, "h_sum"), "VAT", tr(lang, "h_net"), tr(lang, "h_method"), tr(lang, "x_paid"),
 			tr(lang, "x_drawer"), tr(lang, "h_note"), tr(lang, "x_by"), tr(lang, "x_storno"), tr(lang, "x_storno_by"),
 			tr(lang, "x_storno_why"), "ID"},
 		widths: []int{12, 24, 10, 26, 13, 16, 14, 12, 14, 14, 9, 17, 36, 12, 17, 12, 28, 38}}
+	_, formCol := expenseFormCol(form, models.ExpenseCategory{}, lang)
+	if formCol { // колонка формы учёта — после категории
+		name := map[int]string{formKpir: tr(lang, "pf_kpir_col"), formFull: tr(lang, "pf_account")}[form]
+		sh.head = append(sh.head[:2], append([]string{name}, sh.head[2:]...)...)
+		sh.widths = append(sh.widths[:2], append([]int{12}, sh.widths[2:]...)...)
+	}
 	var list []models.Expense
 	expensesOfPeriod(p).Order("op_date, created_at, id").Find(&list)
 	var cats []models.ExpenseCategory
 	db.Find(&cats)
-	catName, purchase := map[uuid.UUID]string{}, map[uuid.UUID]bool{}
+	catName, purchase, catOf := map[uuid.UUID]string{}, map[uuid.UUID]bool{}, map[uuid.UUID]models.ExpenseCategory{}
 	for _, c := range cats {
-		catName[c.ID], purchase[c.ID] = c.Name, c.Purchase
+		catName[c.ID], purchase[c.ID], catOf[c.ID] = c.Name, c.Purchase, c
 	}
 	cps := counterpartiesByID()
 	ids := []string{}
@@ -271,15 +278,22 @@ func sheetExpenses(p period, lang int) xsheet {
 			t := e.DrawerAt.In(p.FromDay.Location())
 			drawer = &t
 		}
-		cells := []xcell{cDay(e.OpDate), cText(catName[e.CategoryID]), yesNo(lang, purchase[e.CategoryID]), party, nip, cText(e.DocNo),
-			cMoney(e.GrossGrosz), cMoney(e.VatGrosz), cMoney(e.GrossGrosz - e.VatGrosz), cText(trMethod(lang, e.Method)),
-			yesNo(lang, e.Paid), cOptStamp(drawer), cText(e.Note), cText(nickOf(nick, e.CreatedBy))}
+		cells := []xcell{cDay(e.OpDate), cText(catName[e.CategoryID])}
+		if fc, ok := expenseFormCol(form, catOf[e.CategoryID], lang); ok {
+			cells = append(cells, fc)
+		}
+		cells = append(cells, yesNo(lang, purchase[e.CategoryID]), party, nip, cText(e.DocNo),
+			cMoney(e.GrossGrosz), cMoney(e.VatGrosz), cMoney(e.GrossGrosz-e.VatGrosz), cText(trMethod(lang, e.Method)),
+			yesNo(lang, e.Paid), cOptStamp(drawer), cText(e.Note), cText(nickOf(nick, e.CreatedBy)))
 		cells = append(append(cells, storno...), cText(e.ID.String()))
 		sh.rows = append(sh.rows, xrow{cells: cells})
 	}
 	sh.n = len(sh.rows)
-	sh.rows = append(sh.rows, xrow{bold: true, cells: []xcell{cText(tr(lang, "x_total")), {}, {}, {}, {}, {},
-		cMoney(gross), cMoney(vat), cMoney(gross - vat)}})
+	total := []xcell{cText(tr(lang, "x_total")), {}, {}, {}, {}, {}}
+	if formCol {
+		total = append(total, xcell{})
+	}
+	sh.rows = append(sh.rows, xrow{bold: true, cells: append(total, cMoney(gross), cMoney(vat), cMoney(gross-vat))})
 	return sh
 }
 

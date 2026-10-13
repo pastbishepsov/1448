@@ -112,6 +112,10 @@ var settingBounds = map[string][2]int64{
 	"acc_date_fmt":    {0, 1},
 	// З13-и5: номера документов кассы в выгрузке — 0 с начала месяца (KP 1/10/2026), 1 с начала года (KP 1/2026), 2 без номеров
 	"acc_kpkw": {0, 2},
+	// З13-и6: форма учёта — 0 KPiR, 1 ryczałt, 2 полная бухгалтерия; ставка ryczałtu времени за ПК и пакетов — в
+	// десятых долях процента, только из models.RyczaltRates
+	"acc_form":         {0, 2},
+	"acc_ryczalt_time": {20, 170},
 }
 
 // settingDefaults — значение каждой числовой настройки, пока у неё нет строки
@@ -163,11 +167,21 @@ var settingDefaults = map[string]int64{
 	"acc_csv_enc":     0,
 	"acc_date_fmt":    0,
 	"acc_kpkw":        0, // З13-и5: с начала месяца — документы каждого месяца нумеруются сами по себе
+	// З13-и6: KPiR — самая частая форма у JDG; время — 15 % (услуги развлечений и отдыха)
+	"acc_form":         0,
+	"acc_ryczalt_time": models.RyczaltTimeDefault,
 }
 
-// settingChoices — настройки, у которых не диапазон, а список (З13-и1): ставка пополнения — только из ставок VAT.
+// settingChoices — настройки, у которых не диапазон, а список (З13-и1): ставка пополнения — только из ставок VAT,
+// ставка ryczałtu времени (З13-и6) — только из ставок ryczałtu. Что ответить на чужое значение — settingChoiceMsg.
 var settingChoices = map[string]func(int64) bool{
-	"acc_topup_vat": func(v int64) bool { return models.ValidVat(int(v)) },
+	"acc_topup_vat":    func(v int64) bool { return models.ValidVat(int(v)) },
+	"acc_ryczalt_time": func(v int64) bool { return models.ValidRyczalt(int(v)) },
+}
+
+var settingChoiceMsg = map[string]string{
+	"acc_topup_vat":    vatBadMessage,
+	"acc_ryczalt_time": ryczaltBadMessage,
 }
 
 // currentSettings — действующие значения: строка из settings или значение по
@@ -210,8 +224,8 @@ func handleAdminSettingsPut(c *gin.Context) {
 				"message": fmt.Sprintf("%s: значение от %d до %d", key, bounds[0], bounds[1])})
 			return
 		}
-		if ok := settingChoices[key]; ok != nil && !ok(val) { // З13-и1
-			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_value", "message": key + ": " + vatBadMessage})
+		if ok := settingChoices[key]; ok != nil && !ok(val) { // З13-и1, З13-и6
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_value", "message": key + ": " + settingChoiceMsg[key]})
 			return
 		}
 	}

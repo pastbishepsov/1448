@@ -31,11 +31,18 @@ type Good struct {
 	// З13-и1 (миграция 083): ставка VAT позиции (товар и кухня), % (−1 — zw); без default в теге — ставку ставит
 	// ручка (как у зоны).
 	VatPct int `json:"vat_pct" gorm:"column:vat_pct;not null"`
+
+	// З13-и6 (миграция 084): ставка ryczałtu позиции в десятых долях процента (30 — 3 %, 85 — 8,5 %); 0 при
+	// создании — ставка по умолчанию (0 % ставкой не бывает).
+	RyczaltRate int `json:"ryczalt_rate" gorm:"column:ryczalt_rate;not null"`
 }
 
 func (g *Good) BeforeCreate(tx *gorm.DB) error {
 	if g.ID == uuid.Nil {
 		g.ID = uuid.New()
+	}
+	if g.RyczaltRate == 0 {
+		g.RyczaltRate = RyczaltGoodsDefault
 	}
 	return nil
 }

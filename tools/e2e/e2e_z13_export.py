@@ -2,7 +2,8 @@
 """З13-и4 «Выгрузка: движок и «Все операции»» (№75; Д8; решения основателя 04.10, З-Р37). GET /admin/export — выгрузка
 бухгалтеру за период (только владельцу): XLSX (листы в одном файле) или архив CSV (файл на лист; разделитель, десятичный
 знак, кодировка — UTF-8 с BOM или Windows-1250, формат даты — настройками), заголовки PL или RU. Листы: «О выгрузке» (клуб,
-период, настройки VAT, итоги, как читать), «Все операции» (каждая денежная операция строкой), «Продажи по дням и ставкам».
+период, настройки VAT, итоги, как читать), лист профиля учёта (З13-и6; по умолчанию — «Записи для KPiR»), «Все операции»
+(каждая денежная операция строкой), «Продажи по дням и ставкам».
 Файл разбирается стандартной библиотекой Python (zipfile + XML, csv); суммы листов равны экранам за тот же период — за
 сегодня и за месяц: пополнения, товары и кухня, пакеты, возвраты, расходы и закупки — «Прибыли»; облагаемое по ставкам —
 «Продажам по ставкам VAT» (за сегодня — в обоих режимах и с подарками); колонка «Касса» — кассовой книге; «Продажи по дням
@@ -13,7 +14,7 @@
 возвратом на карту); расход «из кассы» 12,30 zł с VAT 2,30 и расход «личными» 5 zł с возвратом владельцу 5 zł из кассы,
 инкассация 1 zł в банк — в конце сторно и отмены: наличные в ящике туда и обратно сходятся; позиции «z13e Кола» (23 %,
 имя кириллицей — для Windows-1250) и «z13e Кухня» (8 %) заводятся каждый прогон и в конце удаляются `drop_good`;
-настройки «Бухгалтерии» и файла возвращаются."""
+настройки «Бухгалтерии», файла и форма учёта возвращаются."""
 import csv, io, urllib.error, urllib.request, xml.etree.ElementTree as ET, zipfile
 from datetime import date, timedelta
 
@@ -24,7 +25,8 @@ NICK, PC = "Guest43", "PC-05"
 G = uid(NICK)
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 RID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-KEYS = ("acc_vat_moment", "acc_vat_payer", "acc_gift_vat", "acc_topup_vat", "acc_csv_sep", "acc_csv_decimal", "acc_csv_enc", "acc_date_fmt")
+KEYS = ("acc_vat_moment", "acc_vat_payer", "acc_gift_vat", "acc_topup_vat", "acc_csv_sep", "acc_csv_decimal", "acc_csv_enc", "acc_date_fmt",
+        "acc_form")
 ORIG = {k: (rows(f"SELECT value FROM settings WHERE key = '{k}'") or [None])[0] for k in KEYS}
 made = {"deps": []}
 
@@ -68,7 +70,7 @@ def gone():
 gone()
 at_end(gone)
 T0 = sql("SELECT now()::text")  # с этой минуты — выгрузки этого прогона в журнале действий
-for k in KEYS:  # с известного начала: плательщик VAT, при трате, подарки без VAT; CSV — «;», «,», UTF-8, ДД.ММ.ГГГГ
+for k in KEYS:  # с известного начала: плательщик VAT, при трате, подарки без VAT; CSV — «;», «,», UTF-8, ДД.ММ.ГГГГ; KPiR
     sql(f"DELETE FROM settings WHERE key = '{k}'")
 g = lambda v: round((v or 0) * 100)
 drawer_now = lambda: g((api("GET", "/admin/cash/book?preset=today", None, "boss")[1].get("now") or {}).get("expected_pln"))
@@ -298,11 +300,11 @@ st, ctype, disp, data = raw()
 book, styles = xlsx(data)
 OPS = book.get("Wszystkie operacje") or EMPTY
 ops = table(OPS)
-check("файл XLSX «1448-eksport-<день>_<день>.xlsx»: первые три листа — «O eksporcie», «Wszystkie operacje», «Sprzedaż wg dni i stawek» "
-      "(дальше — листы З13-и5)",
+check("файл XLSX «1448-eksport-<день>_<день>.xlsx»: первые листы — «O eksporcie», лист профиля «Zapisy do KPiR» (З13-и6, KPiR "
+      "по умолчанию), «Wszystkie operacje», «Sprzedaż wg dni i stawek» (дальше — листы З13-и5)",
       st == 200 and ctype.startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-      and f'filename="1448-eksport-{D}_{D}.xlsx"' in disp and list(book)[:3] == ["O eksporcie", "Wszystkie operacje", "Sprzedaż wg dni i stawek"],
-      J([st, ctype, disp, list(book)]))
+      and f'filename="1448-eksport-{D}_{D}.xlsx"' in disp
+      and list(book)[:4] == ["O eksporcie", "Zapisy do KPiR", "Wszystkie operacje", "Sprzedaż wg dni i stawek"], J([st, ctype, disp, list(book)]))
 HEAD = ["Lp.", "Dzień", "Data i godzina", "Operacja", "Forma płatności", "Klient lub kontrahent", "Dokument", "Opis", "Ilość", "Kwota brutto",
         "Sprzedaż opodatkowana", "Stawka VAT", "Netto", "VAT", "Kasa", "Kto", "Uwagi", "ID operacji"]
 check("«Wszystkie operacje»: 18 колонок с польской шапкой, шапка закреплена, фильтр на всю таблицу; № по порядку, клубный день — "
@@ -380,14 +382,16 @@ section("CSV: по-русски, UTF-8 с BOM, «;», «,»; Windows-1250 по-�
 st, ctype, disp, data = raw(fmt="csv", lang="ru")
 z = unzip(data)
 files = z.namelist() if z else []
-body = z.read(files[1]) if len(files) > 1 else b""
+named = lambda zf, tail: next((n for n in (zf.namelist() if zf else []) if n.endswith(tail)), None)  # файл листа по имени
+body = z.read(named(z, "_vse_operacii.csv")) if named(z, "_vse_operacii.csv") else b""  # журнал — по имени: после листа профиля он третий
 crows = list(csv.reader(io.StringIO(body.decode("utf-8-sig")), delimiter=";"))
 ch = crows[0] if crows else []
 cops = [dict(zip(ch, r)) for r in crows[1:]]
-check("архив CSV «1448-vygruzka-<день>_<день>.zip»: файл на лист, первые три — по листам З13-и4, UTF-8 с BOM, строки через CRLF, «;», "
-      "русская шапка",
+check("архив CSV «1448-vygruzka-<день>_<день>.zip»: файл на лист, первые — «о выгрузке», записи для KPiR, листы З13-и4, UTF-8 с "
+      "BOM, строки через CRLF, «;», русская шапка",
       st == 200 and ctype == "application/zip" and f'filename="1448-vygruzka-{D}_{D}.zip"' in disp
-      and files[:3] == ["01_o_vygruzke.csv", "02_vse_operacii.csv", "03_prodazhi_po_dnyam.csv"] and body.startswith(b"\xef\xbb\xbf") and b"\r\n" in body
+      and files[:4] == ["01_o_vygruzke.csv", "02_zapisi_kpir.csv", "03_vse_operacii.csv", "04_prodazhi_po_dnyam.csv"]
+      and body.startswith(b"\xef\xbb\xbf") and b"\r\n" in body
       and ch[:4] == ["№", "Клубный день", "Время", "Операция"] and ch[9:11] == ["Сумма брутто", "Облагается VAT"], J([st, ctype, disp, files, ch]))
 csum = lambda names: sum(money(o["Сумма брутто"]) for o in cops if o["Операция"] in names)
 check("CSV по-русски — те же строки и суммы, что XLSX: даты ДД.ММ.ГГГГ, деньги с запятой",
@@ -400,7 +404,7 @@ put("acc_csv_decimal", 1)
 put("acc_date_fmt", 1)
 st, ctype, disp, data = raw(fmt="csv", lang="pl")
 z = unzip(data)
-body = z.read(z.namelist()[1]) if z and len(z.namelist()) > 1 else b""
+body = z.read(named(z, "_wszystkie_operacje.csv")) if named(z, "_wszystkie_operacje.csv") else b""
 wrows = list(csv.reader(io.StringIO(body.decode("cp1250")), delimiter=","))
 wops = [dict(zip(wrows[0], r)) for r in wrows[1:]] if wrows else []
 cola = next((o for o in wops if o["Operacja"] == "Sprzedaż" and o["Opis"].startswith(MARK)), {})
@@ -416,7 +420,7 @@ for k in ("acc_csv_enc", "acc_csv_sep", "acc_csv_decimal", "acc_date_fmt"):
 put("acc_csv_sep", 9)  # такую строку PUT не пропустит — только руками в базе
 st, _, _, data = raw(fmt="csv", lang="ru")
 z = unzip(data)
-head9 = z.read(z.namelist()[1]).decode("utf-8-sig").split("\r\n")[0] if z else ""
+head9 = z.read(named(z, "_vse_operacii.csv")).decode("utf-8-sig").split("\r\n")[0] if named(z, "_vse_operacii.csv") else ""
 sql("DELETE FROM settings WHERE key = 'acc_csv_sep'")
 check("разделитель не из списка (строка в базе руками) — файл как по умолчанию, с «;», а не ошибка сервера",
       st == 200 and head9.startswith("№;Клубный день;"), J([st, head9[:60]]))

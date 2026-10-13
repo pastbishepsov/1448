@@ -392,6 +392,13 @@ func main() {
 		// З13-и1: ставки VAT — список для экрана и ставка всей категории позиций одной кнопкой
 		own.GET("/vat/rates", handleVatRates)
 		own.PUT("/vat/goods", handleGoodsVat)
+		// З13-и6: профили учёта — ставки ryczałtu и колонки KPiR для экрана, ставка ryczałtu всей категории позиций,
+		// реквизиты фирмы для выгрузки
+		own.GET("/ryczalt/rates", handleRyczaltRates)
+		own.PUT("/ryczalt/goods", handleGoodsRyczalt)
+		own.GET("/kpir/columns", handleKpirColumns)
+		own.GET("/export/requisites", handleRequisites)
+		own.PUT("/export/requisites", handleRequisitesPut)
 		own.GET("/board/token", handleAdminBoardTokenGet)       // Ж8-и3 (Ж-Р12): токен и ссылка табло
 		own.POST("/board/token", handleAdminBoardTokenRotate)   // выпустить новый
 		own.DELETE("/board/token", handleAdminBoardTokenDelete) // выключить табло

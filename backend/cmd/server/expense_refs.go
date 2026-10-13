@@ -20,6 +20,25 @@ import (
 
 const maxCategoryName = 64
 
+// maxAccount — счёт категории для полной бухгалтерии (З13-и6): «402», «402-01», «4-02-1».
+const maxAccount = 32
+
+// checkKpirAccount — колонка KPiR и счёт из формы категории (З13-и6): колонка — из models.KpirCols, счёт — до 32
+// знаков без краевых пробелов; ok == "" — годится, иначе код ошибки.
+func checkKpirAccount(col *int, account *string) (string, string) {
+	if col != nil && !models.ValidKpir(*col) {
+		return "", "bad_kpir_col"
+	}
+	if account == nil {
+		return "", ""
+	}
+	a := strings.TrimSpace(*account)
+	if len([]rune(a)) > maxAccount {
+		return "", "bad_account"
+	}
+	return a, ""
+}
+
 // expenseMethodOrder — способы по порядку, как в форме расхода.
 var expenseMethodOrder = []string{models.ExpenseTill, models.ExpenseBank, models.ExpenseCard, models.ExpenseOwner}
 
@@ -169,8 +188,10 @@ func handleExpenseMethodsPut(c *gin.Context) {
 // стандартных.
 func handleExpenseCategoryCreate(c *gin.Context) {
 	var req struct {
-		Name     string `json:"name"`
-		Purchase bool   `json:"purchase"`
+		Name     string  `json:"name"`
+		Purchase bool    `json:"purchase"`
+		KpirCol  *int    `json:"kpir_col"` // З13-и6: не прислана — закупка 12, остальное 15
+		Account  *string `json:"account"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		expenseFail(c, http.StatusBadRequest, "invalid_request")
@@ -181,6 +202,15 @@ func handleExpenseCategoryCreate(c *gin.Context) {
 		expenseFail(c, http.StatusBadRequest, "bad_category_name")
 		return
 	}
+	account, code := checkKpirAccount(req.KpirCol, req.Account)
+	if code != "" {
+		expenseFail(c, http.StatusBadRequest, code)
+		return
+	}
+	col := models.KpirDefault(req.Purchase)
+	if req.KpirCol != nil {
+		col = *req.KpirCol
+	}
 	var same models.ExpenseCategory
 	if db.Where("lower(name) = lower(?)", name).First(&same).Error == nil {
 		c.JSON(http.StatusConflict, gin.H{"code": "category_exists", "message": expenseErrors["category_exists"], "id": same.ID})
@@ -188,7 +218,7 @@ func handleExpenseCategoryCreate(c *gin.Context) {
 	}
 	var top int
 	db.Model(&models.ExpenseCategory{}).Select("COALESCE(MAX(sort), 0)").Scan(&top)
-	cat := models.ExpenseCategory{ID: uuid.New(), Name: name, Purchase: req.Purchase, Sort: top + 10}
+	cat := models.ExpenseCategory{ID: uuid.New(), Name: name, Purchase: req.Purchase, Sort: top + 10, KpirCol: col, Account: account}
 	if err := db.Create(&cat).Error; err != nil {
 		expenseFail(c, http.StatusInternalServerError, "db_error")
 		return
@@ -197,13 +227,18 @@ func handleExpenseCategoryCreate(c *gin.Context) {
 	if cat.Purchase {
 		what += " (закупка)"
 	}
+	what += " · KPiR " + kpirText(cat.KpirCol)
+	if cat.Account != "" {
+		what += " · счёт " + cat.Account
+	}
 	logAdminAction(c, "expense_category_create", nil, what)
 	c.JSON(http.StatusCreated, gin.H{"category": cat})
 }
 
-// PATCH /admin/expense-categories/:id {name?, hidden?, purchase?} —
-// переименовать, скрыть или вернуть, закупка — только у своих (owner).
-// Последнюю видимую категорию не скрыть — расход без категории не внести.
+// PATCH /admin/expense-categories/:id {name?, hidden?, purchase?, kpir_col?, account?} —
+// переименовать, скрыть или вернуть, закупка — только у своих (owner); колонка
+// KPiR и счёт (З13-и6) — у любой. Последнюю видимую категорию не скрыть —
+// расход без категории не внести.
 func handleExpenseCategoryUpdate(c *gin.Context) {
 	var cat models.ExpenseCategory
 	if err := db.First(&cat, "id = ?", c.Param("id")).Error; err != nil {
@@ -214,9 +249,16 @@ func handleExpenseCategoryUpdate(c *gin.Context) {
 		Name     *string `json:"name"`
 		Hidden   *bool   `json:"hidden"`
 		Purchase *bool   `json:"purchase"`
+		KpirCol  *int    `json:"kpir_col"` // З13-и6
+		Account  *string `json:"account"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		expenseFail(c, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	account, code := checkKpirAccount(req.KpirCol, req.Account)
+	if code != "" {
+		expenseFail(c, http.StatusBadRequest, code)
 		return
 	}
 	upd, changes := map[string]any{}, []string{}
@@ -255,6 +297,14 @@ func handleExpenseCategoryUpdate(c *gin.Context) {
 		}
 		upd["hidden"] = *req.Hidden
 		changes = append(changes, map[bool]string{true: "скрыта", false: "снова в списке"}[*req.Hidden])
+	}
+	if req.KpirCol != nil && *req.KpirCol != cat.KpirCol {
+		upd["kpir_col"] = *req.KpirCol
+		changes = append(changes, "KPiR "+kpirText(cat.KpirCol)+" → "+kpirText(*req.KpirCol))
+	}
+	if req.Account != nil && account != cat.Account {
+		upd["account"] = account
+		changes = append(changes, "счёт "+dash(cat.Account)+" → "+dash(account))
 	}
 	if len(changes) == 0 {
 		c.JSON(http.StatusOK, gin.H{"category": cat, "changed": 0})

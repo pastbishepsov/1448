@@ -114,12 +114,13 @@ type vatConfig struct {
 	Topup    bool // VAT при пополнении; нет — при трате
 	Gifts    bool // подарки товаров — в VAT по себестоимости
 	TopupVat int  // ставка пополнения
+	RyTime   int  // З13-и6: ставка ryczałtu времени и пакетов, десятые доли процента (строки vatRow.Ry)
 }
 
 func vatConfigNow() vatConfig {
 	set := func(key string) int64 { return settingInt64(key, settingDefaults[key]) }
 	return vatConfig{Payer: set("acc_vat_payer") == 1, Topup: set("acc_vat_moment") == 1, Gifts: set("acc_gift_vat") == 1,
-		TopupVat: int(set("acc_topup_vat"))}
+		TopupVat: int(set("acc_topup_vat")), RyTime: ryczaltTimeNow()}
 }
 
 // vatKinds — виды операций по порядку для экрана.
@@ -130,47 +131,53 @@ type vatRow struct {
 	Kind   string // time | packs | sales | deposits | gifts | returns
 	D      string // клубные сутки, ГГГГ-ММ-ДД
 	Vat    int    // ставка, % (−1 — zw)
+	Ry     int    // З13-и6: ставка ryczałtu, десятые доли процента: время, пакеты и пополнения — настройка, товары — позиции; у подарка — 0
 	Method string // как платили; у возврата — как вернули, у подарка — comp
 	G      int64  // брутто со знаком, гроши
 	N      int64  // операций (у подарков — штук)
 }
 
 // vatSalesSQL — облагаемые операции за [@from, @to) по правилам выше; @spv — «при пополнении», @topup — ставка
-// пополнения сейчас, @def — ставка, когда взять её неоткуда. %[1]s…%[7]s — клубные сутки момента операции.
-const vatSalesSQL = `SELECT kind, d, vat, method, SUM(g)::bigint AS g, COUNT(*) AS n FROM (
-  SELECT 'deposits' AS kind, %[1]s AS d, COALESCE(dp.vat_pct, @topup) AS vat, dp.method, ROUND(dp.amount_pln * 100)::bigint AS g
+// пополнения сейчас, @def — ставка, когда взять её неоткуда. %[1]s…%[7]s — клубные сутки момента операции. З13-и6:
+// ry — ставка ryczałtu строки: время, пакеты и пополнения — @rtime (настройка), товары и кухня — нынешняя ставка
+// позиции (снимка нет: ставку ryczałtu задаёт вид деятельности, а не дата), позиции уже нет — @rgoods; возврат
+// деньгами оплаченного с кошелька «при пополнении» — @rtime, как его пополнение. CAST(@rtime AS int), а не «::int»:
+// без типа параметр первой ветки UNION — text, а «@rtime::int» GORM за именованный параметр не считает.
+const vatSalesSQL = `SELECT kind, d, vat, ry, method, SUM(g)::bigint AS g, COUNT(*) AS n FROM (
+  SELECT 'deposits' AS kind, %[1]s AS d, COALESCE(dp.vat_pct, @topup) AS vat, CAST(@rtime AS int) AS ry, dp.method, ROUND(dp.amount_pln * 100)::bigint AS g
     FROM deposits dp WHERE @spv AND dp.created_at >= @from AND dp.created_at < @to
   UNION ALL
-  SELECT 'time', %[2]s, COALESCE(se.vat_pct, z.vat_pct, @def), 'wallet', -w.amount_grosz
+  SELECT 'time', %[2]s, COALESCE(se.vat_pct, z.vat_pct, @def), CAST(@rtime AS int), 'wallet', -w.amount_grosz
     FROM wallet_transactions w LEFT JOIN sessions se ON se.id = w.ref_id
     LEFT JOIN computers pc ON pc.id = se.computer_id LEFT JOIN zones z ON z.id = pc.zone_id
    WHERE NOT @spv AND w.kind = 'session_spend' AND w.amount_grosz < 0 AND w.created_at >= @from AND w.created_at < @to
   UNION ALL
-  SELECT 'packs', %[3]s, COALESCE(p.vat_pct, tp.vat_pct, z.vat_pct, @def), p.method, ROUND(p.price_pln * 100)::bigint
+  SELECT 'packs', %[3]s, COALESCE(p.vat_pct, tp.vat_pct, z.vat_pct, @def), CAST(@rtime AS int), p.method, ROUND(p.price_pln * 100)::bigint
     FROM user_packages p LEFT JOIN time_packages tp ON tp.id = p.package_id LEFT JOIN zones z ON z.id = p.zone_id
    WHERE p.method <> 'comp' AND NOT (@spv AND p.method = 'wallet') AND p.created_at >= @from AND p.created_at < @to
   UNION ALL
-  SELECT 'sales', %[4]s, COALESCE(s.vat_pct, g.vat_pct, @def), s.method, ROUND(s.total_pln * 100)::bigint
+  SELECT 'sales', %[4]s, COALESCE(s.vat_pct, g.vat_pct, @def), COALESCE(g.ryczalt_rate, @rgoods)::int, s.method, ROUND(s.total_pln * 100)::bigint
     FROM sales s LEFT JOIN goods g ON g.id = s.good_id
    WHERE s.method <> 'comp' AND NOT (@spv AND s.method = 'wallet') AND s.paid_at >= @from AND s.paid_at < @to
   UNION ALL
-  SELECT 'returns', %[5]s, COALESCE(dp.vat_pct, @topup), COALESCE(dp.refund_method, dp.method), -dp.refund_grosz
+  SELECT 'returns', %[5]s, COALESCE(dp.vat_pct, @topup), CAST(@rtime AS int), COALESCE(dp.refund_method, dp.method), -dp.refund_grosz
     FROM deposits dp
    WHERE @spv AND dp.voided_at >= @from AND dp.voided_at < @to AND dp.refund_grosz <> 0
      AND COALESCE(dp.refund_method, dp.method) IN ('cash', 'card', 'blik')
   UNION ALL
   SELECT 'returns', %[6]s, CASE WHEN @spv AND p.method = 'wallet' THEN @topup ELSE COALESCE(p.vat_pct, tp.vat_pct, z.vat_pct, @def) END,
-         COALESCE(p.refund_method, p.method), -p.refund_grosz
+         CAST(@rtime AS int), COALESCE(p.refund_method, p.method), -p.refund_grosz
     FROM user_packages p LEFT JOIN time_packages tp ON tp.id = p.package_id LEFT JOIN zones z ON z.id = p.zone_id
    WHERE p.method <> 'comp' AND p.voided_at >= @from AND p.voided_at < @to AND p.refund_grosz <> 0
      AND (COALESCE(p.refund_method, p.method) IN ('cash', 'card', 'blik') OR (NOT @spv AND COALESCE(p.refund_method, p.method) = 'wallet'))
   UNION ALL
   SELECT 'returns', %[7]s, CASE WHEN @spv AND s.method = 'wallet' THEN @topup ELSE COALESCE(s.vat_pct, g.vat_pct, @def) END,
+         CASE WHEN @spv AND s.method = 'wallet' THEN CAST(@rtime AS int) ELSE COALESCE(g.ryczalt_rate, @rgoods)::int END,
          COALESCE(s.refund_method, s.method), -ROUND(s.total_pln * 100)::bigint
     FROM sales s LEFT JOIN goods g ON g.id = s.good_id
    WHERE s.paid_at IS NOT NULL AND s.method <> 'comp' AND s.voided_at >= @from AND s.voided_at < @to
      AND (COALESCE(s.refund_method, s.method) IN ('cash', 'card', 'blik') OR (NOT @spv AND COALESCE(s.refund_method, s.method) = 'wallet'))
-) x GROUP BY 1, 2, 3, 4`
+) x GROUP BY 1, 2, 3, 4, 5`
 
 // vatRowsIn — облагаемые операции периода p по настройкам cfg.
 func vatRowsIn(p period, reportHour int, cfg vatConfig) []vatRow {
@@ -178,7 +185,8 @@ func vatRowsIn(p period, reportHour int, cfg vatConfig) []vatRow {
 	var rows []vatRow
 	db.Raw(fmt.Sprintf(vatSalesSQL, day("dp.created_at"), day("w.created_at"), day("p.created_at"), day("s.paid_at"),
 		day("dp.voided_at"), day("p.voided_at"), day("s.voided_at")),
-		map[string]any{"from": p.From, "to": p.To, "spv": cfg.Topup, "topup": cfg.TopupVat, "def": models.VatDefault}).Scan(&rows)
+		map[string]any{"from": p.From, "to": p.To, "spv": cfg.Topup, "topup": cfg.TopupVat, "def": models.VatDefault,
+			"rtime": cfg.RyTime, "rgoods": models.RyczaltGoodsDefault}).Scan(&rows)
 	if !cfg.Gifts || !cfg.Payer {
 		return rows
 	}

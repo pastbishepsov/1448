@@ -24,6 +24,11 @@ type ExpenseCategory struct {
 	Hidden    bool      `json:"hidden"     gorm:"not null;default:false"`
 	Sort      int       `json:"sort"       gorm:"not null;default:0"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// З13-и6 (миграция 084): колонка KPiR (KpirCols; 0 — не в книгу) и счёт для полной бухгалтерии ("" — не задан).
+	// Без default в теге: 0 — тоже выбор, его ставит ручка.
+	KpirCol int    `json:"kpir_col" gorm:"column:kpir_col;not null"`
+	Account string `json:"account"  gorm:"size:32;not null"`
 }
 
 func (ExpenseCategory) TableName() string { return "expense_categories" }
