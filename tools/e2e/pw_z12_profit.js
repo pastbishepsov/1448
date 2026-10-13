@@ -54,8 +54,8 @@ const z = require('./_z');
   await boss.click('#r-acc'); await z.sleep(2500);
   const s0 = await state(boss);
   const tabs = await boss.evaluate(() => [...document.querySelectorAll('#accTabs button')].map(b => b.textContent.replace(/\d+$/, '').trim()));
-  z.check('вход в «Бухгалтерию» из рейла — «Обзор»: первая вкладка «Обзор · Касса · Расходы · Закупки · Справочники»',
-    s0.tab === 'acc' && s0.acc === 'ov' && s0.on === 'Обзор' && tabs.join(',') === 'Обзор,Касса,Расходы,Закупки,Справочники'
+  z.check('вход в «Бухгалтерию» из рейла — «Обзор»: первая вкладка «Обзор · Касса · Расходы · Закупки · Справочники · Выгрузка»',
+    s0.tab === 'acc' && s0.acc === 'ov' && s0.on === 'Обзор' && tabs.join(',') === 'Обзор,Касса,Расходы,Закупки,Справочники,Выгрузка'
     && await boss.evaluate(() => !!document.getElementById('ovKpis')), JSON.stringify({ s0, tabs }));
   await z.shot(boss, 'z12_profit_top');
 

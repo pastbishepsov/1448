@@ -693,6 +693,23 @@
   .purFlag{color:var(--orange); font-size:12px; margin-top:2px}
   .refList td.purWhat{white-space:normal}
   .refList .purLotPrice{width:110px}
+  /* З13-и7: «Выгрузка» — профиль строкой, листы с числом строк, «Скачать»; файл и реквизиты — карточками, как «Экономика» */
+  .outProf{margin:2px 0 12px; line-height:1.55}
+  .outProf b{color:var(--txt)}
+  #outSheets td.outN{color:var(--dim); font-variant-numeric:tabular-nums}
+  #outSheets td.outRows{font-variant-numeric:tabular-nums; white-space:nowrap}
+  #outSheets .outFile{color:var(--dim); font-size:12px; margin-left:8px; font-family:ui-monospace,Menlo,Consolas,monospace}
+  .outGo{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0 4px}
+  .outGo #outName{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px}
+  .outCards{margin-top:4px}
+  .outWarn{color:var(--orange); font-size:12px}
+  .setcard .outBar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px}
+  /* З13-и7: «Справочники» — ставки ryczałtu категорий позиций: выбор и кнопки в одной строке, на телефоне — с переносом */
+  .refList .ryPick{display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap}
+  .refList .ryPick select.input{width:auto; min-width:96px; padding:6px 10px}
+  .ryItem{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:6px 0; border-top:1px solid var(--hair)}
+  .ryItem:first-child{border-top:0}
+  .ryItem select.input{width:auto; min-width:110px}
 </style>
 </head>
 <body>
@@ -1047,8 +1064,9 @@
       <section id="s-acc" class="hidden">
         <!-- З8-и3 (№78): «Бухгалтерия» — только владельцу. З12-и4 (решение основателя 04.10): вход — «Обзор» (сейчас,
              доходы, затраты и результат за период с графиком, «Прибыль за период», отработанное), дальше — «Касса» (ящик
-             клуба по клубным дням, инкассации, коррекции остатка), «Расходы», «Закупки», «Справочники». -->
-        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="ov" onclick="accTabSet('ov')">Обзор</button><button data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button><button data-t="pur" onclick="accTabSet('pur')">Закупки</button><button data-t="refs" onclick="accTabSet('refs')">Справочники</button></div></div>
+             клуба по клубным дням, инкассации, коррекции остатка), «Расходы», «Закупки», «Справочники», «Выгрузка»
+             (З13-и7: файл бухгалтеру). -->
+        <div class="toolrow"><div class="segs" id="accTabs"><button class="on" data-t="ov" onclick="accTabSet('ov')">Обзор</button><button data-t="cash" onclick="accTabSet('cash')">Касса</button><button data-t="exp" onclick="accTabSet('exp')">Расходы</button><button data-t="pur" onclick="accTabSet('pur')">Закупки</button><button data-t="refs" onclick="accTabSet('refs')">Справочники</button><button data-t="out" onclick="accTabSet('out')">Выгрузка</button></div></div>
         <div id="accBody"><div class="skel"></div><div class="skel"></div></div>
       </section>
 
@@ -4125,7 +4143,7 @@ const AUD_GROUPS = {
           'expense_category_create','expense_category_update','counterparty_update','expense_methods', // З9-и4: справочники
           'expense_template_create','expense_template_update', // З9-и5: регулярные расходы (всё это видит только владелец)
           'supply_price', 'lot_price', // З10-и6, З10-и7: цены поставки и партий без поставки — только владелец
-          'export'], // З13-и4: выгрузка бухгалтеру — только владелец
+          'export', 'requisites'], // З13-и4: выгрузка бухгалтеру — только владелец; З13-и7 — и реквизиты фирмы
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -4136,7 +4154,7 @@ const AUD_GROUPS = {
             'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','sale_paid','settle','debt_write_off','debt_restore','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
           'supply_receive','supply_edit','supply_cancel', // З10-и4: приёмка
-          'goods_vat'], // З13-и2: ставка VAT всей категории
+          'goods_vat', 'goods_ryczalt'], // З13-и2: ставка VAT всей категории; З13-и7 — ставка ryczałtu
   staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close','login_failed'], // ревью 26.08; Ж6-и4: сдача кассы
 };
 const AUD_LABEL = {
@@ -4178,6 +4196,7 @@ const AUD_LABEL = {
   supply_price:'закупка: цены', // З10-и6
   lot_price:'партия: цена', // З10-и7
   goods_vat:'товары: ставка VAT категории', // З13-и2
+  goods_ryczalt:'товары: ставка ryczałtu категории', requisites:'реквизиты фирмы', // З13-и7
   export:'выгрузка бухгалтеру', // З13-и4
   // Эти виды сервер писал давно, а журнал печатал их сырым английским
   // идентификатором (ревью 26.08).
@@ -4223,6 +4242,7 @@ const AUD_ICON = {
   supply_price:'coins', // З10-и6
   lot_price:'coins', // З10-и7
   goods_vat:'edit', // З13-и2
+  goods_ryczalt:'edit', requisites:'scroll', // З13-и7
   export:'save', // З13-и4
   guest_update:'edit', password_reset:'users', // ревью 26.08
   pc_hold:'clock', pc_unhold:'check', pc_release:'check', // Ж4-и3
@@ -6688,6 +6708,7 @@ async function renderAcc(){
   if (accTab === 'exp') return renderExp();
   if (accTab === 'refs') return renderRefs(); // З9-и4
   if (accTab === 'pur') return renderPur(); // З10-и6
+  if (accTab === 'out') return renderOut(); // З13-и7
   const box = document.getElementById('accBody');
   if (!accData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
   try{ accData = await api('/admin/cash/book?' + accQuery()); }
@@ -6856,6 +6877,219 @@ function accTabSet(t){
   renderAcc();
 }
 function accGo(t){ accTab = t; accKeep = true; nav('acc'); }
+
+/* ── З13-и7 (№75, №76; решения основателя 04.10, З-Р37): «Бухгалтерия» → «Выгрузка», только владельцу. Файл бухгалтеру
+   за месяц «‹ ›» — по умолчанию прошлый: его и сдают бухгалтеру — или за свои даты, по клубным суткам; формат — XLSX
+   (листы в одном файле) или CSV (архив, файл на лист), заголовки — по-польски (по умолчанию) или по-русски; выбор
+   формата и языка помнит этот браузер. Профиль учёта — из «Экономика» → «Бухгалтерия»: какие листы идут первыми. Листы
+   с числом строк — та же сборка, что файл, только без файла (GET /admin/export?…&preview=1); «Скачать» берёт файл по
+   токену и отдаёт браузеру с именем от сервера, выгрузка — строкой в журнале владельца. Ниже — настройки файла (CSV:
+   разделитель, десятичный знак, кодировка; даты; номера KP/KW в «Кассе») и реквизиты фирмы для «О выгрузке».
+   Сервер — export.go, export_profiles.go, accounting.go. ── */
+let outPeriod = {month:''}, outCur = '', outFmt = 'xlsx', outLang = 'pl', outData = null, outSeq = 0, outBusy = false;
+let outSet = {}, outReq = {}; // настройки с сервера (форма учёта, VAT, файл) и реквизиты фирмы
+const OUT_PREFS = '1448a_out';
+try{
+  const p = JSON.parse(localStorage.getItem(OUT_PREFS) || '{}');
+  if (p.fmt === 'xlsx' || p.fmt === 'csv') outFmt = p.fmt;
+  if (p.lang === 'pl' || p.lang === 'ru') outLang = p.lang;
+}catch(e){}
+function outPrefsSave(){ try{ localStorage.setItem(OUT_PREFS, JSON.stringify({fmt: outFmt, lang: outLang})); }catch(e){} }
+const OUT_FORM = ['KPiR — книга доходов и расходов', 'ryczałt — налог с доходов по ставкам', 'полная бухгалтерия'];
+// настройки файла: [ключ, id, подпись, варианты]
+const OUT_FILE = [
+  ['acc_csv_sep', 'out_sep', 'CSV — разделитель полей', [[0, '«;» — как в польском Excel'], [1, '«,» — запятая'], [2, 'табуляция']]],
+  ['acc_csv_decimal', 'out_dec', 'CSV — десятичный знак', [[0, '«,» — 12,50'], [1, '«.» — 12.50']]],
+  ['acc_csv_enc', 'out_enc', 'CSV — кодировка', [[0, 'UTF-8 с BOM — Excel и новые программы'], [1, 'Windows-1250 — старые польские программы, кириллица латиницей']]],
+  ['acc_date_fmt', 'out_date', 'Даты — в CSV и XLSX', [[0, 'ДД.ММ.ГГГГ — 31.12.2026'], [1, 'ГГГГ-ММ-ДД — 2026-12-31']]],
+  ['acc_kpkw', 'out_kpkw', 'Номера KP/KW в «Кассе»', [[0, 'с начала месяца — KP 1/10/2026'], [1, 'с начала года — KP 1/2026'], [2, 'без номеров']]],
+];
+function outCount(n, one, few, many){ return repPlural(+n || 0, one, few, many).replace(/^-?\d+/, (+n || 0).toLocaleString('ru-RU')); }
+function outRowsText(x){
+  if (x.unit === 'days') return outCount(x.rows, 'день', 'дня', 'дней') + ' с продажами';
+  if (x.unit === 'docs') return outCount(x.rows, 'документ', 'документа', 'документов');
+  return outCount(x.rows, 'строка', 'строки', 'строк');
+}
+function outQuery(){
+  if (outPeriod.from) return 'from=' + outPeriod.from + '&to=' + outPeriod.to;
+  if (!outPeriod.month) return 'preset=prev_month';
+  return outPeriod.month === outCur ? 'preset=month' : 'month=' + outPeriod.month;
+}
+function outRef(){ return outPeriod.from ? outPeriod.to.slice(0, 7) : outPeriod.month; }
+function outStep(k){
+  const m = ovAddMonth(outRef(), k);
+  if (!m || (outCur && m > outCur)) return; // дальше текущего месяца не листаем
+  outPeriod = {month: m}; renderOut();
+}
+function outMonthGo(){ const m = outRef(); if (m){ outPeriod = {month: m}; renderOut(); } }
+function outMonthHtml(){
+  const ref = outRef(), last = !ref || !outCur || ref >= outCur;
+  return `<div class="segs ovMonth" id="outMonth">
+      <button class="ovArr" onclick="outStep(-1)" aria-label="Предыдущий месяц" title="Предыдущий месяц">‹</button>
+      <button id="outMonthName" class="${outPeriod.from ? '' : 'on'}" onclick="outMonthGo()" title="${outPeriod.from ? 'выгрузить месяц целиком' : 'календарный месяц — стрелки листают соседние'}">${ref ? ovMonthName(ref) : 'Прошлый месяц'}</button>
+      <button class="ovArr" onclick="outStep(1)" aria-label="Следующий месяц" title="Следующий месяц"${last ? ' disabled' : ''}>›</button>
+    </div>`;
+}
+function outCustom(){
+  const f = dateOf('outFrom', 'Начало периода');
+  if (f === null) return;
+  const t = dateOf('outTo', 'Конец периода');
+  if (t === null) return;
+  if (!f){ toast('⚠ Укажи дату начала'); return; }
+  if (t && t < f){ toast('⚠ Конец периода раньше начала'); return; }
+  outPeriod = {from:f, to:t || f}; renderOut();
+}
+function outFmtSet(f){ if (outFmt === f) return; outFmt = f; outPrefsSave(); renderOut(); }
+function outLangSet(l){ if (outLang === l) return; outLang = l; outPrefsSave(); renderOut(); }
+async function renderOut(){
+  const box = document.getElementById('accBody'), seq = ++outSeq, main = document.getElementById('outMain');
+  if (!main) box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  else main.classList.add('ovBusy'); // прежние листы видны бледно, пока считается новый период
+  let d, st, rq;
+  try{
+    [d, st, rq] = await Promise.all([api('/admin/export?' + outQuery() + '&format=' + outFmt + '&lang=' + outLang + '&preview=1'),
+      api('/admin/settings'), api('/admin/export/requisites'), ryLoad()]);
+  }catch(e){
+    if (seq !== outSeq || accTab !== 'out' || curTab !== 'acc') return;
+    const m = document.getElementById('outMain');
+    if (m){ m.classList.remove('ovBusy'); toast('⚠ Выгрузка не посчиталась: ' + e.message); }
+    else { box.innerHTML = repEmpty('Выгрузка не посчиталась: ' + esc(e.message)); mountIcons(box); }
+    return;
+  }
+  if (seq !== outSeq || accTab !== 'out' || curTab !== 'acc') return; // пока считалось, ушли или выбрали другое
+  const per = d.period || {};
+  if (!outPeriod.month && !outPeriod.from && per.from){ // первый заход — прошлый месяц по часам клуба
+    outPeriod = {month: per.from.slice(0, 7)};
+    outCur = ovAddMonth(outPeriod.month, 1);
+  }
+  outData = d; outSet = st.settings || {}; outReq = rq || {};
+  paintOut();
+}
+function outProfHtml(){
+  const s = outSet, form = Number(s.acc_form ?? 0), payer = Number(s.acc_vat_payer ?? 1) === 1, topup = Number(s.acc_vat_moment ?? 0) === 1;
+  const first = form === 1 ? 'первыми после «О выгрузке» — доходы по ставкам ryczałtu: время и пакеты — ' + esc(ryLabel(s.acc_ryczalt_time ?? ryDefaultTime)) + ', товары и кухня — по ставке позиции'
+    : form === 2 ? 'после «О выгрузке» — реестры продаж и покупок VAT и «Касса»'
+    : 'после «О выгрузке» — «Записи для KPiR»: выручка дня и расходы по колонкам категорий';
+  return `Профиль учёта: <b>${esc(OUT_FORM[form] || OUT_FORM[0])}</b> — ${first} · ${payer ? 'плательщик VAT · VAT ' + (topup ? 'при пополнении' : 'при трате')
+    : 'освобождён от VAT — без колонок VAT'} · <a href="#" class="lnk" onclick="event.preventDefault(); palGoAccForm()">поменять — «Экономика» → «Бухгалтерия»</a>`;
+}
+function paintOut(){
+  const box = document.getElementById('accBody'), d = outData || {}, per = d.period || {}, sheets = d.sheets || [], r = outReq || {}, s = outSet;
+  const csv = outFmt === 'csv', rh = Number(s.report_hour ?? 8), hh = String(rh).padStart(2, '0') + ':00';
+  const running = !outPeriod.from && outPeriod.month && outPeriod.month === outCur;
+  box.innerHTML = `
+    <div class="toolrow">
+      ${outMonthHtml()}
+      <div class="segs" style="align-items:center">
+        <input id="outFrom" ${DATE_FIELD} aria-label="Начало периода" value="${outPeriod.from ? ruDate(outPeriod.from) : ''}" onkeydown="if(event.key==='Enter')outCustom()">
+        <span class="muted" style="align-self:center">—</span>
+        <input id="outTo" ${DATE_FIELD} aria-label="Конец периода" value="${outPeriod.from ? ruDate(outPeriod.to) : ''}" onkeydown="if(event.key==='Enter')outCustom()">
+        <button class="btn ghost mini" onclick="outCustom()"><span data-ic="cal"></span>Свои даты</button>
+      </div>
+    </div>
+    <div id="outMain">
+      <div class="muted" id="outLabel" style="margin:-4px 0 10px">${per.from ? ruDate(per.from) + ' — ' + ruDate(per.to) : ''} · клубные сутки с ${hh} до ${hh} следующего дня${running ? ' · месяц ещё идёт: в файле — то, что есть на момент скачивания' : ''}</div>
+      <div class="toolrow">
+        <div class="segs" id="outFmt"><button data-f="xlsx" class="${csv ? '' : 'on'}" onclick="outFmtSet('xlsx')">XLSX — листы в одном файле</button><button data-f="csv" class="${csv ? 'on' : ''}" onclick="outFmtSet('csv')">CSV — архив, файл на лист</button></div>
+        <div class="segs" id="outLang"><button data-l="pl" class="${outLang === 'pl' ? 'on' : ''}" onclick="outLangSet('pl')">Заголовки по-польски</button><button data-l="ru" class="${outLang === 'ru' ? 'on' : ''}" onclick="outLangSet('ru')">По-русски</button></div>
+      </div>
+      <div class="muted outProf" id="outProf">${outProfHtml()}</div>
+      <div class="tablewrap"><table class="refList" id="outSheets"><tr><th>№</th><th>${csv ? 'Лист и файл в архиве' : 'Лист'}</th><th>Данных</th></tr>
+        ${sheets.map((x, i) => `<tr data-i="${i}"><td class="outN">${i + 1}</td><td><b>${esc(x.name)}</b>${csv ? `<span class="outFile">${esc(x.file)}</span>` : ''}</td><td class="outRows">${outRowsText(x)}</td></tr>`).join('')}</table></div>
+      <div class="outGo">
+        <button class="btn" id="outGet" onclick="outDownload(this)"><span data-ic="save"></span>Скачать</button>
+        <span class="muted" id="outName">${esc(d.file || '')}</span>
+      </div>
+      <div class="muted">Каждая выгрузка — строкой в журнале: кто и когда скачал, за какой период. Как посчитано — первым листом «О выгрузке».</div>
+    </div>
+    <div class="sect">Файл и реквизиты</div>
+    <div class="setgrid outCards">
+      <div class="setcard" id="outFileCard"><h4>Файл</h4>
+        <div class="why">Что открывается в программе вашего бухгалтера — уточните у своего бухгалтера. По умолчанию — как в польском Excel: «;», запятая, UTF-8 с BOM, ДД.ММ.ГГГГ; номера KP/KW — с начала месяца.</div>
+        ${OUT_FILE.map(([k, id, label, opts]) => `<label for="${id}">${esc(label)}</label><select id="${id}" class="input" onchange="outFileDirty()">${settingOptions(opts, s[k])}</select>`).join('')}
+        <div class="outBar"><button class="btn mini" id="outFileSave" onclick="outFileSave()"><span data-ic="save"></span>Сохранить</button><span class="muted" id="outFileHint">Правок нет</span></div>
+      </div>
+      <div class="setcard" id="outReqCard"><h4>Реквизиты фирмы</h4>
+        <div class="why">Для «О выгрузке»: бухгалтер узнаёт фирму по названию и NIP. Фирма может называться не так, как клуб; пусто — название и адрес клуба.</div>
+        <label for="out_rname">Название фирмы</label>
+        <input id="out_rname" class="input" maxlength="200" placeholder="${esc(r.club_name || 'как у клуба')}" value="${esc(r.name || '')}" oninput="outReqDirty()">
+        <label for="out_rnip">NIP</label>
+        <input id="out_rnip" class="input" maxlength="13" inputmode="numeric" placeholder="10 цифр — 123-456-32-18" value="${esc(r.nip ? nipFmt(r.nip) : '')}" oninput="outReqDirty()">
+        <div class="outWarn hidden" id="outNipWarn">⚠ NIP не сходится по контрольной сумме — проверь цифры</div>
+        <label for="out_raddr">Адрес фирмы</label>
+        <input id="out_raddr" class="input" maxlength="300" placeholder="${esc(r.club_address || 'как у клуба')}" value="${esc(r.address || '')}" oninput="outReqDirty()">
+        <div class="outBar"><button class="btn mini" id="outReqSave" onclick="outReqSave()"><span data-ic="save"></span>Сохранить</button><span class="muted" id="outReqHint">Правок нет</span></div>
+      </div>
+    </div>`;
+  mountIcons(box);
+}
+// настройки файла: что изменилось против сервера — {ключ: число}
+function outFileChanged(){
+  const out = {};
+  for (const [k, id] of OUT_FILE){
+    const el = document.getElementById(id);
+    if (el && Number(el.value) !== Number(outSet[k])) out[k] = Number(el.value);
+  }
+  return out;
+}
+function outFileDirty(){
+  const ch = outFileChanged(), n = Object.keys(ch).length;
+  for (const [k, id] of OUT_FILE) document.getElementById(id)?.classList.toggle('changed', k in ch);
+  setText('outFileHint', n ? 'Изменено: ' + n : 'Правок нет');
+}
+async function outFileSave(){
+  const ch = outFileChanged(), n = Object.keys(ch).length;
+  if (!n){ toast('Правок нет — сохранять нечего'); return; }
+  try{
+    const d = await api('/admin/settings', {method:'PUT', body: JSON.stringify(ch)});
+    outSet = d.settings || outSet;
+    toast('✓ Настройки файла сохранены — следующий файл уже по ним');
+    renderOut(); // формат в «О выгрузке» — по новым настройкам
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+// реквизиты: поля формы — как уйдут на сервер (NIP — цифрами)
+function outReqForm(){
+  const v = id => (document.getElementById(id) || {value:''}).value.trim();
+  return {name: v('out_rname'), nip: v('out_rnip').replace(/[\s-]/g, ''), address: v('out_raddr')};
+}
+function outReqDirty(){
+  const f = outReqForm(), r = outReq || {};
+  const ch = ['name', 'nip', 'address'].filter(k => f[k] !== (r[k] || ''));
+  for (const [k, id] of [['name', 'out_rname'], ['nip', 'out_rnip'], ['address', 'out_raddr']]) document.getElementById(id)?.classList.toggle('changed', ch.includes(k));
+  document.getElementById('outNipWarn')?.classList.toggle('hidden', !/^\d{10}$/.test(f.nip) || nipOk(f.nip));
+  setText('outReqHint', ch.length ? 'Изменено: ' + ch.length : 'Правок нет');
+}
+async function outReqSave(){
+  const f = outReqForm();
+  if (f.nip && !/^\d{10}$/.test(f.nip)){ toast('⚠ NIP — 10 цифр'); document.getElementById('out_rnip').focus(); return; }
+  try{
+    const d = await api('/admin/export/requisites', {method:'PUT', body: JSON.stringify(f)});
+    outReq = d;
+    toast(d.changed ? '✓ Реквизиты сохранены — они в «О выгрузке»' : 'Изменений нет');
+    paintOut();
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+// «Скачать»: файл — по токену (ссылкой без токена сервер его не отдаст), имя — из ответа сервера
+async function outDownload(btn){
+  if (outBusy) return;
+  outBusy = true;
+  const html = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span data-ic="clock"></span>Собираю файл…'; mountIcons(btn);
+  try{
+    const url = API + '/admin/export?' + outQuery() + '&format=' + outFmt + '&lang=' + outLang;
+    const get = () => fetch(url, {headers:{Authorization:'Bearer ' + tokens().a}});
+    let r = await get();
+    if (r.status === 401 && tokens().r && await tryRefresh() === 'ok') r = await get();
+    if (!r.ok){ const e = await r.json().catch(() => ({})); throw new Error(e.message || 'сервер ответил ' + r.status); }
+    const name = ((r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || (outData || {}).file || 'vygruzka';
+    const blob = await r.blob(), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('✓ Файл «' + name + '» скачан — выгрузка в журнале');
+  }catch(e){ toast('⚠ Файл не собрался: ' + e.message); }
+  finally{ outBusy = false; btn.disabled = false; btn.innerHTML = html; mountIcons(btn); }
+}
 
 /* ── З9-и5 (№67, Д10; решение основателя 28.09 — только ежемесячные): регулярные расходы. Шаблон заводится в
    «Справочниках»; когда наступил его день месяца (нет такого — последний), месяц ждёт внесения: блок «Ждут внесения»
@@ -7294,9 +7528,10 @@ async function renderRefs(){
   const box = document.getElementById('accBody');
   if (!refsData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
   try{
-    const [c, p, m, t] = await Promise.all([api('/admin/expense-categories'), api('/admin/counterparties'), api('/admin/expense-methods'),
-      api('/admin/expense-templates')]); // З9-и5
-    refsData = {cats: c.categories || [], cps: p.counterparties || [], methods: m.methods || [], tpls: t.templates || []};
+    const [c, p, m, t, g, st] = await Promise.all([api('/admin/expense-categories'), api('/admin/counterparties'), api('/admin/expense-methods'),
+      api('/admin/expense-templates'), api('/admin/goods'), api('/admin/settings'), kpirLoad(), ryLoad()]); // З9-и5; З13-и7 — позиции и форма учёта
+    refsData = {cats: c.categories || [], cps: p.counterparties || [], methods: m.methods || [], tpls: t.templates || [],
+      goods: g.goods || [], settings: st.settings || {}};
   }catch(e){ box.innerHTML = '<div class="muted">Справочники не загрузились: ' + esc(e.message) + '</div>'; return; }
   paintRefs();
 }
@@ -7306,6 +7541,8 @@ function paintRefs(){
       <td><b>${esc(c.name)}</b>${c.hidden ? ' <span class="muted">· скрыта</span>' : ''}</td>
       <td class="muted">${c.code ? 'стандартная' : 'своя'}</td>
       <td>${c.purchase ? 'закупка' : '<span class="muted">—</span>'}</td>
+      <td><span class="vatL">KPiR</span>${+c.kpir_col ? `<span title="${esc(kpirName(c.kpir_col))}">${+c.kpir_col}</span>` : '<span class="muted">не в книгу</span>'}</td>
+      <td><span class="vatL">счёт</span>${c.account ? esc(c.account) : '<span class="muted">—</span>'}</td>
       <td class="refAct"><button class="btn ghost mini" onclick="refCatOpen('${c.id}')">Изменить</button>
         <button class="btn ghost mini" onclick="refCatHide('${c.id}', ${!c.hidden})">${c.hidden ? 'Вернуть' : 'Скрыть'}</button></td></tr>`;
   const cp = p => `<tr class="refRow${p.hidden ? ' refOff' : ''}" data-id="${p.id}">
@@ -7328,8 +7565,8 @@ function paintRefs(){
         <button class="btn ghost mini" onclick="refTplActive('${t.id}', ${!t.active})">${t.active ? 'Выключить' : 'Включить'}</button></td></tr>`;
   box.innerHTML = `
     <div class="dsub" style="margin-top:0">Категории</div>
-    <div class="muted" style="margin-bottom:8px">Свои встают после стандартных. «Закупка» — себестоимость в «Прибыли»: у стандартных она своя и не меняется. Скрытая не предлагается в новом расходе, старые расходы в ней остаются.</div>
-    <div class="tablewrap"><table class="refList" id="refCats"><tr><th>Категория</th><th>Какая</th><th>Закупка</th><th></th></tr>${d.cats.map(cat).join('')}</table></div>
+    <div class="muted" style="margin-bottom:8px">Свои встают после стандартных. «Закупка» — себестоимость в «Прибыли»: у стандартных она своя и не меняется. Скрытая не предлагается в новом расходе, старые расходы в ней остаются. KPiR и счёт — куда расход категории идёт в выгрузке: в KPiR — колонка книги (12 — закупка товаров и материалов, 13 — побочные затраты закупки, 14 — зарплаты, 15 — прочие), в полной бухгалтерии — счёт; уточните у своего бухгалтера.</div>
+    <div class="tablewrap"><table class="refList" id="refCats"><tr><th>Категория</th><th>Какая</th><th>Закупка</th><th>KPiR</th><th>Счёт</th><th></th></tr>${d.cats.map(cat).join('')}</table></div>
     <div class="toolrow" style="margin-top:8px">
       <input id="rcName" class="input" maxlength="64" placeholder="Новая категория" style="width:auto; flex:1; min-width:180px" onkeydown="if(event.key==='Enter')refCatAdd()">
       <label class="muted" style="display:flex; gap:6px; align-items:center"><input id="rcPurchase" type="checkbox"> закупка</label>
@@ -7347,7 +7584,8 @@ function paintRefs(){
     <div class="muted" style="margin-bottom:8px">Раз в месяц в свой день (нет такого числа в месяце — в последний) расход ждёт внесения: в «Расходах» — «Ждут внесения» с кнопкой «Внести», на «Бухгалтерии» — число, в день срока — сообщение тебе в канал. Новый и снова включённый ждёт с ближайшего срока. Заплатили раньше срока — «Внести заранее»: в срок он уже не будет ждать и не напомнит. Выключенный не ждёт и не напоминает; удаления нет.</div>
     ${d.tpls.length ? `<div class="tablewrap"><table class="refList" id="refTpls"><tr><th>Название</th><th>Категория</th><th>Сумма</th><th>Способ</th><th>Число</th><th>Срок</th><th></th></tr>${d.tpls.map(tpl).join('')}</table></div>`
       : '<div class="empty">Регулярных расходов ещё нет — аренда, интернет, бухгалтер: заведи раз, дальше они сами напомнят</div>'}
-    <div class="toolrow" style="margin-top:8px"><button class="btn mini" id="rtNew" onclick="refTplOpen('')"><span data-ic="plus"></span>Новый регулярный расход</button></div>`;
+    <div class="toolrow" style="margin-top:8px"><button class="btn mini" id="rtNew" onclick="refTplOpen('')"><span data-ic="plus"></span>Новый регулярный расход</button></div>
+    ${refRyHtml(d)}`;
   mountIcons(box);
   if (refsFocus){ const el = document.getElementById(refsFocus); refsFocus = ''; if (el) el.scrollIntoView({block:'start'}); } // З9-и5
 }
@@ -7363,12 +7601,16 @@ async function refCatAdd(){
 function refCatOpen(id){
   const c = ((refsData || {}).cats || []).find(x => x.id === id);
   if (!c) return;
-  refCat = {id, name:c.name, purchase:c.purchase, std:!!c.code};
+  refCat = {id, name:c.name, purchase:c.purchase, std:!!c.code, kpir:+c.kpir_col, account:c.account || ''};
   drawerUserId = null; drawerPCId = null; // шторка бухгалтерии — живые обновления её не перерисуют
   openDrawer('Категория', `<div class="uform">
     <input id="rcEditName" class="input" maxlength="64" placeholder="Название" value="${esc(c.name)}" oninput="refCat.name=this.value">
     <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="rcEditPurchase" type="checkbox"${c.purchase ? ' checked' : ''}${c.code ? ' disabled' : ''} onchange="refCat.purchase=this.checked"> закупка — себестоимость в «Прибыли»</label>
     ${c.code ? '<div class="muted">Стандартная категория: переименовать можно, «закупку» — нет, по ней «Прибыль» отделит себестоимость.</div>' : ''}
+    <label for="rcEditKpir">Колонка KPiR — уточните у своего бухгалтера</label>
+    <select id="rcEditKpir" class="input" onchange="refCat.kpir=+this.value">${kpirOptions(+c.kpir_col)}</select>
+    <label for="rcEditAcct">Счёт — для полной бухгалтерии</label>
+    <input id="rcEditAcct" class="input" maxlength="32" placeholder="например, 402 — пусто, если не задан" value="${esc(c.account || '')}" oninput="refCat.account=this.value">
     <button class="btn" style="width:100%; justify-content:center" id="rcSave" onclick="refCatSave()"><span data-ic="save"></span>Сохранить</button>
   </div>`);
 }
@@ -7376,11 +7618,74 @@ async function refCatSave(){
   const f = refCat, body = {name: String(f.name).trim()};
   if (!body.name){ toast('⚠ Как назвать категорию?'); return; }
   if (!f.std) body.purchase = f.purchase;
+  const was = ((refsData || {}).cats || []).find(x => x.id === f.id) || {}; // З13-и7: колонку и счёт — только если тронули
+  if (f.kpir !== +was.kpir_col) body.kpir_col = f.kpir;
+  if (String(f.account).trim() !== (was.account || '')) body.account = String(f.account).trim();
   try{
     const d = await api('/admin/expense-categories/' + f.id, {method:'PATCH', body: JSON.stringify(body)});
     toast(d.changed ? '✓ Категория поправлена' : 'Изменений нет');
     closeDrawer(); refsDirty(); renderRefs();
   }catch(e){ toast('⚠ ' + e.message); }
+}
+/* З13-и7: ставки ryczałtu позиций — в «Справочниках» по категориям позиций: у категории — её ставка (или «разные»),
+   «Всей категории» — одной кнопкой со взводом (PUT /admin/ryczalt/goods), «Позиции» — шторка со ставкой каждой
+   (PATCH /admin/goods/:id). Время за ПК и пакеты — настройка «Экономика» → «Бухгалтерия». Нужны ryczałtu; у других
+   форм учёта в выгрузку не идут — об этом строка над таблицей. */
+function refRyCats(goods){
+  const by = new Map();
+  for (const g of goods){ const k = g.category || ''; if (!by.has(k)) by.set(k, []); by.get(k).push(g); }
+  return [...by.entries()].sort((a, b) => (a[0] || '\uffff').localeCompare(b[0] || '\uffff', 'ru')).map(([cat, list]) => ({cat, list}));
+}
+function refRyHtml(d){
+  const st = d.settings || {}, form = Number(st.acc_form ?? 0), cats = refRyCats(d.goods || []);
+  if (refsData) refsData.ryCats = cats;
+  const row = (x, i) => {
+    const rates = [...new Set(x.list.map(g => g.ryczalt_rate))], one = rates.length === 1 ? rates[0] : null;
+    const mix = rates.sort((a, b) => b - a).map(r => esc(ryLabel(r)) + ' — ' + x.list.filter(g => g.ryczalt_rate === r).length).join(', ');
+    return `<tr class="refRow" data-i="${i}"><td><b>${x.cat ? esc(x.cat) : 'без категории'}</b></td>
+      <td><span class="vatL">позиций</span>${x.list.length}</td>
+      <td class="ryNow">${one !== null ? '<span class="vatL">ставка</span>' + esc(ryLabel(one)) : '<span class="refWarn">разные: ' + mix + '</span>'}</td>
+      <td class="refAct"><span class="ryPick"><select class="input" id="ry_${i}" aria-label="Ставка ryczałtu категории">${ryOptions(one ?? ryDefaultGoods)}</select>
+        <button class="btn ghost mini" onclick="refRyCat(${i}, this)">Всей категории</button>
+        <button class="btn ghost mini" onclick="refRyOpen(${i})">Позиции</button></span></td></tr>`;
+  };
+  return `<div class="dsub" id="refRyHead">Ставки ryczałtu</div>
+    <div class="muted" style="margin-bottom:8px" id="refRyNote">${form === 1 ? 'Форма учёта — ryczałt: по этим ставкам выгрузка делит выручку.'
+      : 'Нужны, если форма учёта — ryczałt; сейчас — ' + esc(OUT_FORM[form] || OUT_FORM[0]) + ', в выгрузку ставки не идут.'}
+      Время за ПК и пакеты — ${esc(ryLabel(st.acc_ryczalt_time ?? ryDefaultTime))} (<a href="#" class="lnk" onclick="event.preventDefault(); palGoAccForm()">«Экономика» → «Бухгалтерия»</a>). Товары и кухня — по ставке позиции: по умолчанию ${esc(ryLabel(ryDefaultGoods))} — торговля и гастрономия; пиво и другое спиртное — обычно 8,5 %. Уточните у своего бухгалтера.</div>
+    ${cats.length ? `<div class="tablewrap"><table class="refList" id="refRy"><tr><th>Категория позиций</th><th>Позиций</th><th>Ставка</th><th></th></tr>${cats.map(row).join('')}</table></div>`
+      : '<div class="empty">Позиций ещё нет — ставка появится у первой, по умолчанию ' + esc(ryLabel(ryDefaultGoods)) + '</div>'}`;
+}
+function refRyCat(i, btn){
+  const x = ((refsData || {}).ryCats || [])[i], sel = document.getElementById('ry_' + i);
+  if (!x || !sel) return;
+  const rate = Number(sel.value), name = x.cat ? '«' + x.cat + '»' : 'Без категории';
+  armButton(btn, `Всем ${x.list.length} — ${esc(ryLabel(rate))}?`, async () => {
+    try{
+      const d = await api('/admin/ryczalt/goods', {method:'PUT', body: JSON.stringify({category: x.cat, ryczalt_rate: rate})});
+      toast(`✓ ${name}: ryczałt ${ryLabel(rate)} — ${d.changed ? 'поменяли у ' + d.changed + ' из ' + d.total : 'уже у всех ' + d.total}`);
+      renderRefs();
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+function refRyOpen(i){
+  const x = ((refsData || {}).ryCats || [])[i];
+  if (!x) return;
+  drawerUserId = null; drawerPCId = null;
+  openDrawer('Ставки ryczałtu · ' + (x.cat || 'без категории'), `<div class="uform">
+    <div class="muted">Ставка — для выгрузки ryczałtu, по ней делится выручка позиции; меняет и прошлые месяцы выгрузки: снимка у ставки нет. Уточните у своего бухгалтера.</div>
+    <div id="ryList">${x.list.map(g => `<div class="ryItem" data-id="${g.id}"><span>${esc(g.name)}${g.active ? '' : ' <span class="muted">· выключена</span>'}</span>
+      <select class="input" aria-label="Ставка ryczałtu: ${esc(g.name)}" onchange="refRyGood('${g.id}', this)">${ryOptions(g.ryczalt_rate)}</select></div>`).join('')}</div>
+  </div>`);
+}
+async function refRyGood(id, sel){
+  const g = (((refsData || {}).goods) || []).find(x => x.id === id), rate = Number(sel.value);
+  try{
+    await api('/admin/goods/' + id, {method:'PATCH', body: JSON.stringify({ryczalt_rate: rate})});
+    if (g) g.ryczalt_rate = rate;
+    toast('✓ «' + (g ? g.name : 'позиция') + '»: ryczałt ' + ryLabel(rate));
+    paintRefs(); // строка категории — с новой ставкой; шторка остаётся открытой
+  }catch(e){ toast('⚠ ' + e.message); if (g) sel.innerHTML = ryOptions(g.ryczalt_rate); }
 }
 async function refCatHide(id, hidden){
   const c = ((refsData || {}).cats || []).find(x => x.id === id) || {};
@@ -8300,6 +8605,40 @@ function vatOptions(cur){
   const list = vatRates.some(r => r.vat_pct === cur) ? vatRates : vatRates.concat([{vat_pct:cur, label:vatLabel(cur)}]);
   return list.map(r => `<option value="${r.vat_pct}"${r.vat_pct === cur ? ' selected' : ''}>${esc(r.label)}</option>`).join('');
 }
+/* З13-и7: колонки KPiR и ставки ryczałtu — с сервера (GET /admin/kpir/columns, GET /admin/ryczalt/rates: закон
+   поменяет — меняется строка на сервере); пока не пришли — те же списки здесь. Ставка ryczałtu — в десятых долях
+   процента: 85 — 8,5 %. */
+let kpirCols = [{col:12, name_ru:'закупка товаров и материалов'}, {col:13, name_ru:'побочные затраты закупки'}, {col:14, name_ru:'зарплаты'},
+  {col:15, name_ru:'прочие расходы'}, {col:0, name_ru:'не в книгу'}], kpirLoading = null;
+function kpirLoad(){
+  if (!isOwner()) return Promise.resolve();
+  return kpirLoading || (kpirLoading = api('/admin/kpir/columns').then(d => {
+    if (d && Array.isArray(d.columns) && d.columns.length) kpirCols = d.columns;
+  }).catch(() => { kpirLoading = null; }));
+}
+function kpirName(col){ const c = kpirCols.find(x => x.col === +col); return c ? c.name_ru : String(col); }
+function kpirOptions(cur){
+  const list = kpirCols.some(x => x.col === cur) ? kpirCols : kpirCols.concat([{col:cur, name_ru:'колонка ' + cur}]);
+  return list.map(x => `<option value="${x.col}"${x.col === cur ? ' selected' : ''}>${x.col ? x.col + ' — ' + esc(x.name_ru) : esc(x.name_ru)}</option>`).join('');
+}
+let ryRates = [170, 150, 140, 125, 120, 100, 85, 55, 30, 20].map(r => ({rate:r, label:String(r / 10).replace('.', ',') + ' %'}));
+let ryDefaultGoods = 30, ryDefaultTime = 150, ryLoading = null;
+function ryLoad(){
+  if (!isOwner()) return Promise.resolve();
+  return ryLoading || (ryLoading = api('/admin/ryczalt/rates').then(d => {
+    if (d && Array.isArray(d.rates) && d.rates.length){ ryRates = d.rates; ryDefaultGoods = d.default_goods ?? ryDefaultGoods; ryDefaultTime = d.default_time ?? ryDefaultTime; }
+  }).catch(() => { ryLoading = null; }));
+}
+function ryLabel(r){
+  if (r === null || r === undefined || r === '') return '—';
+  const x = ryRates.find(y => y.rate === +r);
+  return x ? x.label : String(+r / 10).replace('.', ',') + ' %';
+}
+function ryOptions(cur){
+  cur = +cur;
+  const list = ryRates.some(r => r.rate === cur) ? ryRates : ryRates.concat([{rate:cur, label:ryLabel(cur)}]);
+  return list.map(r => `<option value="${r.rate}"${r.rate === cur ? ' selected' : ''}>${esc(r.label)}</option>`).join('');
+}
 // в тело правки — ставка из выбора, если запись новая или ставку поменяли; не трогали — не шлём, сервер оставит прежнюю
 function vatPut(body, selId, was){
   const el = document.getElementById(selId);
@@ -8581,15 +8920,19 @@ const SETTINGS_GROUPS = [
     ['mouse_dpi', 'set_mousedpi', 'DPI мыши клуба (0 — не задан; задан — сенса гостя пересчитывается под неё, cm/360 тот же)', 0, 32000, 50],
     ['mousepad_cm', 'set_mousepad', 'Ширина коврика, см (0 — не задана; тогда гостю предложат лист A4)', 0, 200]]},
   // З13-и2 (З-Р37): вопросы бухгалтеру — настройки владельца; по умолчанию — самый частый вариант
-  {t:'Бухгалтерия', why:'Как клуб платит VAT — по этому считаются «Продажи по ставкам VAT» в «Обзоре» и выгрузка бухгалтеру. Решает бухгалтер: уточните у своего бухгалтера. По умолчанию — самый частый вариант: плательщик VAT, VAT при трате.', f:[
+  {t:'Бухгалтерия', why:'Как клуб ведёт учёт и платит VAT — по этому строится выгрузка бухгалтеру и считаются «Продажи по ставкам VAT» в «Обзоре». Решает бухгалтер: уточните у своего бухгалтера. По умолчанию — самый частый вариант: KPiR, плательщик VAT, VAT при трате.', f:[
+    // З13-и7: форма учёта решает, какие листы выгрузки идут первыми (З13-и6)
+    ['acc_form', 'set_accform', 'Форма учёта — какие листы выгрузки идут первыми', 0, 2, 0, [[0, 'KPiR — księga przychodów i rozchodów'], [1, 'Ryczałt — ewidencja przychodów'], [2, 'Полная бухгалтерия — księgi rachunkowe']]],
     ['acc_vat_payer', 'set_vatpayer', 'Плательщик VAT', 0, 1, 0, [[1, 'Да — czynny podatnik VAT'], [0, 'Нет — освобождён (zwolniony z VAT)']]],
     ['acc_vat_moment', 'set_vatmoment', 'Когда VAT с пополнения кошелька', 0, 1, 0, [[0, 'При трате — bon różnego przeznaczenia'], [1, 'При пополнении — bon jednego przeznaczenia']]],
     ['acc_topup_vat', 'set_topupvat', 'Ставка VAT пополнения — для «при пополнении»', -1, 100, 0, 'vat'],
     // З13-и3: подарок товара — по себестоимости (nieodpłatne przekazanie towarów), если так решит бухгалтер
-    ['acc_gift_vat', 'set_giftvat', 'Подарки товаров в VAT (nieodpłatne przekazanie towarów)', 0, 1, 0, [[0, 'Нет — подарки без VAT'], [1, 'Да — по себестоимости']]]]},
+    ['acc_gift_vat', 'set_giftvat', 'Подарки товаров в VAT (nieodpłatne przekazanie towarów)', 0, 1, 0, [[0, 'Нет — подарки без VAT'], [1, 'Да — по себестоимости']]],
+    ['acc_ryczalt_time', 'set_rytime', 'Ставка ryczałtu времени за ПК и пакетов — для ryczałtu', 20, 170, 0, 'ryczalt']]}, // З13-и7
 ];
 const SETTINGS_SAVE_HTML = '<span data-ic="save"></span>Сохранить';
 let settingsLoaded = {}; // значения с сервера — правка сравнивается с ними
+let setPaints = 0; // З13-и7: сколько раз карточки отрисованы — палитра ждёт свежей отрисовки (palGoAccForm)
 const settingsFields = () => SETTINGS_GROUPS.flatMap(g => g.f.map(([key, id, label, min, max, step, opts]) => [key, id, label, min, max, step || 0, g.t, opts]));
 
 async function renderSettings(){
@@ -8597,7 +8940,7 @@ async function renderSettings(){
   renderPackages(); // Е2-и4: и пакеты времени — там же, это тот же прайс
   renderBoardBox(); // Ж8-и3: табло зала — токен и ссылка
   try{
-    const [d] = await Promise.all([api('/admin/settings'), vatLoad()]); // З13-и2: ставки — для «ставки пополнения»
+    const [d] = await Promise.all([api('/admin/settings'), vatLoad(), ryLoad()]); // З13-и2: ставки — для «ставки пополнения»; З13-и7 — ryczałtu
     settingsLoaded = d.settings || {};
     paintSettings();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -8610,16 +8953,18 @@ function paintSettings(){
         : `<input id="${id}" class="input" type="number" min="${min}" max="${max}"${step ? ` step="${step}"` : ''} value="${esc(settingsLoaded[key] ?? '')}" oninput="settingsDirty()">`}
       ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>` : ''}${
         key === 'acc_vat_moment' ? `<div class="setwarn hidden" id="setVatWarn">⚠ Меняет расчёт VAT и за прошлые месяцы: продажи по ставкам и выгрузка за них посчитаются по-новому. Меняйте вместе с бухгалтером, лучше с первого числа. «Сохранить» переспросит.</div>` : ''}${
-        key === 'acc_gift_vat' ? '<div class="setnote" id="setVatNote"></div>' : ''}`).join('')}
+        key === 'acc_gift_vat' ? '<div class="setnote" id="setVatNote"></div>' : ''}${
+        key === 'acc_ryczalt_time' ? '<div class="setnote" id="setFormNote"></div>' : ''}`).join('')}
   </div>`).join('');
+  setPaints++;
   settingsDirty();
 }
 // З13-и2: настройка-выбор — варианты [значение, подпись] или 'vat' (ставки VAT с сервера); значения нет в списке —
 // отдельной строкой, чтобы «Сохранить» его не подменил
 function settingOptions(opts, cur){
-  const list = opts === 'vat' ? vatRates.map(r => [r.vat_pct, r.label]) : opts;
+  const list = opts === 'vat' ? vatRates.map(r => [r.vat_pct, r.label]) : opts === 'ryczalt' ? ryRates.map(r => [r.rate, r.label]) : opts; // З13-и7
   const all = cur === undefined || list.some(([v]) => String(v) === String(cur)) ? list
-    : list.concat([[cur, opts === 'vat' ? vatLabel(cur) : String(cur)]]);
+    : list.concat([[cur, opts === 'vat' ? vatLabel(cur) : opts === 'ryczalt' ? ryLabel(cur) : String(cur)]]);
   return all.map(([v, t]) => `<option value="${v}"${String(v) === String(cur) ? ' selected' : ''}>${esc(t)}</option>`).join('');
 }
 /* З13-и2: что значат выбранные в «Бухгалтерии» варианты — простыми словами, по тому, что выбрано сейчас (и до «Сохранить») */
@@ -8629,6 +8974,13 @@ function vatNoteHtml(){
   const gifts = val('set_giftvat') === 1 ? ' Подарки товаров — в VAT по себестоимости, по ставке позиции.' : ''; // З13-и3
   if (val('set_vatmoment') === 1) return `VAT — <b>с пополнения</b>, по ставке ${esc(vatLabel(val('set_topupvat')))}; траты с кошелька его уже не начисляют. Продажи и пакеты за живые деньги — по своей ставке.` + gifts;
   return 'Пополнение кошелька — <b>без VAT</b>. VAT — когда гость тратит: время — по ставке зоны, пакет — по ставке пакета, товары и кухня — при оплате, по ставке позиции.' + gifts;
+}
+/* З13-и7: что получится в выгрузке при выбранной форме учёта — простыми словами, по тому, что выбрано сейчас */
+function formNoteHtml(){
+  const f = Number((document.getElementById('set_accform') || {}).value);
+  if (f === 1) return 'В выгрузке первыми после «О выгрузке» — <b>доходы по ставкам ryczałtu</b>: время и пакеты — по ставке выше, товары и кухня — по ставке позиции («Бухгалтерия» → «Справочники»).';
+  if (f === 2) return 'В выгрузке после «О выгрузке» — <b>реестры продаж и покупок VAT</b> и «Касса»; у расходов — счёт категории («Бухгалтерия» → «Справочники»). Ставка ryczałtu не нужна.';
+  return 'В выгрузке после «О выгрузке» — <b>«Записи для KPiR»</b>: выручка дня — в колонке 9, расходы — в колонке своей категории («Бухгалтерия» → «Справочники»). Ставка ryczałtu не нужна.';
 }
 // З13-и2: плательщик, момент VAT и (З13-и3) подарки пересчитывают и прошлые месяцы — предупреждение и взвод; ставка
 // пополнения — снимок в каждом пополнении, прошлое не трогает
@@ -8659,6 +9011,8 @@ function settingsDirty(){
   document.getElementById('setVatWarn')?.classList.toggle('hidden', !vatCalcChanged(ch)); // З13-и2
   const note = document.getElementById('setVatNote');
   if (note) note.innerHTML = vatNoteHtml();
+  const fnote = document.getElementById('setFormNote'); // З13-и7
+  if (fnote) fnote.innerHTML = formNoteHtml();
 }
 async function saveSettings(btn){
   const ch = settingsChanged(), n = Object.keys(ch).length;
@@ -8964,7 +9318,15 @@ const PAL_WORDS = [
    sub:'Бухгалтерия → Обзор: брутто, нетто и VAT по ставкам и по дням — сверка с фискальной кассой', ic:'chart', run:() => palGoVatSales()},
   {who:'owner', words:['табель', 'часы', 'приход', 'уход'], name:'Табель',
    sub:'Персонал → табель', ic:'clock', run:() => palGoTimesheet()},
-  {who:'owner', words:['экспорт', 'выгрузка'], name:'Экспорт каталога',
+  {who:'owner', words:['выгрузка', 'выгрузка бухгалтеру', 'бухгалтер', 'для бухгалтера', 'файл бухгалтеру', 'экспорт', 'excel', 'xlsx', 'csv',
+   'реквизиты', 'nip фирмы', 'raport kasowy'], name:'Выгрузка бухгалтеру', // З13-и7
+   sub:'Бухгалтерия → Выгрузка: месяц или свои даты, XLSX или CSV, листы с числом строк, реквизиты фирмы', ic:'save', run:() => accGo('out')},
+  {who:'owner', words:['форма учёта', 'kpir', 'księga', 'ryczałt', 'ryczalt', 'ewidencja', 'pełna księgowość', 'полная бухгалтерия'], name:'Форма учёта', // З13-и7
+   sub:'Экономика → Бухгалтерия: KPiR, ryczałt или полная бухгалтерия — какие листы выгрузки первыми', ic:'gear', run:() => palGoAccForm()},
+  {who:'owner', words:['колонка kpir', 'колонки kpir', 'kpir', 'счёт категории', 'план счетов', 'ставка ryczałtu', 'ставки ryczałtu', 'ryczałt'],
+   name:'Колонки KPiR и ставки ryczałtu', // З13-и7
+   sub:'Бухгалтерия → Справочники: колонка KPiR и счёт категории расходов, ставки ryczałtu позиций', ic:'scroll', run:() => { refsFocus = 'refRyHead'; accGo('refs'); }},
+  {who:'owner', words:['экспорт каталога', 'выгрузка каталога', 'каталог в файл', 'перенос каталога', 'экспорт'], name:'Экспорт каталога',
    sub:'Каталог → файл JSON', ic:'save', run:() => { nav('catalog'); exportCatalog(); }},
   {who:'owner', words:['закупки', 'закупка', 'цены поставки', 'оценить поставку', 'ждут цен', 'себестоимость', 'начальный остаток', 'нашлось', 'цена партии'], name:'Закупки', // З10-и6, З10-и7
    sub:'Бухгалтерия → цены поставок, документ, расход', ic:'box', run:() => accGo('pur')},
@@ -9034,6 +9396,17 @@ function palGoVatSales(){
   const t = setInterval(() => {
     const el = document.getElementById('ovVatHead');
     if ((el && ovPaints > p0) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block:'start'}); }
+  }, 100);
+}
+// З13-и7: «Форма учёта» — первое поле карточки «Бухгалтерия» в «Экономике». Ждём свежей отрисовки: поля с прошлого
+// захода ещё на странице, их перерисуют — и фокус с них пропал бы
+function palGoAccForm(){
+  const p0 = setPaints;
+  nav('settings');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('set_accform');
+    if ((el && setPaints > p0) || ++n > 40){ clearInterval(t); if (el){ el.closest('.setcard').scrollIntoView({block:'center'}); el.focus(); } }
   }, 100);
 }
 // З13-и2: «Ставки VAT» — карточка «Бухгалтерия» в «Экономике»: ждём, пока настройки встанут, и показываем её

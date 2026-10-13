@@ -24,10 +24,11 @@ const CARDS = ['Монеты и XP', 'Лимиты персонала', 'Клу�
   z.check('восемь карточек: ' + CARDS.join(' · '), JSON.stringify(cards.map(c => c.t)) === JSON.stringify(CARDS), JSON.stringify(cards.map(c => c.t)));
   z.check('у каждой карточки — строка «на что влияет»', cards.length === 8 && cards.every(c => c.why.length > 20), JSON.stringify(cards.map(c => c.why)));
   const where = id => (cards.find(c => c.ids.includes(id)) || {}).t;
-  z.check('поля на своих местах: час суток — «Клубные сутки», кейсы админа — «Лимиты персонала», DPI — «Мышь и коврик», плательщик VAT и '
-    + 'подарки в VAT — «Бухгалтерия», 35 полей',
+  z.check('поля на своих местах: час суток — «Клубные сутки», кейсы админа — «Лимиты персонала», DPI — «Мышь и коврик», форма учёта (З13-и7), '
+    + 'плательщик VAT, подарки в VAT и ставка ryczałtu времени — «Бухгалтерия», 37 полей',
     where('set_rhour') === 'Клубные сутки и сегменты' && where('set_casecap') === 'Лимиты персонала' && where('set_mousedpi') === 'Мышь и коврик'
-    && where('set_vatpayer') === 'Бухгалтерия' && where('set_giftvat') === 'Бухгалтерия' && cards.reduce((n, c) => n + c.ids.length, 0) === 35,
+    && where('set_accform') === 'Бухгалтерия' && where('set_vatpayer') === 'Бухгалтерия' && where('set_giftvat') === 'Бухгалтерия'
+    && where('set_rytime') === 'Бухгалтерия' && cards.reduce((n, c) => n + c.ids.length, 0) === 37,
     JSON.stringify(cards.map(c => [c.t, c.ids.length])));
   await z.shot(page, 'z7_settings');
 

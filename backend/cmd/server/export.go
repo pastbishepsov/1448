@@ -679,10 +679,32 @@ func exportFileName(p period, format string, lang int) string {
 	return "1448-" + []string{"vygruzka", "eksport"}[lang] + "-" + span + ext
 }
 
+// exportPreview — что будет в файле (чистая, тест): имя файла, форма учёта и листы по порядку — имя в книге, файл в
+// архиве CSV, сколько строк данных и чего: у «О выгрузке» — строк листа, у «Продаж по дням и ставкам» — дней с
+// продажами, у «Кассы» — документов, у остальных — строк без итогов.
+func exportPreview(p period, format string, lang, form int, sheets []xsheet) gin.H {
+	out := make([]gin.H, 0, len(sheets))
+	for i, sh := range sheets {
+		n, unit := sh.n, "rows"
+		switch {
+		case i == 0:
+			n = len(sh.rows)
+		case sh.name == tr(lang, "sheet_vat"):
+			unit = "days"
+		case sh.name == tr(lang, "sheet_cash"):
+			unit = "docs"
+		}
+		out = append(out, gin.H{"name": sh.name, "file": csvFileName(i, sh), "rows": n, "unit": unit})
+	}
+	return gin.H{"file": exportFileName(p, format, lang), "period": p.out(), "form": form, "format": format,
+		"lang": []string{"ru", "pl"}[lang], "sheets": out}
+}
+
 // exportMaxDays — выгрузка не длиннее года (с високосным): файл собирается в памяти сервера, за больший срок — частями.
 const exportMaxDays = 366
 
-// GET /admin/export — выгрузка бухгалтеру за период (owner): XLSX или архив CSV, заголовки PL или RU.
+// GET /admin/export — выгрузка бухгалтеру за период (owner): XLSX или архив CSV, заголовки PL или RU; &preview=1 (З13-и7)
+// — вместо файла листы с числом строк для вкладки «Выгрузка», в журнал не пишется.
 func handleExport(c *gin.Context) {
 	p, _, reportHour, ok := periodFromQuery(c)
 	if !ok {
@@ -732,6 +754,10 @@ func handleExport(c *gin.Context) {
 	}
 	about := exportAbout(p, reportHour, cfg, a, pd, data, now, end, scheme, noCost, by, exportFormatText(format, f, lang), lang)
 	sheets := append([]xsheet{about}, data...)
+	if c.Query("preview") == "1" { // З13-и7: вкладка «Выгрузка» — листы с числом строк до «Скачать», без файла и без журнала
+		c.JSON(http.StatusOK, exportPreview(p, format, lang, pd.Form, sheets))
+		return
+	}
 	var buf bytes.Buffer
 	var err error
 	ctype := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

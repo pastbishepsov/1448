@@ -35,8 +35,8 @@ const z = require('./_z');
   const tabs = await boss.evaluate(() => [...document.querySelectorAll('#accTabs button')].map(b => b.textContent));
   await tabRefs();
   const std = await catRow('Аренда'), ms = await boss.evaluate(() => [...document.querySelectorAll('#rmMethods button')].map(b => ({ t: b.textContent, on: b.classList.contains('on') })));
-  z.check('«Бухгалтерия»: вкладки «Обзор» (З12-и4), «Касса», «Расходы», «Закупки» (З10-и6), «Справочники»; в справочниках — «Аренда» стандартная, способы — четыре, все включены',
-    tabs.join(',') === 'Обзор,Касса,Расходы,Закупки,Справочники' && std && std.cells[1] === 'стандартная' && ms.map(m => m.t).join(',') === 'Из кассы,Банк,Карта,Личные деньги владельца'
+  z.check('«Бухгалтерия»: вкладки «Обзор» (З12-и4), «Касса», «Расходы», «Закупки» (З10-и6), «Справочники», «Выгрузка» (З13-и7); в справочниках — «Аренда» стандартная, способы — четыре, все включены',
+    tabs.join(',') === 'Обзор,Касса,Расходы,Закупки,Справочники,Выгрузка' && std && std.cells[1] === 'стандартная' && ms.map(m => m.t).join(',') === 'Из кассы,Банк,Карта,Личные деньги владельца'
     && ms.every(m => m.on), JSON.stringify({ tabs, std, ms }));
   await z.shot(boss, 'z9_refs');
 

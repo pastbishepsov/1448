@@ -362,11 +362,14 @@ func csvBytes(sh xsheet, f bookFormat) []byte {
 	return buf.Bytes()
 }
 
+// csvFileName — имя файла листа в архиве (чистая, тест): номер по порядку листов и имя латиницей — «03_vse_operacii.csv».
+func csvFileName(i int, sh xsheet) string { return fmt.Sprintf("%02d_%s.csv", i+1, sh.file) }
+
 // writeCSVZip — книга архивом: файл CSV на лист, по порядку листов.
 func writeCSVZip(w io.Writer, sheets []xsheet, f bookFormat) error {
 	zw := zip.NewWriter(w)
 	for i, sh := range sheets {
-		fw, err := zw.CreateHeader(&zip.FileHeader{Name: fmt.Sprintf("%02d_%s.csv", i+1, sh.file), Method: zip.Deflate, Modified: f.now})
+		fw, err := zw.CreateHeader(&zip.FileHeader{Name: csvFileName(i, sh), Method: zip.Deflate, Modified: f.now})
 		if err != nil {
 			return err
 		}

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
@@ -191,5 +193,29 @@ func TestExportFileName(t *testing.T) {
 	}
 	if models.VatLabel(23) != "23 %" || rateLabel(1, 23) != "23%" || rateLabel(0, models.VatZW) != "zw" {
 		t.Errorf("ставки в файле: «23 %%» по-русски, «23%%» по-польски, «zw»")
+	}
+}
+
+// З13-и7: превью выгрузки для вкладки — листы по порядку, файл в архиве, строки и чего (дни, документы, строки).
+func TestExportPreview(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Warsaw")
+	p := makePeriod(time.Date(2026, 9, 1, 0, 0, 0, 0, loc), time.Date(2026, 9, 30, 0, 0, 0, 0, loc), 8, "")
+	sheets := []xsheet{
+		{name: "O eksporcie", file: "o_eksporcie", rows: make([]xrow, 3)},
+		{name: "Zapisy do KPiR", file: "zapisy_kpir", n: 7, rows: make([]xrow, 8)},
+		{name: "Sprzedaż wg dni i stawek", file: "sprzedaz_wg_dni", n: 2, rows: make([]xrow, 3)},
+		{name: "Raport kasowy", file: "raport_kasowy", n: 5},
+	}
+	got := exportPreview(p, "csv", 1, formKpir, sheets)
+	list, _ := got["sheets"].([]gin.H)
+	if got["file"] != "1448-eksport-2026-09.zip" || got["form"] != formKpir || got["lang"] != "pl" || len(list) != 4 {
+		t.Fatalf("превью: %+v", got)
+	}
+	want := [][3]any{{"01_o_eksporcie.csv", 3, "rows"}, {"02_zapisy_kpir.csv", 7, "rows"}, {"03_sprzedaz_wg_dni.csv", 2, "days"},
+		{"04_raport_kasowy.csv", 5, "docs"}}
+	for i, w := range want {
+		if list[i]["file"] != w[0] || list[i]["rows"] != w[1] || list[i]["unit"] != w[2] {
+			t.Errorf("лист %d: %+v; ждали %v", i, list[i], w)
+		}
 	}
 }
