@@ -569,16 +569,34 @@ func handleAdminStaffDismiss(c *gin.Context) {
 		return
 	}
 
+	// З14-и1 (№24): открытая смена увольняемого закрывается тем же действием — запись табеля «закрыта увольнением»,
+	// сдача кассы без пересчёта — одной транзакцией с ролью: уволен — значит, и смена закрыта.
+	now := time.Now()
+	shift := dismissShiftOf(user.ID, now)
+	actor, _ := uuid.Parse(c.GetString("user_id"))
+	var closed bool
+	var co *models.ShiftCloseout
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&user).Update("role", models.UserRolePlayer).Error; err != nil {
 			return err
 		}
 		if hasCard {
-			return tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
-				Updates(map[string]any{"dismissed_at": date, "updated_at": time.Now()}).Error
+			if err := tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
+				Updates(map[string]any{"dismissed_at": date, "updated_at": time.Now()}).Error; err != nil {
+				return err
+			}
+		} else {
+			// карточки не было — заводим минимальную, чтобы человек попал в архив
+			if err := tx.Create(&models.StaffProfile{UserID: user.ID, DismissedAt: date, RateType: "none"}).Error; err != nil {
+				return err
+			}
 		}
-		// карточки не было — заводим минимальную, чтобы человек попал в архив
-		return tx.Create(&models.StaffProfile{UserID: user.ID, DismissedAt: date, RateType: "none"}).Error
+		if shift.Entry == nil {
+			return nil
+		}
+		var err error
+		closed, co, err = dismissCloseShift(tx, shift, actor, now)
+		return err
 	})
 	if err != nil {
 		respondDBError(c, err)
@@ -592,12 +610,161 @@ func handleAdminStaffDismiss(c *gin.Context) {
 	if reason != "" {
 		details += " · " + reason
 	}
+	if closed {
+		details += ", " + dismissShiftText(shift.Entry, now)
+	}
 	if removed > 0 {
 		details += fmt.Sprintf(", снят с %d будущих смен", removed)
 	}
 	logAdminAction(c, "staff_dismiss", &target, details)
-	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname,
-		"dismissed_at": dateOut(date), "removed_shifts": removed})
+	resp := gin.H{"user_id": user.ID, "nickname": user.Nickname, "dismissed_at": dateOut(date), "removed_shifts": removed}
+	if closed {
+		resp["closed_shift"] = workOut(shift.Entry, shift.Name)
+	}
+	if co != nil { // сдача — как у ухода: строка журнала и деньги в канал — только владельцу
+		logAdminAction(c, "shift_close", &target, closeoutDetails(co))
+		postSystem(dismissOwnerLine(user.Nickname, shift.Entry, co), true, map[string]any{"closeout": true, "dismiss": true})
+		resp["closeout"] = closeoutOut(co)
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// ── З14-и1 (OWNER.md, №24; З-Р18): увольнение закрывает смену и кассу ─────────────────────────────────────
+//
+// Смена уволенного оставалась открытой навсегда: «открытых смен: 1» в табеле, минуты сводки росли с каждым
+// просмотром, сдачи кассы не было — а сам он закрыть её уже не может, доступа нет. Теперь увольнение закрывает
+// открытую запись табеля пометкой «закрыта увольнением» — автозакрытой: часы не подтверждены и в выплату не идут,
+// пока владелец её не поправит, — и пишет сдачу кассы «без пересчёта» по ящику клуба, как уход без пересчёта;
+// владельцу — строка в канал. Шторка увольнения показывает это заранее (GET /admin/staff/:id/dismiss).
+
+// dismissNote — пометка смены, закрытой увольнением: в табеле и у сдачи кассы.
+const dismissNote = "закрыта увольнением"
+
+// dismissShift — открытая смена сотрудника и чем её закроет увольнение.
+type dismissShift struct {
+	Entry   *models.WorkEntry // nil — смены нет
+	Name    string            // смена графика, к которой привязана запись
+	SameDay bool              // смена этих клубных суток: увольняют посреди неё
+	CloseAt time.Time         // момент закрытия
+}
+
+// dismissShiftOf — открытая смена сотрудника на момент now и момент, которым её закроет увольнение.
+func dismissShiftOf(userID uuid.UUID, now time.Time) dismissShift {
+	w := openEntryFor(userID)
+	if w == nil {
+		return dismissShift{}
+	}
+	today := clubDayOf(now, int(settingInt64("report_hour", 8)))
+	s := dismissShift{Entry: w, SameDay: w.Date.Format("2006-01-02") == today.Format("2006-01-02")}
+	var sched *time.Time
+	if w.ShiftID != nil {
+		var sh models.Shift
+		if db.First(&sh, "id = ?", *w.ShiftID).Error == nil {
+			end := shiftEndAt(w.Date, sh.StartMin, sh.EndMin)
+			s.Name, sched = sh.Name, &end
+		}
+	}
+	s.CloseAt = dismissCloseAt(w.StartedAt, s.SameDay, sched, now)
+	return s
+}
+
+// dismissCloseAt — каким моментом увольнение закрывает открытую смену (чистая, тест). Смена этих клубных суток —
+// сейчас: человека увольняют посреди смены. Давняя — ушёл, не отметив уход, а уволили потом — как closeForgotten:
+// конец по графику, но не позже now; без графика — начало, ноль часов. Раньше начала — никогда.
+func dismissCloseAt(start time.Time, sameDay bool, sched *time.Time, now time.Time) time.Time {
+	end := start
+	switch {
+	case sameDay:
+		end = now
+	case sched != nil:
+		end = *sched
+		if end.After(now) {
+			end = now
+		}
+	}
+	if end.Before(start) {
+		return start
+	}
+	return end
+}
+
+// dismissCloseShift — в транзакции увольнения закрыть открытую смену и записать сдачу кассы без пересчёта: запись
+// табеля — автозакрытая с пометкой, сдача — по ящику клуба под тем же замком, что у ухода (closeoutTx). Смену успели
+// закрыть уходом — closed=false и сдачи нет: её записал уход.
+func dismissCloseShift(tx *gorm.DB, s dismissShift, by uuid.UUID, now time.Time) (closed bool, co *models.ShiftCloseout, err error) {
+	w, end := s.Entry, s.CloseAt
+	mins := workMinutes(w.StartedAt, end)
+	res := tx.Model(&models.WorkEntry{}).Where("id = ? AND ended_at IS NULL", w.ID).Updates(map[string]any{
+		"ended_at": end, "minutes": mins, "auto_closed": true, "note": dismissNote, "edited_by": by, "updated_at": now,
+	})
+	if res.Error != nil || res.RowsAffected == 0 {
+		return false, nil, res.Error
+	}
+	w.EndedAt, w.Minutes, w.AutoClosed, w.Note = &end, mins, true, dismissNote
+	club, ok := defaultClub()
+	if !ok {
+		return true, nil, nil
+	}
+	id := w.ID
+	co = &models.ShiftCloseout{ClubID: club.ID, UserID: w.UserID, WorkEntryID: &id, Date: w.Date, Skipped: true, Note: dismissNote}
+	if err := closeoutTx(tx, co, nil, now); err != nil {
+		return false, nil, err
+	}
+	return true, co, nil
+}
+
+// dismissSince — с какого момента была открыта смена (чистая, тест): «14:08», если в тот же день, что увольнение (at),
+// иначе «12.10 14:08». Время — по часам клуба.
+func dismissSince(start, at time.Time) string {
+	s, a := start.In(models.ClubLocation), at.In(models.ClubLocation)
+	if s.Format("2006-01-02") == a.Format("2006-01-02") {
+		return s.Format("15:04")
+	}
+	return s.Format("02.01 15:04")
+}
+
+// dismissShiftText — что увольнение в момент at сделало со сменой, для строки журнала (чистая, тест).
+func dismissShiftText(w *models.WorkEntry, at time.Time) string {
+	return "смена с " + dismissSince(w.StartedAt, at) + " закрыта (" + hoursRU(int64(w.Minutes)) +
+		" — на проверку), касса без пересчёта"
+}
+
+// dismissOwnerLine — строка владельцу в канал (чистая, тест): смена уволенного закрыта, сколько часов легло в табель
+// на проверку и что с кассой — сколько должно быть в ящике или что ящик ещё не заведён. Момент — сдача кассы.
+func dismissOwnerLine(nick string, w *models.WorkEntry, co *models.ShiftCloseout) string {
+	if nick == "" {
+		nick = "Сотрудник"
+	}
+	line := fmt.Sprintf("🧮 %s уволен: смена с %s закрыта увольнением — %s в табеле на проверку; касса не сдана, без пересчёта",
+		nick, dismissSince(w.StartedAt, co.CreatedAt), hoursRU(int64(w.Minutes)))
+	if co.OpeningGrosz == nil {
+		return line + " — начального остатка ящика ещё нет"
+	}
+	return line + fmt.Sprintf(": в ящике должно быть %.2f zł — пересчитай", models.PLNFromGrosz(co.ExpectedGrosz))
+}
+
+// GET /admin/staff/:id/dismiss — что сделает увольнение сейчас (owner, З14-и1): открытая смена — с какого момента,
+// каким закроется и сколько часов ляжет в табель; касса не сдана — сколько должно быть в ящике; сколько будущих смен
+// снимется. Шторка «Уволить» показывает это до нажатия.
+func handleAdminStaffDismissPreview(c *gin.Context) {
+	var user models.User
+	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+	now := time.Now()
+	var future int64
+	db.Model(&models.ShiftAssignment{}).Where("user_id = ? AND date >= ?", user.ID,
+		futureShiftsFrom(now, int(settingInt64("report_hour", 8)))).Count(&future)
+	out := gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": user.Role, "future_shifts": future, "open_shift": nil}
+	if s := dismissShiftOf(user.ID, now); s.Entry != nil {
+		row := workOut(s.Entry, s.Name)
+		row["same_day"], row["close_at"], row["close_minutes"] = s.SameDay, s.CloseAt, workMinutes(s.Entry.StartedAt, s.CloseAt)
+		out["open_shift"] = row
+		st := drawerAt(db, now) // как «сколько должно быть в ящике» перед уходом (GET /admin/work/closeout)
+		out["cash"] = gin.H{"drawer": st.Point != nil, "expected_pln": models.PLNFromGrosz(st.Expected)}
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // GET /admin/staff/archive — уволенные (owner): кто, кем был и когда ушёл.

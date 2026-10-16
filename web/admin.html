@@ -4700,7 +4700,7 @@ function paintShiftFact(d){
       <td><b>${esc(r.nickname)}</b></td>
       <td>${hhmm(r.started_at)}</td>
       <td>${r.open ? '<span class="st active">на смене</span>'
-                   : hhmm(r.ended_at) + (r.auto_closed ? ' <span class="muted" title="не отметил уход — закрыто по расписанию">·авто</span>' : '')}</td>
+                   : hhmm(r.ended_at) + (r.auto_closed ? ` <span class="muted" title="${r.note === DISMISS_NOTE ? 'закрыта увольнением — часы проверь в табеле' : 'не отметил уход — закрыто по расписанию'}">·авто</span>` : '')}</td>
       <td>${hm(r.minutes)}</td>
       <td>${r.in_schedule ? '<span class="muted">по графику</span>'
                           : '<span style="color:var(--orange)">вне графика</span>'}</td>
@@ -8324,7 +8324,7 @@ async function renderTimesheet(){
         <td><b>${esc(e.nickname||'—')}</b></td>
         <td class="muted">${e.shift ? esc(e.shift) : 'вне смены'}</td>
         <td>${hhmm(e.started_at)} — ${e.open ? 'ещё на смене' : hhmm(e.ended_at)}</td>
-        <td>${e.open ? '—' : hm(e.minutes)}${e.auto_closed ? ' <span class="muted">· не отметил уход</span>' : ''}${e.closeout ? (e.closeout.skipped ? ' <span style="color:var(--orange)" title="ушёл без пересчёта кассы">· касса не считана</span>' : e.closeout.baseline ? ' <span class="muted" title="первая сдача после обновления — пересчитанное стало остатком ящика: ' + fmtPLN(e.closeout.counted_pln) + ' zł">· касса: начальный остаток</span>' : (e.closeout.diff_pln === 0 ? ' <span class="muted" title="касса сошлась: ' + fmtPLN(e.closeout.expected_pln) + ' zł">· касса ✓</span>' : ` <span style="color:var(--orange)" title="должно быть ${fmtPLN(e.closeout.expected_pln)} zł, пересчитано ${fmtPLN(e.closeout.counted_pln)} zł">· касса ${e.closeout.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(e.closeout.diff_pln))} zł</span>`)) : ''}</td>
+        <td>${e.open ? '—' : hm(e.minutes)}${e.auto_closed ? ' <span class="muted">· ' + esc(e.note || 'не отметил уход') + '</span>' : ''}${e.closeout ? (e.closeout.skipped ? ` <span style="color:var(--orange)" title="${e.closeout.note === DISMISS_NOTE ? 'уволен — касса записана без пересчёта' : 'ушёл без пересчёта кассы'}">· касса не считана</span>` : e.closeout.baseline ? ' <span class="muted" title="первая сдача после обновления — пересчитанное стало остатком ящика: ' + fmtPLN(e.closeout.counted_pln) + ' zł">· касса: начальный остаток</span>' : (e.closeout.diff_pln === 0 ? ' <span class="muted" title="касса сошлась: ' + fmtPLN(e.closeout.expected_pln) + ' zł">· касса ✓</span>' : ` <span style="color:var(--orange)" title="должно быть ${fmtPLN(e.closeout.expected_pln)} zł, пересчитано ${fmtPLN(e.closeout.counted_pln)} zł">· касса ${e.closeout.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(e.closeout.diff_pln))} zł</span>`)) : ''}</td>
         <td style="white-space:nowrap">
           <button class="btn ghost mini" onclick="tsEdit('${e.id}')"><span data-ic="edit"></span></button>
           <button class="btn ghost mini danger" onclick="armTsDelete(this,'${e.id}')">✕</button>
@@ -8469,20 +8469,41 @@ async function doHire(){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
-function dismissDrawer(id, nick){
+/* З14-и1 (№24; З-Р18): увольнение закрывает открытую смену и кассу — шторка говорит это до нажатия: с какого часа
+   открыта смена, сколько часов ляжет в табель на проверку, сколько должно быть в ящике. Сервер — staff.go. */
+const DISMISS_NOTE = 'закрыта увольнением';
+async function dismissDrawer(id, nick){
   const today = isoDate(new Date()); // локальные сутки, не UTC (ревью 26.08)
+  let p = null;
+  try{ p = await api('/admin/staff/' + id + '/dismiss'); }catch(e){} // не пришло — шторка как раньше, без предупреждения
+  const fut = p ? +p.future_shifts || 0 : -1;
   openDrawer('Увольнение · ' + nick, `
   <div class="uform">
+    ${dismissShiftHtml(p)}
     <label class="muted" style="margin-bottom:-6px">Последний рабочий день</label>
     <input id="dm_date" ${DATE_FIELD} value="${ruDate(today)}">
     <label class="muted" style="margin-bottom:-6px">Причина — для себя, в журнал</label>
     <input id="dm_reason" class="input" placeholder="напр. ушёл учиться">
-    <div class="muted">Аккаунт останется гостевым: история смен и сессий не пропадёт, человек сможет приходить играть. Со всех смен начиная с завтра снимется автоматически.</div>
+    <div class="muted">Аккаунт останется гостевым: история смен и сессий не пропадёт, человек сможет приходить играть. ${fut > 0 ? 'С будущих смен в графике снимется: ' + fut + '.' : fut === 0 ? 'Будущих смен в графике у него нет.' : 'Со всех смен начиная с завтра снимется автоматически.'}</div>
     <div style="display:flex; gap:10px">
       <button class="btn danger mini" onclick="doDismiss('${id}','${esc(nick)}')"><span data-ic="out"></span>Уволить</button>
       <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
     </div>
   </div>`);
+}
+// открытая смена увольняемого: с какого часа, чем закроется, что с кассой; смены нет — пусто
+function dismissShiftHtml(p){
+  const w = p && p.open_shift;
+  if (!w) return '';
+  const since = w.same_day ? hhmm(w.started_at) : ruDate(w.date) + ' ' + hhmm(w.started_at);
+  const shift = w.same_day || w.close_minutes > 0
+    ? `Увольнение закроет смену ${w.same_day ? 'сейчас' : 'по графику'} пометкой «${DISMISS_NOTE}»: ${hm(w.close_minutes)} встанут в табель на проверку — в выплату войдут, когда поправишь запись.`
+    : `Увольнение закроет смену пометкой «${DISMISS_NOTE}» без часов — графика у неё нет: поставь их, поправив запись в табеле.`;
+  const c = p.cash || {};
+  const cash = c.drawer ? 'в ящике должно быть ' + fmtPLN(c.expected_pln) + ' zł — пересчитай его'
+    : 'ящик ещё не заведён — его остаток задаст первая сдача с пересчётом';
+  return `<div class="setwarn" id="dmShift"><b>⚠ Открыта смена с ${since}${w.same_day ? '' : ' — уход не отмечен'}, касса не сдана.</b>
+    ${shift} Кассу запишет сданной без пересчёта: ${cash}.</div>`;
 }
 async function doDismiss(id, nick){
   const date = dateOf('dm_date', 'Последний рабочий день');
@@ -8492,9 +8513,11 @@ async function doDismiss(id, nick){
   try{
     const d = await api('/admin/staff/' + id + '/dismiss', {method:'POST', body:JSON.stringify(body)});
     toast('✕ ' + nick + ' уволен ' + ruDate(d.dismissed_at)
+          + (d.closed_shift ? ' · смена закрыта, касса — без пересчёта' : '') // З14-и1
           + (d.removed_shifts ? ' · снят с ' + d.removed_shifts + ' будущих смен' : ''));
     closeDrawer();
     renderStaff();
+    if (d.closed_shift) loadMyShift(); // З14-и1: чип «на смене» в шапке — уже без уволенного
   }catch(e){ toast('⚠ ' + e.message); }
 }
 

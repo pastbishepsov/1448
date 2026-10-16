@@ -155,6 +155,7 @@ func handleAdminStatsShift(c *gin.Context) {
 			"nickname": u.Nickname, "started_at": e.StartedAt, "ended_at": e.EndedAt,
 			"minutes": e.Minutes, "open": e.EndedAt == nil,
 			"in_schedule": e.ShiftID != nil, "auto_closed": e.AutoClosed,
+			"note": e.Note, // З14-и1: у автозакрытой — «не отметил уход» или «закрыта увольнением»
 		}
 		if e.EndedAt == nil {
 			row["minutes"] = workMinutes(e.StartedAt, time.Now())
