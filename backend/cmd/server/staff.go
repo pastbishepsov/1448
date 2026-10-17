@@ -521,11 +521,7 @@ func handleAdminStaffHire(c *gin.Context) {
 		return
 	}
 	now := time.Now()
-	user := models.User{
-		Nickname: strings.TrimSpace(req.Nickname), PasswordHash: string(hash),
-		Status: models.UserStatusActive, Role: models.UserRoleAdmin, Level: 1,
-		RegisteredAt: now, LastActiveAt: now,
-	}
+	user := newStaffUser(strings.TrimSpace(req.Nickname), string(hash), now)
 	if hired == nil {
 		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		hired = &today
@@ -554,6 +550,16 @@ func handleAdminStaffHire(c *gin.Context) {
 	}
 	logAdminAction(c, "staff_hire", &target, details+" · с "+dateOut(hired))
 	c.JSON(http.StatusCreated, gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": user.Role})
+}
+
+// newStaffUser — аккаунт нанятого (чистая, тест). З14-и3 (З-Р17): пароль от найма знает владелец — при первом входе
+// админка попросит задать свой (must_change_password), до того ручки админки отвечают must_change_password.
+func newStaffUser(nick, hash string, now time.Time) models.User {
+	return models.User{
+		Nickname: nick, PasswordHash: hash,
+		Status: models.UserStatusActive, Role: models.UserRoleAdmin, Level: 1,
+		RegisteredAt: now, LastActiveAt: now, MustChangePassword: true,
+	}
 }
 
 type dismissRequest struct {

@@ -152,6 +152,7 @@
   .chrow{display:flex; gap:8px; margin-top:10px}
   .chrow .input{flex:1; min-width:0}
   .who{font-size:13px; color:var(--dim); font-weight:700}
+  #who{cursor:pointer} #who:hover b{color:var(--acc)} /* З14-и3: по нику — «Сменить пароль» */
   .who b{color:var(--txt)}
 
   .shellrow{flex:1; display:flex; min-height:0}
@@ -730,7 +731,7 @@
     </svg>
     <span class="tag" style="font-size:16px">ADMIN</span>
   </div>
-  <div class="logincard">
+  <div class="logincard" id="loginCard">
     <input id="nick" class="input" placeholder="Никнейм администратора" autocomplete="off" list="nickRecent" autofocus>
     <datalist id="nickRecent"></datalist>
     <div id="nickChips" class="nickchips hidden"></div>
@@ -738,6 +739,18 @@
     <div id="loginErr" class="err"></div>
     <button class="btn" style="justify-content:center" onclick="login()">Войти</button>
     <div class="muted" style="text-align:center">только для персонала клуба</div>
+  </div>
+  <!-- З14-и3 (№23): вход временным паролем (сбросил владелец, только что наняли) — сначала свой пароль -->
+  <div class="logincard hidden" id="pwCard">
+    <b id="pwHead" style="font-size:17px">Задай свой пароль</b>
+    <div class="muted">Ты вошёл временным паролем — его знает тот, кто его выдал. Задай свой: дальше входишь им.</div>
+    <input id="pw_cur" class="input" type="password" placeholder="Временный пароль" autocomplete="current-password">
+    <input id="pw_new" class="input" type="password" placeholder="Новый пароль — от 6 символов" autocomplete="new-password">
+    <input id="pw_new2" class="input" type="password" placeholder="Новый пароль ещё раз" autocomplete="new-password"
+           onkeydown="if(event.key==='Enter')pwForcedSave()">
+    <div id="pwErr" class="err"></div>
+    <button class="btn" style="justify-content:center" onclick="pwForcedSave()">Задать и войти</button>
+    <button class="btn ghost" style="justify-content:center" onclick="pwForcedCancel()">Выйти</button>
   </div>
 </div>
 
@@ -1232,7 +1245,11 @@ function tryRefresh(){
     try{
       const r = await fetch(API + '/auth/refresh', {method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({refresh_token: tokens().r})});
-      if (!r.ok) return (r.status === 401 || r.status === 403) ? 'dead' : 'retry';
+      if (!r.ok){
+        if (r.status !== 401 && r.status !== 403) return 'retry';
+        const e = await r.json().catch(() => ({}));
+        return e.code === 'token_revoked' ? 'revoked' : 'dead'; // З14-и3: пароль сменили или сбросили
+      }
       const d = await r.json();
       setTokens(d.access_token, d.refresh_token);
       return 'ok';
@@ -1252,12 +1269,22 @@ async function api(path, opts = {}, retry = true){
     const outcome = await tryRefresh();
     if (outcome === 'ok') return api(path, opts, false);
     if (outcome === 'dead'){ logout(); throw new Error('unauthorized'); }
+    if (outcome === 'revoked'){ // З14-и3: пароль сменили (сам — в другой вкладке) или сбросил владелец
+      logout();
+      document.getElementById('loginErr').textContent = 'Пароль менялся — войди новым. Не знаешь его — спроси владельца.';
+      throw new Error('unauthorized');
+    }
     throw new Error('Нет связи с сервером — повтори через минуту');
   }
   const data = await res.json().catch(()=>({}));
   if (res.status === 403 && (data.code === 'forbidden' || data.code === 'staff_left') && me){ // З0-и1: роль сняли — не долбимся в закрытую дверь
     accessRevoked(data.code === 'staff_left' ? data.message : ''); // З14-и2: последний рабочий день прошёл
     throw Object.assign(new Error('Доступ к админке закрыт'), {code:'forbidden', data});
+  }
+  if (res.status === 403 && data.code === 'must_change_password' && me){ // З14-и3: временный пароль — сначала свой
+    logout();
+    document.getElementById('loginErr').textContent = 'Пароль временный — войди им ещё раз и задай свой.';
+    throw Object.assign(new Error(data.message), {code:data.code, data});
   }
   if (!res.ok) throw Object.assign(new Error(data.message || res.statusText), {code:data.code, data});
   return data;
@@ -1276,11 +1303,100 @@ async function login(){
       return;
     }
     setTokens(d.access_token, d.refresh_token);
+    if (d.user.must_change_password){ // З14-и3: временный пароль (сброс владельцем, наём) — сначала свой
+      const typed = document.getElementById('pass').value;
+      document.getElementById('pass').value = '';
+      pwForcedShow(d.user, typed);
+      return;
+    }
     me = d.user;
     rememberNick(me.nickname); // З0-и5: ник — в «недавние», пароль в форме не остаётся
     document.getElementById('pass').value = '';
     enter();
   }catch(e){ err.textContent = e.message || 'Ошибка'; }
+}
+
+/* З14-и3 (№23; З-Р17): пароли персонала. Сбрасывает только владелец (карточка сотрудника → «Сбросить пароль»):
+   временный пароль показывается ему один раз, все входы сотрудника закрываются сразу. Нанятый получает пароль от
+   владельца — тоже временный. Вошёл временным — до админки экран «Задай свой пароль»: временный уже введён при входе
+   (после перезагрузки — спросим), сервер до замены не пускает в ручки админки (must_change_password). Свой пароль в
+   любой момент — по нику в шапке. Смена закрывает входы на других устройствах. */
+let pwForced = null; // {user, known} — кто задаёт свой пароль и временный, если его ввели при входе
+function pwCheck(cur, nw, nw2){
+  if (!cur) return 'Введи текущий пароль';
+  if (nw.length < 6) return 'Новый пароль — от 6 символов';
+  if (nw.length > 72) return 'Новый пароль — до 72 символов';
+  if (nw !== nw2) return 'Новые пароли не совпадают';
+  if (nw === cur) return 'Новый пароль совпадает со старым';
+  return '';
+}
+function pwForcedShow(user, known){
+  pwForced = {user, known: known || ''};
+  document.getElementById('loginView').classList.remove('hidden');
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('loginCard').classList.add('hidden');
+  document.getElementById('pwCard').classList.remove('hidden');
+  document.getElementById('pwHead').textContent = (user && user.nickname ? user.nickname + ', з' : 'З') + 'адай свой пароль';
+  const cur = document.getElementById('pw_cur');
+  cur.value = ''; cur.classList.toggle('hidden', !!known); // временный уже ввели при входе — второй раз не спрашиваем
+  ['pw_new', 'pw_new2'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('pwErr').textContent = '';
+  document.getElementById(known ? 'pw_new' : 'pw_cur').focus();
+}
+function pwForcedHide(){
+  pwForced = null;
+  document.getElementById('pwCard').classList.add('hidden');
+  document.getElementById('loginCard').classList.remove('hidden');
+  ['pw_cur', 'pw_new', 'pw_new2'].forEach(id => { document.getElementById(id).value = ''; });
+}
+async function pwForcedSave(){
+  if (!pwForced) return;
+  const err = document.getElementById('pwErr');
+  const cur = pwForced.known || document.getElementById('pw_cur').value;
+  const nw = document.getElementById('pw_new').value, nw2 = document.getElementById('pw_new2').value;
+  const bad = pwCheck(cur, nw, nw2);
+  if (bad){ err.textContent = bad; return; }
+  err.textContent = '';
+  try{
+    const d = await api('/me/password', {method:'POST', body:JSON.stringify({current_password: cur, new_password: nw})});
+    setTokens(d.access_token, d.refresh_token); // своей же отсечкой сервер убил прежнюю пару — в ответе свежая
+    pwForcedHide();
+    me = d.user;
+    rememberNick(me.nickname);
+    enter();
+    toast('✓ Пароль задан — дальше входи им');
+  }catch(e){ err.textContent = e.message || 'Ошибка'; }
+}
+function pwForcedCancel(){ logout(); }
+function myPwdDrawer(){
+  if (!me) return;
+  openDrawer('Сменить пароль · ' + me.nickname, `
+  <div class="uform">
+    <label class="muted" style="margin-bottom:-6px">Текущий пароль</label>
+    <input id="mp_cur" class="input" type="password" autocomplete="current-password">
+    <label class="muted" style="margin-bottom:-6px">Новый пароль — от 6 символов</label>
+    <input id="mp_new" class="input" type="password" autocomplete="new-password">
+    <label class="muted" style="margin-bottom:-6px">Новый пароль ещё раз</label>
+    <input id="mp_new2" class="input" type="password" autocomplete="new-password" onkeydown="if(event.key==='Enter')doMyPwd()">
+    <div class="muted">Вход на других устройствах закроется — там войдёшь новым паролем.</div>
+    <div style="display:flex; gap:10px">
+      <button class="btn mini" onclick="doMyPwd()"><span data-ic="save"></span>Сменить</button>
+      <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
+    </div>
+  </div>`);
+  document.getElementById('mp_cur').focus();
+}
+async function doMyPwd(){
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const bad = pwCheck(v('mp_cur'), v('mp_new'), v('mp_new2'));
+  if (bad){ toast('⚠ ' + bad); return; }
+  try{
+    const d = await api('/me/password', {method:'POST', body:JSON.stringify({current_password: v('mp_cur'), new_password: v('mp_new')})});
+    setTokens(d.access_token, d.refresh_token);
+    if (d.user) me = Object.assign(me || {}, d.user);
+    closeDrawer();
+    toast('✓ Пароль сменён — на других устройствах войдёшь новым');
+  }catch(e){ toast('⚠ ' + e.message); }
 }
 
 /* З0-и5 (З-Р36): форма входа не хранит чужой пароль. После входа пароль стирается сразу, после
@@ -1310,6 +1426,7 @@ function logout(){
   if (r) fetch(API + '/auth/logout', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({refresh_token: r})}).catch(()=>{});
   clearTokens(); me = null;
+  pwForcedHide(); // З14-и3
   if (refreshIv) clearInterval(refreshIv);
   clearTimeout(wsRetry);
   if (ws){ try{ ws.close(); }catch(e){} ws = null; }
@@ -1339,6 +1456,8 @@ function enter(){
   document.getElementById('loginView').classList.add('hidden');
   document.getElementById('appView').classList.remove('hidden');
   document.getElementById('who').innerHTML = '<b>' + esc(me.nickname) + '</b> <span class="role">· ' + esc(me.role) + '</span>';
+  document.getElementById('who').title = 'Сменить пароль'; // З14-и3
+  document.getElementById('who').onclick = myPwdDrawer;
   document.querySelectorAll('.ownerOnly').forEach(el => el.classList.toggle('hidden', me.role !== 'owner'));
   densApply(); // Б9-и4: плотность таблиц из localStorage
   mountIcons();
@@ -4157,7 +4276,7 @@ const AUD_GROUPS = {
   goods: ['sale','sale_void','sale_paid','settle','debt_write_off','debt_restore','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
           'supply_receive','supply_edit','supply_cancel', // З10-и4: приёмка
           'goods_vat', 'goods_ryczalt'], // З13-и2: ставка VAT всей категории; З13-и7 — ставка ryczałtu
-  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','staff_leave','staff_leave_cancel','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close','login_failed'], // ревью 26.08; Ж6-и4: сдача кассы
+  staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','staff_leave','staff_leave_cancel','staff_password_reset','staff_password_change','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close','login_failed'], // ревью 26.08; Ж6-и4: сдача кассы
 };
 const AUD_LABEL = {
   deposit:'депозит', deposit_void:'отмена депозита', grant:'начисление', ban:'бан', unban:'разбан',
@@ -4181,6 +4300,7 @@ const AUD_LABEL = {
   staff_card:'персонал: карточка',
   staff_hire:'персонал: нанят', staff_dismiss:'персонал: уволен',
   staff_leave:'персонал: уходит', staff_leave_cancel:'персонал: увольнение отменено', // З14-и2
+  staff_password_reset:'персонал: пароль сброшен', staff_password_change:'персонал: пароль сменён', // З14-и3
   work_start:'табель: приход', work_stop:'табель: уход', work_edit:'табель: правка', shift_close:'сдача кассы', // Ж6-и4
   cash_collect:'касса: инкассация', cash_correct:'касса: коррекция остатка', cash_event_void:'касса: отмена события', // З8-и2
   expense_create:'расход: внесён', expense_update:'расход: правка', expense_storno:'расход: сторно', counterparty_create:'контрагент: новый', // З9-и2
@@ -4234,6 +4354,7 @@ const AUD_ICON = {
   expense_template_create:'clock', expense_template_update:'edit', // З9-и5
   staff_card:'scroll',
   staff_hire:'plus', staff_dismiss:'out', staff_leave:'out', staff_leave_cancel:'users', // З14-и2
+  staff_password_reset:'wrench', staff_password_change:'edit', // З14-и3
   work_start:'clock', work_stop:'check', work_edit:'edit',
   zone_create:'plus', zone_update:'edit', zone_delete:'cross',
   coin_redeem:'clock',
@@ -8439,7 +8560,7 @@ function hireDrawer(){
       </select>
       <input id="hr_rate" class="input" type="number" step="0.01" min="0" style="flex:1; min-width:120px" placeholder="Сумма, zł" disabled>
     </div>
-    <div class="muted">Аккаунт сразу с правами админа — приходить на киоск для регистрации не нужно. Пароль сотрудник сменит сам в профиле.</div>
+    <div class="muted">Аккаунт сразу с правами админа — приходить на киоск для регистрации не нужно. Этот пароль временный: при первом входе админка попросит сотрудника задать свой.</div>
     <div style="display:flex; gap:10px">
       <button class="btn mini" onclick="doHire()"><span data-ic="save"></span>Нанять</button>
       <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
@@ -8467,7 +8588,7 @@ async function doHire(){
   if (rateType !== 'none' && !(body.rate_amount > 0)){ toast('⚠ Выбран тип ставки — нужна сумма'); return; }
   try{
     const d = await api('/admin/staff/hire', {method:'POST', body:JSON.stringify(body)});
-    toast('✓ ' + d.nickname + ' нанят — уже может входить в админку');
+    toast('✓ ' + d.nickname + ' нанят — может входить: при первом входе задаст свой пароль');
     closeDrawer();
     renderStaff();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -8601,6 +8722,8 @@ async function staffCard(id){
       ${p.leave_on ? `<div class="muted">Уходит ${ruDate(p.leave_on)} — последний рабочий день; отменить — «Отменить увольнение» в списке</div>` : ''}
       <div class="muted">Карточку видит только владелец. В журнал попадает ник и что менялось, сами ФИО и телефон — нет.</div>
       ${d.role === 'admin' ? leaveShiftHtml(sp, 'demote') : ''}
+      ${d.role === 'admin' ? `<div id="scPwd"><button class="btn ghost mini" onclick="armStaffPwd(this,'${id}')">Сбросить пароль</button>
+        <span class="muted">— забыл пароль: выдаст временный, все его входы закроются</span></div>` : ''}
       <div style="display:flex; gap:10px; flex-wrap:wrap">
         <button class="btn mini" onclick="saveStaffCard('${id}')"><span data-ic="save"></span>Сохранить</button>
         <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
@@ -8611,6 +8734,29 @@ async function staffCard(id){
     </div>`);
     scRateSync();
   }catch(e){ toast('⚠ ' + e.message); }
+}
+// З14-и3: временный пароль сотруднику — со взводом; показывается один раз, здесь же, на месте кнопки
+let scTempPass = '';
+function armStaffPwd(btn, id){
+  armButton(btn, 'Точно сбросить?', async () => {
+    try{
+      const d = await api('/admin/staff/' + id + '/password/reset', {method:'POST'});
+      scTempPass = d.temp_password;
+      const box = document.getElementById('scPwd');
+      if (box) box.innerHTML = `<div class="temppass">
+        <div class="muted">Временный пароль ${esc(d.nickname)} — передай ему</div>
+        <div class="tp">${esc(d.temp_password)}</div>
+        <button class="btn ghost mini" onclick="copyStaffPass()">Скопировать</button>
+        <div class="muted" style="margin-top:8px">Показывается один раз. Все его входы уже закрыты; при входе админка попросит задать свой пароль.</div>
+      </div>`;
+      toast('🔑 Временный пароль ' + d.nickname + ' выдан — передай ему');
+    }catch(e){ toast('⚠ ' + e.message); }
+  });
+}
+async function copyStaffPass(){
+  if (!scTempPass) return;
+  try{ await navigator.clipboard.writeText(scTempPass); toast('✓ Скопировано'); }
+  catch(e){ toast('Выдели пароль и скопируй вручную'); }
 }
 function scRateSync(){
   const t = document.getElementById('sc_ratetype'), r = document.getElementById('sc_rate');
@@ -9823,6 +9969,7 @@ window.addEventListener('keydown', e => {
   if (tokens().a || tokens().r){
     try{
       const u = await api('/me');
+      if ((u.role === 'admin' || u.role === 'owner') && u.must_change_password){ pwForcedShow(u, ''); return; } // З14-и3
       if (u.role === 'admin' || u.role === 'owner'){ me = u; enter(); return; }
       clearTokens();
     }catch(e){ clearTokens(); }

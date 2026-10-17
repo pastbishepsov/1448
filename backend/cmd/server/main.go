@@ -415,6 +415,8 @@ func main() {
 		own.DELETE("/work/:id", handleWorkDelete)
 		own.POST("/staff/hire", handleAdminStaffHire)           // В3-этап 3: наём с нуля
 		own.POST("/staff/:id/dismiss", handleAdminStaffDismiss) // увольнение как событие
+		// З14-и3: временный пароль сотруднику — только владелец
+		own.POST("/staff/:id/password/reset", handleAdminStaffPasswordReset)
 		// З14-и1: открытая смена сотрудника — что останется за ним, если уволить или снять права сейчас
 		own.GET("/staff/:id/shift", handleAdminStaffShift)
 		// З14-и2: отложенное увольнение — отменить; завершить прошедшие сейчас, не дожидаясь фона
@@ -685,6 +687,9 @@ func authMiddleware() gin.HandlerFunc {
 		c.Set("user_id", sub)
 		role, _ := claims["role"].(string)
 		c.Set("user_role", role)
+		// З14-и3: момент выдачи — для отсечки токенов персонала в adminMiddleware (смена и сброс пароля действуют сразу)
+		c.Set("token_iat", claimIssuedAt(claims))
+		c.Set("token_iat_ms", claimIssuedAtMs(claims))
 		c.Next()
 	}
 }

@@ -123,3 +123,36 @@ func TestTokenIssuedBeforeLegacy(t *testing.T) {
 		}
 	}
 }
+
+// З14-и3 (№23; З-Р17): сбрасывает владелец — сотруднику; себе — «Сменить пароль», владельцу и гостю — не здесь.
+func TestStaffResetBlock(t *testing.T) {
+	cases := []struct {
+		name, role, target, actor, want string
+	}{
+		{"админ — можно", "admin", "u1", "boss", ""},
+		{"сам себе — нет, есть «Сменить пароль»", "owner", "boss", "boss", "self"},
+		{"другой владелец — нет", "owner", "o2", "boss", "owner_target"},
+		{"гость — нет, у гостя свой сброс у стойки", "player", "g1", "boss", "not_staff"},
+		{"уволенный (уже гость) — нет", "player", "u1", "boss", "not_staff"},
+	}
+	for _, tc := range cases {
+		if got := staffResetBlock(tc.role, tc.target, tc.actor); got != tc.want {
+			t.Errorf("%s: got %q, ждали %q", tc.name, got, tc.want)
+		}
+	}
+	for _, code := range []string{"self", "owner_target", "not_staff"} {
+		if staffResetErrors[code] == "" {
+			t.Errorf("нет текста для %s", code)
+		}
+	}
+}
+
+// З14-и3: нанятый входит паролем, который знает владелец, — первым делом админка попросит свой.
+func TestNewStaffUserMustChange(t *testing.T) {
+	now := time.Date(2026, 10, 17, 14, 48, 0, 0, time.UTC)
+	u := newStaffUser("z14h", "hash", now)
+	if !u.MustChangePassword || u.Role != "admin" || u.Status != "active" || u.Nickname != "z14h" || u.PasswordHash != "hash" ||
+		!u.RegisteredAt.Equal(now) || u.Level != 1 {
+		t.Fatalf("нанятый: %+v", u)
+	}
+}

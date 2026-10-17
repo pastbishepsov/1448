@@ -265,7 +265,8 @@ def stock_to(gid, target, note, who="boss"):
 def hire_temp(nick, keep=False, **profile):
     """Временный сотрудник z<N>adm с паролем STAFF_PASS, нанят 30 дней назад. Удалить аккаунт нельзя
     (FK), поэтому повторный прогон возвращает его: роль admin, пароль как у admin1, карточка без
-    увольнения. keep=False — в конце уволить (at_end)."""
+    увольнения. keep=False — в конце уволить (at_end). Наём с З14-и3 требует сменить пароль при первом
+    входе — временным сотрудникам проверок это не нужно (это проверяет e2e_z14_password): флаг снят SQL-ом."""
     hired = club_day(-30)
     if not uid(nick):
         s, d = api("POST", "/admin/staff/hire", {"nickname": nick, "password": STAFF_PASS, "hired_at": hired, **profile}, "boss")
@@ -275,6 +276,7 @@ def hire_temp(nick, keep=False, **profile):
         sql(f"UPDATE users SET role='admin', status='active', password_hash=(SELECT password_hash FROM users "
             f"WHERE nickname='admin1') WHERE nickname='{nick}'")
         sql(f"UPDATE staff_profiles SET dismissed_at=NULL, hired_at='{hired}' WHERE user_id='{uid(nick)}'")
+    sql(f"UPDATE users SET must_change_password=false WHERE nickname='{nick}'")
     _cache.pop(nick, None)
     if not keep:
         at_end(lambda: _retire(nick))

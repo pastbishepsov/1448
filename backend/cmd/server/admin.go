@@ -29,11 +29,26 @@ func roleIsStaff(role string) bool {
 // увольнение и снятие роли действуют в ту же секунду. Персонала мало, чтение
 // по первичному ключу. active=false — аккаунт заблокирован.
 func staffRoleNow(userID string) (role string, active bool, err error) {
+	st, err := staffNow(userID)
+	return st.Role, st.Active, err
+}
+
+// staffState — что adminMiddleware знает о человеке из базы одним чтением: роль и статус (З0-и1), отсечка токенов
+// и временный пароль (З14-и3).
+type staffState struct {
+	Role       string
+	Active     bool
+	ValidFrom  *time.Time
+	MustChange bool
+}
+
+func staffNow(userID string) (staffState, error) {
 	var u models.User
-	if err := db.Select("role", "status").First(&u, "id = ?", userID).Error; err != nil {
-		return "", false, err
+	if err := db.Select("role", "status", "tokens_valid_from", "must_change_password").First(&u, "id = ?", userID).Error; err != nil {
+		return staffState{}, err
 	}
-	return string(u.Role), u.Status != models.UserStatusBanned, nil
+	return staffState{Role: string(u.Role), Active: u.Status != models.UserStatusBanned, ValidFrom: u.TokensValidFrom,
+		MustChange: u.MustChangePassword}, nil
 }
 
 // adminMiddleware — пускает только персонал. Ставится ПОСЛЕ authMiddleware.
@@ -41,7 +56,8 @@ func staffRoleNow(userID string) (role string, active bool, err error) {
 // в контекст кладётся роль из базы — её видят ownerMiddleware и все ручки ниже.
 func adminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, active, err := staffRoleNow(c.GetString("user_id"))
+		st, err := staffNow(c.GetString("user_id"))
+		role, active := st.Role, st.Active
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
 			return
@@ -57,6 +73,17 @@ func adminMiddleware() gin.HandlerFunc {
 		// З14-и2: отложенное увольнение — последний рабочий день прошёл, а фоновый прогон ещё не снял роль
 		if role == string(models.UserRoleAdmin) && staffLeft(c.GetString("user_id"), time.Now()) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": "staff_left", "message": "Последний рабочий день прошёл — доступа в админку больше нет"})
+			return
+		}
+		// З14-и3 (№23): пароль сменили или сбросили — токены, выданные раньше, у персонала мертвы сразу, а не когда
+		// истечёт access (у гостей отсечку по-прежнему проверяет только refresh, Е0-и2)
+		if tokenIssuedBefore(c.GetInt64("token_iat"), c.GetInt64("token_iat_ms"), st.ValidFrom) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": "token_revoked", "message": "Пароль менялся — войди заново"})
+			return
+		}
+		// З14-и3: вход по временному паролю (сброс владельцем, наём) — сначала свой: POST /me/password
+		if st.MustChange {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": "must_change_password", "message": "Сначала задай свой пароль вместо временного"})
 			return
 		}
 		c.Set("user_role", role)

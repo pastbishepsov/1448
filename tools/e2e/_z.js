@@ -66,7 +66,8 @@ async function api(method, path, body, who) {
 // клубные сутки 'ГГГГ-ММ-ДД' (от report_hour по часам клуба), как их считает сервер; offset — ±дни
 const clubDay = (offset = 0) => sql(`SELECT (((now() AT TIME ZONE 'Europe/Warsaw') - make_interval(hours => COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')::int))::date + ${offset})::text`);
 // временный сотрудник z<N>… (пароль STAFF_PASS, нанят 30 дней назад); повторный прогон возвращает того же
-// человека (аккаунт не удалить — FK); в конце увольняется сам, незакрытая запись табеля снимается
+// человека (аккаунт не удалить — FK); в конце увольняется сам, незакрытая запись табеля снимается. Наём с З14-и3
+// требует сменить пароль при первом входе — проверкам это не нужно (это проверяет e2e_z14_password): флаг снят SQL-ом
 async function hireTemp(nick, { keep = false } = {}) {
   if (!uid(nick)) {
     const r = await api('POST', '/admin/staff/hire', { nickname: nick, password: STAFF_PASS, hired_at: clubDay(-30) }, 'boss');
@@ -75,6 +76,7 @@ async function hireTemp(nick, { keep = false } = {}) {
     sql(`UPDATE users SET role='admin', status='active', password_hash=(SELECT password_hash FROM users WHERE nickname='admin1') WHERE nickname='${nick}'`);
     sql(`UPDATE staff_profiles SET dismissed_at=NULL, hired_at='${clubDay(-30)}' WHERE user_id='${uid(nick)}'`);
   }
+  sql(`UPDATE users SET must_change_password=false WHERE nickname='${nick}'`);
   delete cache[nick];
   if (!keep) atEnd(async () => { await dismiss(nick); sql(`DELETE FROM work_entries WHERE ended_at IS NULL AND user_id='${uid(nick)}'`); });
   return uid(nick);

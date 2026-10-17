@@ -150,6 +150,65 @@ func handleAdminPasswordReset(c *gin.Context) {
 	})
 }
 
+// ── З14-и3 (OWNER.md, №23; З-Р17): пароли персонала ────────────────────────────────────────────────────────────────
+//
+// Забыл пароль админ — раньше только SQL или «уволить → сбросить как гостю → назначить снова»: сброс у стойки персоналу
+// закрыт (cannot_touch_staff). Теперь сбрасывает владелец — и только он: тот же временный пароль, что у гостя, обязательная
+// смена при входе и отсечка токенов. У персонала отсечка действует сразу: adminMiddleware сверяет момент выдачи access с
+// tokens_valid_from, открытая вкладка выходит на экран входа при первом же запросе.
+
+// staffResetBlock — почему владелец не может сбросить пароль этому человеку (чистая, тест); "" — может.
+func staffResetBlock(targetRole, targetID, actorID string) string {
+	switch {
+	case targetID == actorID:
+		return "self"
+	case targetRole == string(models.UserRoleOwner):
+		return "owner_target"
+	case targetRole != string(models.UserRoleAdmin):
+		return "not_staff"
+	}
+	return ""
+}
+
+var staffResetErrors = map[string]string{
+	"self":         "Свой пароль меняют через «Сменить пароль» — нажми на свой ник вверху",
+	"owner_target": "Пароль владельца так не сбрасывается",
+	"not_staff":    "Это не сотрудник — гостю пароль сбрасывают в его карточке",
+}
+
+// POST /admin/staff/:id/password/reset — временный пароль сотруднику (owner). Отдаётся ОДИН раз в этом ответе: в базе —
+// хеш, в журнале — факт. Все входы сотрудника закрыты сразу, при следующем входе админка попросит задать свой пароль;
+// замок неудачных входов снимается (как у гостя, К0-и5).
+func handleAdminStaffPasswordReset(c *gin.Context) {
+	var user models.User
+	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+	if code := staffResetBlock(string(user.Role), user.ID.String(), c.GetString("user_id")); code != "" {
+		c.JSON(http.StatusConflict, gin.H{"code": code, "message": staffResetErrors[code]})
+		return
+	}
+	temp, err := generateTempPassword()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "rand_error", "message": "Не удалось создать пароль"})
+		return
+	}
+	if _, err := setPassword(user.ID, temp, true); err != nil {
+		respondDBError(c, err)
+		return
+	}
+	loginGuardian.reset(user.Nickname)
+	target := user.ID
+	logAdminAction(c, "staff_password_reset", &target, user.Nickname+" · выдан временный пароль, все входы закрыты") // без значения
+	c.JSON(http.StatusOK, gin.H{
+		"user_id":       user.ID,
+		"nickname":      user.Nickname,
+		"temp_password": temp,
+		"hint":          "Передай сотруднику: при входе админка попросит задать свой пароль. Все его входы уже закрыты",
+	})
+}
+
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
 	NewPassword     string `json:"new_password"     binding:"required"`
@@ -193,10 +252,18 @@ func handleChangeMyPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "password_same", "message": "Новый пароль совпадает со старым"})
 		return
 	}
+	wasTemp := user.MustChangePassword
 	cutoff, err := setPassword(user.ID, req.NewPassword, false)
 	if err != nil {
 		respondDBError(c, err)
 		return
+	}
+	if roleIsStaff(string(user.Role)) { // З14-и3: владельцу в журнал — временный пароль заменён (у гостей — как было)
+		target, text := user.ID, user.Nickname+" · сменил пароль"
+		if wasTemp {
+			text += " (временный — на свой)"
+		}
+		logAdminAction(c, "staff_password_change", &target, text)
 	}
 	// Перечитать: в ответ уходит пользователь уже без флага смены.
 	if err := db.First(&user, "id = ?", userID).Error; err != nil {
