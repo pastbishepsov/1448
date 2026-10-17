@@ -120,8 +120,9 @@ func TestValidateHire(t *testing.T) {
 	}
 }
 
-// З14-и1 (№24): увольнение закрывает открытую смену — посреди смены сейчас, давнюю — по графику, без графика — началом.
-func TestDismissCloseAt(t *testing.T) {
+// З14-и1 (№24): уход из персонала закрывает открытую смену — посреди смены сейчас, давнюю — по графику, без графика —
+// началом.
+func TestLeaveCloseAt(t *testing.T) {
 	at := func(d, h, m int) time.Time { return time.Date(2026, 10, d, h, m, 0, 0, time.UTC) }
 	sched := at(15, 20, 0)
 	late := at(17, 9, 0)
@@ -141,15 +142,15 @@ func TestDismissCloseAt(t *testing.T) {
 		{"график раньше прихода — ноль часов", at(15, 21, 0), false, &sched, at(16, 10, 0), at(15, 21, 0)},
 	}
 	for _, tc := range cases {
-		if got := dismissCloseAt(tc.start, tc.sameDay, tc.sched, tc.now); !got.Equal(tc.want) {
+		if got := leaveCloseAt(tc.start, tc.sameDay, tc.sched, tc.now); !got.Equal(tc.want) {
 			t.Errorf("%s: %v, ждали %v", tc.name, got, tc.want)
 		}
 	}
 }
 
-// З14-и1: строки журнала и канала о смене уволенного — по часам клуба, часы «на проверку», касса — сколько должно
-// быть в ящике или что ящика ещё нет.
-func TestDismissTexts(t *testing.T) {
+// З14-и1 (решение основателя 16.10): кассу за ушедшего не сдаём — владельцу строка, что осталось за ним: ящик (сколько
+// должно быть или что его ещё нет) и часы (чем закрыта смена). Время — по часам клуба, давняя смена — с датой.
+func TestLeaveTexts(t *testing.T) {
 	warsaw, err := time.LoadLocation("Europe/Warsaw")
 	if err != nil {
 		t.Fatal(err)
@@ -159,28 +160,34 @@ func TestDismissTexts(t *testing.T) {
 	defer func() { models.ClubLocation = old }()
 
 	start := time.Date(2026, 10, 16, 12, 8, 0, 0, time.UTC) // 14:08 в Варшаве
-	end := time.Date(2026, 10, 16, 14, 13, 0, 0, time.UTC)
-	w := &models.WorkEntry{StartedAt: start, EndedAt: &end, Minutes: workMinutes(start, end)}
-	if got, want := dismissShiftText(w, end), "смена с 14:08 закрыта (2 ч 05 м — на проверку), касса без пересчёта"; got != want {
+	now := time.Date(2026, 10, 16, 14, 13, 0, 0, time.UTC)
+	w := &models.WorkEntry{StartedAt: start, EndedAt: &now, Minutes: workMinutes(start, now), Note: dismissNote}
+	if got, want := leaveShiftText(w, now), "смена с 14:08 закрыта (2 ч 05 м — на проверку), касса не сдана"; got != want {
 		t.Errorf("журнал: %q, ждали %q", got, want)
 	}
-	opening := int64(10000)
-	co := &models.ShiftCloseout{OpeningGrosz: &opening, ExpectedGrosz: 12345, Skipped: true, CreatedAt: end}
-	want := "🧮 z14d уволен: смена с 14:08 закрыта увольнением — 2 ч 05 м в табеле на проверку; касса не сдана, без пересчёта: " +
-		"в ящике должно быть 123.45 zł — пересчитай"
-	if got := dismissOwnerLine("z14d", w, co); got != want {
-		t.Errorf("канал: %q, ждали %q", got, want)
+	want := "⚠ z14d уволен посреди смены (с 14:08) — осталось за него: касса не сдана — в ящике должно быть 123.45 zł, " +
+		"пересчитайте (расхождение до пересчёта ляжет на следующую сдачу); часы — смена закрыта увольнением, 2 ч 05 м в табеле на проверку"
+	if got := leaveOwnerLine("z14d", "уволен", w, true, now, true, 12345); got != want {
+		t.Errorf("увольнение:\n%q\nждали\n%q", got, want)
 	}
-	if got := dismissOwnerLine("", w, &models.ShiftCloseout{Skipped: true, CreatedAt: end}); !strings.HasPrefix(got, "🧮 Сотрудник уволен: смена с 14:08") ||
-		!strings.HasSuffix(got, "без пересчёта — начального остатка ящика ещё нет") {
-		t.Errorf("без ящика и без ника: %q", got)
+	d := &models.WorkEntry{StartedAt: start, EndedAt: &now, Minutes: 125, Note: demoteNote}
+	if got := leaveOwnerLine("", "снят с прав", d, true, now, false, 0); got != "⚠ Сотрудник снят с прав посреди смены (с 14:08) — "+
+		"осталось за него: касса не сдана — ящик ещё не заведён: пересчитанное станет его начальным остатком; часы — смена "+
+		"закрыта снятием прав, 2 ч 05 м в табеле на проверку" {
+		t.Errorf("снятие прав без ящика и без ника: %q", got)
 	}
-	night := time.Date(2026, 10, 15, 18, 0, 0, 0, time.UTC) // 20:00 накануне — уволили на следующий день
-	if got := dismissSince(night, end); got != "15.10 20:00" {
-		t.Errorf("смена со вчера: %q, ждали «15.10 20:00»", got)
+	yday := time.Date(2026, 10, 15, 7, 0, 0, 0, time.UTC) // 09:00 накануне — уход не отметил, уволили на следующий день
+	s := &models.WorkEntry{StartedAt: yday, Minutes: 660, Note: dismissNote}
+	if got := leaveOwnerLine("z14s", "уволен", s, false, now, true, 0); !strings.HasPrefix(got, "⚠ z14s уволен, а смена с 15.10 09:00 "+
+		"осталась незакрытой — осталось за него: касса не сдана — в ящике должно быть 0.00 zł") ||
+		!strings.HasSuffix(got, "; часы — смена закрыта по графику, 11 ч 00 м в табеле на проверку") {
+		t.Errorf("давняя смена: %q", got)
 	}
-	stale := &models.WorkEntry{StartedAt: time.Date(2026, 10, 15, 7, 0, 0, 0, time.UTC), Minutes: 660} // 09:00–20:00 накануне
-	if got, want := dismissShiftText(stale, end), "смена с 15.10 09:00 закрыта (11 ч 00 м — на проверку), касса без пересчёта"; got != want {
-		t.Errorf("давняя смена — с датой: %q, ждали %q", got, want)
+	s.Minutes = 0
+	if got := leaveOwnerLine("z14s", "уволен", s, false, now, true, 0); !strings.HasSuffix(got, "; часы — у смены нет графика, закрыта без часов: поставь их в табеле") {
+		t.Errorf("давняя без графика: %q", got)
+	}
+	if got, want := leaveShiftText(&models.WorkEntry{StartedAt: yday, Minutes: 660}, now), "смена с 15.10 09:00 закрыта (11 ч 00 м — на проверку), касса не сдана"; got != want {
+		t.Errorf("журнал, давняя смена: %q, ждали %q", got, want)
 	}
 }

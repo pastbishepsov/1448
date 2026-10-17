@@ -186,7 +186,18 @@ func recordCloseout(c *gin.Context, adminID uuid.UUID, entry *models.WorkEntry, 
 		g := models.GroszFromPLN(*countedPLN)
 		counted = &g
 	}
-	err := db.Transaction(func(tx *gorm.DB) error { return closeoutTx(tx, &co, counted, now) })
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", drawerLock).Error; err != nil {
+			return err
+		}
+		at := time.Now() // под замком: следующая сдача начнёт ровно отсюда
+		if at.Before(now) {
+			at = now
+		}
+		drawerCloseout(&co, drawerAt(tx, at), counted)
+		co.CreatedAt = at
+		return tx.Create(&co).Error
+	})
 	if err != nil {
 		log.Printf("сдача кассы не записалась: %v", err)
 		return nil
@@ -204,21 +215,6 @@ func recordCloseout(c *gin.Context, adminID uuid.UUID, entry *models.WorkEntry, 
 	nick := nicknamesByID([]string{adminID.String()})[adminID.String()]
 	postSystem(closeoutOwnerLine(nick, &co), true, map[string]any{"closeout": true})
 	return &co
-}
-
-// closeoutTx — записать сдачу co в транзакции tx под замком ящика (З8-и1): точка отсчёта и движение берутся в той
-// же транзакции, момент сдачи — не раньше now. З14-и1: так же пишет сдачу без пересчёта увольнение (staff.go).
-func closeoutTx(tx *gorm.DB, co *models.ShiftCloseout, counted *int64, now time.Time) error {
-	if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", drawerLock).Error; err != nil {
-		return err
-	}
-	at := time.Now() // под замком: следующая сдача начнёт ровно отсюда
-	if at.Before(now) {
-		at = now
-	}
-	drawerCloseout(co, drawerAt(tx, at), counted)
-	co.CreatedAt = at
-	return tx.Create(co).Error
 }
 
 // closeoutOwnerLine — денежная строка сдачи владельцу (чистая, тест): нулевая

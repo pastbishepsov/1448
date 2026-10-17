@@ -415,8 +415,8 @@ func main() {
 		own.DELETE("/work/:id", handleWorkDelete)
 		own.POST("/staff/hire", handleAdminStaffHire)           // В3-этап 3: наём с нуля
 		own.POST("/staff/:id/dismiss", handleAdminStaffDismiss) // увольнение как событие
-		// З14-и1: что закроет увольнение — открытая смена и касса (шторка «Уволить»)
-		own.GET("/staff/:id/dismiss", handleAdminStaffDismissPreview)
+		// З14-и1: открытая смена сотрудника — что останется за ним, если уволить или снять права сейчас
+		own.GET("/staff/:id/shift", handleAdminStaffShift)
 		own.GET("/staff/archive", handleAdminStaffArchive)
 		own.GET("/staff/:id/profile", handleAdminStaffProfileGet)
 		own.PUT("/staff/:id/profile", handleAdminStaffProfilePut)
