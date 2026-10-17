@@ -417,6 +417,9 @@ func main() {
 		own.POST("/staff/:id/dismiss", handleAdminStaffDismiss) // увольнение как событие
 		// З14-и1: открытая смена сотрудника — что останется за ним, если уволить или снять права сейчас
 		own.GET("/staff/:id/shift", handleAdminStaffShift)
+		// З14-и2: отложенное увольнение — отменить; завершить прошедшие сейчас, не дожидаясь фона
+		own.DELETE("/staff/:id/leave", handleAdminStaffLeaveCancel)
+		own.POST("/staff/leave/run", handleAdminStaffLeaveRun)
 		own.GET("/staff/archive", handleAdminStaffArchive)
 		own.GET("/staff/:id/profile", handleAdminStaffProfileGet)
 		own.PUT("/staff/:id/profile", handleAdminStaffProfilePut)
@@ -469,6 +472,7 @@ func main() {
 	startCoinBurnJob()
 	startPackageWarnJob() // Е2-и5: сказать, что пакет вот-вот сгорит
 	startExpenseDueJob()  // З9-и5: регулярный расход ждёт — одно напоминание владельцу в день срока
+	startStaffLeaveJob()  // З14-и2: отложенное увольнение — завершить, когда последний день прошёл
 
 	// Г1: поминутный биллинг кошелька активных сессий. Вся память — в БД,
 	// перезапуск догоняет прошедшие минуты одним доначислением.

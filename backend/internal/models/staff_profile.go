@@ -20,6 +20,11 @@ type StaffProfile struct {
 	RateType    string     `json:"rate_type"    gorm:"size:16;not null;default:none"`
 	RateAmount  float64    `json:"rate_amount"  gorm:"type:decimal(10,2);not null;default:0"`
 	Note        string     `json:"note"         gorm:"not null;default:''"`
+	// З14-и2 (миграция 085): отложенное увольнение — последний рабочий день (доступ — до конца этих клубных суток),
+	// кто назначил и причина; завершит фоновый прогон (staff.go, finishLeaves). NULL — не назначено.
+	LeaveOn     *time.Time `json:"leave_on"     gorm:"type:date"`
+	LeaveBy     *uuid.UUID `json:"leave_by"     gorm:"type:uuid"`
+	LeaveReason string     `json:"leave_reason" gorm:"not null;default:''"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
@@ -29,6 +34,7 @@ type StaffProfile struct {
 func (p *StaffProfile) AfterFind(tx *gorm.DB) error {
 	clubDayPtr(p.HiredAt)
 	clubDayPtr(p.DismissedAt)
+	clubDayPtr(p.LeaveOn)
 	return nil
 }
 

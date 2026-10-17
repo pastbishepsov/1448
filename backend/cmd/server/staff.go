@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -99,6 +100,9 @@ func handleAdminStaffList(c *gin.Context) {
 			row["position"] = p.Position
 			row["hired_at"] = dateOut(p.HiredAt)
 			row["has_card"] = true
+			if p.LeaveOn != nil { // З14-и2: отложенное увольнение — «уходит 30.12» в списке
+				row["leave_on"] = dateOut(p.LeaveOn)
+			}
 		}
 		out = append(out, row)
 	}
@@ -301,6 +305,7 @@ func profileOut(p *models.StaffProfile) gin.H {
 		"hired_at": dateOut(p.HiredAt), "dismissed_at": dateOut(p.DismissedAt),
 		"rate_type": p.RateType, "rate_amount": p.RateAmount,
 		"rate_label": rateTypes[p.RateType], "note": p.Note,
+		"leave_on": dateOut(p.LeaveOn), // З14-и2: последний рабочий день, если увольнение отложенное
 	}
 }
 
@@ -386,6 +391,7 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 	}
 	if existed {
 		p.CreatedAt = old.CreatedAt
+		p.LeaveOn, p.LeaveBy, p.LeaveReason = old.LeaveOn, old.LeaveBy, old.LeaveReason // З14-и2: дату ухода карточка не правит — в ответе как есть
 		if err := db.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
 			Updates(map[string]any{
 				"full_name": name, "phone": phone, "position": position,
@@ -575,9 +581,9 @@ func handleAdminStaffDismiss(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_date", "message": profileErrors["bad_date"]})
 		return
 	}
+	now := time.Now()
+	today := clubDayOf(now, int(settingInt64("report_hour", 8))) // З14-и2: «сегодня» — клубные сутки, ночью это вчера
 	if date == nil {
-		now := time.Now()
-		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		date = &today
 	}
 	var p models.StaffProfile
@@ -591,20 +597,23 @@ func handleAdminStaffDismiss(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_reason", "message": "Причина — до 200 символов"})
 		return
 	}
+	actor, _ := uuid.Parse(c.GetString("user_id"))
+	if leaveDeferred(*date, today) { // З14-и2: последний день позже сегодняшнего — увольнение отложенное
+		scheduleLeave(c, &user, hasCard, *date, reason, actor, now)
+		return
+	}
 
 	// З14-и1 (№24; решение основателя 16.10): открытая смена увольняемого закрывается моментом ухода той же
 	// транзакцией, что снимает роль; кассу за него не сдаём — владельцу в канал, что осталось (leaveNotify).
-	now := time.Now()
 	shift := leaveShiftOf(user.ID, now)
-	actor, _ := uuid.Parse(c.GetString("user_id"))
 	closed := false
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&user).Update("role", models.UserRolePlayer).Error; err != nil {
 			return err
 		}
-		if hasCard {
-			if err := tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
-				Updates(map[string]any{"dismissed_at": date, "updated_at": time.Now()}).Error; err != nil {
+		if hasCard { // З14-и2: назначенное раньше отложенное увольнение — больше не нужно
+			if err := tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).Updates(map[string]any{"dismissed_at": date,
+				"leave_on": nil, "leave_by": nil, "leave_reason": "", "updated_at": time.Now()}).Error; err != nil {
 				return err
 			}
 		} else {
@@ -790,7 +799,12 @@ func handleAdminStaffShift(c *gin.Context) {
 	var future int64
 	db.Model(&models.ShiftAssignment{}).Where("user_id = ? AND date >= ?", user.ID,
 		futureShiftsFrom(now, int(settingInt64("report_hour", 8)))).Count(&future)
-	out := gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": user.Role, "future_shifts": future, "open_shift": nil}
+	out := gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": user.Role, "future_shifts": future, "open_shift": nil,
+		"club_today": clubDayOf(now, int(settingInt64("report_hour", 8))).Format("2006-01-02")} // З14-и2: позже — увольнение отложенное
+	var lp []models.StaffProfile
+	if db.Where("user_id = ? AND leave_on IS NOT NULL", user.ID).Limit(1).Find(&lp); len(lp) == 1 {
+		out["leave_on"] = dateOut(lp[0].LeaveOn) // уже назначено — новая дата заменит
+	}
 	if s := leaveShiftOf(user.ID, now); s.Entry != nil {
 		row := workOut(s.Entry, s.Name)
 		row["same_day"], row["close_at"], row["close_minutes"] = s.SameDay, s.CloseAt, workMinutes(s.Entry.StartedAt, s.CloseAt)
@@ -820,4 +834,201 @@ func handleAdminStaffArchive(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "staff": out})
+}
+
+// ── З14-и2 (OWNER.md, №25 «а»; З-Р18): отложенное увольнение ────────────────────────────────────────────────────
+//
+// «Последний рабочий день 30.12» снимал роль в ту же секунду, а в архиве стояло «работал до 30.12». Теперь дата позже
+// сегодняшних клубных суток — увольнение отложенное: роль остаётся, дата ложится в карточку (leave_on, кто назначил —
+// leave_by, причина — leave_reason), в списке персонала — «уходит 30.12» и «Отменить увольнение». Доступ — до конца
+// того клубного дня; со следующего adminMiddleware не пускает (staffLeft), а фоновый прогон раз в 10 минут завершает
+// увольнение (finishLeaves): роль — player, дата увольнения — leave_on, смены графика после неё сняты, открытая смена
+// закрыта моментом ухода с уведомлением владельцу (как З14-и1а), live-каналы закрыты; строка журнала — от имени того,
+// кто назначил.
+
+// leaveDeferred — последний рабочий день позже сегодняшних клубных суток: увольнение отложенное (чистая, тест).
+func leaveDeferred(day, today time.Time) bool {
+	return day.Format("2006-01-02") > today.Format("2006-01-02")
+}
+
+// leaveExpired — последний рабочий день прошёл: сегодня — уже следующие клубные сутки или позже (чистая, тест).
+func leaveExpired(leaveOn *time.Time, today time.Time) bool {
+	return leaveOn != nil && leaveOn.Format("2006-01-02") < today.Format("2006-01-02")
+}
+
+// staffLeft — у сотрудника назначено увольнение и его последний день прошёл: доступа в админку больше нет, даже если
+// фоновый прогон ещё не снял роль. Обычный админ без даты — одно чтение по ключу; Find, а не First: «не найдено» на
+// каждом запросе админки — не ошибка и не строка в логе.
+func staffLeft(userID string, now time.Time) bool {
+	var ps []models.StaffProfile
+	db.Select("user_id", "leave_on").Where("user_id = ? AND leave_on IS NOT NULL", userID).Limit(1).Find(&ps)
+	return len(ps) == 1 && leaveExpired(ps[0].LeaveOn, clubDayOf(now, int(settingInt64("report_hour", 8))))
+}
+
+// scheduleLeave — назначить отложенное увольнение: дата, кто и почему — в карточку; роль и смены — как есть до конца
+// последнего дня. Повторное назначение меняет дату.
+func scheduleLeave(c *gin.Context, user *models.User, hasCard bool, day time.Time, reason string, by uuid.UUID, now time.Time) {
+	var err error
+	if hasCard {
+		err = db.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
+			Updates(map[string]any{"leave_on": day, "leave_by": by, "leave_reason": reason, "updated_at": now}).Error
+	} else { // карточки не было — минимальная, с датой ухода
+		err = db.Create(&models.StaffProfile{UserID: user.ID, RateType: "none", LeaveOn: &day, LeaveBy: &by, LeaveReason: reason}).Error
+	}
+	if err != nil {
+		respondDBError(c, err)
+		return
+	}
+	var after int64
+	db.Model(&models.ShiftAssignment{}).Where("user_id = ? AND date > ?", user.ID, day.Format("2006-01-02")).Count(&after)
+	target := user.ID
+	details := user.Nickname + " · уходит " + dateOut(&day)
+	if reason != "" {
+		details += " · " + reason
+	}
+	if after > 0 {
+		details += fmt.Sprintf(", снимется со смен после этой даты: %d", after)
+	}
+	logAdminAction(c, "staff_leave", &target, details)
+	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "leave_on": dateOut(&day), "deferred": true, "shifts_after": after})
+}
+
+// DELETE /admin/staff/:id/leave — отменить отложенное увольнение (owner): человек остаётся в команде, дата снимается.
+func handleAdminStaffLeaveCancel(c *gin.Context) {
+	var user models.User
+	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+	var p models.StaffProfile
+	if db.First(&p, "user_id = ? AND leave_on IS NOT NULL", user.ID).Error != nil {
+		c.JSON(http.StatusConflict, gin.H{"code": "not_leaving", "message": "Увольнение не назначено — отменять нечего"})
+		return
+	}
+	res := db.Model(&models.StaffProfile{}).Where("user_id = ? AND leave_on IS NOT NULL", user.ID).
+		Updates(map[string]any{"leave_on": nil, "leave_by": nil, "leave_reason": "", "updated_at": time.Now()})
+	if res.Error != nil {
+		respondDBError(c, res.Error)
+		return
+	}
+	if res.RowsAffected == 0 { // завершил фоновый прогон или отменили в соседней вкладке
+		c.JSON(http.StatusConflict, gin.H{"code": "not_leaving", "message": "Увольнение уже не назначено — обнови список"})
+		return
+	}
+	target := user.ID
+	logAdminAction(c, "staff_leave_cancel", &target, user.Nickname+" · увольнение "+dateOut(p.LeaveOn)+" отменено")
+	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "cancelled": dateOut(p.LeaveOn)})
+}
+
+// leaveDoneText — строка журнала о завершённом отложенном увольнении (чистая, тест).
+func leaveDoneText(nick string, day time.Time, reason, shift string, removed int64) string {
+	s := nick + " · уволен " + day.Format("2006-01-02") + " (последний рабочий день прошёл)"
+	if reason != "" {
+		s += " · " + reason
+	}
+	if shift != "" {
+		s += ", " + shift
+	}
+	if removed > 0 {
+		s += fmt.Sprintf(", снят с %d будущих смен", removed)
+	}
+	return s
+}
+
+// clearShiftsAfter — снять сотрудника со смен графика после дня day: сколько записей убрано.
+func clearShiftsAfter(userID uuid.UUID, day time.Time) int64 {
+	return db.Where("user_id = ? AND date > ?", userID, day.Format("2006-01-02")).Delete(&models.ShiftAssignment{}).RowsAffected
+}
+
+// leaveActor — от чьего имени строка журнала о завершении: кто назначил, иначе — владелец клуба.
+func leaveActor(p *models.StaffProfile) uuid.UUID {
+	if p.LeaveBy != nil {
+		return *p.LeaveBy
+	}
+	var owner models.User
+	db.Select("id").Where("role = ?", models.UserRoleOwner).Order("created_at").First(&owner)
+	return owner.ID
+}
+
+// finishLeave — завершить одно отложенное увольнение. Кто первым снял дату, тот и завершает: два прогона разом
+// не уволят дважды, отмена в ту же секунду — тоже не потеряется.
+func finishLeave(p *models.StaffProfile, now time.Time) bool {
+	var user models.User
+	if p.LeaveOn == nil || db.First(&user, "id = ?", p.UserID).Error != nil {
+		return false
+	}
+	day, by := *p.LeaveOn, leaveActor(p)
+	shift := leaveShiftOf(user.ID, now) // смена последнего дня — уже не этих суток: закроется по графику
+	done, closed := false, false
+	err := db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&models.StaffProfile{}).Where("user_id = ? AND leave_on IS NOT NULL", user.ID).Updates(map[string]any{
+			"leave_on": nil, "leave_by": nil, "leave_reason": "", "dismissed_at": day, "updated_at": now})
+		if res.Error != nil || res.RowsAffected == 0 {
+			return res.Error
+		}
+		done = true
+		if user.Role == models.UserRoleAdmin {
+			if err := tx.Model(&user).Update("role", models.UserRolePlayer).Error; err != nil {
+				return err
+			}
+		}
+		var err error
+		closed, err = leaveCloseShift(tx, shift, dismissNote, by, now)
+		return err
+	})
+	if err != nil {
+		log.Printf("отложенное увольнение %s не завершилось: %v", user.Nickname, err)
+		return false
+	}
+	if !done {
+		return false
+	}
+	dropAdminWS(user.ID)
+	removed := clearShiftsAfter(user.ID, day)
+	text := ""
+	if closed {
+		text = leaveShiftText(shift.Entry, now)
+	}
+	target := user.ID
+	logAdminActionAs(by, "staff_dismiss", &target, leaveDoneText(user.Nickname, day, p.LeaveReason, text, removed))
+	if closed {
+		leaveNotify(user.Nickname, "уволен", shift, by, now)
+	}
+	return true
+}
+
+// finishLeaves — завершить отложенные увольнения, у которых последний день прошёл: сколько завершено.
+func finishLeaves(now time.Time) int {
+	today := clubDayOf(now, int(settingInt64("report_hour", 8)))
+	var ps []models.StaffProfile
+	db.Where("leave_on IS NOT NULL AND leave_on < ?", today.Format("2006-01-02")).Find(&ps)
+	n := 0
+	for i := range ps {
+		if finishLeave(&ps[i], now) {
+			n++
+		}
+	}
+	return n
+}
+
+// POST /admin/staff/leave/run — завершить прошедшие отложенные увольнения сейчас, не дожидаясь фона (owner): та же
+// логика, что у прогона.
+func handleAdminStaffLeaveRun(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"finished": finishLeaves(time.Now())})
+}
+
+// startStaffLeaveJob — фоновый прогон раз в 10 минут, первый через минуту после старта: последний день кончается
+// вместе с клубными сутками (report_hour), увольнение завершается в первые 10 минут следующих.
+func startStaffLeaveJob() {
+	go func() {
+		time.Sleep(time.Minute)
+		for {
+			safely("staffLeave", func() {
+				if n := finishLeaves(time.Now()); n > 0 {
+					log.Printf("отложенные увольнения: завершено %d", n)
+				}
+			})
+			time.Sleep(10 * time.Minute)
+		}
+	}()
 }

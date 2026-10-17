@@ -581,6 +581,9 @@ func openWorkOnLogin(user *models.User, now time.Time) (opened bool, autoClosedP
 	if user == nil || user.Role != models.UserRoleAdmin {
 		return false, false
 	}
+	if staffLeft(user.ID.String(), now) { // З14-и2: последний рабочий день прошёл — смены больше нет
+		return false, false
+	}
 	club, ok := defaultClub()
 	if !ok {
 		return false, false

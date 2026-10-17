@@ -54,6 +54,11 @@ func adminMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": "forbidden", "message": "Нужны права администратора"})
 			return
 		}
+		// З14-и2: отложенное увольнение — последний рабочий день прошёл, а фоновый прогон ещё не снял роль
+		if role == string(models.UserRoleAdmin) && staffLeft(c.GetString("user_id"), time.Now()) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": "staff_left", "message": "Последний рабочий день прошёл — доступа в админку больше нет"})
+			return
+		}
 		c.Set("user_role", role)
 		c.Next()
 	}
