@@ -180,6 +180,17 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await endAll();
   await j(API + '/admin/users/' + g + '/settle', { method: 'POST', headers: ho, body: JSON.stringify({ method: 'card' }) });
   psql(`UPDATE computers SET status='available' WHERE name='PC-09'`);
+  // трек З, З14-и2а: «в долг» (Woda) и заказ кухни (Lay's) рассчитаны картой и остаются продажами — склад они уносят
+  // насовсем. Lay's докладывает до 30 e2e_zh6, Woda — никто: каждый прогон оставлял на стенде на одну меньше, 17.10 она
+  // кончилась и уронила e2e_z6_kitchen. Остатки — как до проверки, корректировкой владельца (не SQL: партии, З10-и3);
+  // продажи и выручка дня — как были.
+  for (const [n, s0] of [['Woda 0.5', woda0], [`Lay''s`, lays0]]) {
+    const cur = stock(n);
+    if (cur !== s0) await j(API + '/admin/goods/' + psql(`SELECT id FROM goods WHERE name='${n}'`) + '/stock', { method: 'POST', headers: ho,
+      body: JSON.stringify({ delta: s0 - cur, reason: 'adjust', note: 'pw_zh6 уборка: остаток как до проверки' }) });
+  }
+  check('уборка: остаток «Woda 0.5» и «Lay\'s» — как до проверки (проданное в долг и заказ кухни склад стенда не уносят)',
+    stock('Woda 0.5') === woda0 && stock(`Lay''s`) === lays0, `Woda ${stock('Woda 0.5')} из ${woda0} · Lay's ${stock(`Lay''s`)} из ${lays0}`);
   try { process.kill(-agent.pid); } catch (e) { try { agent.kill(); } catch (_) {} }
   console.log(out.join('\n'));
   const fails = out.filter(l => l.startsWith('FAIL')).length;
