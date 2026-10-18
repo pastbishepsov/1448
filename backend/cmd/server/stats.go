@@ -143,9 +143,17 @@ func handleAdminStatsShift(c *gin.Context) {
 	// смене не было, а зал работал.
 	var entries []models.WorkEntry
 	db.Where("date = ?", key).Order("started_at").Find(&entries)
+	// З15-и1 (№22; З-Р16): «по графику» — назначен на этот день, «вне графика» — работал без назначения. Раньше
+	// судили по шаблону записи: назначенный, вошедший в 07:50, был «вне графика», а не назначенный, вошедший в
+	// шаблонное время, в расхождениях не появлялся.
+	assigned := map[uuid.UUID]bool{}
+	for _, a := range worked {
+		assigned[a.UserID] = true
+	}
 	byUser := map[uuid.UUID]bool{}
 	workedOut := make([]gin.H, 0, len(entries))
 	offSchedule := make([]string, 0)
+	offSeen := map[uuid.UUID]bool{}
 	for i := range entries {
 		e := entries[i]
 		byUser[e.UserID] = true
@@ -154,14 +162,15 @@ func handleAdminStatsShift(c *gin.Context) {
 		row := gin.H{
 			"nickname": u.Nickname, "started_at": e.StartedAt, "ended_at": e.EndedAt,
 			"minutes": e.Minutes, "open": e.EndedAt == nil,
-			"in_schedule": e.ShiftID != nil, "auto_closed": e.AutoClosed,
+			"in_schedule": assigned[e.UserID], "auto_closed": e.AutoClosed,
 			"note": e.Note, // З14-и1: у автозакрытой — «не отметил уход» или «закрыта увольнением»
 		}
 		if e.EndedAt == nil {
 			row["minutes"] = workMinutes(e.StartedAt, time.Now())
 		}
 		workedOut = append(workedOut, row)
-		if e.ShiftID == nil {
+		if !assigned[e.UserID] && !offSeen[e.UserID] {
+			offSeen[e.UserID] = true
 			offSchedule = append(offSchedule, u.Nickname)
 		}
 	}

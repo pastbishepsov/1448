@@ -8094,6 +8094,7 @@ function shiftFormHtml(s){
     <input id="shSort" class="input" type="number" value="${s.sort || 0}">
     ${s.id ? `<label class="muted" style="display:flex; gap:8px; align-items:center; cursor:pointer">
       <input type="checkbox" id="shActive"${s.active ? ' checked' : ''}> активна (выключенная уходит из сетки, график хранится)</label>` : ''}
+    <div class="setwarn hidden" id="shOverlap"></div>
   </div>`;
 }
 function newShiftDrawer(){
@@ -8108,7 +8109,7 @@ function editShiftDrawer(id){
        <button class="btn danger" style="width:100%; justify-content:center; margin-top:10px" onclick="armDeleteShift(this,'${s.id}','${esc(s.name)}')"><span data-ic="cross"></span>Удалить смену</button>
        <div class="muted" style="margin-top:8px">Удаление уносит и её назначения из графика; чтобы просто спрятать — сними галочку «активна»</div>`);
 }
-async function saveShift(id){
+async function saveShift(id, force){
   const name = document.getElementById('shName').value.trim();
   const start = hhmmToMin(document.getElementById('shStart').value);
   const end = hhmmToMin(document.getElementById('shEnd').value);
@@ -8119,13 +8120,24 @@ async function saveShift(id){
     sort: parseInt(document.getElementById('shSort').value) || 0};
   const act = document.getElementById('shActive');
   if (act) body.active = act.checked;
+  if (force) body.force = true; // З15-и1: «всё равно» — пересечение владелец видел
   try{
     await api(id ? '/admin/shifts/' + id : '/admin/shifts',
       {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
     toast('✓ Смена сохранена');
     closeDrawer();
     renderSchedule();
-  }catch(e){ toast('⚠ ' + e.message); }
+  }catch(e){
+    const box = document.getElementById('shOverlap');
+    if (e.code === 'overlap' && box){ // З15-и1 (№22; З-Р16): пересечение — не молча, а с «всё равно»
+      box.innerHTML = `<b>⚠ ${esc(e.message)}.</b> Назначенным смену при входе берём из графика, а кто придёт без назначения
+        в общее время — попадёт в одну из них.
+        <div style="margin-top:8px"><button class="btn ghost mini" onclick="saveShift(${id ? `'${id}'` : 'null'}, true)">Всё равно ${id ? 'сохранить' : 'создать'}</button></div>`;
+      box.classList.remove('hidden');
+      return;
+    }
+    toast('⚠ ' + e.message);
+  }
 }
 function armDeleteShift(btn, id, name){
   armButton(btn, '<span data-ic="cross"></span>Ещё раз — удалить «' + name + '»', async () => {

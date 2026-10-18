@@ -81,6 +81,71 @@ func activeShifts() []models.Shift {
 	return shifts
 }
 
+// ── З15-и1 (OWNER.md, №22; З-Р16): смена при приходе — по назначению ─────────────────────────────────────────────
+//
+// Смену записи табеля брал шаблон, который шёл в минуту входа: назначенный на «День 08–20» и вошедший в 07:50 попадал
+// в хвост «Ночи» вчерашнего дня (или «вне смены», если ночного шаблона нет), а в сводке — в «вне графика»; при
+// пересекающихся шаблонах брался первый по порядку. Теперь сначала — назначение человека: смена, которая у него идёт
+// сейчас, иначе та, что начнётся не позже чем через shiftEarly; нет назначения — как раньше, шаблон по времени.
+
+// shiftEarly — насколько раньше начала назначенной смены приход ещё относится к ней.
+const shiftEarly = 3 * time.Hour
+
+// assignedWindow — назначенная смена человека: день (день НАЧАЛА смены), начало и конец.
+type assignedWindow struct {
+	Day, Start, End time.Time
+}
+
+// shiftSpan — начало и конец смены, назначенной на день day (чистая, тест).
+func shiftSpan(day time.Time, startMin, endMin int) (time.Time, time.Time) {
+	base := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+	return base.Add(time.Duration(startMin) * time.Minute), shiftEndAt(day, startMin, endMin)
+}
+
+// pickAssigned — какое из назначений относится к моменту t (чистая, тест): сначала смена, которая идёт сейчас (из
+// нескольких — начавшаяся последней), потом ближайшая, что начнётся не позже чем через early; ни одной — -1.
+func pickAssigned(c []assignedWindow, t time.Time, early time.Duration) int {
+	best := -1
+	for i, a := range c {
+		if !t.Before(a.Start) && t.Before(a.End) && (best < 0 || a.Start.After(c[best].Start)) {
+			best = i
+		}
+	}
+	if best >= 0 {
+		return best
+	}
+	for i, a := range c {
+		if t.Before(a.Start) && a.Start.Sub(t) <= early && (best < 0 || a.Start.Before(c[best].Start)) {
+			best = i
+		}
+	}
+	return best
+}
+
+// shiftFor — смена и её день для прихода человека в момент t: сначала его назначение (идёт сейчас или вот-вот
+// начнётся), потом — шаблон, который идёт в эту минуту. assigned — смена взята из назначения.
+func shiftFor(userID uuid.UUID, t time.Time) (sh *models.Shift, day time.Time, assigned bool) {
+	tc := t.In(models.ClubLocation)
+	today := time.Date(tc.Year(), tc.Month(), tc.Day(), 0, 0, 0, 0, models.ClubLocation)
+	var as []models.ShiftAssignment
+	db.Preload("Shift").Where("user_id = ? AND date BETWEEN ? AND ?", userID,
+		today.AddDate(0, 0, -1).Format("2006-01-02"), today.AddDate(0, 0, 1).Format("2006-01-02")).Find(&as)
+	wins := make([]assignedWindow, 0, len(as))
+	shifts := make([]*models.Shift, 0, len(as))
+	for i := range as {
+		if a := as[i]; a.Shift != nil && a.Shift.Active {
+			s, e := shiftSpan(a.Date, a.Shift.StartMin, a.Shift.EndMin)
+			wins = append(wins, assignedWindow{Day: a.Date, Start: s, End: e})
+			shifts = append(shifts, a.Shift)
+		}
+	}
+	if i := pickAssigned(wins, tc, shiftEarly); i >= 0 {
+		return shifts[i], wins[i].Day, true
+	}
+	sh, day = shiftNow(t)
+	return sh, day, false
+}
+
 // shiftNow — какая смена идёт в момент t и к какому дню она относится.
 func shiftNow(t time.Time) (*models.Shift, time.Time) {
 	for _, s := range activeShifts() {
@@ -145,7 +210,8 @@ func handleWorkStart(c *gin.Context) {
 	}
 	now := time.Now()
 	reportHour := int(settingInt64("report_hour", 8))
-	sh, day := shiftNow(now)
+	// З15-и1: сначала назначение, потом шаблон по времени
+	sh, day, _ := shiftFor(userID, now)
 	if sh == nil { // пришёл вне смены — тоже фиксируем, день по клубным суткам
 		day = clubDayOf(now, reportHour)
 	}
@@ -471,7 +537,7 @@ func handleWorkCreate(c *gin.Context) {
 		Minutes: workMinutes(start, end), Note: strings.TrimSpace(req.Note),
 		CreatedBy: &admin, EditedBy: &admin,
 	}
-	if sh, _ := shiftNow(start); sh != nil {
+	if sh, _, _ := shiftFor(user.ID, start); sh != nil { // З15-и1: смена — по назначению человека
 		entry.ShiftID = &sh.ID
 	}
 	if err := db.Create(&entry).Error; err != nil {
@@ -589,7 +655,7 @@ func openWorkOnLogin(user *models.User, now time.Time) (opened bool, autoClosedP
 		return false, false
 	}
 	reportHour := int(settingInt64("report_hour", 8))
-	sh, day := shiftNow(now)
+	sh, day, _ := shiftFor(user.ID, now) // З15-и1: сначала назначение, потом шаблон по времени
 	if sh == nil {
 		day = clubDayOf(now, reportHour)
 	}

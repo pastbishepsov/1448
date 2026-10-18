@@ -38,6 +38,68 @@ func validateShiftTemplate(name string, startMin, endMin, daysMask int) (ok bool
 	return true, ""
 }
 
+// shiftsOverlap — пересекаются ли два шаблона хоть в один день недели (чистая, тест; З15-и1, №22). Смена через полночь
+// захватывает утро следующего дня (ночь воскресенья — утро понедельника); стык «конец 20:00 — начало 20:00» — не
+// пересечение.
+func shiftsOverlap(aStart, aEnd, aMask, bStart, bEnd, bMask int) bool {
+	spans := func(start, end, mask int) [][2]int {
+		length := end - start
+		if end <= start {
+			length += 1440
+		}
+		out := [][2]int{}
+		for w := 0; w < 2; w++ { // две недели подряд — чтобы ночь воскресенья встретилась с утром понедельника
+			for d := 0; d < 7; d++ {
+				if mask&(1<<d) != 0 {
+					s := (w*7+d)*1440 + start
+					out = append(out, [2]int{s, s + length})
+				}
+			}
+		}
+		return out
+	}
+	for _, x := range spans(aStart, aEnd, aMask) {
+		for _, y := range spans(bStart, bEnd, bMask) {
+			if x[0] < y[1] && y[0] < x[1] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// shiftOverlaps — активные шаблоны, с которыми пересекается s (кроме него самого).
+func shiftOverlaps(s *models.Shift) []models.Shift {
+	out := []models.Shift{}
+	for _, o := range activeShifts() {
+		if o.ID != s.ID && shiftsOverlap(s.StartMin, s.EndMin, s.DaysMask, o.StartMin, o.EndMin, o.DaysMask) {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// overlapText — «со сменой «День» 08:00–20:00» / «со сменами …» (чистая, тест).
+func overlapText(with []models.Shift) string {
+	parts := make([]string, 0, len(with))
+	for _, o := range with {
+		parts = append(parts, "«"+o.Name+"» "+fmtShiftTime(o.StartMin)+"–"+fmtShiftTime(o.EndMin))
+	}
+	if len(parts) == 1 {
+		return "со сменой " + parts[0]
+	}
+	return "со сменами " + strings.Join(parts, ", ")
+}
+
+// respondOverlap — 409 overlap: с кем пересекается; «всё равно» — тот же запрос с force.
+func respondOverlap(c *gin.Context, with []models.Shift) {
+	list := make([]gin.H, 0, len(with))
+	for i := range with {
+		list = append(list, shiftOut(&with[i]))
+	}
+	c.JSON(http.StatusConflict, gin.H{"code": "overlap", "message": "Пересекается " + overlapText(with), "with": list})
+}
+
 // dowMonday — день недели с понедельником в нуле (для days_mask).
 func dowMonday(t time.Time) int { return (int(t.Weekday()) + 6) % 7 }
 
@@ -97,6 +159,7 @@ type shiftTemplateRequest struct {
 	DaysMask *int   `json:"days_mask"`
 	Sort     int    `json:"sort"`
 	Active   *bool  `json:"active"`
+	Force    bool   `json:"force"` // З15-и1: создать или сохранить, хоть и пересекается с другими
 }
 
 var shiftTemplateErrors = map[string]string{
@@ -134,12 +197,20 @@ func handleAdminShiftCreate(c *gin.Context) {
 		ClubID: club.ID, Name: strings.TrimSpace(req.Name),
 		StartMin: *req.StartMin, EndMin: *req.EndMin, DaysMask: mask, Sort: req.Sort, Active: true,
 	}
+	with := shiftOverlaps(&s) // З15-и1 (№22; З-Р16): пересечение — предупреждение с «всё равно создать»
+	if len(with) > 0 && !req.Force {
+		respondOverlap(c, with)
+		return
+	}
 	if err := db.Create(&s).Error; err != nil {
 		respondDBError(c, err)
 		return
 	}
-	logAdminAction(c, "shift_tpl_create", nil,
-		s.Name+" · "+fmtShiftTime(s.StartMin)+"–"+fmtShiftTime(s.EndMin))
+	details := s.Name + " · " + fmtShiftTime(s.StartMin) + "–" + fmtShiftTime(s.EndMin)
+	if len(with) > 0 {
+		details += " · пересекается " + overlapText(with)
+	}
+	logAdminAction(c, "shift_tpl_create", nil, details)
 	hub.AdminBroadcast("shifts", map[string]any{"kind": "tpl"})
 	c.JSON(http.StatusCreated, shiftOut(&s))
 }
@@ -182,12 +253,23 @@ func handleAdminShiftUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": shiftTemplateErrors[code]})
 		return
 	}
+	var with []models.Shift
+	if s.Active { // З15-и1: выключенная смена в сетке не идёт — ей пересекаться не с чем
+		with = shiftOverlaps(&s)
+	}
+	if len(with) > 0 && !req.Force {
+		respondOverlap(c, with)
+		return
+	}
 	if err := db.Save(&s).Error; err != nil {
 		respondDBError(c, err)
 		return
 	}
-	logAdminAction(c, "shift_tpl_update", nil,
-		s.Name+" · "+fmtShiftTime(s.StartMin)+"–"+fmtShiftTime(s.EndMin))
+	details := s.Name + " · " + fmtShiftTime(s.StartMin) + "–" + fmtShiftTime(s.EndMin)
+	if len(with) > 0 {
+		details += " · пересекается " + overlapText(with)
+	}
+	logAdminAction(c, "shift_tpl_update", nil, details)
 	hub.AdminBroadcast("shifts", map[string]any{"kind": "tpl"})
 	c.JSON(http.StatusOK, shiftOut(&s))
 }
