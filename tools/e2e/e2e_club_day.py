@@ -4,7 +4,8 @@
 сдвигом report_hour); дневной потолок админа считает те же сутки; KPI «Выручка сегодня» = итог
 отчёта «Деньги» за сегодня; /admin/audit: страницы по before, лимит ≤200, kind — на сервере,
 депозит со 160-й позиции дня находится фильтром «Деньги»; owner — любой день, admin — текущий.
-Идемпотентен: свои строки удаляет, настройки возвращает."""
+Идемпотентен: свои строки удаляет, настройки возвращает. От загрузки стенда не зависит (З15-и2а): депозит для журнала —
+свежий, 160 строк, которые его отодвигают, — между ним и «сейчас»."""
 import os, json, subprocess, sys, time, urllib.request, urllib.error, urllib.parse, datetime as dt
 
 from _env import API, BASE, HOST, PORT, DB, SRV_LOG, MOCK_AGENT, agent_log  # стенд задаётся окружением, см. README
@@ -82,9 +83,12 @@ check("состав KPI совпадает с отчётом: депозиты, 
 check("окно KPI — клубные сутки от 08:00", str(ov.get("day_from", "")).find("T08:00:00") > 0 and ov.get("report_hour") == 8, f"{ov.get('day_from')}")
 
 # ── C: журнал страницами; депозит со 160-й позиции находится фильтром «Деньги» ──
+# З15-и2а: депозит свежий, а 160 строк журнала, которые его отодвигают, — между ним и «сейчас» (через микросекунду после
+# него, по порядку). Раньше депозит уезжал на 400 с назад, и после плотной работы стенда — больше 100 денежных событий
+# за эти 400 с — фильтр «Деньги» выталкивал его с первой страницы: проверка падала не из-за сервера.
 s, dep2 = api("POST", f"/admin/users/{g}/deposit", {"amount_pln": 3, "method": "cash"}, a1)
-sql(f"UPDATE deposits SET created_at = now() - interval '400 seconds' WHERE id='{dep2['deposit_id']}'")
-sql(f"INSERT INTO admin_actions(admin_id, action, details, created_at) SELECT '{admin1}', 'pc_hold', 'e2e-zh3 #' || i, now() - (i || ' seconds')::interval FROM generate_series(1, 160) i")
+sql(f"INSERT INTO admin_actions(admin_id, action, details, created_at) SELECT '{admin1}', 'pc_hold', 'e2e-zh3 #' || i, "
+    f"d.created_at + (i || ' microseconds')::interval FROM generate_series(1, 160) i, deposits d WHERE d.id = '{dep2['deposit_id']}'")
 s, p1 = api("GET", "/admin/audit", None, a1)
 items1 = p1.get("items", [])
 check(f"страница 1: {len(items1)} строк (лимит 100), has_more, next_before", len(items1) == 100 and p1.get("has_more") is True and p1.get("next_before"), f"{p1.get('count')} {p1.get('has_more')}")
