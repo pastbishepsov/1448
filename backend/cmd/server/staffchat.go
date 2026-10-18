@@ -16,8 +16,18 @@ package main
 // нет), и часть из них — «только владельцу»: деньги сдачи кассы, дальше —
 // напоминания бухгалтерии и алерты. Админ такие строки не видит ни в ленте,
 // ни в счётчике, ни в live-канале — фильтр стоит в запросе, а не в браузере.
+//
+// З15-и2 (OWNER.md, №27, З-Р20): канал страницами. Лента отдавала последние
+// 100, а открытие шторки ставило «прочитано» на «сейчас»: две недели без
+// канала — 120 строк, 20 старших (среди них недостачи) не достать, счётчик
+// сброшен. Теперь открытие отдаёт все непрочитанные (до staffChatMax), но не
+// меньше страницы; «Ещё» — следующая страница старше (?before=, как у
+// журнала); «прочитано» встаёт на последнее показанное сообщение и назад не
+// ходит — пришедшее, пока лента открывалась, остаётся непрочитанным.
 
 import (
+	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -31,6 +41,25 @@ import (
 )
 
 const maxStaffMessage = 1000 // символов: вопрос владельцу бывает подробным
+
+// Страницы канала (З15-и2).
+const (
+	staffChatPage = 100 // страница «Ещё» и меньше на открытии не бывает
+	staffChatMax  = 500 // больше на открытии не отдаём — дальше «Ещё»
+)
+
+// staffPageSize — сколько сообщений отдать на открытии ленты (чистая, тест):
+// все, что после отметки «прочитано» (after), но не меньше страницы и не
+// больше staffChatMax.
+func staffPageSize(after int64) int {
+	if after <= staffChatPage {
+		return staffChatPage
+	}
+	if after >= staffChatMax {
+		return staffChatMax
+	}
+	return int(after)
+}
 
 // Виды и видимость сообщений канала (миграция 067).
 const (
@@ -73,7 +102,11 @@ func staffUnread(userID uuid.UUID, role string, readAt *time.Time) int64 {
 	return n
 }
 
-// GET /admin/staff-chat — последние сообщения канала и счётчик непрочитанных.
+// GET /admin/staff-chat — страница канала (старые сверху) и счётчик непрочитанных.
+// ?before=RFC3339 — сообщения строго раньше момента («Ещё»); has_more и
+// next_before — есть ли старше и откуда брать следующую страницу (как у
+// журнала). Без before — свежие: все после отметки «прочитано» (до
+// staffChatMax), но не меньше staffChatPage (З15-и2).
 func handleStaffChatList(c *gin.Context) {
 	var me models.User
 	if err := db.First(&me, "id = ?", c.GetString("user_id")).Error; err != nil {
@@ -81,8 +114,29 @@ func handleStaffChatList(c *gin.Context) {
 		return
 	}
 	role := c.GetString("user_role") // З0-и1: роль из базы, не из токена
+	var before time.Time
+	if b := c.Query("before"); b != "" {
+		t, err := time.Parse(time.RFC3339Nano, b)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_before", "message": "before — момент в формате RFC3339"})
+			return
+		}
+		before = t
+	}
+	size, q := staffChatPage, staffVisible(db, role)
+	if !before.IsZero() {
+		q = q.Where("created_at < ?", before)
+	} else if me.StaffChatReadAt != nil {
+		var after int64
+		staffVisible(db.Model(&models.StaffMessage{}), role).Where("created_at > ?", *me.StaffChatReadAt).Count(&after)
+		size = staffPageSize(after)
+	}
 	var msgs []models.StaffMessage
-	staffVisible(db, role).Order("created_at DESC").Limit(100).Find(&msgs)
+	q.Order("created_at DESC").Order("id DESC").Limit(size + 1).Find(&msgs)
+	hasMore := len(msgs) > size
+	if hasMore {
+		msgs = msgs[:size]
+	}
 	// Разворачиваем: клиенту удобнее старые сверху, а лимит нужен по свежим.
 	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
 		msgs[i], msgs[j] = msgs[j], msgs[i]
@@ -98,11 +152,16 @@ func handleStaffChatList(c *gin.Context) {
 	for i := range msgs {
 		out = append(out, staffMsgOut(&msgs[i], names))
 	}
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"messages": out,
 		"unread":   staffUnread(me.ID, role, me.StaffChatReadAt),
 		"read_at":  me.StaffChatReadAt,
-	})
+		"has_more": hasMore,
+	}
+	if hasMore && len(msgs) > 0 {
+		resp["next_before"] = msgs[0].CreatedAt.Format(time.RFC3339Nano)
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 type staffChatRequest struct {
@@ -208,13 +267,47 @@ func ownerIDs() map[string]bool {
 	return out
 }
 
-// POST /admin/staff-chat/read — «дочитал до сих пор».
+type staffReadRequest struct {
+	Until string `json:"until"` // З15-и2: id последнего показанного сообщения
+}
+
+// POST /admin/staff-chat/read — «дочитал до сих пор». З15-и2: до последнего
+// показанного — until, id сообщения, которое человек видел последним:
+// отметка встаёт на его время и назад не ходит, пришедшее позже остаётся
+// непрочитанным. Без until (страница, открытая до обновления) — как раньше,
+// «до сейчас». В ответе — отметка и сколько непрочитанных осталось.
 func handleStaffChatRead(c *gin.Context) {
-	now := time.Now()
-	if err := db.Model(&models.User{}).Where("id = ?", c.GetString("user_id")).
-		Update("staff_chat_read_at", now).Error; err != nil {
+	var req staffReadRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Тело — {\"until\": id сообщения}"})
+		return
+	}
+	userID, err := uuid.Parse(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "bad_token", "message": "Не разобрал токен"})
+		return
+	}
+	role := c.GetString("user_role")
+	at := time.Now()
+	if req.Until != "" {
+		id, err := uuid.Parse(req.Until)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_until", "message": "until — id сообщения канала"})
+			return
+		}
+		var m models.StaffMessage
+		if staffVisible(db, role).Select("id", "created_at").First(&m, "id = ?", id).Error != nil {
+			c.JSON(http.StatusNotFound, gin.H{"code": "message_not_found", "message": "Такого сообщения в канале нет"})
+			return
+		}
+		at = m.CreatedAt
+	}
+	if err := db.Model(&models.User{}).Where("id = ? AND (staff_chat_read_at IS NULL OR staff_chat_read_at < ?)", userID, at).
+		Update("staff_chat_read_at", at).Error; err != nil {
 		respondDBError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"read_at": now, "unread": 0})
+	var me models.User
+	db.Select("id", "staff_chat_read_at").First(&me, "id = ?", userID)
+	c.JSON(http.StatusOK, gin.H{"read_at": me.StaffChatReadAt, "unread": staffUnread(userID, role, me.StaffChatReadAt)})
 }

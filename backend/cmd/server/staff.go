@@ -107,7 +107,71 @@ func handleAdminStaffList(c *gin.Context) {
 		}
 		out = append(out, row)
 	}
-	c.JSON(http.StatusOK, gin.H{"count": len(out), "staff": out})
+	c.JSON(http.StatusOK, gin.H{"count": len(out), "staff": out, "cash_diffs": cashDiffs(time.Now())})
+}
+
+// cashDiffs — расхождения касс за 7 клубных суток для бейджа в «Персонале»
+// (З15-и2, №27). Каждая сдача пишет владельцу строку в канал, и за неделю без
+// канала они тонут среди остальных — здесь они из самих сдач. Расхождение —
+// пересчитанная сдача не в ноль (начальный остаток ящика — не расхождение);
+// недостачу может объяснить расход «из кассы», внесённый задним числом до этой
+// сдачи (З9-и3в): такая остаётся в списке с пометкой, но в «не объяснено» не
+// идёт. Свежие сверху.
+func cashDiffs(now time.Time) gin.H {
+	p, _ := resolvePeriod("d7", "", "", int(settingInt64("report_hour", 8)), now)
+	var cos []models.ShiftCloseout
+	db.Where("created_at >= ? AND created_at < ? AND diff_grosz IS NOT NULL AND diff_grosz <> 0 AND NOT baseline", p.From, now).
+		Order("created_at DESC").Find(&cos)
+	ids, users := make([]uuid.UUID, 0, len(cos)), make([]string, 0, len(cos))
+	for i := range cos {
+		ids, users = append(ids, cos[i].ID), append(users, cos[i].UserID.String())
+	}
+	explained := map[uuid.UUID]int64{}
+	if len(ids) > 0 {
+		var sums []struct {
+			ExplainsCloseout uuid.UUID
+			Sum              int64
+		}
+		db.Model(&models.Expense{}).Select("explains_closeout, SUM(gross_grosz) AS sum").
+			Where("explains_closeout IN ? AND storno_at IS NULL", ids).Group("explains_closeout").Scan(&sums)
+		for _, s := range sums {
+			explained[s.ExplainsCloseout] = s.Sum
+		}
+	}
+	names := nicknamesByID(users)
+	items := make([]gin.H, 0, len(cos))
+	open := 0
+	var short, over int64
+	for i := range cos {
+		co := &cos[i]
+		r := closeoutOut(co)
+		r["nickname"] = names[co.UserID.String()]
+		if x := explained[co.ID]; x > 0 {
+			r["explained_pln"] = models.PLNFromGrosz(x)
+		}
+		left := cashDiffLeft(*co.DiffGrosz, explained[co.ID])
+		r["open"] = left != 0
+		switch {
+		case left < 0:
+			short, open = short-left, open+1
+		case left > 0:
+			over, open = over+left, open+1
+		}
+		items = append(items, r)
+	}
+	return gin.H{"from": p.FromDay.Format("2006-01-02"), "count": len(items), "open": open,
+		"short_pln": models.PLNFromGrosz(short), "over_pln": models.PLNFromGrosz(over), "items": items}
+}
+
+// cashDiffLeft — сколько расхождения сдачи осталось необъяснённым (чистая,
+// тест): недостачу закрывают расходы «из кассы», внесённые задним числом до
+// этой сдачи, — объяснили больше недостачи, значит объяснено, а не излишек;
+// излишек расходом не объяснить.
+func cashDiffLeft(diff, explained int64) int64 {
+	if diff >= 0 {
+		return diff
+	}
+	return min(diff+explained, 0)
 }
 
 // POST /admin/staff {nickname} — назначить гостя админом (owner).

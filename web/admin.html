@@ -288,6 +288,13 @@
   .scmsg.sys{max-width:92%; margin-left:auto; margin-right:auto; background:rgba(251,191,36,.07); border-color:rgba(251,191,36,.28)}
   .scmsg .scown{color:var(--gold); font-weight:700}
   .scwrap{display:flex; flex-direction:column; max-height:52vh; overflow:auto; padding-right:2px}
+  /* З15-и2: черта «Новые» над первым непрочитанным и «Ещё 100 — раньше» сверху ленты */
+  .scnew{display:flex; align-items:center; gap:8px; margin:4px 0 10px; color:var(--acc3); font-size:11px; font-weight:800;
+         letter-spacing:.06em; text-transform:uppercase}
+  .scnew::before,.scnew::after{content:''; flex:1; height:1px; background:rgba(255,39,64,.35)}
+  .scmore{text-align:center; margin:0 0 10px}
+  .scmore .muted{margin-top:4px; font-size:12px}
+  .cdrow{cursor:pointer}
   .faqq{width:100%; text-align:left; background:var(--card2); border:1px solid var(--line);
         border-radius:11px; padding:10px 12px; margin-bottom:6px; color:var(--txt);
         font:inherit; font-weight:700; cursor:pointer}
@@ -1050,6 +1057,8 @@
             <button onclick="staffViewSet('archive',this)">Уволенные</button>
           </div>
         </div>
+        <!-- З15-и2: расхождения касс за 7 дней — владельцу, из самих сдач (в канале они тонут) -->
+        <div class="ownerOnly hidden" id="staffCashBox"><div id="staffCashDiffs"></div></div>
         <!-- В3-этап 4: отметка прихода и ухода — видна и админу, и владельцу -->
         <div class="toolrow" id="myShiftBox"></div>
         <div class="tablewrap ownerOnly hidden" id="staffTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -1469,7 +1478,7 @@ function enter(){
   connectWS();
   loadFeedBackfill(); // Ж3-и4: лента зала не пустая после перезагрузки
   loadMyShift(); // Е3-и2: состояние смены — с первого экрана, а не по заходу в «Персонал»
-  loadStaffChat(false); // Е6-и2: непрочитанное в канале персонала — сразу
+  loadStaffChat(); // Е6-и2: непрочитанное в канале персонала — сразу
   setTimeout(tourMaybeStart, 900); // Е5-и1: даём интерфейсу отрисоваться, потом учим
 }
 
@@ -1711,7 +1720,7 @@ setInterval(() => {
   // чтобы поймать чужое действие (владелец закрыл смену из табеля). Считаем
   // своим счётчиком: «секунды с последнего синка» сбрасываются каждый обмен,
   // и по ним вышло бы обращение к серверу почти каждую секунду.
-  if (++shiftTick >= 60){ shiftTick = 0; loadMyShift(); loadStaffChat(false); }
+  if (++shiftTick >= 60){ shiftTick = 0; loadMyShift(); loadStaffChat(); }
   // живой таймер сессии в открытом drawer ПК
   const el = document.getElementById('dElapsed');
   if (el && drawerPCId){
@@ -1900,7 +1909,7 @@ function handleLiveEvent(m){
   }
   if (m.type === 'staff_chat'){ // Е6: свой написал — счётчик и открытая лента
     const d = m.data || {};
-    loadStaffChat(true);
+    loadStaffChat();
     const mine = me && d.by === me.id; // З10-и4: своё действие — список уже перерисован, тост показан
     if (d.expense_due || (d.supply && isOwner())) refresh(); // З9-и5, З10-и4: бейдж «Бухгалтерии» сразу — он только у владельца
     if (d.supply && curTab === 'goods' && !mine) renderGoods(); // З10-и4: список поставок
@@ -1936,15 +1945,32 @@ function handleLiveEvent(m){
    владельца полезен всей смене. Счётчик непрочитанных считает СЕРВЕР — он же
    помнит, докуда человек дочитал, и на другой машине клуба цифра будет та
    же. ── */
-let staffMsgs = [], staffUnread = 0;
+/* З15-и2 (№27, З-Р20): лента страницами. Открыл — все непрочитанные (до 500) и не меньше 100
+   последних, над первым непрочитанным — черта «Новые»; «Ещё 100 — раньше» сверху — сообщения
+   старше. «Прочитано» — до последнего показанного сообщения, а не «до сейчас»: пришедшее, пока
+   лента грузилась, остаётся непрочитанным; новое при открытой ленте читается, когда лента внизу.
+   Живое обновление перерисовывает одну ленту — набранный текст не стирается. */
+let staffMsgs = [], staffUnread = 0, staffMore = false, staffBefore = null, staffLoading = false;
+let staffRead0 = null, staffUnread0 = 0, staffReadUntil = null; // отметка и счётчик на момент открытия
 
-async function loadStaffChat(paint){
+// Счётчик — всегда; открытая лента (З15-и2) берёт свежее сама и сразу его рисует — и по событию, и по
+// опросу: «прочитано» ставится только на показанное, в ленте не должно быть ненарисованного.
+async function loadStaffChat(){
   try{
     const d = await api('/admin/staff-chat');
-    staffMsgs = d.messages || [];
     staffUnread = d.unread || 0;
     paintStaffBadge();
-    if (paint && drawerIsStaffChat) paintStaffChat();
+    if (!drawerIsStaffChat) return; // шторка закрыта — хватит счётчика, ленту возьмёт открытие
+    const fresh = d.messages || [], known = new Set(staffMsgs.map(m => m.id));
+    const add = fresh.filter(m => !known.has(m.id));
+    if (!add.length) return;
+    if (staffMsgs.length && add.length === fresh.length){ // разрыв длиннее страницы — с чистого листа
+      staffMsgs = fresh; staffMore = !!d.has_more; staffBefore = d.next_before || null;
+    } else { // свежее — к ленте, долистанное «Ещё» остаётся
+      staffMsgs = staffMsgs.concat(add);
+      staffMsgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    }
+    if (paintStaffList('live')) staffMarkRead();
   }catch(e){ /* канал не критичен для смены — молча */ }
 }
 
@@ -1957,13 +1983,28 @@ function paintStaffBadge(){
 
 let drawerIsStaffChat = false;
 async function openStaffChat(){
-  drawerUserId = null; drawerPCId = null; drawerIsStaffChat = true;
-  await loadStaffChat(false);
+  drawerUserId = null; drawerPCId = null; drawerIsStaffChat = false;
+  let d;
+  try{ d = await api('/admin/staff-chat'); }
+  catch(e){ toast('⚠ ' + e.message); return; }
+  staffMsgs = d.messages || []; staffMore = !!d.has_more; staffBefore = d.next_before || null;
+  staffRead0 = d.read_at || null; staffUnread0 = staffUnread = d.unread || 0; staffReadUntil = null;
+  drawerIsStaffChat = true;
   paintStaffChat();
-  // Открыл — значит прочитал: держать счётчик после того, как человек
-  // смотрит на текст, — обман.
-  try{ await api('/admin/staff-chat/read', {method:'POST'}); staffUnread = 0; paintStaffBadge(); }
-  catch(e){}
+  // Открыл — прочитал показанное: отметка встаёт на последнее сообщение ленты, не «до сейчас» (З15-и2)
+  await staffMarkRead();
+}
+
+// З15-и2: «прочитано» до последнего сообщения ленты; ответ сервера — сколько непрочитанных осталось
+async function staffMarkRead(){
+  const last = staffMsgs[staffMsgs.length - 1];
+  if (!last || last.id === staffReadUntil) return;
+  staffReadUntil = last.id;
+  try{
+    const d = await api('/admin/staff-chat/read', {method:'POST', body: JSON.stringify({until: last.id})});
+    staffUnread = d.unread || 0;
+    paintStaffBadge();
+  }catch(e){ staffReadUntil = null; }
 }
 
 /* З1-и2 (№59, Д4): служебные строки пишет сервер — автора нет, «Система»; строку с меткой
@@ -1980,10 +2021,7 @@ function staffMsgHTML(m){
 }
 
 function paintStaffChat(){
-  const rows = staffMsgs.length
-    ? staffMsgs.map(staffMsgHTML).join('')
-    : `<div class="muted" style="padding:8px 0">Пусто. Здесь спрашивают у владельца то, что не решается по инструкции — ответ увидит вся смена.</div>`;
-  const body = `<div class="scwrap" id="scWrap">${rows}</div>
+  const body = `<div class="scwrap" id="scWrap" onscroll="staffScrolled()"></div>
     <div class="chrow" style="margin-top:10px">
       <textarea id="scText" class="input" rows="2" maxlength="1000"
         placeholder="Вопрос владельцу — например, что делать со спорным возвратом"
@@ -1993,8 +2031,54 @@ function paintStaffChat(){
     <div class="muted" style="margin-top:6px">Ctrl+Enter — отправить. Канал общий: сообщение видят все, кто работает у стойки.${isOwner()
       ? ' Строки с меткой «видит только владелец» — деньги сдачи кассы — админам не показываются.' : ''}</div>`;
   openDrawer('Спросить владельца', body);
+  paintStaffList('open');
+}
+
+/* З15-и2: лента в шторке — «Ещё» сверху, черта «Новые», сообщения. mode: open — к черте «Новые»
+   (нет её — вниз, свежее внизу, как в любом чате); older — подгрузили раньше: что было на экране,
+   стоит на месте; live — пришло новое: лента была внизу — едет вниз, иначе стоит. Возвращает
+   «была внизу» — тогда новое прочитано. */
+function paintStaffList(mode){
   const w = document.getElementById('scWrap');
-  if (w) w.scrollTop = w.scrollHeight; // свежее — внизу, как в любом чате
+  if (!w) return false;
+  const atBottom = w.scrollHeight - w.scrollTop - w.clientHeight < 40;
+  const h0 = w.scrollHeight, top0 = w.scrollTop;
+  const myId = me && me.id, t0 = staffRead0 ? new Date(staffRead0) : null;
+  const isNew = m => !!t0 && m.author_id !== myId && new Date(m.created_at) > t0;
+  const first = staffMsgs.findIndex(isNew);
+  const above = t0 ? staffUnread0 - staffMsgs.filter(isNew).length : 0; // непрочитанные выше загруженного (больше 500 разом)
+  w.innerHTML = (staffMore ? `<div class="scmore"><button class="btn ghost mini" id="scMore" onclick="staffOlder(this)">Ещё 100 — раньше</button>${
+      above > 0 ? `<div class="muted">выше ещё непрочитанных: ${above}</div>` : ''}</div>` : '')
+    + (staffMsgs.length
+      ? staffMsgs.map((m, i) => (i === first ? '<div class="scnew" id="scNew">Новые</div>' : '') + staffMsgHTML(m)).join('')
+      : `<div class="muted" style="padding:8px 0">Пусто. Здесь спрашивают у владельца то, что не решается по инструкции — ответ увидит вся смена.</div>`);
+  if (mode === 'older') w.scrollTop = top0 + (w.scrollHeight - h0);
+  else if (mode === 'live') w.scrollTop = atBottom ? w.scrollHeight : top0;
+  else {
+    const n = document.getElementById('scNew');
+    w.scrollTop = n ? w.scrollTop + n.getBoundingClientRect().top - w.getBoundingClientRect().top - 6 : w.scrollHeight;
+  }
+  return atBottom;
+}
+
+// З15-и2: «Ещё 100 — раньше» — страница старше самой ранней в ленте (?before=, как у журнала)
+async function staffOlder(btn){
+  if (staffLoading || !staffMore || !staffBefore) return;
+  staffLoading = true;
+  if (btn) btn.disabled = true;
+  try{
+    const d = await api('/admin/staff-chat?before=' + encodeURIComponent(staffBefore));
+    const known = new Set(staffMsgs.map(m => m.id));
+    staffMsgs = (d.messages || []).filter(m => !known.has(m.id)).concat(staffMsgs);
+    staffMore = !!d.has_more; staffBefore = d.next_before || null;
+    paintStaffList('older');
+  }catch(e){ toast('⚠ ' + e.message); if (btn) btn.disabled = false; }
+  finally{ staffLoading = false; }
+}
+
+function staffScrolled(){ // З15-и2: долистал ленту до низа — новое прочитано
+  const w = document.getElementById('scWrap');
+  if (w && staffUnread && w.scrollHeight - w.scrollTop - w.clientHeight < 40) staffMarkRead();
 }
 
 async function sendStaffMsg(){
@@ -2004,8 +2088,9 @@ async function sendStaffMsg(){
   try{
     await api('/admin/staff-chat', {method:'POST', body: JSON.stringify({text})});
     if (el) el.value = '';
-    await loadStaffChat(false);
-    paintStaffChat();
+    await loadStaffChat();
+    const w = document.getElementById('scWrap');
+    if (w) w.scrollTop = w.scrollHeight; // своё — внизу, лента едет к нему
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
@@ -8166,6 +8251,7 @@ async function renderStaff(){
   if (staffView === 'archive') return renderStaffArchive();
   try{
     const d = await api('/admin/staff');
+    paintCashDiffs(d.cash_diffs); // З15-и2
     setHTML('staffTable', (d.staff || []).length === 0
       ? '<div class="empty"><span data-ic="users"></span>Персонала нет — назначь первого админа по нику</div>'
       : `<table><tr><th>Сотрудник</th><th>Должность</th><th>Роль</th><th>В клубе с</th><th>Действий сегодня</th><th></th></tr>
@@ -8183,6 +8269,43 @@ async function renderStaff(){
           : ''}</td>
     </tr>`).join('')}</table>`);
   }catch(e){ toast('⚠ ' + e.message); }
+}
+/* З15-и2 (№27, З-Р20): расхождения касс за 7 клубных суток — бейдж владельцу. Каждая сдача пишет
+   ему строку в канал, и за неделю без канала они тонут; здесь — из самих сдач. Недостачу объясняет
+   расход «из кассы», внесённый задним числом до этой сдачи: такая в списке с пометкой, в «не
+   объяснено» не идёт. Клик — шторка: кто, когда, сколько; оттуда — «Касса» за те же 7 дней. */
+let cashDiffsData = null;
+function paintCashDiffs(cd){
+  cashDiffsData = cd || null;
+  const box = document.getElementById('staffCashDiffs');
+  if (!box) return;
+  const n = cd ? cd.count | 0 : 0;
+  if (!n){ box.innerHTML = ''; return; }
+  const left = [cd.short_pln > 0 ? 'недостача ' + fmtPLN(cd.short_pln) + ' zł' : '', cd.over_pln > 0 ? 'излишек ' + fmtPLN(cd.over_pln) + ' zł' : '']
+    .filter(Boolean).join(' · ');
+  box.innerHTML = `<div class="mmrow ${cd.open ? 'bad' : 'warn'} cdrow" id="cashDiffsRow" role="button" tabindex="0"
+      onclick="cashDiffsDrawer()" onkeydown="if(event.key==='Enter')cashDiffsDrawer()"><span data-ic="coins"></span>
+      <span>Расхождений касс за 7 дней: <b>${n}</b>${cd.open ? ' — не объяснено: ' + left : ' — все объяснены расходами из кассы'}. <u>Кто и когда</u></span></div>`;
+  mountIcons(box);
+}
+function cashDiffsDrawer(){
+  const cd = cashDiffsData || {items: []};
+  const rows = (cd.items || []).map(c => `<tr>
+      <td class="muted">${fmtTime(c.created_at)}</td>
+      <td><b>${esc(c.nickname || '—')}</b></td>
+      <td><b style="color:var(--orange)">${c.diff_pln > 0 ? '+' : '−'}${fmtPLN(Math.abs(c.diff_pln))} zł</b></td>
+      <td>${c.explained_pln ? fmtPLN(c.explained_pln) + ' zł' + (c.open ? '' : ' <span class="muted">— объяснено</span>') : '<span class="muted">—</span>'}</td>
+      <td>${fmtPLN(c.expected_pln)} zł</td>
+      <td>${fmtPLN(c.counted_pln)} zł</td>
+      <td class="muted">${esc(c.note || '')}</td>
+    </tr>`).join('');
+  openDrawer('Расхождения касс за 7 дней', `<div class="muted" style="margin-bottom:10px">Сдачи с пересчётом не в ноль с ${
+      cd.from ? ruDate(cd.from) : '—'} (клубные сутки), свежие сверху. Недостачу объясняет расход «из кассы», внесённый задним
+      числом до этой сдачи. В канале те же сдачи — служебными строками «видит только владелец».</div>
+    <div class="tablewrap"><table><tr><th>Когда</th><th>Кто</th><th>Расхождение</th><th>Объяснено</th><th>Должно быть</th><th>Пересчитано</th><th>Заметка</th></tr>
+    ${rows}</table></div>
+    <button class="btn ghost" id="cdToCash" style="width:100%; justify-content:center; margin-top:12px"
+      onclick="closeDrawer(); accPeriod = {preset:'d7'}; accDay = null; accGo('cash')"><span data-ic="coins"></span>Касса по дням за эти 7 дней</button>`);
 }
 async function promoteStaff(){
   const inp = document.getElementById('stNick');
