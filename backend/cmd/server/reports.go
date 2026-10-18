@@ -984,6 +984,59 @@ func handleReportLoad(c *gin.Context) {
 
 // ── Разрез «Персонал и смены» ─────────────────────────────────────────
 
+// workSpan — запись табеля в разрезе «по сменам» (З15-и4): чья, с какого по какой момент, имя смены (снимок).
+type workSpan struct {
+	User       string
+	Start, End time.Time
+	Shift      string
+}
+
+// workSpansIn — записи табеля с именем смены, задевающие окно [from, to); открытая — до now.
+func workSpansIn(from, to, now time.Time) []workSpan {
+	var entries []models.WorkEntry
+	db.Where("started_at < ? AND (ended_at IS NULL OR ended_at > ?) AND shift_name <> ''", to, from).Find(&entries)
+	out := make([]workSpan, 0, len(entries))
+	for _, w := range entries {
+		end := now
+		if w.EndedAt != nil {
+			end = *w.EndedAt
+		}
+		out = append(out, workSpan{User: w.UserID.String(), Start: w.StartedAt, End: end, Shift: w.ShiftName})
+	}
+	return out
+}
+
+// shiftByTimesheet — смена момента at по табелю (чистая, тест). Деньги — к смене того, кто их принял (author): его
+// запись в этот момент. Иначе — смена, которая тогда работала: из идущих записей — смена по графику этого момента
+// (onDuty — имя активного шаблона, "" — такого нет), а если её людей на месте нет — заступившая последней. Записи без
+// имени смены не в счёт, конец записи — уже не её момент. "" — по табелю в этот момент никого.
+func shiftByTimesheet(spans []workSpan, at time.Time, author, onDuty string) string {
+	own, last, duty := -1, -1, false
+	for i, w := range spans {
+		if w.Shift == "" || at.Before(w.Start) || !at.Before(w.End) {
+			continue
+		}
+		if author != "" && w.User == author && (own < 0 || w.Start.After(spans[own].Start)) {
+			own = i
+		}
+		if onDuty != "" && w.Shift == onDuty {
+			duty = true
+		}
+		if last < 0 || w.Start.After(spans[last].Start) {
+			last = i
+		}
+	}
+	switch {
+	case own >= 0:
+		return spans[own].Shift
+	case duty:
+		return onDuty
+	case last >= 0:
+		return spans[last].Shift
+	}
+	return ""
+}
+
 // GET /admin/reports/staff — кто работал и что принесла каждая смена (owner).
 func handleReportStaff(c *gin.Context) {
 	p, prev, _, ok := periodFromQuery(c)
@@ -1008,14 +1061,27 @@ func handleReportStaff(c *gin.Context) {
 	}
 	const outside = "вне смен"
 
-	shiftOf := func(at time.Time) string {
+	// З15-и4 (№30): смена момента — по табелю, по имени-снимку в записи: удалённый, переименованный или выключенный
+	// шаблон больше не уносит свою историю «вне смен» или в соседнюю смену. Деньги — к смене того, кто их принял (его
+	// запись табеля в этот момент), сессии — к смене, которая тогда работала (shiftByTimesheet); по табелю в этот
+	// момент никого — как раньше, по активным шаблонам.
+	spans := workSpansIn(p.From, p.To, time.Now())
+	shiftOf := func(at time.Time, author string) string {
+		onDuty := ""
 		for _, s := range shifts {
 			if !s.Active {
 				continue
 			}
 			if on, _ := shiftActiveAt(s.StartMin, s.EndMin, s.DaysMask, at); on {
-				return s.Name
+				onDuty = s.Name
+				break
 			}
+		}
+		if name := shiftByTimesheet(spans, at, author, onDuty); name != "" {
+			return name
+		}
+		if onDuty != "" {
+			return onDuty
 		}
 		return outside
 	}
@@ -1023,12 +1089,13 @@ func handleReportStaff(c *gin.Context) {
 	// З-Р4: те же строки, что итог — Σ смен сходится с KPI «Выручка» над таблицей
 	for kind, src := range moneySources {
 		var rows []struct {
-			At  time.Time
-			Pln float64
+			At     time.Time
+			Pln    float64
+			Author string
 		}
-		src.in(p.From, p.To).Select(src.at + " AS at, " + src.pln + " AS pln").Scan(&rows)
+		src.in(p.From, p.To).Select(src.at + " AS at, " + src.pln + " AS pln, COALESCE(CAST(" + src.by + " AS text), '') AS author").Scan(&rows)
 		for _, r := range rows {
-			b := get(shiftOf(r.At)) // Ж6: товар — по моменту расчёта
+			b := get(shiftOf(r.At, r.Author)) // Ж6: товар — по моменту расчёта; З15-и4: к смене того, кто принял
 			b.money.PLN[kind] += r.Pln
 			b.money.Cnt[kind]++
 		}
@@ -1042,7 +1109,7 @@ func handleReportStaff(c *gin.Context) {
 	countedSessions().Select("sessions.started_at, "+sessionMinutes+" AS minutes").
 		Where("started_at >= ? AND started_at < ?", p.From, p.To).Scan(&sess)
 	for _, s := range sess {
-		b := get(shiftOf(s.StartedAt))
+		b := get(shiftOf(s.StartedAt, "")) // З15-и4: у сессии автора нет — смена, что тогда работала
 		b.sessions++
 		b.minutes += s.Minutes
 	}
@@ -1060,10 +1127,23 @@ func handleReportStaff(c *gin.Context) {
 		byShift = append(byShift, b.money.out(gin.H{"shift": name,
 			"sessions": b.sessions, "hours": math.Round(float64(b.minutes)/60*10) / 10, "avg_check_pln": avg}))
 	}
+	listed := map[string]bool{}
 	for _, s := range shifts {
-		if s.Active {
+		if s.Active && !listed[s.Name] {
+			listed[s.Name] = true
 			add(s.Name)
 		}
+	}
+	// З15-и4: смены из табеля, которых среди активных шаблонов уже нет (удалён, переименован, выключен), — по имени
+	others := make([]string, 0)
+	for name := range buckets {
+		if !listed[name] && name != outside {
+			others = append(others, name)
+		}
+	}
+	sort.Strings(others)
+	for _, name := range others {
+		add(name)
 	}
 	if buckets[outside] != nil {
 		add(outside)

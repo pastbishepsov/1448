@@ -280,7 +280,7 @@ func handleAdminStaffDemote(c *gin.Context) {
 	}
 	resp := gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": models.UserRolePlayer, "removed_shifts": removed}
 	if closed {
-		resp["closed_shift"] = workOut(shift.Entry, shift.Name)
+		resp["closed_shift"] = workOut(shift.Entry)
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -725,7 +725,7 @@ func handleAdminStaffDismiss(c *gin.Context) {
 	}
 	resp := gin.H{"user_id": user.ID, "nickname": user.Nickname, "dismissed_at": dateOut(date), "removed_shifts": removed}
 	if closed {
-		resp["closed_shift"] = workOut(shift.Entry, shift.Name)
+		resp["closed_shift"] = workOut(shift.Entry)
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -747,8 +747,7 @@ const (
 
 // leaveShift — открытая смена сотрудника и чем её закроет уход из персонала.
 type leaveShift struct {
-	Entry   *models.WorkEntry // nil — смены нет
-	Name    string            // смена графика, к которой привязана запись
+	Entry   *models.WorkEntry // nil — смены нет; имя смены — снимок в записи (З15-и4)
 	SameDay bool              // смена этих клубных суток: уходит посреди неё
 	CloseAt time.Time         // момент закрытия
 }
@@ -766,7 +765,7 @@ func leaveShiftOf(userID uuid.UUID, now time.Time) leaveShift {
 		var sh models.Shift
 		if db.First(&sh, "id = ?", *w.ShiftID).Error == nil {
 			end := shiftEndAt(w.Date, sh.StartMin, sh.EndMin)
-			s.Name, sched = sh.Name, &end
+			sched = &end
 		}
 	}
 	s.CloseAt = leaveCloseAt(w.StartedAt, s.SameDay, sched, now)
@@ -881,7 +880,7 @@ func handleAdminStaffShift(c *gin.Context) {
 		out["leave_on"] = dateOut(lp[0].LeaveOn) // уже назначено — новая дата заменит
 	}
 	if s := leaveShiftOf(user.ID, now); s.Entry != nil {
-		row := workOut(s.Entry, s.Name)
+		row := workOut(s.Entry)
 		row["same_day"], row["close_at"], row["close_minutes"] = s.SameDay, s.CloseAt, workMinutes(s.Entry.StartedAt, s.CloseAt)
 		out["open_shift"] = row
 		st := drawerAt(db, now) // как «сколько должно быть в ящике» перед уходом (GET /admin/work/closeout)

@@ -157,11 +157,13 @@ func shiftNow(t time.Time) (*models.Shift, time.Time) {
 	return nil, time.Time{}
 }
 
-func workOut(w *models.WorkEntry, shiftName string) gin.H {
+// workOut — запись табеля для ответа. З15-и4 (№30): имя смены — снимок в самой записи; раньше его искали по шаблону, и
+// удалённый (а в табеле — и выключенный) шаблон уносил имя, переименованный — переписывал.
+func workOut(w *models.WorkEntry) gin.H {
 	row := gin.H{
 		"id": w.ID, "date": w.Date.Format("2006-01-02"),
 		"started_at": w.StartedAt, "minutes": w.Minutes,
-		"auto_closed": w.AutoClosed, "note": w.Note, "shift": shiftName,
+		"auto_closed": w.AutoClosed, "note": w.Note, "shift": w.ShiftName,
 		"open": w.EndedAt == nil,
 	}
 	if w.EndedAt != nil {
@@ -231,7 +233,7 @@ func handleWorkStart(c *gin.Context) {
 		ClubID: club.ID, UserID: userID, Date: day, StartedAt: now, CreatedBy: &userID,
 	}
 	if sh != nil {
-		entry.ShiftID = &sh.ID
+		entry.ShiftID, entry.ShiftName = &sh.ID, sh.Name // З15-и4: имя — снимком
 	}
 	if err := db.Create(&entry).Error; err != nil {
 		if isDuplicate(err) { // З3-и3: два «Я пришёл» разом — вторую открытую запись не пускает индекс
@@ -241,12 +243,8 @@ func handleWorkStart(c *gin.Context) {
 		respondDBError(c, err)
 		return
 	}
-	name := ""
-	if sh != nil {
-		name = sh.Name
-	}
-	logAdminAction(c, "work_start", nil, "пришёл"+shiftSuffix(name))
-	c.JSON(http.StatusCreated, gin.H{"entry": workOut(&entry, name), "auto_closed_previous": autoClosed})
+	logAdminAction(c, "work_start", nil, "пришёл"+shiftSuffix(entry.ShiftName))
+	c.JSON(http.StatusCreated, gin.H{"entry": workOut(&entry), "auto_closed_previous": autoClosed})
 }
 
 func shiftSuffix(name string) string {
@@ -302,7 +300,7 @@ func handleWorkStop(c *gin.Context) {
 	}
 	logAdminAction(c, "work_stop", nil, fmt.Sprintf("ушёл · %s", hoursRU(int64(mins))))
 	open.EndedAt, open.Minutes = &now, mins
-	resp := gin.H{"entry": workOut(open, "")}
+	resp := gin.H{"entry": workOut(open)}
 	if co := recordCloseout(c, userID, open, req.CountedPLN, req.Note, now); co != nil {
 		resp["closeout"] = closeoutOut(co)
 	}
@@ -321,15 +319,8 @@ func handleWorkMe(c *gin.Context) {
 
 	out := gin.H{"on_shift": false, "date": day.Format("2006-01-02")}
 	if open := openEntryFor(userID); open != nil {
-		name := ""
-		if open.ShiftID != nil {
-			var sh models.Shift
-			if db.First(&sh, "id = ?", *open.ShiftID).Error == nil {
-				name = sh.Name
-			}
-		}
 		out["on_shift"] = true
-		out["entry"] = workOut(open, name)
+		out["entry"] = workOut(open)
 		out["minutes_so_far"] = workMinutes(open.StartedAt, time.Now())
 	}
 	var todayMin int64
@@ -385,10 +376,6 @@ func handleWorkList(c *gin.Context) {
 	db.Where("date >= ? AND date <= ?", p.FromDay, p.ToDay).
 		Order("date DESC, started_at DESC").Limit(500).Find(&entries)
 
-	shiftNames := map[string]string{}
-	for _, s := range activeShifts() {
-		shiftNames[s.ID.String()] = s.Name
-	}
 	ids := make([]string, 0, len(entries))
 	for _, w := range entries {
 		ids = append(ids, w.UserID.String())
@@ -400,11 +387,7 @@ func handleWorkList(c *gin.Context) {
 	openCnt, autoCnt := 0, 0
 	for i := range entries {
 		w := entries[i]
-		name := ""
-		if w.ShiftID != nil {
-			name = shiftNames[w.ShiftID.String()]
-		}
-		row := workOut(&w, name)
+		row := workOut(&w)
 		row["nickname"] = nick[w.UserID.String()]
 		row["user_id"] = w.UserID
 		if co, ok := closeouts[w.ID.String()]; ok {
@@ -538,7 +521,7 @@ func handleWorkCreate(c *gin.Context) {
 		CreatedBy: &admin, EditedBy: &admin,
 	}
 	if sh, _, _ := shiftFor(user.ID, start); sh != nil { // З15-и1: смена — по назначению человека
-		entry.ShiftID = &sh.ID
+		entry.ShiftID, entry.ShiftName = &sh.ID, sh.Name // З15-и4: имя — снимком
 	}
 	if err := db.Create(&entry).Error; err != nil {
 		respondDBError(c, err)
@@ -547,7 +530,7 @@ func handleWorkCreate(c *gin.Context) {
 	target := user.ID
 	logAdminAction(c, "work_edit", &target, fmt.Sprintf("табель: добавлено %s %s–%s (%s)",
 		entry.Date.Format("02.01"), req.Start, req.End, hoursRU(int64(entry.Minutes))))
-	c.JSON(http.StatusCreated, gin.H{"entry": workOut(&entry, "")})
+	c.JSON(http.StatusCreated, gin.H{"entry": workOut(&entry)})
 }
 
 // PATCH /admin/work/:id — исправить запись табеля (owner). З3-и3: без
@@ -673,16 +656,12 @@ func openWorkOnLogin(user *models.User, now time.Time) (opened bool, autoClosedP
 		CreatedBy: &user.ID, Note: "открыта входом в админку",
 	}
 	if sh != nil {
-		entry.ShiftID = &sh.ID
+		entry.ShiftID, entry.ShiftName = &sh.ID, sh.Name // З15-и4: имя — снимком
 	}
 	if err := db.Create(&entry).Error; err != nil {
 		log.Printf("табель: смена по входу для %s не открылась: %v", user.Nickname, err)
 		return false, autoClosedPrev
 	}
-	name := ""
-	if sh != nil {
-		name = sh.Name
-	}
-	logAdminActionAs(user.ID, "work_start", nil, "вход в админку"+shiftSuffix(name))
+	logAdminActionAs(user.ID, "work_start", nil, "вход в админку"+shiftSuffix(entry.ShiftName))
 	return true, autoClosedPrev
 }

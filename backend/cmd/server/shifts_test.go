@@ -139,3 +139,53 @@ func TestPickAssigned(t *testing.T) {
 		}
 	}
 }
+
+// З15-и4 (№30): сужение дней шаблона уносит только будущие назначения в убранные дни; прошедшие и уже начавшиеся смены —
+// история графика.
+func TestDropOnNarrow(t *testing.T) {
+	loc := models.ClubLocation
+	mon := time.Date(2026, 10, 19, 0, 0, 0, 0, loc) // понедельник
+	d := func(n int) time.Time { return mon.AddDate(0, 0, n) }
+	now := mon.Add(10 * time.Hour) // пн 10:00
+	// пн прошлой недели, пн сегодня, вт, пт, пн следующей; пт — полночью UTC, как дата может прийти из базы
+	days := []time.Time{d(-7), d(0), d(1), time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC), d(7)}
+	cases := []struct {
+		name                string
+		removed, start, end int
+		want                []int
+	}{
+		{"убрали пн и пт у дневной 08–20: сегодняшняя уже идёт, прошлая неделя — история", 1<<0 | 1<<4, 480, 1200, []int{3, 4}},
+		{"убрали пн у вечерней 12–23: сегодняшняя ещё не началась", 1 << 0, 720, 1380, []int{1, 4}},
+		{"убрали вт — только вторник", 1 << 1, 480, 1200, []int{2}},
+		{"убрали ср — назначений в среду нет", 1 << 2, 480, 1200, []int{}},
+		{"ночная 20–08, убрали пн: сегодняшняя начнётся в 20:00", 1 << 0, 1200, 480, []int{1, 4}},
+	}
+	for _, tc := range cases {
+		got := dropOnNarrow(days, tc.removed, tc.start, tc.end, now)
+		if len(got) != len(tc.want) {
+			t.Errorf("%s: got %v, ждали %v", tc.name, got, tc.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Errorf("%s: got %v, ждали %v", tc.name, got, tc.want)
+				break
+			}
+		}
+	}
+}
+
+// З15-и4: кто снимается с графика — днём недели, датой и ником.
+func TestAssignmentsText(t *testing.T) {
+	u := func(n string) *models.User { return &models.User{Nickname: n} }
+	list := []models.ShiftAssignment{
+		{Date: time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC), User: u("admin1")},
+		{Date: time.Date(2026, 10, 23, 0, 0, 0, 0, models.ClubLocation), User: u("admin2")},
+	}
+	if got := assignmentsText(list); got != "пн 19.10 admin1, пт 23.10 admin2" {
+		t.Errorf("assignmentsText = %q", got)
+	}
+	if got := assignmentsText(nil); got != "" {
+		t.Errorf("пусто: %q", got)
+	}
+}

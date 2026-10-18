@@ -10,11 +10,14 @@ import (
 // WorkEntry — запись табеля: фактический приход и уход сотрудника
 // (миграция 026, В3-этап 4). График — это план, а это факт.
 // Date — клубные сутки (день начала смены), как и везде в отчётах.
+// ShiftName — имя смены снимком на момент открытия записи (З15-и4, №30; миграция 086): шаблон удалят, переименуют
+// или выключат, а в табеле и отчёте останется то, с чем человек работал. Пустое — запись вне смены.
 type WorkEntry struct {
 	ID         uuid.UUID  `json:"id"          gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
 	ClubID     uuid.UUID  `json:"club_id"     gorm:"type:uuid;not null"`
 	UserID     uuid.UUID  `json:"user_id"     gorm:"type:uuid;not null"`
 	ShiftID    *uuid.UUID `json:"shift_id,omitempty" gorm:"type:uuid"`
+	ShiftName  string     `json:"shift_name"  gorm:"type:varchar(32);not null;default:''"`
 	Date       time.Time  `json:"date"        gorm:"type:date;not null"`
 	StartedAt  time.Time  `json:"started_at"  gorm:"not null"`
 	EndedAt    *time.Time `json:"ended_at,omitempty"`

@@ -8192,9 +8192,9 @@ function editShiftDrawer(id){
   openDrawer('Смена: ' + s.name, shiftFormHtml(s)
     + `<button class="btn" style="width:100%; justify-content:center; margin-top:12px" onclick="saveShift('${s.id}')"><span data-ic="save"></span>Сохранить</button>
        <button class="btn danger" style="width:100%; justify-content:center; margin-top:10px" onclick="armDeleteShift(this,'${s.id}','${esc(s.name)}')"><span data-ic="cross"></span>Удалить смену</button>
-       <div class="muted" style="margin-top:8px">Удаление уносит и её назначения из графика; чтобы просто спрятать — сними галочку «активна»</div>`);
+       <div class="muted" style="margin-top:8px">Удаление уносит и её назначения из графика (в табеле и отчёте имя смены остаётся); чтобы просто спрятать — сними галочку «активна»</div>`);
 }
-async function saveShift(id, force){
+async function saveShift(id, force, drop){
   const name = document.getElementById('shName').value.trim();
   const start = hhmmToMin(document.getElementById('shStart').value);
   const end = hhmmToMin(document.getElementById('shEnd').value);
@@ -8206,14 +8206,22 @@ async function saveShift(id, force){
   const act = document.getElementById('shActive');
   if (act) body.active = act.checked;
   if (force) body.force = true; // З15-и1: «всё равно» — пересечение владелец видел
+  if (drop) body.drop_assignments = true; // З15-и4: снять назначения в убранные дни — список владелец видел
   try{
-    await api(id ? '/admin/shifts/' + id : '/admin/shifts',
+    const r = await api(id ? '/admin/shifts/' + id : '/admin/shifts',
       {method: id ? 'PATCH' : 'POST', body: JSON.stringify(body)});
-    toast('✓ Смена сохранена');
+    toast('✓ Смена сохранена' + (r.unassigned ? ' · снято с графика: ' + r.unassigned : ''));
     closeDrawer();
     renderSchedule();
   }catch(e){
     const box = document.getElementById('shOverlap');
+    if (e.code === 'days_assigned' && box){ // З15-и4 (№30): убрал день недели — назначения на него не остаются невидимыми
+      box.innerHTML = `<b>⚠ ${esc(e.message)}.</b> В убранные дни смены в сетке не будет, а назначения остались бы в графике
+        невидимыми — их снимем; прошедшие смены остаются в истории.
+        <div style="margin-top:8px"><button class="btn ghost mini" onclick="saveShift('${id}', ${force ? 'true' : 'false'}, true)">Снять с графика и сохранить</button></div>`;
+      box.classList.remove('hidden');
+      return;
+    }
     if (e.code === 'overlap' && box){ // З15-и1 (№22; З-Р16): пересечение — не молча, а с «всё равно»
       box.innerHTML = `<b>⚠ ${esc(e.message)}.</b> Назначенным смену при входе берём из графика, а кто придёт без назначения
         в общее время — попадёт в одну из них.

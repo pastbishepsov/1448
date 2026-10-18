@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -141,6 +142,76 @@ func shiftOut(s *models.Shift) gin.H {
 	}
 }
 
+// ── З15-и4 (OWNER.md, №30; З-Р20): сужение дней шаблона — не молча ─────────────────────────────────────────────────
+//
+// Убрал из шаблона день недели — назначения на этот день оставались в базе, но сетка их больше не рисовала: невидимые,
+// они всё равно давали смену записи табеля при входе, «по графику» в сводке и плановые часы в отчёте. Теперь сохранить
+// такую правку с будущими назначениями в убранные дни — 409 days_assigned со списком; «снять и сохранить» — тот же
+// запрос с drop_assignments: шаблон и снятие назначений — одной транзакцией, в журнале — кого сняли. Прошедшие и уже
+// начавшиеся смены остаются в истории графика.
+
+// daysRU — дни недели с понедельника, как в сетке графика.
+var daysRU = [7]string{"пн", "вт", "ср", "чт", "пт", "сб", "вс"}
+
+// dropOnNarrow — какие назначения уносит сужение дней шаблона (чистая, тест): день недели назначения убран (removed —
+// биты убранных дней), а смена по времени шаблона до правки ещё не началась. days — дни назначений (день НАЧАЛА
+// смены); ответ — их номера в days.
+func dropOnNarrow(days []time.Time, removed, startMin, endMin int, now time.Time) []int {
+	out := []int{}
+	for i, d := range days {
+		day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, models.ClubLocation)
+		if removed&(1<<dowMonday(day)) == 0 {
+			continue
+		}
+		if start, _ := shiftSpan(day, startMin, endMin); start.After(now) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// droppedAssignments — будущие назначения шаблона was в дни, которых нет в новой маске.
+func droppedAssignments(was *models.Shift, newMask int, now time.Time) []models.ShiftAssignment {
+	removed := was.DaysMask &^ newMask
+	if removed == 0 {
+		return nil
+	}
+	nc := now.In(models.ClubLocation)
+	var list []models.ShiftAssignment
+	db.Preload("User").Where("shift_id = ? AND date >= ?", was.ID, nc.Format("2006-01-02")).
+		Order("date, created_at").Find(&list)
+	days := make([]time.Time, len(list))
+	for i := range list {
+		days[i] = list[i].Date
+	}
+	out := []models.ShiftAssignment{}
+	for _, i := range dropOnNarrow(days, removed, was.StartMin, was.EndMin, now) {
+		out = append(out, list[i])
+	}
+	return out
+}
+
+// assignmentsText — «пн 19.10 admin1, пт 23.10 admin2» (чистая, тест; для отказа и журнала).
+func assignmentsText(list []models.ShiftAssignment) string {
+	parts := make([]string, 0, len(list))
+	for _, a := range list {
+		d := time.Date(a.Date.Year(), a.Date.Month(), a.Date.Day(), 0, 0, 0, 0, models.ClubLocation)
+		parts = append(parts, daysRU[dowMonday(d)]+" "+d.Format("02.01")+" "+nicknameOf(a.User))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// respondDaysAssigned — 409 days_assigned: в убранные дни уже стоят назначения. «Снять и сохранить» — тот же запрос с
+// drop_assignments; force тут не помогает — «всё равно» про пересечение людей с графика не снимает.
+func respondDaysAssigned(c *gin.Context, s *models.Shift, list []models.ShiftAssignment) {
+	items := make([]gin.H, 0, len(list))
+	for _, a := range list {
+		items = append(items, gin.H{"id": a.ID, "date": a.Date.Format("2006-01-02"), "nickname": nicknameOf(a.User)})
+	}
+	c.JSON(http.StatusConflict, gin.H{"code": "days_assigned",
+		"message": "В убранные дни на «" + s.Name + "» уже назначены: " + assignmentsText(list), "assignments": items})
+}
+
 // GET /admin/shifts — шаблоны смен (staff: нужны для сетки графика).
 func handleAdminShifts(c *gin.Context) {
 	var shifts []models.Shift
@@ -157,9 +228,11 @@ type shiftTemplateRequest struct {
 	StartMin *int   `json:"start_min"`
 	EndMin   *int   `json:"end_min"`
 	DaysMask *int   `json:"days_mask"`
-	Sort     int    `json:"sort"`
+	Sort     *int   `json:"sort"` // З15-и4: указатель — порядок можно вернуть в 0
 	Active   *bool  `json:"active"`
 	Force    bool   `json:"force"` // З15-и1: создать или сохранить, хоть и пересекается с другими
+	// З15-и4: сохранить сужение дней и снять будущие назначения в убранные дни
+	DropAssignments bool `json:"drop_assignments"`
 }
 
 var shiftTemplateErrors = map[string]string{
@@ -184,9 +257,13 @@ func handleAdminShiftCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": shiftTemplateErrors[code]})
 		return
 	}
-	if !validSort(&req.Sort) { // З6-и3: 3·10⁹ падало на int4 базы ошибкой сервера
+	if !validSort(req.Sort) { // З6-и3: 3·10⁹ падало на int4 базы ошибкой сервера
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_sort", "message": sortMessage})
 		return
+	}
+	order := 0
+	if req.Sort != nil {
+		order = *req.Sort
 	}
 	club, ok := defaultClub()
 	if !ok {
@@ -195,7 +272,7 @@ func handleAdminShiftCreate(c *gin.Context) {
 	}
 	s := models.Shift{
 		ClubID: club.ID, Name: strings.TrimSpace(req.Name),
-		StartMin: *req.StartMin, EndMin: *req.EndMin, DaysMask: mask, Sort: req.Sort, Active: true,
+		StartMin: *req.StartMin, EndMin: *req.EndMin, DaysMask: mask, Sort: order, Active: true,
 	}
 	with := shiftOverlaps(&s) // З15-и1 (№22; З-Р16): пересечение — предупреждение с «всё равно создать»
 	if len(with) > 0 && !req.Force {
@@ -227,6 +304,7 @@ func handleAdminShiftUpdate(c *gin.Context) {
 		respondBindError(c, err)
 		return
 	}
+	was := s // З15-и4: дни и время до правки — по ним видно, какие назначения уносит сужение дней
 	if req.Name != "" {
 		s.Name = strings.TrimSpace(req.Name)
 	}
@@ -239,12 +317,12 @@ func handleAdminShiftUpdate(c *gin.Context) {
 	if req.DaysMask != nil {
 		s.DaysMask = *req.DaysMask
 	}
-	if !validSort(&req.Sort) { // З6-и3
+	if !validSort(req.Sort) { // З6-и3
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_sort", "message": sortMessage})
 		return
 	}
-	if req.Sort != 0 {
-		s.Sort = req.Sort
+	if req.Sort != nil { // З15-и4 (№30): ноль — тоже порядок; раньше «0» молча не сохранялся
+		s.Sort = *req.Sort
 	}
 	if req.Active != nil {
 		s.Active = *req.Active
@@ -261,7 +339,24 @@ func handleAdminShiftUpdate(c *gin.Context) {
 		respondOverlap(c, with)
 		return
 	}
-	if err := db.Save(&s).Error; err != nil {
+	drop := droppedAssignments(&was, s.DaysMask, time.Now()) // З15-и4: сужение дней — не молча
+	if len(drop) > 0 && !req.DropAssignments {
+		respondDaysAssigned(c, &was, drop)
+		return
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&s).Error; err != nil {
+			return err
+		}
+		if len(drop) == 0 {
+			return nil
+		}
+		ids := make([]uuid.UUID, 0, len(drop))
+		for _, a := range drop {
+			ids = append(ids, a.ID)
+		}
+		return tx.Where("id IN ?", ids).Delete(&models.ShiftAssignment{}).Error
+	}); err != nil {
 		respondDBError(c, err)
 		return
 	}
@@ -269,14 +364,22 @@ func handleAdminShiftUpdate(c *gin.Context) {
 	if len(with) > 0 {
 		details += " · пересекается " + overlapText(with)
 	}
+	if len(drop) > 0 {
+		details += " · сняты с графика в убранные дни: " + assignmentsText(drop)
+	}
 	logAdminAction(c, "shift_tpl_update", nil, details)
 	hub.AdminBroadcast("shifts", map[string]any{"kind": "tpl"})
-	c.JSON(http.StatusOK, shiftOut(&s))
+	out := shiftOut(&s)
+	if len(drop) > 0 {
+		out["unassigned"] = len(drop)
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // DELETE /admin/shifts/:id — удалить шаблон (owner). Назначения уходят
 // каскадом (история графика по этой смене исчезает — честное удаление;
-// чтобы просто спрятать, есть active=false).
+// чтобы просто спрятать, есть active=false). Имя смены в табеле и отчёте
+// остаётся — оно снимком в записи табеля (З15-и4).
 func handleAdminShiftDelete(c *gin.Context) {
 	var s models.Shift
 	if err := db.First(&s, "id = ?", c.Param("id")).Error; err != nil {
