@@ -51,11 +51,27 @@ func logLoginFailed(u *models.User, n int, ip string) {
 		"%d неверных паролей подряд · IP %s · дальше вход не чаще раза в %d с", n, ip, int(loginStaffPace.Seconds())))
 }
 
+// auditOwnerOnly — строки журнала, которые видит только владелец (чистая,
+// тест). З1-и2 (Д4): shift_close — суммы сдачи кассы. З8-и2: коррекция
+// остатка и отмена события ящика — тоже; инкассацию видят все. З9-и1: расходы
+// и контрагенты — бухгалтерия (З-Р29). З9-и3б: возвраты владельцу и их отмена.
+// З9-и4: справочники (категории, контрагенты, способы оплаты). З10-и5, З10-и7:
+// цены закупки. З13-и4, З13-и6: выгрузка бухгалтеру и реквизиты фирмы.
+// З15-и3 (№29): правки табеля владельцем (work_edit — кому, сколько было и
+// стало); приход и уход (work_start, work_stop) видят все.
+func auditOwnerOnly(action string) bool {
+	return action == "settings_update" || action == "login_failed" ||
+		action == "shift_close" || action == "work_edit" || action == "cash_correct" || action == "cash_event_void" ||
+		strings.HasPrefix(action, "staff_") || strings.HasPrefix(action, "expense_") || strings.HasPrefix(action, "counterparty_") ||
+		strings.HasPrefix(action, "owner_repay") || action == "supply_price" || action == "lot_price" ||
+		action == "export" || action == "requisites"
+}
+
 // GET /admin/audit — лента событий: источники (начисления, депозиты и их
 // отмены, продажи и их отмены, admin_actions) сливаются по времени.
 // Роли (Б1-и4, решение №3): owner видит всё; admin — текущие клубные сутки и
-// без owner-событий (settings_update, staff_*, login_failed, shift_close,
-// cash_correct, cash_event_void).
+// без owner-событий (auditOwnerOnly: settings_update, staff_*, login_failed,
+// shift_close, work_edit, cash_correct, cash_event_void и бухгалтерия).
 //
 // Ж3-и3 (№14, №22): параметры и слияние.
 //
@@ -126,18 +142,7 @@ func handleAdminAudit(c *gin.Context) {
 		}
 		return q.Order(col + " DESC").Limit(limit)
 	}
-	// З1-и2 (Д4): shift_close — суммы сдачи кассы, их видит только владелец.
-	// З8-и2: коррекция остатка и отмена события ящика — тоже; инкассацию видят все.
-	// З9-и1: расходы и контрагенты — бухгалтерия, только владельцу (З-Р29).
-	// З9-и3б: возвраты владельцу и их отмена — тоже. З9-и4: справочники (категории,
-	// контрагенты, способы оплаты) — тоже.
-	hiddenFromAdmin := func(action string) bool {
-		return !ownerView && (action == "settings_update" || action == "login_failed" ||
-			action == "shift_close" || action == "cash_correct" || action == "cash_event_void" ||
-			strings.HasPrefix(action, "staff_") || strings.HasPrefix(action, "expense_") || strings.HasPrefix(action, "counterparty_") ||
-			strings.HasPrefix(action, "owner_repay") || action == "supply_price" || action == "lot_price" || // З10-и5, З10-и7: цены закупки — только владельцу
-			action == "export" || action == "requisites") // З13-и4, З13-и6: выгрузка бухгалтеру и реквизиты фирмы — только владельцу
-	}
+	hiddenFromAdmin := func(action string) bool { return !ownerView && auditOwnerOnly(action) }
 
 	type item struct {
 		ID        string

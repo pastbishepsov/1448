@@ -146,3 +146,37 @@ func TestUsersOrder(t *testing.T) {
 		}
 	}
 }
+
+// З15-и3 (№29): аккаунт персонала админу не показываем — ни в списке, ни карточкой; владельцу — всех.
+func TestStaffHiddenFromAdmin(t *testing.T) {
+	for _, c := range []struct {
+		caller string
+		target models.UserRole
+		want   bool
+	}{
+		{"admin", models.UserRolePlayer, false},
+		{"admin", models.UserRoleAdmin, true},
+		{"admin", models.UserRoleOwner, true},
+		{"admin", models.UserRole("all"), true},
+		{"owner", models.UserRoleAdmin, false},
+		{"owner", models.UserRoleOwner, false},
+		{"owner", models.UserRole("all"), false},
+		{"owner", models.UserRolePlayer, false},
+	} {
+		if got := staffHiddenFromAdmin(c.caller, c.target); got != c.want {
+			t.Errorf("staffHiddenFromAdmin(%q, %q) = %v, want %v", c.caller, c.target, got, c.want)
+		}
+	}
+}
+
+// З15-и3 (№29): правки табеля владельцем — только ему; приход и уход видят все.
+func TestAuditOwnerOnly(t *testing.T) {
+	for action, want := range map[string]bool{
+		"work_edit": true, "shift_close": true, "staff_dismiss": true, "settings_update": true, "expense_create": true,
+		"work_start": false, "work_stop": false, "shift_assign": false, "pc_hold": false, "deposit": false,
+	} {
+		if got := auditOwnerOnly(action); got != want {
+			t.Errorf("auditOwnerOnly(%q) = %v, want %v", action, got, want)
+		}
+	}
+}

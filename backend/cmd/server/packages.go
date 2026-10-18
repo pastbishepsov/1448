@@ -625,8 +625,15 @@ func livePackage(id string) (*models.TimePackage, *models.Zone, string) {
 	return &p, &z, ""
 }
 
-// GET /admin/users/:id/packages — пакеты гостя у стойки (staff).
+// GET /admin/users/:id/packages — пакеты гостя у стойки (staff). З15-и3: пакеты
+// сотрудника — часть его карточки, админу — 403 owner_only.
 func handleAdminUserPackages(c *gin.Context) {
+	var target models.User
+	if db.Select("id", "role").First(&target, "id = ?", c.Param("id")).Error == nil &&
+		staffHiddenFromAdmin(c.GetString("user_role"), target.Role) {
+		respondOwnerOnly(c, staffCardOwnerOnly)
+		return
+	}
 	list, live := userPackages(c.Param("id"))
 	c.JSON(http.StatusOK, gin.H{"packages": list, "minutes_live": live,
 		"minutes_by_zone": reserveByZone(c.Param("id"))})

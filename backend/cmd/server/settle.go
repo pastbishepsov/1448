@@ -221,11 +221,16 @@ func payMethodRU(m string) string {
 }
 
 // GET /admin/users/:id/debt — долг гостя со списком позиций (карточка: «что
-// именно должен» перед расчётом).
+// именно должен» перед расчётом). З15-и3: долг сотрудника — часть его
+// карточки, админу — 403 owner_only.
 func handleAdminUserDebt(c *gin.Context) {
 	var user models.User
 	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+	if staffHiddenFromAdmin(c.GetString("user_role"), user.Role) {
+		respondOwnerOnly(c, staffCardOwnerOnly)
 		return
 	}
 	var bar []models.Sale

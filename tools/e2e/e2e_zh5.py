@@ -165,8 +165,11 @@ agent_stop("pc09")
 # ── C: и3 — список гостей ──
 lst = api("GET", "/admin/users", None, a1)[1]
 check("по умолчанию только гости: ни admin, ни owner; role=player в ответе", all(u["role"] == "player" for u in lst["users"]) and lst.get("role") == "player" and lst["count"] > 0, str(lst["count"]))
-lst_all = api("GET", "/admin/users?role=all", None, a1)[1]
-check("role=all — персонал тоже (служебно)", any(u["role"] in ("admin", "owner") for u in lst_all["users"]), "")
+s, lst_all = api("GET", "/admin/users?role=all", None, ot)
+s_a, d_a = api("GET", "/admin/users?role=all", None, a1)
+check("role=all — персонал тоже, но только владельцу (служебно); админу — 403 owner_only (З15-и3)",
+      s == 200 and any(u["role"] in ("admin", "owner") for u in lst_all.get("users", [])) and s_a == 403 and d_a.get("code") == "owner_only",
+      f"{s} {s_a} {d_a.get('code')}")
 s, d = api("GET", "/admin/users?role=hacker", None, a1); check("role вне списка → 400 bad_role", s == 400 and d.get("code") == "bad_role", f"{s} {d.get('code')}")
 s, d = api("GET", "/admin/users?filter=bogus", None, a1); check("filter вне списка → 400 bad_filter", s == 400 and d.get("code") == "bad_filter", f"{s} {d.get('code')}")
 s, d = api("GET", "/admin/users?sort=password_hash", None, a1); check("sort вне списка → 400 bad_sort", s == 400 and d.get("code") == "bad_sort", f"{s} {d.get('code')}")

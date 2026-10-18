@@ -114,6 +114,22 @@ func canTargetUser(targetRole models.UserRole, targetID, actorID string) (ok boo
 	return true, ""
 }
 
+// staffHiddenFromAdmin — аккаунт персонала (админ, владелец) админу не
+// показываем: ни в списке пользователей, ни карточкой гостя с её пакетами и
+// долгом (З15-и3, №29, З-Р20; чистая, тест). Это не гость — его данные у
+// владельца в «Персонале»; раньше admin2 через ?role=owner получал аккаунт
+// boss целиком. Владелец видит всех.
+func staffHiddenFromAdmin(callerRole string, target models.UserRole) bool {
+	return callerRole != string(models.UserRoleOwner) && target != models.UserRolePlayer
+}
+
+const staffCardOwnerOnly = "Карточка сотрудника — у владельца, в «Персонале»"
+
+// respondOwnerOnly — 403 owner_only с пояснением, где это смотреть (З15-и3).
+func respondOwnerOnly(c *gin.Context, msg string) {
+	c.JSON(http.StatusForbidden, gin.H{"code": "owner_only", "message": msg})
+}
+
 // targetPlayer — находит цель действия по :id и применяет canTargetUser.
 // Ответ об ошибке пишет сам; вернул nil — обработчику выходить.
 func targetPlayer(c *gin.Context) *models.User {
@@ -229,7 +245,8 @@ func overviewExpensesDue(c *gin.Context) any {
 //
 // Ж5-и3 (№23, №43): список — про ГОСТЕЙ. По умолчанию role=player: персонал
 // живёт в «Персонале», и «admin1» среди гостей у стойки только путал (role=all
-// оставлен для служебных нужд). Фильтры и сортировка — на сервере, а не в
+// оставлен для служебных нужд). З15-и3 (№29): role=admin, owner и all — только
+// владельцу, админу — 403 owner_only. Фильтры и сортировка — на сервере, а не в
 // браузере: таблица режется до 100 строк, и клиентский фильтр по ним показывал
 // бы «с деньгами» только среди недавно активных.
 //
@@ -251,6 +268,10 @@ func handleAdminUsers(c *gin.Context) {
 		q = q.Where("role = ?", role)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_role", "message": "role: player, admin, owner или all"})
+		return
+	}
+	if staffHiddenFromAdmin(c.GetString("user_role"), models.UserRole(role)) { // З15-и3: персонал — только владельцу
+		respondOwnerOnly(c, "Персонал в этом списке — только у владельца; у админа здесь гости")
 		return
 	}
 	s := strings.TrimSpace(c.Query("q"))
@@ -446,10 +467,15 @@ func handleAdminUnban(c *gin.Context) { setUserStatus(c, models.UserStatusActive
 // GET /admin/users/:id — карточка гостя одним заходом (спринт А2).
 // Деньги по ролям (Б1-и4, решение №3): owner видит всю историю депозитов и
 // «внесено всего»; admin — только депозиты текущего дня, без агрегата.
+// З15-и3 (№29): карточку сотрудника админу не отдаём — 403 owner_only.
 func handleAdminUserCard(c *gin.Context) {
 	var user models.User
 	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+	if staffHiddenFromAdmin(c.GetString("user_role"), user.Role) {
+		respondOwnerOnly(c, staffCardOwnerOnly)
 		return
 	}
 	ownerView := c.GetString("user_role") == string(models.UserRoleOwner)
