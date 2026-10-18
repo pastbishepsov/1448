@@ -423,6 +423,8 @@ func main() {
 		own.DELETE("/staff/:id/leave", handleAdminStaffLeaveCancel)
 		own.POST("/staff/leave/run", handleAdminStaffLeaveRun)
 		own.GET("/staff/archive", handleAdminStaffArchive)
+		// З14-и4: стереть личные данные уволенного — только владелец, только вручную
+		own.POST("/staff/:id/erase", handleAdminStaffErase)
 		own.GET("/staff/:id/profile", handleAdminStaffProfileGet)
 		own.PUT("/staff/:id/profile", handleAdminStaffProfilePut)
 		own.POST("/staff", handleAdminStaffPromote)

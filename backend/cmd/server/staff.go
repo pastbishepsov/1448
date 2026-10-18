@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -344,7 +345,11 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
 		return
 	}
-	if !roleIsStaff(string(user.Role)) {
+	var old models.StaffProfile
+	existed := db.First(&old, "user_id = ?", user.ID).Error == nil
+	// З14-и4 (№26; З-Р19): карточку уволенного (он в «Уволенных») правят без смены роли — например, стереть лишнее
+	archived := existed && old.DismissedAt != nil && !roleIsStaff(string(user.Role))
+	if !roleIsStaff(string(user.Role)) && !archived {
 		c.JSON(http.StatusConflict, gin.H{"code": "not_staff",
 			"message": "Карточка заводится сотруднику — сначала назначь админом"})
 		return
@@ -364,6 +369,9 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_date", "message": profileErrors["bad_date"]})
 		return
 	}
+	if archived && dismissed == nil { // З14-и4: форма карточки даты увольнения не шлёт — из архива человек не уходит
+		dismissed = old.DismissedAt
+	}
 	rateType := strings.TrimSpace(req.RateType)
 	if rateType == "" {
 		rateType = "none"
@@ -380,9 +388,6 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": profileErrors[code]})
 		return
 	}
-
-	var old models.StaffProfile
-	existed := db.First(&old, "user_id = ?", user.ID).Error == nil
 
 	p := models.StaffProfile{
 		UserID: user.ID, FullName: name, Phone: phone, Position: position,
@@ -840,6 +845,104 @@ func handleAdminStaffArchive(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "staff": out})
+}
+
+// ── З14-и4 (OWNER.md, №26; З-Р19): личные данные уволенного ─────────────────────────────────────────────────────
+//
+// Карточка уволенного хранила ФИО, телефон, заметку и ставку вечно, журнал — причину увольнения, и стереть их было нельзя
+// даже вручную: карточка из «Уволенных» не сохранялась (not_staff). Теперь её правят, а владелец может стереть личные
+// данные разом: ФИО, телефон, заметка и ставка — пусто, причина в строках журнала об увольнении и уходе — «—».
+// Автоочистки по сроку нет (решение основателя). Остаются ник и игровой аккаунт (это сам человек, гость клуба), даты
+// найма и увольнения, должность, табель и выплаты — учёт клуба; строки журнала о ставке — тоже, это деньги клуба.
+
+// eraseReasonRe — строка журнала об увольнении или уходе с причиной: «ник · уволен ДАТА[ (последний рабочий день
+// прошёл)] · причина[, смена с … закрыта (… — на проверку), касса не сдана][, снят с N будущих смен]» и «ник · уходит
+// ДАТА · причина[, снимется со смен после этой даты: N]» — как их пишут увольнение, отложенное увольнение и прежняя
+// З14-и1 («касса без пересчёта»). Причина — всё между датой и хвостом, запятые в ней — её часть.
+var eraseReasonRe = regexp.MustCompile(`^(.+? · (?:уволен \d{4}-\d{2}-\d{2}(?: \(последний рабочий день прошёл\))?|уходит \d{4}-\d{2}-\d{2})) · (.+?)` +
+	`((?:, смена с [^,]+ закрыта \([^)]*\), касса (?:не сдана|без пересчёта))?(?:, снят с \d+ будущих смен)?(?:, снимется со смен после этой даты: \d+)?)$`)
+
+// eraseReason — та же строка журнала с «—» вместо причины (чистая, тест). Причины нет, уже «—» или строка не наша —
+// как была и false.
+func eraseReason(details string) (string, bool) {
+	m := eraseReasonRe.FindStringSubmatch(details)
+	if m == nil || m[2] == "—" {
+		return details, false
+	}
+	return m[1] + " · —" + m[3], true
+}
+
+// erasableFields — что из личного в карточке ещё не пусто (чистая, тест): по ним строка журнала и ответ.
+func erasableFields(p *models.StaffProfile) []string {
+	out := []string{}
+	if p.FullName != "" {
+		out = append(out, "ФИО")
+	}
+	if p.Phone != "" {
+		out = append(out, "телефон")
+	}
+	if p.Note != "" {
+		out = append(out, "заметка")
+	}
+	if p.RateType != "none" || p.RateAmount != 0 {
+		out = append(out, "ставка")
+	}
+	return out
+}
+
+// POST /admin/staff/:id/erase — стереть личные данные уволенного (owner, вручную). Повтор — 200 «стирать нечего».
+func handleAdminStaffErase(c *gin.Context) {
+	var user models.User
+	if err := db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "user_not_found", "message": "Пользователь не найден"})
+		return
+	}
+	var p models.StaffProfile
+	if db.First(&p, "user_id = ?", user.ID).Error != nil || p.DismissedAt == nil || roleIsStaff(string(user.Role)) {
+		c.JSON(http.StatusConflict, gin.H{"code": "not_dismissed", "message": "Стирают данные уволенного — в «Уволенных» его нет"})
+		return
+	}
+	fields := erasableFields(&p)
+	lines := 0
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).Updates(map[string]any{"full_name": "", "phone": "",
+			"note": "", "rate_type": "none", "rate_amount": 0, "leave_reason": "", "updated_at": time.Now()}).Error; err != nil {
+			return err
+		}
+		var rows []models.AdminAction
+		if err := tx.Where("target_user_id = ? AND action IN ?", user.ID, []string{"staff_dismiss", "staff_leave"}).Find(&rows).Error; err != nil {
+			return err
+		}
+		for _, r := range rows {
+			if s, ok := eraseReason(r.Details); ok {
+				if err := tx.Model(&models.AdminAction{}).Where("id = ?", r.ID).Update("details", s).Error; err != nil {
+					return err
+				}
+				lines++
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		respondDBError(c, err)
+		return
+	}
+	out := gin.H{"user_id": user.ID, "nickname": user.Nickname, "erased": fields, "journal_lines": lines}
+	if len(fields) == 0 && lines == 0 {
+		out["nothing"] = true // уже стёрто — второй строки журнала не пишем
+		c.JSON(http.StatusOK, out)
+		return
+	}
+	text := user.Nickname + " · личные данные стёрты"
+	if len(fields) > 0 {
+		text += ": " + strings.Join(fields, ", ")
+	}
+	if lines > 0 {
+		text += fmt.Sprintf("; причина увольнения в журнале — «—» (строк: %d)", lines)
+	}
+	target := user.ID
+	logAdminAction(c, "staff_erase", &target, text)
+	c.JSON(http.StatusOK, out)
 }
 
 // ── З14-и2 (OWNER.md, №25 «а»; З-Р18): отложенное увольнение ────────────────────────────────────────────────────
