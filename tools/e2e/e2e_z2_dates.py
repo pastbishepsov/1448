@@ -4,8 +4,8 @@
 сегодня; забытая смена «День 08–20» закрывается в 20:00 (720 минут), а не в 22:00; правка записи
 табеля без даты не сдвигает время на 2 часа. Сутки в отчётах — по стенным часам клуба и в дни перевода
 часов (решение 24.09): 29.03.2026 08:30 — в своих сутках, 26.10.2025 07:30 — в предыдущих.
-Временные z2hire и z2shift, гость Guest33. Идемпотентен: пополнения отменяются, записи табеля z2shift
-удаляются, временные уволены."""
+Временные z2hire и z2shift, гость Guest33. Идемпотентен: пополнения отменяются, записи табеля z2shift удаляются
+все — в начале (хвосты прошлых прогонов) и в конце, уже после увольнения (З15-и1а), временные уволены."""
 from _z import *
 
 TODAY = sql(f"SELECT ((now() AT TIME ZONE '{TZ}')::date)::text")  # календарный день по часам клуба
@@ -19,11 +19,13 @@ s, d = dismiss("z2hire")
 check("нанят сегодня, уволен без даты (сегодня) → 200", s == 200 and d.get("dismissed_at") == TODAY, f"{s} {J(d)}")
 
 section("забытая смена «День 08–20»")
+Z2_ENTRIES = "DELETE FROM work_entries WHERE user_id = (SELECT id FROM users WHERE nickname = 'z2shift')"
+sql(Z2_ENTRIES)  # хвосты прошлых прогонов: запись «Я пришёл», закрытая увольнением, через два дня ложилась под правку 09:00–21:00 (409)
+at_end(lambda: sql(Z2_ENTRIES))  # в конце — все его записи, уже после увольнения (уборка идёт в обратном порядке)
 zid = hire_temp("z2shift")
 D = sql(f"SELECT ((now() AT TIME ZONE '{TZ}')::date - 2)::text")  # позавчера: ни одна идущая смена его не займёт
 tok("z2shift")  # вход открывает запись табеля (Е3-и1) — её и превращаем в забытую
 e1 = sql(f"SELECT id FROM work_entries WHERE user_id='{zid}' AND ended_at IS NULL")
-at_end(lambda: sql(f"DELETE FROM work_entries WHERE id='{e1}'"))
 sql(f"UPDATE work_entries SET date = '{D}', started_at = {at_club(D, '08:00')}, "
     f"shift_id = (SELECT id FROM shifts WHERE name='День') WHERE id='{e1}'")
 s, d = api("POST", "/admin/work/start", {}, "z2shift")  # прошлая запись не закрыта — сервер закроет её по графику

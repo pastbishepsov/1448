@@ -298,9 +298,25 @@ check("день — как в кассовой книге: остатки на �
       and any(f"{MARK} проверка: коррекция" in (r.get("Treść operacji") or "") and r.get("Rodzaj") == "KP" for r in docs)
       and any(f"{MARK} проверка: из кассы" in (r.get("Treść operacji") or "") and r.get("Rodzaj") == "KW" for r in docs),
       J({"лист": got, "книга": want}, 900))
-last_bal = [r.get("Stan kasy") for r in docs][-1:] if docs else []
-check("остаток после каждого документа — на начало ± документ; после последнего — остаток на конец", last_bal == [closing.get("Stan kasy")]
-      and all(isinstance(r.get("Stan kasy"), float) for r in docs), J([last_bal, closing.get("Stan kasy")]))
+if bd.get("opening_pln") is not None:  # остаток на начало известен — после каждого документа свой остаток
+    run, want_bal = g(bd.get("opening_pln")), []
+    for r in docs:
+        run += money(r.get("Przychód")) - money(r.get("Rozchód"))
+        want_bal.append(run)
+    got_bal = [money(r.get("Stan kasy")) if isinstance(r.get("Stan kasy"), float) else None for r in docs]
+    check("остаток после каждого документа — на начало ± документ; после последнего — остаток на конец",
+          docs and got_bal == want_bal and want_bal[-1] == money(closing.get("Stan kasy")), J([got_bal[-3:], want_bal[-3:], closing.get("Stan kasy")]))
+else:  # стенд первого дня (З15-и1а): ящика до этих суток не было — считать остатки не от чего
+    bl = bd.get("baseline") or {}
+    base = next((r for r in kr if (r.get("Treść operacji") or "").startswith("Stan początkowy — pierwsze przeliczenie")), {})
+    base_want = (f"Stan początkowy — pierwsze przeliczenie: {bl.get('by')}, "
+                 + sql(f"SELECT to_char(timestamptz '{bl.get('at')}' AT TIME ZONE '{TZ}', 'HH24:MI')")) if bl else None
+    check("остатка на начало нет (ящик заведён в эти сутки): «Stan kasy na początek dnia: kasa jeszcze nie prowadzona» без суммы, "
+          "после документов остатков нет; начальный остаток — первая сдача, как в книге",
+          opening.get("Treść operacji") == "Stan kasy na początek dnia: kasa jeszcze nie prowadzona" and opening.get("Stan kasy") is None
+          and docs and all(r.get("Stan kasy") is None for r in docs)
+          and (not bl or (base.get("Treść operacji") == base_want and money(base.get("Stan kasy")) == g(bl.get("pln")))),
+          J([opening, base, bl, [r.get("Stan kasy") for r in docs][-3:]]))
 mm = f"{D[5:7]}/{D[:4]}"
 mine_docs = {r.get("ID"): r.get("Nr dokumentu") for r in docs if r.get("ID")}
 km = table(E2, "Raport kasowy")
