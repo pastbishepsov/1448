@@ -8321,7 +8321,9 @@ async function promoteStaff(){
   if (!nickname){ toast('⚠ Нужен ник гостя'); return; }
   try{
     const d = await api('/admin/staff', {method:'POST', body:JSON.stringify({nickname})});
-    toast('✓ ' + d.nickname + ' теперь админ — может входить в админку'); // З0-и1: роль из базы, перелогин не нужен
+    toast(d.returned // З15-и5: прежний период работы остаётся в карточке, новый — с сегодня
+      ? '✓ ' + d.nickname + ' снова в команде — может входить в админку; новый период работы с сегодня, прежние — в карточке'
+      : '✓ ' + d.nickname + ' теперь админ — может входить в админку'); // З0-и1: роль из базы, перелогин не нужен
     inp.value = '';
     renderStaff();
   }catch(e){ toast('⚠ ' + e.message); }
@@ -8676,10 +8678,17 @@ async function renderStaffArchive(){
       ${d.staff.map(s => `<tr>
         <td><b>${esc(s.nickname)}</b>${s.full_name ? `<div class="muted">${esc(s.full_name)}</div>` : ''}</td>
         <td class="muted">${s.position ? esc(s.position) : '—'}</td>
-        <td class="muted">${s.hired_at ? ruDate(s.hired_at) : '—'} — ${ruDate(s.dismissed_at)}</td>
+        <td class="muted">${staffPeriodsHtml(s.periods && s.periods.length ? s.periods : [s])}</td>
         <td><button class="btn ghost mini" onclick="staffCard('${s.id}')"><span data-ic="scroll"></span>Карточка</button></td>
       </tr>`).join('')}</table>`);
   }catch(e){ toast('⚠ ' + e.message); }
+}
+
+/* З15-и5 (№30): периоды работы — «с — по» по строке; без даты найма — «—», идущий — «сейчас». В «Уволенных» — даты, в
+   карточке — ещё и причина. */
+function staffPeriodsHtml(list, withReason){
+  return (list || []).map(p => `${p.hired_at ? ruDate(p.hired_at) : '—'} — ${p.dismissed_at ? ruDate(p.dismissed_at) : 'сейчас'}`
+    + (withReason && p.reason ? ' · ' + esc(p.reason) : '')).join('<br>');
 }
 
 function hireDrawer(){
@@ -8864,6 +8873,8 @@ async function staffCard(id){
       <label class="muted" style="margin-bottom:-6px">Заметка</label>
       <textarea id="sc_note" class="input" rows="3" placeholder="для себя: ключи, доступы, договорённости">${esc(p.note||'')}</textarea>
       ${p.dismissed_at ? `<div class="muted">Уволен ${ruDate(p.dismissed_at)}</div>` : ''}
+      ${(d.periods || []).some(x => x.dismissed_at) ? `<label class="muted" style="margin-bottom:-6px">Периоды работы</label>
+      <div class="muted" id="scPeriods">${staffPeriodsHtml(d.periods, true)}</div>` : ''}
       ${p.leave_on ? `<div class="muted">Уходит ${ruDate(p.leave_on)} — последний рабочий день; отменить — «Отменить увольнение» в списке</div>` : ''}
       <div class="muted">Карточку видит только владелец. В журнал попадает ник и что менялось, сами ФИО и телефон — нет.</div>
       ${d.role === 'admin' ? leaveShiftHtml(sp, 'demote') : ''}

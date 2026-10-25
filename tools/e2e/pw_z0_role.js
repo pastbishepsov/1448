@@ -28,7 +28,8 @@ const z = require('./_z');
   await boss.click('button:has-text("Назначить")');
   await z.sleep(800);
   const toast = await z.text(boss, '#toast');
-  z.check('тост назначения: «теперь админ», без «пусть перелогинится»', /z0live теперь админ/.test(toast) && !/перелогин/.test(toast), toast);
+  z.check('тост назначения: «теперь админ» (бывшему сотруднику — «снова в команде», З15-и5), «может входить в админку», без «пусть перелогинится»',
+    /z0live (теперь админ|снова в команде) — может входить в админку/.test(toast) && !/перелогин/.test(toast), toast);
   await z.shot(boss, 'z0_role_staff');
   await z.done();
 })().catch(z.crash);

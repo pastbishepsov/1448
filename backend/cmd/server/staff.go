@@ -192,18 +192,38 @@ func handleAdminStaffPromote(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"code": code, "message": staffRoleErrors[code]})
 		return
 	}
-	if err := db.Model(&user).Update("role", models.UserRoleAdmin).Error; err != nil {
-		respondDBError(c, err)
+	if user.Status == models.UserStatusBanned { // З15-и5 (№30): забаненного админка всё равно не пустит — сначала бан
+		c.JSON(http.StatusConflict, gin.H{"code": "banned",
+			"message": "«" + user.Nickname + "» забанен — сначала сними бан («Гости» → карточка → «Разбанить»)"})
 		return
 	}
-	// человек мог у нас уже работать — снимаем отметку об увольнении,
-	// иначе он останется в архиве уволенных, работая на смене
+	// человек мог у нас уже работать — увольнение с карточки снимаем, иначе он останется в архиве уволенных, работая
+	// на смене; З15-и5: прежний период остаётся в истории, новый начинается сегодня — в клубные сутки, как и дата
+	// увольнения без даты (раньше увольнение просто стиралось)
+	now := time.Now()
+	today := clubDayOf(now, int(settingInt64("report_hour", 8)))
 	var p models.StaffProfile
-	returned := false
-	if db.First(&p, "user_id = ? AND dismissed_at IS NOT NULL", user.ID).Error == nil {
-		db.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
-			Updates(map[string]any{"dismissed_at": nil, "updated_at": time.Now()})
-		returned = true
+	hasCard := db.First(&p, "user_id = ?", user.ID).Error == nil
+	returned := hasCard && p.DismissedAt != nil
+	start := &today
+	if hasCard && !returned && p.HiredAt != nil {
+		start = p.HiredAt // сняли с прав и назначили снова — период тот же
+	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&user).Update("role", models.UserRoleAdmin).Error; err != nil {
+			return err
+		}
+		if returned {
+			if err := tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
+				Updates(map[string]any{"dismissed_at": nil, "hired_at": today, "updated_at": now}).Error; err != nil {
+				return err
+			}
+		}
+		return openPeriod(tx, user.ID, start)
+	})
+	if err != nil {
+		respondDBError(c, err)
+		return
 	}
 
 	target := user.ID
@@ -212,7 +232,7 @@ func handleAdminStaffPromote(c *gin.Context) {
 		note = " → admin (вернулся)"
 	}
 	logAdminAction(c, "staff_promote", &target, user.Nickname+note)
-	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": models.UserRoleAdmin})
+	c.JSON(http.StatusOK, gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": models.UserRoleAdmin, "returned": returned})
 }
 
 // futureShiftsFrom — с какой даты чистить график при снятии сотрудника.
@@ -333,7 +353,7 @@ func validateStaffProfile(fullName, phone, position, note, rateType string, rate
 
 var profileErrors = map[string]string{
 	"bad_name":      "ФИО — до 128 символов",
-	"bad_phone":     "Телефон — до 32 символов",
+	"bad_phone":     "Телефон — в международном формате: + и 6–15 цифр", // З15-и5: как у анкеты гостя
 	"bad_position":  "Должность — до 64 символов",
 	"bad_note":      "Заметка — до 2000 символов",
 	"bad_rate_type": "Ставка: не задана, за час, за смену или оклад",
@@ -342,6 +362,19 @@ var profileErrors = map[string]string{
 	"rate_extra":    "Ставка не задана — сумма должна быть пустой",
 	"bad_dates":     "Дата увольнения раньше даты найма",
 	"bad_date":      "Дата — в формате ГГГГ-ММ-ДД",
+	// З15-и5 (№30): дату увольнения ставит «Уволить» — с причиной, сменами и периодом работы
+	"dismissed_readonly": "Дату увольнения ставит «Уволить» — в карточке её не правят",
+}
+
+// staffPhone — телефон карточки (чистая, тест; З15-и5, №30): пусто — пусто; новый — как у анкеты гостя (validatePhone:
+// «+» и 6–15 цифр, пробелы, скобки и дефисы срезаются); прежний, не тронутый правкой, — как есть, даже если записан до
+// этой проверки свободным текстом: иначе карточку с таким телефоном нельзя было бы сохранить, не трогая телефон.
+func staffPhone(raw, old string) (string, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" || s == old {
+		return s, true
+	}
+	return validatePhone(s)
 }
 
 // parseDateOpt — «» → nil, «2026-08-18» → дата. Второе значение — валидность.
@@ -388,6 +421,7 @@ func handleAdminStaffProfileGet(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"nickname": user.Nickname, "role": user.Role, "status": user.Status,
 		"registered_at": user.RegisteredAt, "profile": profileOut(&p),
+		"periods": periodsOut([]uuid.UUID{user.ID})[user.ID], // З15-и5: все периоды работы
 	})
 }
 
@@ -433,9 +467,14 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_date", "message": profileErrors["bad_date"]})
 		return
 	}
-	if archived && dismissed == nil { // З14-и4: форма карточки даты увольнения не шлёт — из архива человек не уходит
-		dismissed = old.DismissedAt
+	// З15-и5 (№30): дату увольнения карточка не правит — её ставит «Уволить» (роль, смены, период работы). Раньше PUT с
+	// dismissed_at отправлял работающего админа в «Уволенные», не снимая роли. Та же дата — не правка; без даты — как
+	// есть (форма карточки её не шлёт, З14-и4: из архива человек не уходит).
+	if dismissed != nil && dateOut(dismissed) != dateOut(old.DismissedAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "dismissed_readonly", "message": profileErrors["dismissed_readonly"]})
+		return
 	}
+	dismissed = old.DismissedAt
 	rateType := strings.TrimSpace(req.RateType)
 	if rateType == "" {
 		rateType = "none"
@@ -445,7 +484,11 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 		rate = *req.RateAmount
 	}
 	name := strings.TrimSpace(req.FullName)
-	phone := strings.TrimSpace(req.Phone)
+	phone, okPhone := staffPhone(req.Phone, old.Phone)
+	if !okPhone {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_phone", "message": profileErrors["bad_phone"]})
+		return
+	}
 	position := strings.TrimSpace(req.Position)
 	note := strings.TrimSpace(req.Note)
 	if valid, code := validateStaffProfile(name, phone, position, note, rateType, rate, hired, dismissed); !valid {
@@ -461,16 +504,22 @@ func handleAdminStaffProfilePut(c *gin.Context) {
 	if existed {
 		p.CreatedAt = old.CreatedAt
 		p.LeaveOn, p.LeaveBy, p.LeaveReason = old.LeaveOn, old.LeaveBy, old.LeaveReason // З14-и2: дату ухода карточка не правит — в ответе как есть
-		if err := db.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
-			Updates(map[string]any{
-				"full_name": name, "phone": phone, "position": position,
-				"hired_at": hired, "dismissed_at": dismissed,
-				"rate_type": rateType, "rate_amount": rate, "note": note, "updated_at": p.UpdatedAt,
-			}).Error; err != nil {
-			respondDBError(c, err)
-			return
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if existed {
+			if err := tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).
+				Updates(map[string]any{
+					"full_name": name, "phone": phone, "position": position,
+					"hired_at": hired, "dismissed_at": dismissed,
+					"rate_type": rateType, "rate_amount": rate, "note": note, "updated_at": p.UpdatedAt,
+				}).Error; err != nil {
+				return err
+			}
+		} else if err := tx.Create(&p).Error; err != nil {
+			return err
 		}
-	} else if err := db.Create(&p).Error; err != nil {
+		return syncPeriodStart(tx, user.ID, hired, dismissed, p.UpdatedAt) // З15-и5: «Работает с» — начало последнего периода
+	}); err != nil {
 		respondDBError(c, err)
 		return
 	}
@@ -576,7 +625,11 @@ func handleAdminStaffHire(c *gin.Context) {
 		rate = *req.RateAmount
 	}
 	name := strings.TrimSpace(req.FullName)
-	phone := strings.TrimSpace(req.Phone)
+	phone, okPhone := staffPhone(req.Phone, "") // З15-и5: телефон — как у анкеты гостя
+	if !okPhone {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_phone", "message": profileErrors["bad_phone"]})
+		return
+	}
 	position := strings.TrimSpace(req.Position)
 	note := strings.TrimSpace(req.Note)
 	if valid, code := validateStaffProfile(name, phone, position, note, rateType, rate, hired, nil); !valid {
@@ -599,10 +652,13 @@ func handleAdminStaffHire(c *gin.Context) {
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
-		return tx.Create(&models.StaffProfile{
+		if err := tx.Create(&models.StaffProfile{
 			UserID: user.ID, FullName: name, Phone: phone, Position: position,
 			HiredAt: hired, RateType: rateType, RateAmount: rate, Note: note,
-		}).Error
+		}).Error; err != nil {
+			return err
+		}
+		return openPeriod(tx, user.ID, hired) // З15-и5: первый период работы
 	})
 	if err != nil {
 		if isDuplicate(err) {
@@ -696,6 +752,13 @@ func handleAdminStaffDismiss(c *gin.Context) {
 			if err := tx.Create(&models.StaffProfile{UserID: user.ID, DismissedAt: date, RateType: "none"}).Error; err != nil {
 				return err
 			}
+		}
+		var hired *time.Time
+		if hasCard {
+			hired = p.HiredAt
+		}
+		if err := closePeriod(tx, user.ID, hired, date, reason, now); err != nil { // З15-и5: период — с датой и причиной
+			return err
 		}
 		var err error
 		closed, err = leaveCloseShift(tx, shift, dismissNote, actor, now)
@@ -898,6 +961,11 @@ func handleAdminStaffArchive(c *gin.Context) {
 		ids = append(ids, p.UserID.String())
 	}
 	nick := nicknamesByID(ids)
+	uids := make([]uuid.UUID, 0, len(profiles))
+	for _, p := range profiles {
+		uids = append(uids, p.UserID)
+	}
+	periods := periodsOut(uids) // З15-и5: все периоды работы, не только последний
 	out := make([]gin.H, 0, len(profiles))
 	for i := range profiles {
 		p := profiles[i]
@@ -905,9 +973,84 @@ func handleAdminStaffArchive(c *gin.Context) {
 			"id": p.UserID, "nickname": nick[p.UserID.String()],
 			"full_name": p.FullName, "position": p.Position,
 			"hired_at": dateOut(p.HiredAt), "dismissed_at": dateOut(p.DismissedAt),
+			"periods": periods[p.UserID],
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "staff": out})
+}
+
+// ── З15-и5 (OWNER.md, №30; З-Р20): периоды работы ───────────────────────────────────────────────────────────────
+//
+// Карточка хранила одну пару «нанят — уволен», и повторное назначение бывшего сотрудника стирало увольнение: человек
+// уходил из «Уволенных», а то, что он уже работал и уходил (когда и почему), оставалось только в журнале. Теперь у
+// каждого периода своя строка (staff_periods, миграция 089): наём и назначение открывают период, увольнение (сразу или
+// отложенное) закрывает его датой и причиной, правка даты найма в карточке двигает начало последнего; «Уволенные» и
+// карточка показывают все периоды. Карточка по-прежнему хранит последний — с неё читают список персонала и выплаты.
+
+// openPeriod — начать период работы с дня day, если открытого нет (наём, назначение, возвращение).
+func openPeriod(tx *gorm.DB, userID uuid.UUID, day *time.Time) error {
+	var n int64
+	if err := tx.Model(&models.StaffPeriod{}).Where("user_id = ? AND dismissed_on IS NULL", userID).Count(&n).Error; err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	return tx.Create(&models.StaffPeriod{UserID: userID, HiredOn: day}).Error
+}
+
+// closePeriod — закрыть открытый период датой увольнения и причиной. Открытого нет (работал без карточки до 089 или
+// вернулся в обход «Назначить») — закрытый период с датой найма из карточки.
+func closePeriod(tx *gorm.DB, userID uuid.UUID, hired, day *time.Time, reason string, now time.Time) error {
+	res := tx.Model(&models.StaffPeriod{}).Where("user_id = ? AND dismissed_on IS NULL", userID).
+		Updates(map[string]any{"dismissed_on": day, "reason": reason, "updated_at": now})
+	if res.Error != nil || res.RowsAffected > 0 {
+		return res.Error
+	}
+	return tx.Create(&models.StaffPeriod{UserID: userID, HiredOn: hired, DismissedOn: day, Reason: reason}).Error
+}
+
+// syncPeriodStart — дата найма из карточки — начало последнего периода: у работающего — открытого (нет — открыть), у
+// уволенного — последнего закрытого (нет — завести закрытый).
+func syncPeriodStart(tx *gorm.DB, userID uuid.UUID, hired, dismissed *time.Time, now time.Time) error {
+	if dismissed == nil {
+		res := tx.Model(&models.StaffPeriod{}).Where("user_id = ? AND dismissed_on IS NULL", userID).
+			Updates(map[string]any{"hired_on": hired, "updated_at": now})
+		if res.Error != nil || res.RowsAffected > 0 {
+			return res.Error
+		}
+		return tx.Create(&models.StaffPeriod{UserID: userID, HiredOn: hired}).Error
+	}
+	var last []models.StaffPeriod
+	if err := tx.Where("user_id = ? AND dismissed_on IS NOT NULL", userID).
+		Order("dismissed_on DESC, created_at DESC").Limit(1).Find(&last).Error; err != nil {
+		return err
+	}
+	if len(last) == 1 {
+		return tx.Model(&models.StaffPeriod{}).Where("id = ?", last[0].ID).
+			Updates(map[string]any{"hired_on": hired, "updated_at": now}).Error
+	}
+	return tx.Create(&models.StaffPeriod{UserID: userID, HiredOn: hired, DismissedOn: dismissed}).Error
+}
+
+// periodsOut — периоды работы для ответа, по порядку: с какого дня, по какой («» — работает сейчас), причина.
+func periodsOut(userIDs []uuid.UUID) map[uuid.UUID][]gin.H {
+	out := make(map[uuid.UUID][]gin.H, len(userIDs))
+	for _, id := range userIDs {
+		out[id] = []gin.H{}
+	}
+	if len(userIDs) == 0 {
+		return out
+	}
+	var ps []models.StaffPeriod
+	db.Where("user_id IN ?", userIDs).Order("created_at, hired_on").Find(&ps)
+	for i := range ps {
+		p := ps[i]
+		out[p.UserID] = append(out[p.UserID], gin.H{
+			"hired_at": dateOut(p.HiredOn), "dismissed_at": dateOut(p.DismissedOn), "reason": p.Reason,
+		})
+	}
+	return out
 }
 
 // ── З14-и4 (OWNER.md, №26; З-Р19): личные данные уволенного ─────────────────────────────────────────────────────
@@ -967,11 +1110,19 @@ func handleAdminStaffErase(c *gin.Context) {
 	}
 	fields := erasableFields(&p)
 	lines := 0
+	var periods int64
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&models.StaffProfile{}).Where("user_id = ?", user.ID).Updates(map[string]any{"full_name": "", "phone": "",
 			"note": "", "rate_type": "none", "rate_amount": 0, "leave_reason": "", "updated_at": time.Now()}).Error; err != nil {
 			return err
 		}
+		// З15-и5: причина увольнения живёт и в периодах работы — стирается и там
+		res := tx.Model(&models.StaffPeriod{}).Where("user_id = ? AND reason <> ''", user.ID).
+			Updates(map[string]any{"reason": "", "updated_at": time.Now()})
+		if res.Error != nil {
+			return res.Error
+		}
+		periods = res.RowsAffected
 		var rows []models.AdminAction
 		if err := tx.Where("target_user_id = ? AND action IN ?", user.ID, []string{"staff_dismiss", "staff_leave"}).Find(&rows).Error; err != nil {
 			return err
@@ -990,8 +1141,8 @@ func handleAdminStaffErase(c *gin.Context) {
 		respondDBError(c, err)
 		return
 	}
-	out := gin.H{"user_id": user.ID, "nickname": user.Nickname, "erased": fields, "journal_lines": lines}
-	if len(fields) == 0 && lines == 0 {
+	out := gin.H{"user_id": user.ID, "nickname": user.Nickname, "erased": fields, "journal_lines": lines, "period_reasons": periods}
+	if len(fields) == 0 && lines == 0 && periods == 0 {
 		out["nothing"] = true // уже стёрто — второй строки журнала не пишем
 		c.JSON(http.StatusOK, out)
 		return
@@ -1002,6 +1153,8 @@ func handleAdminStaffErase(c *gin.Context) {
 	}
 	if lines > 0 {
 		text += fmt.Sprintf("; причина увольнения в журнале — «—» (строк: %d)", lines)
+	} else if periods > 0 {
+		text += "; причина увольнения стёрта"
 	}
 	target := user.ID
 	logAdminAction(c, "staff_erase", &target, text)
@@ -1143,6 +1296,9 @@ func finishLeave(p *models.StaffProfile, now time.Time) bool {
 			if err := tx.Model(&user).Update("role", models.UserRolePlayer).Error; err != nil {
 				return err
 			}
+		}
+		if err := closePeriod(tx, user.ID, p.HiredAt, &day, p.LeaveReason, now); err != nil { // З15-и5
+			return err
 		}
 		var err error
 		closed, err = leaveCloseShift(tx, shift, dismissNote, by, now)

@@ -34,8 +34,8 @@ const z = require('./_z');
   await z.sleep(1500);
   const t1 = norm(await z.text(boss, '#toast'));
   const ph = z.sql(`SELECT phone || '|' || COALESCE(dismissed_at::text, '') FROM staff_profiles WHERE user_id = '${ug}'`);
-  z.check('карточка уволенного сохраняется: тост «Карточка z14g сохранена», телефон новый, он по-прежнему уволен',
-    t1 === `Карточка ${G} сохранена` && ph === `+48 500 000 004|${z.clubDay(0)}`, JSON.stringify({ t1, ph }));
+  z.check('карточка уволенного сохраняется: тост «Карточка z14g сохранена», телефон новый (без пробелов, З15-и5), он по-прежнему уволен',
+    t1 === `Карточка ${G} сохранена` && ph === `+48500000004|${z.clubDay(0)}`, JSON.stringify({ t1, ph }));
   await archive(boss);
   await openCard(boss, G);
   await z.shot(boss, 'z14_erase_card');

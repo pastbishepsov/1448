@@ -43,8 +43,9 @@ check("журнал: «уволен … · причина, снят с 1 буд�
       s == 200 and lines.get("staff_dismiss") == f"{E} · уволен {TODAY} · {WHY}, снят с 1 будущих смен"
       and lines.get("staff_leave") == f"{E} · уходит {D3} · {WHY_LEAVE}", J(lines, 600))
 s, d = api("PUT", f"/admin/staff/{uid(E)}/profile", {**CARD, "phone": "+48 500 000 002"}, "boss")
-check("карточка уволенного сохраняется (раньше — 409 not_staff); дата увольнения остаётся — он по-прежнему в «Уволенных»",
-      s == 200 and (d.get("profile") or {}).get("phone") == "+48 500 000 002" and card().endswith(f"|{TODAY}")
+check("карточка уволенного сохраняется (раньше — 409 not_staff), телефон — без пробелов (З15-и5); дата увольнения остаётся — "
+      "он по-прежнему в «Уволенных»",
+      s == 200 and (d.get("profile") or {}).get("phone") == "+48500000002" and card().endswith(f"|{TODAY}")
       and sql(f"SELECT role FROM users WHERE id = '{uid(E)}'") == "player", f"{s} {J(d, 300)} · {card()}")
 
 section("стереть личные данные")

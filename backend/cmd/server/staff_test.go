@@ -267,3 +267,25 @@ func TestErasableFields(t *testing.T) {
 		t.Fatalf("стирать нечего: %v", got)
 	}
 }
+
+// З15-и5 (№30): телефон карточки — как у анкеты гостя; прежний, не тронутый правкой, — как есть.
+func TestStaffPhone(t *testing.T) {
+	for _, c := range []struct {
+		raw, old, want string
+		ok             bool
+	}{
+		{"", "", "", true},
+		{"  ", "+48500000001", "", true},
+		{"+48 500 000 001", "", "+48500000001", true},
+		{"+48 (500) 000-001", "+48111111111", "+48500000001", true},
+		{"600 000 000", "", "", false},
+		{"+48 500 abc", "", "", false},
+		{"600 000 000", "600 000 000", "600 000 000", true},
+		{"601 000 000", "600 000 000", "", false},
+	} {
+		got, ok := staffPhone(c.raw, c.old)
+		if got != c.want || ok != c.ok {
+			t.Errorf("staffPhone(%q, %q) = (%q, %v), ждали (%q, %v)", c.raw, c.old, got, ok, c.want, c.ok)
+		}
+	}
+}
