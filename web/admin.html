@@ -817,7 +817,7 @@
       <button id="r-staff" onclick="nav('staff')" aria-label="Персонал"><span data-ic="users"></span><span class="rlabel">Персонал</span></button>
       <button id="r-settings" class="ownerOnly hidden" onclick="nav('settings')" aria-label="Экономика"><span data-ic="gear"></span><span class="rlabel">Экономика</span></button>
       <div class="grow"></div>
-      <button onclick="logout()" aria-label="Выйти"><span data-ic="out"></span><span class="rlabel">Выйти</span></button>
+      <button onclick="logoutAsk()" aria-label="Выйти"><span data-ic="out"></span><span class="rlabel">Выйти</span></button>
     </nav>
 
     <main class="content">
@@ -1449,6 +1449,19 @@ function logout(){
   document.getElementById('loginView').classList.remove('hidden');
   document.getElementById('nick').value = ''; document.getElementById('pass').value = ''; // З0-и5
   renderRecentNicks();
+}
+
+/* З15-и6 (№30): «Выйти» на смене — сначала «Моя смена»: сдать смену и выйти, уйти без пересчёта и выйти или выйти, не
+   закрывая смену. Раньше «Выйти» молча оставлял смену открытой: при следующем приходе она закрывалась по графику и не
+   шла в выплату, касса оставалась несданной. Владелец (своей смены нет) и не на смене — выход сразу, как раньше; табель
+   не ответил — тоже сразу: выйти можно всегда. */
+async function logoutAsk(){
+  if (!me || isOwner()) return logout();
+  let st = null;
+  try{ st = await api('/admin/work/me'); }catch(e){ if (me) logout(); return; }
+  if (!st || !st.on_shift) return logout();
+  myShift = st; paintShiftChip();
+  await openMyShift(true);
 }
 
 /* З0-и1 (№3): роль — из базы. Уволили или сняли роль — сервер отвечает 403 forbidden на любую ручку
@@ -8397,6 +8410,7 @@ function paintShiftChip(){
    пересчитанное становится остатком на начало, расхождения нет.
    Уйти без пересчёта можно — отдельной кнопкой и с пометкой. */
 let closeoutPrev = null, closeoutCounted = '', closeoutNote = '';
+let shiftLeaving = false; // З15-и6: «Моя смена» открыта с «Выйти» — после сдачи выходим
 // З8-и2: инкассация из «Моей смены» — форма раскрывается кнопкой, введённое переживает перерисовку
 let ccOpen = false, ccAmount = '', ccDest = 'safe', ccNote = '';
 // З1-и1: начало окна сдачи — время, а если смена началась не сегодня — ещё и дата («22.09 21:00»)
@@ -8417,9 +8431,10 @@ function coParts(cp){
     + (cp.adjust_pln ? ' · коррекции ' + (cp.adjust_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(cp.adjust_pln)) : '')
     + (m ? ' · из них провёл ты: +' + fmtPLN(m.in_pln || 0) + (m.out_pln > 0 ? ' / −' + fmtPLN(m.out_pln) : '') : '');
 }
-async function openMyShift(){
+async function openMyShift(leaving){
   if (isOwner()){ nav('staff'); return; } // З7-и3: у владельца своей смены нет — чип ведёт к табелю
   drawerUserId = null; drawerPCId = null;
+  shiftLeaving = leaving === true; // З15-и6
   const on = !!(myShift && myShift.on_shift);
   if (on){ // каждый раз свежая цифра: касса меняется каждой продажей
     try{ closeoutPrev = await api('/admin/work/closeout'); }catch(e){ closeoutPrev = {error: e.message}; }
@@ -8431,9 +8446,12 @@ function paintMyShift(){
   const cp = closeoutPrev || {};
   const counted = closeoutCounted === '' ? null : Math.round(parseFloat(String(closeoutCounted).replace(',', '.')) * 100) / 100;
   const diff = cp.baseline || counted == null || isNaN(counted) ? null : Math.round((counted - (cp.expected_pln || 0)) * 100) / 100;
+  const leaving = shiftLeaving && on; // З15-и6: «Выйти» на смене
   const body = !myShift
     ? '<div class="muted">Табель не отвечает — попробуй обновить страницу</div>'
-    : `<table class="kv">
+    : `${leaving ? `<div class="setwarn" id="msLeave" style="margin-bottom:12px"><b>⚠ Ты на смене с ${coFrom(myShift.entry.started_at)} — перед
+        выходом сдай кассу.</b> Смена закроется, часы встанут в табель. Уходишь ненадолго — «Выйти, не закрывая смену» внизу.</div>` : ''}
+      <table class="kv">
         <tr><td class="muted">Состояние</td><td>${on ? '<b>на смене</b>' : 'смена не открыта'}</td></tr>
         ${on ? `<tr><td class="muted">С какого времени</td><td>${hhmm(myShift.entry.started_at)}</td></tr>
         <tr><td class="muted">Уже отработано</td><td><b>${hm(myShift.minutes_so_far)}</b></td></tr>
@@ -8469,14 +8487,18 @@ function paintMyShift(){
              <div id="coDiff" class="muted">${coDiffText(diff, counted)}</div>
              <input id="coNote" class="input" placeholder="Передал смену: кому, что не доделано (необязательно)" maxlength="500" value="${esc(closeoutNote)}" oninput="closeoutNote=this.value">
              <button class="btn ${diff != null && diff !== 0 ? 'danger' : ''}" style="width:100%; justify-content:center" id="coSubmit"
-                     onclick="armButton(this, 'Ещё раз — сдать смену', () => shiftStop(false))"><span data-ic="out"></span>Сдать смену</button>
-             <button class="btn ghost" style="width:100%; justify-content:center"
-                     onclick="armButton(this, 'Точно без пересчёта?', () => shiftStop(true))">Уйти без пересчёта</button>
+                     onclick="armButton(this, '${leaving ? 'Ещё раз — сдать смену и выйти' : 'Ещё раз — сдать смену'}', () => shiftStop(false))"><span data-ic="out"></span>${leaving ? 'Сдать смену и выйти' : 'Сдать смену'}</button>
+             <button class="btn ghost" style="width:100%; justify-content:center" id="coSkip"
+                     onclick="armButton(this, 'Точно без пересчёта?', () => shiftStop(true))">${leaving ? 'Уйти без пересчёта и выйти' : 'Уйти без пересчёта'}</button>
              <div class="muted">Уход закрывает запись табеля — по ней считается зарплата. Итог сдачи увидит только владелец — и когда сошлось, и когда нет; заметку — вся смена в канале персонала.</div>
            </div>`}`
         : `<div class="muted" style="margin-top:12px">Смена открывается сама, когда ты входишь в админку. Если её нет, а ты работаешь — открой руками.</div>
            <button class="btn" style="width:100%; justify-content:center; margin-top:8px"
-                   onclick="shiftStart()"><span data-ic="check"></span>Я пришёл</button>`}`;
+                   onclick="shiftStart()"><span data-ic="check"></span>Я пришёл</button>`}
+      ${leaving ? `<button class="btn ghost" style="width:100%; justify-content:center; margin-top:12px" id="msLeaveOpen"
+                   onclick="armButton(this, 'Ещё раз — выйти, смена останется открытой', () => logout())"><span data-ic="out"></span>Выйти, не закрывая смену</button>
+        <div class="muted" style="margin-top:6px">Смена останется открытой: войдёшь снова в эти сутки — продолжится. Не отметишь уход — она закроется
+          по графику при следующем приходе и не пойдёт в выплату, пока её не поправит владелец.</div>` : ''}`;
   openDrawer('Моя смена', body);
 }
 function coDiffText(diff, counted){
@@ -8509,11 +8531,11 @@ async function cashCollect(){
     toast('✓ Инкассация ' + fmtPLN(d.event.amount_pln) + ' zł ' + (ccDest === 'bank' ? 'в банк' : 'в сейф') + ' записана'
       + (d.baseline ? '' : ' · в ящике должно быть ' + fmtPLN(d.expected_pln) + ' zł'));
     ccOpen = false; ccAmount = ''; ccNote = '';
-    await openMyShift();
+    await openMyShift(shiftLeaving);
   }catch(e){ toast('⚠ ' + e.message); }
 }
 async function shiftStop(skipCount){
-  const body = {};
+  const body = {}, leaving = shiftLeaving; // З15-и6: сдают с «Выйти» — после сдачи выход
   if (!skipCount){
     const v = parseFloat(String(closeoutCounted).replace(',', '.'));
     if (closeoutCounted === '' || isNaN(v)){ toast('⚠ Вбей пересчитанную сумму — или уходи «без пересчёта»'); return; }
@@ -8527,6 +8549,7 @@ async function shiftStop(skipCount){
     toast('✓ Смена закрыта · ' + hm(d.entry.minutes) + (co ? (co.baseline ? ' · начальный остаток ящика ' + fmtPLN(co.counted_pln) + ' zł' : co.skipped ? ' · касса без пересчёта' : (co.diff_pln === 0 ? ' · касса сошлась' : ' · расхождение ' + (co.diff_pln > 0 ? '+' : '−') + fmtPLN(Math.abs(co.diff_pln)) + ' zł — владелец увидит')) : ''));
     closeoutPrev = null; closeoutCounted = ''; closeoutNote = '';
     closeDrawer();
+    if (leaving){ logout(); return; }
     await loadMyShift();
     renderMyShift();
     if (isOwner()) renderTimesheet();
@@ -8554,7 +8577,7 @@ async function renderMyShift(){
     box.innerHTML =
       `<button class="btn ${on ? 'danger ' : ''}mini" onclick="workToggle(${on})">
          <span data-ic="${on ? 'out' : 'check'}"></span>${on ? 'Отметить уход' : 'Я пришёл'}</button>
-       <div class="kpi" title="${on ? 'с ' + hhmm(d.entry.started_at) : 'по табелю за клубные сутки'}">
+       <div class="kpi" title="${on ? 'с ' + hhmm(d.entry.started_at) : 'по табелю: смены этих клубных суток и ночная, если закончилась сегодня'}">
          ${on ? 'На смене' : 'Сегодня отработано'} <b>${hm(on ? d.minutes_so_far : d.minutes_today)}</b></div>
        ${on && d.entry.shift ? `<div class="kpi">Смена <b>${esc(d.entry.shift)}</b></div>` : ''}`;
     mountIcons(box);
@@ -9505,6 +9528,7 @@ function openDrawer(title, html){
 }
 function closeDrawer(){
   drawerIsStaffChat = false; // Е6-и2: шторка закрылась — перерисовывать нечего
+  shiftLeaving = false; // З15-и6: «Моя смена» с «Выйти» закрыли — остаёмся
   drawerPCId = null;
   drawerUserId = null; uData = null; uForm = null; uChat = null;
   const d = document.getElementById('drawer');

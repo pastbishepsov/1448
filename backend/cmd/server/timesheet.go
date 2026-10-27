@@ -315,17 +315,21 @@ func hoursRU(minutes int64) string {
 func handleWorkMe(c *gin.Context) {
 	userID, _ := uuid.Parse(c.GetString("user_id"))
 	reportHour := int(settingInt64("report_hour", 8))
-	day := clubDayOf(time.Now(), reportHour)
+	now := time.Now()
+	day := clubDayOf(now, reportHour)
 
 	out := gin.H{"on_shift": false, "date": day.Format("2006-01-02")}
 	if open := openEntryFor(userID); open != nil {
 		out["on_shift"] = true
 		out["entry"] = workOut(open)
-		out["minutes_so_far"] = workMinutes(open.StartedAt, time.Now())
+		out["minutes_so_far"] = workMinutes(open.StartedAt, now)
 	}
+	// З15-и6 (№30): «Сегодня отработано» — записи этих клубных суток и те, что в них закончились. Ночная смена
+	// записана днём начала (20:00 вчера — 08:00 сегодня), и после ухода утром здесь стоял ноль.
 	var todayMin int64
 	db.Model(&models.WorkEntry{}).Select("COALESCE(SUM(minutes),0)").
-		Where("user_id = ? AND date = ?", userID, day.Format("2006-01-02")).Scan(&todayMin)
+		Where("user_id = ? AND (date = ? OR ended_at >= ?)", userID, day.Format("2006-01-02"), clubDayStartAt(reportHour, now)).
+		Scan(&todayMin)
 	out["minutes_today"] = todayMin
 	c.JSON(http.StatusOK, out)
 }
