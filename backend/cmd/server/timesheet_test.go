@@ -181,6 +181,14 @@ func TestWallClockDST(t *testing.T) {
 	}
 }
 
+// З15-и6б (№30): вход временным паролем смену не открывает — до табеля дело не доходит (в юните базы нет вовсе).
+func TestOpenWorkOnLoginTempPassword(t *testing.T) {
+	u := models.User{Role: models.UserRoleAdmin, MustChangePassword: true}
+	if opened, prev := openWorkOnLogin(&u, time.Now()); opened || prev {
+		t.Errorf("вход временным паролем открыл смену: opened=%v, autoClosedPrev=%v", opened, prev)
+	}
+}
+
 func TestPayoutFor(t *testing.T) {
 	cases := []struct {
 		name     string

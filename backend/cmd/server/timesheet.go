@@ -632,6 +632,12 @@ func openWorkOnLogin(user *models.User, now time.Time) (opened bool, autoClosedP
 	if user == nil || user.Role != models.UserRoleAdmin {
 		return false, false
 	}
+	// З15-и6б (№30): вход временным паролем — ещё не вход в админку: до своего пароля её ручки закрыты, а «Выйти» с
+	// экрана «Задай свой пароль» оставлял открытую смену человека, который в админку так и не попал. Смену откроет
+	// свой пароль, заданный в админке (handleChangeMyPassword).
+	if user.MustChangePassword {
+		return false, false
+	}
 	if staffLeft(user.ID.String(), now) { // З14-и2: последний рабочий день прошёл — смены больше нет
 		return false, false
 	}

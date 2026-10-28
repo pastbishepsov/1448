@@ -212,6 +212,7 @@ func handleAdminStaffPasswordReset(c *gin.Context) {
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
 	NewPassword     string `json:"new_password"     binding:"required"`
+	Client          string `json:"client"` // З15-и6б: «admin» — меняют в админке (как у входа)
 }
 
 // POST /me/password — гость меняет свой пароль (Е0-и2).
@@ -269,6 +270,11 @@ func handleChangeMyPassword(c *gin.Context) {
 	if err := db.First(&user, "id = ?", userID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "user_missing", "message": "Пользователь не найден"})
 		return
+	}
+	// З15-и6б (№30): вход временным паролем смену не открыл — её открывает свой пароль, заданный в админке: это и есть
+	// первый вход в неё. Смена пароля из киоска или PWA (без client) смену не открывает, как и вход оттуда.
+	if wasTemp && req.Client == "admin" {
+		openWorkOnLogin(&user, time.Now())
 	}
 	// Подписываем моментом отсечки: пара переживает её по построению.
 	writeAuthAt(c, http.StatusOK, &user, cutoff)

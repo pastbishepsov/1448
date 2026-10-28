@@ -750,7 +750,8 @@
   <!-- З14-и3 (№23): вход временным паролем (сбросил владелец, только что наняли) — сначала свой пароль -->
   <div class="logincard hidden" id="pwCard">
     <b id="pwHead" style="font-size:17px">Задай свой пароль</b>
-    <div class="muted">Ты вошёл временным паролем — его знает тот, кто его выдал. Задай свой: дальше входишь им.</div>
+    <div class="muted" id="pwHint">Ты вошёл временным паролем — его знает тот, кто его выдал. Задай свой: дальше входишь им.
+      Смена откроется, когда задашь свой пароль.</div>
     <input id="pw_cur" class="input" type="password" placeholder="Временный пароль" autocomplete="current-password">
     <input id="pw_new" class="input" type="password" placeholder="Новый пароль — от 6 символов" autocomplete="new-password">
     <input id="pw_new2" class="input" type="password" placeholder="Новый пароль ещё раз" autocomplete="new-password"
@@ -1367,7 +1368,8 @@ async function pwForcedSave(){
   if (bad){ err.textContent = bad; return; }
   err.textContent = '';
   try{
-    const d = await api('/me/password', {method:'POST', body:JSON.stringify({current_password: cur, new_password: nw})});
+    // З15-и6б: вход временным паролем смену не открыл — её открывает свой пароль, заданный здесь (client — как у входа)
+    const d = await api('/me/password', {method:'POST', body:JSON.stringify({current_password: cur, new_password: nw, client: 'admin'})});
     setTokens(d.access_token, d.refresh_token); // своей же отсечкой сервер убил прежнюю пару — в ответе свежая
     pwForcedHide();
     me = d.user;
