@@ -22,3 +22,17 @@ func TestPosInBounds(t *testing.T) {
 		}
 	}
 }
+
+// З16-и1б: перевод ПК между зонами в журнале — откуда и куда, без зоны — словами.
+func TestZoneMoveText(t *testing.T) {
+	cases := []struct{ from, to, want string }{
+		{"Standard", "VIP", "зона Standard → VIP"},
+		{"", "VIP", "без зоны → зона VIP"},
+		{"Standard", "", "зона Standard → без зоны"},
+	}
+	for _, tc := range cases {
+		if got := zoneMoveText(tc.from, tc.to); got != tc.want {
+			t.Errorf("zoneMoveText(%q, %q) = %q, ожидалось %q", tc.from, tc.to, got, tc.want)
+		}
+	}
+}

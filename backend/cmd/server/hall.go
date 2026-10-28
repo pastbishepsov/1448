@@ -111,7 +111,22 @@ type computerPatchRequest struct {
 	MAC      *string `json:"mac"`       // Б8: для Wake-on-LAN; "" — стереть
 }
 
-// PATCH /admin/computers/:id — имя/зона/позиция (owner).
+// zoneMoveText — перевод ПК между зонами словами для журнала (З16-и1б): «зона Standard → VIP», без зоны — «без зоны →
+// зона VIP», «зона Standard → без зоны». Чистая функция (тест).
+func zoneMoveText(from, to string) string {
+	switch {
+	case from != "" && to != "":
+		return "зона " + from + " → " + to
+	case from == "":
+		return "без зоны → зона " + to
+	default:
+		return "зона " + from + " → без зоны"
+	}
+}
+
+// PATCH /admin/computers/:id — имя/зона/позиция (owner). З16-и1б: в журнале — что поменялось на самом деле:
+// «PC-08: зона Standard → VIP», с переименованием — «PC-08 → PC-10 · зона Standard → VIP»; поле с тем же значением
+// (шторка редактора шлёт имя, зону и MAC всегда) — не правка: сохранение без правок — ни записи, ни строки журнала.
 func handleAdminUpdateComputer(c *gin.Context) {
 	var pc models.Computer
 	if err := db.Preload("Club").First(&pc, "id = ?", c.Param("id")).Error; err != nil {
@@ -124,7 +139,7 @@ func handleAdminUpdateComputer(c *gin.Context) {
 		return
 	}
 	updates := map[string]any{}
-	changes := ""
+	changes, zoneChange := "", ""
 	if req.Name != nil && *req.Name != pc.Name {
 		if nameTaken(pc.ClubID.String(), pc.ID.String(), *req.Name) {
 			c.JSON(http.StatusConflict, gin.H{"code": "name_taken", "message": "ПК с таким именем уже есть"})
@@ -139,25 +154,40 @@ func handleAdminUpdateComputer(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"code": "zone_not_found", "message": "Зона не найдена"})
 			return
 		}
-		for k, v := range fields {
-			updates[k] = v
-		}
+		// З16-и1б: та же зона — не правка; другая — с прежней (кэш имени у ПК пишет только сервер, В4-5)
+		toID, toName := "", ""
 		if z != nil {
-			changes += " · зона " + z.Name
-		} else {
-			changes += " · без зоны"
+			toID, toName = z.ID.String(), z.Name
+		}
+		fromID := ""
+		if pc.ZoneID != nil {
+			fromID = pc.ZoneID.String()
+		}
+		if fromID != toID {
+			for k, v := range fields {
+				updates[k] = v
+			}
+			zoneChange = zoneMoveText(pc.Zone, toName)
 		}
 	}
 	if req.MAC != nil { // Б8: MAC для WoL, пустая строка стирает
 		m := strings.ToUpper(strings.TrimSpace(*req.MAC))
+		cur := ""
+		if pc.MAC != nil {
+			cur = strings.ToUpper(*pc.MAC)
+		}
 		if m == "" {
-			updates["mac"] = nil
+			if cur != "" { // З16-и1б: стирать нечего — не правка
+				updates["mac"] = nil
+			}
 		} else {
 			if _, err := net.ParseMAC(m); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"code": "bad_mac", "message": "MAC вида AA:BB:CC:DD:EE:FF"})
 				return
 			}
-			updates["mac"] = m
+			if m != cur { // З16-и1б: тот же MAC — не правка
+				updates["mac"] = m
+			}
 		}
 	}
 	if req.ClearPos {
@@ -186,6 +216,13 @@ func handleAdminUpdateComputer(c *gin.Context) {
 	if err := db.Model(&pc).Updates(updates).Error; err != nil {
 		respondDBError(c, err)
 		return
+	}
+	if zoneChange != "" { // З16-и1б: «PC-08: зона Standard → VIP» — какую машину и откуда перевели
+		if changes == "" {
+			changes = pc.Name + ": " + zoneChange
+		} else {
+			changes += " · " + zoneChange
+		}
 	}
 	if changes == "" {
 		changes = pc.Name
