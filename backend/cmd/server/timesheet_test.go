@@ -127,6 +127,60 @@ func TestComposeWorkTimes(t *testing.T) {
 	}
 }
 
+// З15-и6а: в сутках перевода часов время табеля — по стенным часам клуба. Раньше «полночь + N минут» уводило его на
+// час: 25.10.2026 (25 часов) «День 08–20» кончалась в 19:00, правка «09:00–21:00» ложилась на 08:00–20:00; 29.03.2026
+// (23 часа) — на час позже. Ночная через перевод длится по часам: осенью 13 часов, весной 11.
+func TestWallClockDST(t *testing.T) {
+	warsaw, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := func(m time.Month, d, h int) time.Time { return time.Date(2026, m, d, h, 0, 0, 0, warsaw) }
+	day := func(m time.Month, d int) time.Time { return at(m, d, 0) }
+	type span struct {
+		name               string
+		start, end         time.Time
+		wantStart, wantEnd time.Time
+		wantMin            int
+	}
+	var cases []span
+	for _, d := range []struct {
+		m             time.Month
+		d, nightMin   int
+		label, nlabel string
+	}{{time.October, 25, 13 * 60, "25.10", "24.10 → 25.10"}, {time.March, 29, 11 * 60, "29.03", "28.03 → 29.03"}} {
+		s, e := shiftSpan(day(d.m, d.d), 480, 1200)
+		cases = append(cases, span{"«День 08–20» " + d.label, s, e, at(d.m, d.d, 8), at(d.m, d.d, 20), 720})
+		cases = append(cases, span{"конец «Дня» по графику " + d.label, s, shiftEndAt(day(d.m, d.d), 480, 1200),
+			at(d.m, d.d, 8), at(d.m, d.d, 20), 720})
+		s, e = composeWorkTimes(day(d.m, d.d), 540, 1260)
+		cases = append(cases, span{"правка «09:00–21:00» " + d.label, s, e, at(d.m, d.d, 9), at(d.m, d.d, 21), 720})
+		s, e = composeWorkTimes(day(d.m, d.d), 1200, 480)
+		cases = append(cases, span{"ночь «20:00–08:00» с " + d.label, s, e, at(d.m, d.d, 20), at(d.m, d.d+1, 8), 720})
+		s, e = shiftSpan(day(d.m, d.d-1), 1200, 480)
+		cases = append(cases, span{"ночь через перевод " + d.nlabel, s, e, at(d.m, d.d-1, 20), at(d.m, d.d, 8), d.nightMin})
+	}
+	s, e := shiftSpan(day(time.October, 27), 480, 1200)
+	cases = append(cases, span{"обычные сутки 27.10", s, e, at(time.October, 27, 8), at(time.October, 27, 20), 720})
+	for _, tc := range cases {
+		if !tc.start.Equal(tc.wantStart) || !tc.end.Equal(tc.wantEnd) || workMinutes(tc.start, tc.end) != tc.wantMin {
+			t.Errorf("%s: %s — %s (%d мин), ждали %s — %s (%d мин)", tc.name, tc.start.In(warsaw).Format("02.01 15:04"),
+				tc.end.In(warsaw).Format("02.01 15:04"), workMinutes(tc.start, tc.end),
+				tc.wantStart.Format("02.01 15:04"), tc.wantEnd.Format("02.01 15:04"), tc.wantMin)
+		}
+	}
+
+	// день записи из базы — полночь UTC; после AfterFind забытая «День» 25.10 закрывается по графику в 20:00
+	old := models.ClubLocation
+	models.ClubLocation = warsaw
+	defer func() { models.ClubLocation = old }()
+	w := models.WorkEntry{Date: time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)}
+	_ = w.AfterFind(nil)
+	if got := shiftEndAt(w.Date, 480, 1200); !got.Equal(at(time.October, 25, 20)) {
+		t.Errorf("забытая «День» 25.10 из базы закрылась в %s, ждали 20:00", got.In(warsaw).Format("02.01 15:04"))
+	}
+}
+
 func TestPayoutFor(t *testing.T) {
 	cases := []struct {
 		name     string
