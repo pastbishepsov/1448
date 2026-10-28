@@ -34,16 +34,21 @@ func workMinutes(start, end time.Time) int {
 	return m
 }
 
+// wallAt — момент «день day, minutes минут от полуночи» по стенным часам клуба (чистая, тест). З15-и6а: раньше время
+// собиралось как «полночь + N минут», а в сутках перевода часов 25 или 23 часа — после перевода оно уходило на час:
+// 25.10.2026 «День 08–20» кончалась в 19:00, правка «09:00» ложилась на 08:00, в марте — на час позже.
+func wallAt(day time.Time, minutes int) time.Time {
+	return time.Date(day.Year(), day.Month(), day.Day(), minutes/60, minutes%60, 0, 0, day.Location())
+}
+
 // shiftEndAt — момент окончания смены sh, начавшейся в день day.
 // Ночная (end <= start) заканчивается на следующие календарные сутки.
 // Чистая функция (тест).
 func shiftEndAt(day time.Time, startMin, endMin int) time.Time {
-	base := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
-	end := base.Add(time.Duration(endMin) * time.Minute)
 	if endMin <= startMin {
-		end = end.AddDate(0, 0, 1)
+		return wallAt(day.AddDate(0, 0, 1), endMin)
 	}
-	return end
+	return wallAt(day, endMin)
 }
 
 // parseHM — «20:30» → 1230 минут от полуночи. Чистая функция (тест).
@@ -98,8 +103,7 @@ type assignedWindow struct {
 
 // shiftSpan — начало и конец смены, назначенной на день day (чистая, тест).
 func shiftSpan(day time.Time, startMin, endMin int) (time.Time, time.Time) {
-	base := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
-	return base.Add(time.Duration(startMin) * time.Minute), shiftEndAt(day, startMin, endMin)
+	return wallAt(day, startMin), shiftEndAt(day, startMin, endMin)
 }
 
 // pickAssigned — какое из назначений относится к моменту t (чистая, тест): сначала смена, которая идёт сейчас (из
@@ -470,13 +474,7 @@ func overlapMessage(w *models.WorkEntry) string {
 // composeWorkTimes — из даты и «ЧЧ:ММ» собрать моменты начала и конца.
 // Конец не позже начала = смена через полночь. Чистая функция (тест).
 func composeWorkTimes(day time.Time, startMin, endMin int) (time.Time, time.Time) {
-	base := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
-	start := base.Add(time.Duration(startMin) * time.Minute)
-	end := base.Add(time.Duration(endMin) * time.Minute)
-	if endMin <= startMin {
-		end = end.AddDate(0, 0, 1)
-	}
-	return start, end
+	return shiftSpan(day, startMin, endMin) // З15-и6а: стенными часами, как и смена по графику
 }
 
 // POST /admin/work — добавить запись табеля руками (owner). З3-и3: только
