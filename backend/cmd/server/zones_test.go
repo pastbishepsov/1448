@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/uuid"
+)
 
 func TestValidateZone(t *testing.T) {
 	cases := []struct {
@@ -45,5 +49,30 @@ func TestRateForComputer(t *testing.T) {
 		if got := rateForComputer(tc.zoneRate, tc.club); got != tc.want {
 			t.Errorf("%s: rateForComputer = %v, ожидалось %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// З16-и1а: пересадка спрашивает про тариф только между разными зонами; ПК без зоны — тоже «зона» (клубный тариф).
+func TestSameZoneID(t *testing.T) {
+	std, vip := uuid.New(), uuid.New()
+	std2 := std
+	cases := []struct {
+		name string
+		a, b *uuid.UUID
+		want bool
+	}{
+		{"Standard → Standard", &std, &std2, true},
+		{"Standard → VIP", &std, &vip, false},
+		{"без зоны → без зоны", nil, nil, true},
+		{"без зоны → VIP", nil, &vip, false},
+		{"VIP → без зоны", &vip, nil, false},
+	}
+	for _, tc := range cases {
+		if got := sameZoneID(tc.a, tc.b); got != tc.want {
+			t.Errorf("%s: sameZoneID = %v, ожидалось %v", tc.name, got, tc.want)
+		}
+	}
+	if zoneLabel("") != "без зоны" || zoneLabel("VIP") != "VIP" {
+		t.Errorf("zoneLabel: %q, %q", zoneLabel(""), zoneLabel("VIP"))
 	}
 }

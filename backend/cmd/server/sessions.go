@@ -115,6 +115,20 @@ func sessionRates(s *models.Session, cur economyRateSet) economyRateSet {
 	return r
 }
 
+// guestDiscountPct — скидка гостя на тариф, %: кэшбек (бустеры кейсов) + талант cashback_master, ночью (22:00–07:59
+// по часам клуба) — и night_mode; не больше maxDiscountPct. Одна формула для посадки и пересадки в другую зону
+// (З16-и1а): там тариф считается заново — как при посадке за этот ПК сейчас.
+func guestDiscountPct(userID uuid.UUID, paymentIncreasePct float64, now time.Time) float64 {
+	pct := paymentIncreasePct + talentEffect(userID.String(), "cashback_master")*100
+	if isNightHour(now.In(clubLocation).Hour()) {
+		pct += talentEffect(userID.String(), "night_mode") * 100
+	}
+	if pct > maxDiscountPct {
+		pct = maxDiscountPct
+	}
+	return pct
+}
+
 // POST /me/sessions/start — начать игровую сессию за компьютером.
 func handleStartSession(c *gin.Context) {
 	userID, err := uuid.Parse(c.GetString("user_id"))
@@ -253,13 +267,7 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 	// ночью (22:00–07:59) дополнительно действует талант night_mode.
 	var user models.User
 	_ = db.First(&user, "id = ?", userID).Error
-	discountPct := user.PaymentIncreasePct + talentEffect(userID.String(), "cashback_master")*100
-	if isNightHour(time.Now().In(clubLocation).Hour()) {
-		discountPct += talentEffect(userID.String(), "night_mode") * 100
-	}
-	if discountPct > maxDiscountPct {
-		discountPct = maxDiscountPct
-	}
+	discountPct := guestDiscountPct(userID, user.PaymentIncreasePct, now)
 	// В4-5: час стоит столько, сколько стоит ЗОНА этого ПК; клубный тариф
 	// остаётся запасным вариантом для машин без зоны.
 	baseRate := rateForComputer(zoneRateOf(&computer), club.BaseRatePLN)

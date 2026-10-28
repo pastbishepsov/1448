@@ -2521,17 +2521,52 @@ function pcTile(pc, soonAt){
 }
 function hhmm(iso){ const d = new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
-/* Г2-и3: пересадка живой сессии на свободный ПК (шторка ПК) */
-async function movePCSession(sessionId){
+/* Г2-и3: пересадка живой сессии на свободный ПК (шторка ПК). З16-и1а (решение основателя 28.10): в той же зоне
+   тариф сохраняется; в другую сервер отвечает 409 zone_change с тарифом сейчас и после — админ выбирает тариф новой
+   зоны или прежний, с причиной для журнала. Вопрос живёт в moveAsk ({sid, pc, d, msg, keep, why}): перерисовка шторки
+   свежими данными зала не стирает ни его, ни набранную причину. */
+let moveAsk = null;
+async function movePCSession(sessionId, tariff){
   const sel = document.getElementById('movePCSel');
   if (!sel || !sel.value) return;
+  const body = {computer_id: sel.value};
+  if (tariff) body.tariff = tariff;
+  if (tariff === 'keep'){
+    body.reason = ((moveAsk && moveAsk.why) || '').trim();
+    if (!body.reason){
+      toast('⚠ Тариф остаётся прежним — напиши почему: причина уйдёт в журнал');
+      const w = document.getElementById('moveWhy'); if (w) w.focus();
+      return;
+    }
+  }
   try{
-    const d = await api('/admin/sessions/' + sessionId + '/move',
-      {method:'POST', body:JSON.stringify({computer_id: sel.value})});
-    toast('✓ Пересажен за ' + d.computer);
+    const d = await api('/admin/sessions/' + sessionId + '/move', {method:'POST', body:JSON.stringify(body)});
+    moveAsk = null;
+    toast('✓ Пересажен за ' + d.computer + (d.tariff === 'new' ? ' · тариф ' + (d.zone || 'без зоны') + ' ' + fmtRate(d.rate_pln)
+      : d.tariff === 'keep' ? ' · тариф прежний' : ''));
     closeDrawer();
     await renderHall();
-  }catch(e){ toast('⚠ ' + e.message); }
+  }catch(e){
+    if (e.code === 'zone_change'){ // З16-и1а: другая зона — сперва выбор тарифа
+      moveAsk = {sid: sessionId, pc: sel.value, d: e.data || {}, msg: e.message, keep: false, why: ''};
+      renderPCDrawer(drawerPCId);
+      return;
+    }
+    toast('⚠ ' + e.message);
+  }
+}
+function moveAskHide(){ moveAsk = null; const b = document.getElementById('moveAsk'); if (b) b.remove(); }
+function moveAskHtml(a){
+  const d = a.d;
+  return `<div class="setwarn" id="moveAsk" style="margin-top:8px"><b>⚠ ${esc(a.msg)}</b>
+    <div class="actrow" style="margin-top:8px; gap:8px; flex-wrap:wrap">
+      <button class="btn mini" id="moveNew" onclick="movePCSession('${a.sid}','new')">Тариф ${esc(d.zone_to)} · ${esc(fmtRate(d.new_rate_pln))}</button>
+      <button class="btn ghost mini" id="moveKeep" onclick="moveAsk.keep = true; renderPCDrawer(drawerPCId)">Оставить ${esc(d.zone_from)} · ${esc(fmtRate(d.rate_pln))}…</button>
+    </div>
+    ${a.keep ? `<div style="margin-top:8px"><input id="moveWhy" class="input" maxlength="200" value="${esc(a.why)}"
+      oninput="moveAsk.why = this.value" placeholder="Почему тариф остаётся прежним — уйдёт в журнал">
+      <button class="btn ghost mini" id="moveKeepGo" style="margin-top:6px" onclick="movePCSession('${a.sid}','keep')">Пересадить, тариф ${esc(d.zone_from)} прежний</button></div>` : ''}
+  </div>`;
 }
 
 /* drawer ПК: инфо + завершение сессии (arm-confirm) + ремонт */
@@ -2558,7 +2593,7 @@ function renderPCDrawer(id){
     <table class="kv">
       <tr><td class="muted">Гость</td><td><b>${esc(ss.nickname)}</b>${ss.user_id
         ? ` · <a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${ss.user_id}')">карточка</a>` : ''}</td></tr>
-      ${ss.user_id ? `<tr><td class="muted">Деньги</td><td>${esc(fmtRate(ss.rate_pln))} · кошелёк <b>${fmtGr(ss.wallet_grosz)}</b>${reserveShort(ss)}</td></tr>
+      ${ss.user_id ? `<tr><td class="muted">Деньги</td><td>${esc(fmtRate(ss.rate_pln))}${ss.tariff_zone ? ' · тариф ' + esc(ss.tariff_zone) : ''} · кошелёк <b>${fmtGr(ss.wallet_grosz)}</b>${reserveShort(ss)}</td></tr>
       <tr><td class="muted">Хватит</td><td id="dUntil">${forecastLine(ss)}</td></tr>` : ''}
       ${seatWaitingShell(pc)
         ? `<tr><td class="muted">Статус</td><td>⏻ ждёт включения ПК — ${waitLeft(pc)} · деньги не идут</td></tr>
@@ -2584,13 +2619,15 @@ function renderPCDrawer(id){
     <div class="muted" style="margin-top:8px; text-align:center">XP и монеты начислятся за фактическое время</div>`}`;
     const movePCs = hallData.filter(p => p.id !== pc.id && !p.session && p.status === 'available');
     if (movePCs.length){
+      const ask = moveAsk && moveAsk.sid === pc.session.id && movePCs.some(p => p.id === moveAsk.pc) ? moveAsk : null; // З16-и1а
       body += `<div class="dsub">Пересадить за другой ПК</div>
       <div class="actrow" style="gap:8px">
-        <select id="movePCSel" class="input" style="flex:1; min-width:0">${movePCs.map(p =>
-          `<option value="${p.id}">${esc(p.name)}${p.zone ? ' · ' + esc(p.zone) : ''}</option>`).join('')}</select>
+        <select id="movePCSel" class="input" style="flex:1; min-width:0" onchange="moveAskHide()">${movePCs.map(p =>
+          `<option value="${p.id}"${ask && ask.pc === p.id ? ' selected' : ''}>${esc(p.name)}${p.zone ? ' · ' + esc(p.zone) : ''}</option>`).join('')}</select>
         <button class="btn ghost" onclick="movePCSession('${pc.session.id}')"><span data-ic="monitor"></span>Пересадить</button>
       </div>
-      <div class="muted" style="margin-top:6px">Сессия и биллинг не рвутся, тариф сохраняется</div>`;
+      ${ask ? moveAskHtml(ask) : ''}
+      <div class="muted" style="margin-top:6px">Сессия и биллинг не рвутся. В той же зоне тариф сохраняется, в другую — спросим: тариф её зоны или прежний с причиной для журнала</div>`;
     }
   } else if (pc.stuck){
     // Ж4-и3 (Ж-Р9): статус «занят», сессии нет — лечится кнопкой, не автоматом
@@ -9532,6 +9569,7 @@ function openDrawer(title, html){
 function closeDrawer(){
   drawerIsStaffChat = false; // Е6-и2: шторка закрылась — перерисовывать нечего
   shiftLeaving = false; // З15-и6: «Моя смена» с «Выйти» закрыли — остаёмся
+  moveAsk = null; // З16-и1а: вопрос о тарифе пересадки — только в своей шторке
   drawerPCId = null;
   drawerUserId = null; uData = null; uForm = null; uChat = null;
   const d = document.getElementById('drawer');

@@ -90,6 +90,22 @@ func zoneSnapshotOf(pc *models.Computer) (*uuid.UUID, string) {
 	return &id, name
 }
 
+// sameZoneID — одна ли зона (оба без зоны — тоже одна): пересадка и шторка ПК (З16-и1а).
+func sameZoneID(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+// zoneLabel — зона словами для журнала и ответов: пустое имя — «без зоны» (клубный тариф).
+func zoneLabel(name string) string {
+	if name == "" {
+		return "без зоны"
+	}
+	return name
+}
+
 // GET /admin/zones — зоны с ценами и числом машин (staff: цену видно у стойки).
 func handleAdminZones(c *gin.Context) {
 	var zones []models.Zone

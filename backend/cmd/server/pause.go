@@ -21,15 +21,21 @@ package main
 // движение мыши. Нет датчика (нет агента) — AFK не судим.
 //
 // Пересадка (Г2-и3): админ переносит живую сессию на другой свободный ПК
-// клуба без разрыва биллинга — тариф сессии зафиксирован при старте и
-// сознательно НЕ пересчитывается (пересадка чинит железо, а не цену). Снимок
-// зоны и ставок XP и монет (З16-и1, З-Р25) пересадка не трогает так же:
-// сессия помнит условия своей посадки, на каком бы ПК гость ни доиграл.
+// клуба без разрыва биллинга. В той же зоне тариф и снимок зоны (З16-и1)
+// не меняются — пересадка чинит железо, а не цену (Г2-и3). З16-и1а (решение
+// основателя 28.10): за ПК другой зоны (Standard → VIP) — тариф этой зоны,
+// как при посадке за него сейчас (цена зоны минус скидки гостя); минуты до
+// пересадки досчитываются по прежнему тарифу. Оставить прежний тариф и зону
+// админ может сам — только с причиной, она уходит в журнал. Ставки XP и
+// монет (З-Р25) пересадка не трогает никогда: они не про зону.
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -281,9 +287,11 @@ func handleResumeSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"paused_total_sec": s.PausedTotalSec})
 }
 
-// POST /admin/sessions/:id/move {computer_id} — пересадить гостя на другой
-// свободный ПК клуба без разрыва биллинга (Г2-и3): железо сломалось или
-// гость попросился. Тариф и снимок зоны и ставок не меняются (см. шапку файла).
+// POST /admin/sessions/:id/move {computer_id, tariff, reason} — пересадить
+// гостя на другой свободный ПК клуба без разрыва биллинга (Г2-и3): железо
+// сломалось или гость попросился. В другую зону (З16-и1а, см. шапку файла)
+// без tariff — 409 zone_change с тарифом сейчас и после; tariff «new» —
+// тариф и зона новой зоны, «keep» с причиной — прежние.
 func handleAdminMoveSession(c *gin.Context) {
 	var session models.Session
 	if err := db.First(&session, "id = ? AND status = ?", c.Param("id"), models.SessionStatusActive).Error; err != nil {
@@ -292,6 +300,8 @@ func handleAdminMoveSession(c *gin.Context) {
 	}
 	var req struct {
 		ComputerID string `json:"computer_id" binding:"required"`
+		Tariff     string `json:"tariff"` // З16-и1а: в другую зону — «new» (тариф её зоны) или «keep» (прежний, с причиной)
+		Reason     string `json:"reason"` // З16-и1а: почему тариф прежний — уходит в журнал
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondBindError(c, err)
@@ -319,10 +329,80 @@ func handleAdminMoveSession(c *gin.Context) {
 	var oldPC models.Computer
 	db.First(&oldPC, "id = ?", oldID)
 
+	// З16-и1а: зона сессии — её снимок (З16-и1); у сессии без снимка (начата прежней версией сервера) — зона её ПК.
+	fromZoneID, fromZone := session.ZoneID, session.ZoneName
+	if session.XPPerMin == nil {
+		fromZoneID, fromZone = oldPC.ZoneID, oldPC.Zone
+	}
+	now := time.Now()
+	reason := strings.TrimSpace(req.Reason)
+	tariff := "same" // та же зона: тариф и снимок не меняются
+	upd := map[string]any{"computer_id": target.ID}
+	rate, zone := session.EffectiveRatePLN, fromZone
+	if !sameZoneID(fromZoneID, target.ZoneID) {
+		toZoneID, toZone := zoneSnapshotOf(&target)
+		var guest models.User
+		db.Select("id", "payment_increase_pct").First(&guest, "id = ?", session.UserID)
+		var club models.Club
+		db.First(&club, "id = ?", session.ClubID)
+		newBase := rateForComputer(zoneRateOf(&target), club.BaseRatePLN)
+		newRate := effectiveRate(newBase, guestDiscountPct(session.UserID, guest.PaymentIncreasePct, now))
+		switch req.Tariff {
+		case "":
+			where := "зона " + toZone
+			if toZone == "" {
+				where = "без зоны"
+			}
+			c.JSON(http.StatusConflict, gin.H{"code": "zone_change", "message": fmt.Sprintf(
+				"%s — %s: тариф гостя станет %s zł/ч (сейчас %s, %s zł/ч)", target.Name, where,
+				plnRU(newRate), zoneLabel(fromZone), plnRU(session.EffectiveRatePLN)),
+				"zone_from": zoneLabel(fromZone), "zone_to": zoneLabel(toZone),
+				"rate_pln": session.EffectiveRatePLN, "new_rate_pln": newRate})
+			return
+		case "new":
+			tariff, rate, zone = "new", newRate, toZone
+			upd["zone_name"], upd["base_rate_pln"], upd["effective_rate_pln"] = toZone, newBase, newRate
+			upd["zone_id"] = nil
+			if toZoneID != nil {
+				upd["zone_id"] = *toZoneID
+			}
+			// прогноз «на сколько хватит» стал другим — предупреждения о балансе заново, как после пополнения
+			upd["warn15_at"], upd["warn5_at"] = nil, nil
+		case "keep":
+			if reason == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"code": "reason_required",
+					"message": "Тариф остаётся прежним — напиши почему: причина уйдёт в журнал"})
+				return
+			}
+			if utf8.RuneCountInString(reason) > 200 {
+				c.JSON(http.StatusBadRequest, gin.H{"code": "reason_long", "message": "Причина — до 200 символов"})
+				return
+			}
+			tariff = "keep"
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_tariff",
+				"message": "Тариф при пересадке в другую зону — new (тариф её зоны) или keep (прежний, с причиной)"})
+			return
+		}
+	}
+	// Тариф меняется — сперва досчитать сыгранные минуты по прежнему (и пакетами прежней зоны), как тик биллинга:
+	// иначе минуты с последнего тика ушли бы по новому. В окне [Готов!] и на нуле кошелька тик их не считает — и мы.
+	if tariff == "new" && !sessionWaitingReady(&session) && session.ZeroSince == nil {
+		var payer models.User
+		if _, serr := settleSessionMinutes(&session, &payer, effectiveElapsedMinutes(&session, now), now); serr != nil {
+			if errors.Is(serr, errSessionGone) {
+				c.JSON(http.StatusNotFound, gin.H{"code": "session_not_found", "message": "Активная сессия не найдена"})
+				return
+			}
+			respondDBError(c, serr)
+			return
+		}
+	}
+
 	err := db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.Session{}).
 			Where("id = ? AND status = ?", session.ID, models.SessionStatusActive).
-			Update("computer_id", target.ID)
+			Updates(upd)
 		if res.Error != nil {
 			return res.Error
 		}
@@ -352,11 +432,22 @@ func handleAdminMoveSession(c *gin.Context) {
 		movePayload["sens"] = sp
 	}
 	notifyShell(target.ID.String(), websocket.MsgSessionStart, movePayload)
-	notifyUser(session.UserID, "session_moved", map[string]any{"computer": target.Name})
+	// З16-и1а: гостю — и тариф после пересадки (tariff: same | new | keep)
+	notifyUser(session.UserID, "session_moved", map[string]any{"computer": target.Name, "zone": zone, "rate_pln": rate,
+		"tariff": tariff})
 	targetUID := session.UserID
-	logAdminAction(c, "session_move", &targetUID, fmt.Sprintf("%s → %s", oldPC.Name, target.Name))
+	details := fmt.Sprintf("%s → %s", oldPC.Name, target.Name)
+	switch tariff {
+	case "new":
+		details += fmt.Sprintf(" · тариф %s %s zł/ч (был %s %s zł/ч)", zoneLabel(zone), plnRU(rate), zoneLabel(fromZone),
+			plnRU(session.EffectiveRatePLN))
+	case "keep":
+		details += fmt.Sprintf(" · тариф %s %s zł/ч оставлен: %s", zoneLabel(zone), plnRU(rate), reason)
+	}
+	logAdminAction(c, "session_move", &targetUID, details)
 	hub.AdminBroadcast("session_move", map[string]any{
 		"nickname": guest.Nickname, "from": oldPC.Name, "to": target.Name,
 	})
-	c.JSON(http.StatusOK, gin.H{"session_id": session.ID, "computer": target.Name})
+	c.JSON(http.StatusOK, gin.H{"session_id": session.ID, "computer": target.Name, "tariff": tariff, "zone": zone,
+		"rate_pln": rate})
 }

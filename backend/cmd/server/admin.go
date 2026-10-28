@@ -665,6 +665,11 @@ func handleAdminComputers(c *gin.Context) {
 			if s.User != nil {
 				sess["user_id"] = s.UserID
 				sess["rate_pln"] = s.EffectiveRatePLN
+				// З16-и1а: тариф сессии — другой зоны, чем ПК (пересадили с прежним тарифом или зону ПК сменили
+				// под гостем), — в шторке «18,00 zł/ч · тариф Standard»
+				if s.XPPerMin != nil && !sameZoneID(s.ZoneID, pc.ZoneID) {
+					sess["tariff_zone"] = zoneLabel(s.ZoneName)
+				}
 				sess["billed_minutes"] = s.BilledMinutes
 				sess["charged_grosz"] = s.ChargedGrosz
 				sess["zero_since"] = s.ZeroSince
