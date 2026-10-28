@@ -85,7 +85,14 @@ func handleGetEconomy(c *gin.Context) {
 	_ = db.First(&me, "id = ?", userID).Error
 
 	caseHunter := talentEffect(userID, "case_hunter")
+	// З16-и1 (З-Р25): гость за ПК — ставки его сессии: калькулятор киоска и «≈XP» в PWA сходятся с тем, что начислит
+	// finishSession, даже если владелец поменял ставки, пока гость играет. Без сессии — нынешние: по ним пойдёт следующая.
 	rates := economyRates()
+	var live models.Session
+	if db.Select("xp_per_min", "coins_per_min").Where("user_id = ? AND status = ?", userID, models.SessionStatusActive).
+		Limit(1).Find(&live).RowsAffected == 1 {
+		rates = sessionRates(&live, rates)
+	}
 	resp := gin.H{
 		"wallet_grosz": me.WalletGrosz,
 		"wallet_pln":   models.PLNFromGrosz(me.WalletGrosz),
@@ -107,7 +114,8 @@ func handleGetEconomy(c *gin.Context) {
 			"max": next == nil,
 		},
 		// К3-и1 (№15): ставки — из настроек клуба, а не константы: калькулятор
-		// на киоске обязан сходиться с тем, что начислит finishSession.
+		// на киоске обязан сходиться с тем, что начислит finishSession (в сессии —
+		// её снимок, З16-и1).
 		"rates": gin.H{
 			"coins_per_min": rates.CoinsPerMin, "xp_per_min": rates.XPPerMin,
 			"deposit_coins_per_pln": rates.CoinsPerPLN,

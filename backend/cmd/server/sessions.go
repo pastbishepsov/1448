@@ -75,9 +75,9 @@ func walletLowMessage(minStart int64, needPLN, walletPLN float64, coinMin, packM
 }
 
 // economyRates — ставки начисления из настроек клуба (settings, А5) с
-// дефолтами кода. Одна точка чтения для finishSession и GET /me/economy
-// (К3-и1): раньше калькулятор отдавал константы и расходился с начислением,
-// стоило владельцу поменять ставку в админке.
+// дефолтами кода. Одна точка чтения для снимка сессии (startSessionFor,
+// З16-и1) и GET /me/economy (К3-и1): раньше калькулятор отдавал константы и
+// расходился с начислением, стоило владельцу поменять ставку в админке.
 type economyRateSet struct {
 	XPPerMin, CoinsPerMin, CoinsPerPLN int64
 }
@@ -98,6 +98,21 @@ func sessionRewards(minutes int, r economyRateSet, xpBoost float64, rank Account
 	xp = models.RoundToStep(int64(math.Round(float64(boostedXP(int64(minutes)*r.XPPerMin, xpBoost))*rank.XPMult)), 5)
 	coins = models.RoundToStep(int64(math.Round(float64(int64(minutes)*r.CoinsPerMin)*rank.CoinMult)), 5)
 	return xp, coins
+}
+
+// sessionRates — ставки начисления сессии (З16-и1, З-Р25): её снимок на начало — смена ставок в «Экономике», пока
+// гость играет, действует со следующей сессии (ревью, сценарий M: 10 минут — 1000 монет после 2 → 100 за минуту до
+// конца). Ставки без снимка (сессия, начатая прежней версией сервера) — нынешние из cur; курс монет за пополнение у
+// сессии не снимается — он не про игру. Чистая функция (тест).
+func sessionRates(s *models.Session, cur economyRateSet) economyRateSet {
+	r := cur
+	if s.XPPerMin != nil {
+		r.XPPerMin = *s.XPPerMin
+	}
+	if s.CoinsPerMin != nil {
+		r.CoinsPerMin = *s.CoinsPerMin
+	}
+	return r
 }
 
 // POST /me/sessions/start — начать игровую сессию за компьютером.
@@ -295,6 +310,10 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		wol = autoWakeOnSeat(&computer)
 	}
 
+	// З16-и1 (З-Р25): сессия помнит условия — как и тариф выше, зона ПК и ставки XP и монет снимаются сейчас;
+	// finishSession начисляет по ним, сколько бы владелец ни менял ставки, пока гость играет.
+	zoneID, zoneName := zoneSnapshotOf(&computer)
+	earn := economyRates()
 	session := models.Session{
 		UserID:           userID,
 		ComputerID:       computer.ID,
@@ -306,6 +325,10 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 		ShellWaitUntil:   shellWait,
 		BaseRatePLN:      baseRate,
 		EffectiveRatePLN: rate,
+		ZoneID:           zoneID,
+		ZoneName:         zoneName,
+		XPPerMin:         &earn.XPPerMin,
+		CoinsPerMin:      &earn.CoinsPerMin,
 	}
 
 	// Сессия началась — придержание своё дело сделало (Е1-и5).
@@ -564,9 +587,10 @@ func finishSession(session *models.Session, minutesOverride *int, reason string)
 	// Ранг аккаунта (по наигранным часам) множит XP/coins и бустит кейсы.
 	rank, _ := accountRankFor(userHoursPlayed(userID))
 
-	// Ставки начисления — из настроек клуба (settings, спринт А5); формула —
-	// одна на начисление и калькулятор (К3-и1), см. sessionRewards.
-	xpGained, coinsGained := sessionRewards(minutes, economyRates(), talentEffect(userID, "xp_boost"), rank)
+	// Ставки начисления — снимок сессии на её начало (З16-и1, З-Р25; без снимка —
+	// из настроек клуба, спринт А5); формула — одна на начисление и калькулятор
+	// (К3-и1), см. sessionRewards.
+	xpGained, coinsGained := sessionRewards(minutes, sessionRates(session, economyRates()), talentEffect(userID, "xp_boost"), rank)
 
 	// Первый визит за день: +50 XP (фиксировано, без модификаторов — ТЗ 4.1).
 	dailyBonusXP := int64(0)

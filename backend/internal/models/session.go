@@ -77,6 +77,15 @@ type Session struct {
 	// трате»; NULL — сессия до ставок.
 	VatPct *int `json:"vat_pct,omitempty" gorm:"column:vat_pct"`
 
+	// З16-и1 (миграция 091, З-Р25): снимок условий на начало сессии — зона ПК (id и имя: имя остаётся, если зону потом
+	// переименуют или удалят; ПК без зоны — nil и пусто) и ставки XP и монет за минуту из настроек; по ставкам начисляет
+	// finishSession (sessionRates). Пишет startSessionFor, пересадка не меняет — как и тариф. Ставки nil — сессия,
+	// начатая прежней версией сервера: начисление берёт нынешние.
+	ZoneID      *uuid.UUID `json:"zone_id,omitempty" gorm:"type:uuid"`
+	ZoneName    string     `json:"zone_name" gorm:"size:32;not null"`
+	XPPerMin    *int64     `json:"xp_per_min,omitempty" gorm:"column:xp_per_min"`
+	CoinsPerMin *int64     `json:"coins_per_min,omitempty" gorm:"column:coins_per_min"`
+
 	// Связи
 	User     *User     `json:"user,omitempty" gorm:"foreignKey:UserID"`
 	Computer *Computer `json:"computer,omitempty" gorm:"foreignKey:ComputerID"`

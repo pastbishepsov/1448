@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -73,6 +74,20 @@ func zoneRateOf(pc *models.Computer) *float64 {
 		return nil
 	}
 	return &z.RatePLN
+}
+
+// zoneSnapshotOf — зона ПК снимком в сессию (З16-и1): id и имя; ПК без зоны — nil и пусто. Имя — из зоны (кэш имени у
+// ПК — запасной): в сессии оно остаётся и после переименования или удаления зоны.
+func zoneSnapshotOf(pc *models.Computer) (*uuid.UUID, string) {
+	if pc.ZoneID == nil {
+		return nil, ""
+	}
+	id, name := *pc.ZoneID, pc.Zone
+	var z models.Zone
+	if db.Select("name").First(&z, "id = ?", id).Error == nil {
+		name = z.Name
+	}
+	return &id, name
 }
 
 // GET /admin/zones — зоны с ценами и числом машин (staff: цену видно у стойки).
