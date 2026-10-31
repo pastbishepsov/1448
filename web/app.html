@@ -888,6 +888,7 @@ const STR_RU = {
   ntf_afk_warn: '💤 Ты давно не за компом — сессия скоро встанет на паузу',
   ntf_afk_pause: '💤 AFK: сессия на паузе — вернись за ПК',
   ntf_moved: '🖥 Тебя пересадили за {c} — сессия продолжается',
+  ntf_moved_rate: ' · тариф {z}{r} zł/ч',
   wal_ops: 'Операции кошелька',
   wtx_deposit: 'Пополнение',
   wtx_session_spend: 'Время за ПК',
@@ -1168,6 +1169,7 @@ const STR_EN = {
   ntf_afk_warn: '💤 You’ve been away — the session will pause soon',
   ntf_afk_pause: '💤 AFK: session paused — come back to the PC',
   ntf_moved: '🖥 You were moved to {c} — the session continues',
+  ntf_moved_rate: ' · {z}rate {r} zł/h',
   wal_ops: 'Wallet operations',
   wtx_deposit: 'Top-up',
   wtx_session_spend: 'PC time',
@@ -1445,6 +1447,7 @@ const STR_PL = {
   ntf_afk_warn: '💤 Długo cię nie ma — sesja zaraz stanie na pauzie',
   ntf_afk_pause: '💤 AFK: sesja na pauzie — wróć do PC',
   ntf_moved: '🖥 Przesadzono cię na {c} — sesja trwa dalej',
+  ntf_moved_rate: ' · stawka {z}{r} zł/h',
   wal_ops: 'Operacje portfela',
   wtx_deposit: 'Wpłata',
   wtx_session_spend: 'Czas przy PC',
@@ -3109,8 +3112,9 @@ function ntfText(n){
       return STR.ntf_afk_warn;
     case 'afk_pause':
       return STR.ntf_afk_pause;
-    case 'session_moved':
-      return T('ntf_moved', {c: p.computer || 'ПК'});
+    case 'session_moved': // З16-и1в: за ПК другой зоны — её тариф
+      return T('ntf_moved', {c: p.computer || 'ПК'})
+        + (p.tariff === 'new' && p.rate_pln > 0 ? T('ntf_moved_rate', {z: p.zone ? p.zone + ' ' : '', r: fmtPln(p.rate_pln)}) : '');
     case 'booking_soon':
       return T('ntf_bk_soon', {t: p.start_time ? hm(p.start_time) : '—', m: p.minutes_left || 0});
     case 'booking_deadline':
@@ -3271,7 +3275,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-09-27.1';
+const APP_VER = '2026-10-31.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
