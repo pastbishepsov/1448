@@ -1752,6 +1752,7 @@ async function loadMe(){
     }
     paintPwdGate(); // Е0-и5в: флаг мог появиться, пока приложение было открыто
     renderTop();
+    if (activeSession) renderLive(); // З16-и1д: настройки пришли позже сессий — кнопка паузы по ним
   }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
 }
 
@@ -2003,13 +2004,16 @@ async function appResume(){
   catch(e){ toast(T('toast_err', {m: e.message})); }
 }
 
+// З16-и1д: пауза — только когда владелец её включил и это уже известно (как pauseOn в киоске): пока /me/economy не
+// пришёл, кнопки нет; пришёл позже сессий — loadMe перерисует карточку
+function pauseOn(){ return !!(economy && economy.pause_limit_min > 0); }
 function renderLive(){
   const el = document.getElementById('liveCard');
   if (!el) return;
   if (!activeSession){ el.classList.add('hidden'); el.dataset.ready = ''; stopLive(); renderWaitlist(); updateCallBtn(); return; }
   // Е1-и6: 'w' — посадили, но время ещё не пошло. Ставим первым: пауза у
   // неподтверждённой сессии невозможна, а «идёт» было бы прямой неправдой.
-  const pkey = waitingReady() ? 'w' : (activeSession.paused_at ? 'p' : 'a'); // Г2: перестроить при смене
+  const pkey = waitingReady() ? 'w' : (activeSession.paused_at ? 'p' : (pauseOn() ? 'a+' : 'a')); // Г2: перестроить при смене (З16-и1д: и паузы)
   if (el.dataset.ready !== pkey){
     el.dataset.ready = pkey;
     el.innerHTML = pkey === 'w' ? `
@@ -2027,7 +2031,7 @@ function renderLive(){
       <div class="muted">≈ +<b class="cnum" id="liveXP" data-v="0" style="color:var(--txt)">0</b> ${esc(STR.live_xp_lbl)}</div>
       ${activeSession.pack_minutes_used > 0
         ? `<div class="muted">${esc(T('live_pack', {n: activeSession.pack_minutes_used}))}</div>` : ''}
-      ${economy && economy.pause_limit_min === 0 ? '' : `<button class="btn ghost slim" style="margin-top:8px" onclick="appPause()">${esc(STR.btn_pause)}</button>`}`; // К4-и4: паузы нет, пока владелец её не включил
+      ${pauseOn() ? `<button class="btn ghost slim" style="margin-top:8px" onclick="appPause()">${esc(STR.btn_pause)}</button>` : ''}`; // К4-и4: паузы нет, пока владелец её не включил (З16-и1д: и пока это неизвестно)
   }
   el.classList.remove('hidden');
   tickLive();
@@ -3275,7 +3279,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-10-31.1';
+const APP_VER = '2026-11-01.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
