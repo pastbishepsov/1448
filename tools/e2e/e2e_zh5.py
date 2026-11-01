@@ -181,7 +181,10 @@ n = api("GET", "/admin/users?filter=new", None, a1)[1]
 ids = {u["id"] for u in n["users"]}
 nd = n.get("new_days", 14)  # З5-и1 (З-Р10): новые — первое появление (первая сессия, без сессий — регистрация) не раньше seg_new_days назад
 FIRST = "COALESCE((SELECT MIN(s.started_at) FROM sessions s WHERE s.user_id = users.id AND s.status <> 'cancelled'), users.registered_at)"
-stale = sql(f"SELECT count(*) FROM users WHERE id IN ({','.join(repr(i) for i in ids) or 'NULL'}) AND {FIRST} < now() - interval '{nd} days'")
+# начало окна — как newSince на сервере: N суток по часам клуба (AddDate), а не N×24 ч сессии psql в UTC — иначе две недели
+# после перевода часов границы расходятся на час, и гость с первым появлением в этот час «новый» только для сервера (З16-и1г)
+SINCE = f"(((now() AT TIME ZONE 'Europe/Warsaw') - interval '{nd} days') AT TIME ZONE 'Europe/Warsaw')"
+stale = sql(f"SELECT count(*) FROM users WHERE id IN ({','.join(repr(i) for i in ids) or 'NULL'}) AND {FIRST} < {SINCE}")
 # Не от календаря: у Guest29 первое появление — его первая сессия на стенде (с каждым днём старше), поэтому «новый» он или нет —
 # по правилу; заведомо новый и заведомо давний — Guest28 без визитов: регистрация вчера и 400 дней назад (поиском — мимо лимита в 100 строк)
 new_ids = lambda q: {u["id"] for u in api("GET", f"/admin/users?filter=new&q={q}", None, a1)[1]["users"]}
@@ -190,7 +193,7 @@ sql(f"UPDATE users SET registered_at = now() - interval '1 day' WHERE id = '{g28
 fresh28 = g28 in new_ids("Guest28")
 sql(f"UPDATE users SET registered_at = now() - interval '400 days' WHERE id = '{g28}'")  # как в reset()
 old28 = g28 in new_ids("Guest28")
-want29 = sql(f"SELECT {FIRST} >= now() - interval '{nd} days' FROM users WHERE id = '{g29}'") == "t"
+want29 = sql(f"SELECT {FIRST} >= {SINCE} FROM users WHERE id = '{g29}'") == "t"
 in29 = g29 in new_ids("Guest29")
 check(f"filter=new: гость без визитов (Guest28) с регистрацией вчера — новый, 400 дней назад — нет; Guest29 — по своему первому появлению; "
       f"у всех в списке первое появление не раньше {nd} дней",

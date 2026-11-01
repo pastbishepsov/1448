@@ -111,10 +111,14 @@ check("скрытая категория → 400 category_hidden; выключе
       s == 400 and d.get("code") == "category_hidden" and s2 == 400 and d2.get("code") == "method_off" and s3 == 200,
       J([s, d.get("code"), s2, d2.get("code"), s3]))
 s, d = api("PATCH", f"/admin/expense-templates/{tid}", {"name": "Z9C ИНТЕРНЕТ"}, "boss")
-s2, d2 = api("PATCH", f"/admin/expense-templates/{tid}", {"day": 31}, "boss")
+# число «на время» — 31 (нет такого в месяце — последний день); 31-го оно и есть сегодняшнее, и возврат ничего бы не
+# менял — тогда 30: срок этого месяца — вчера, а месяц шаблона — этот, значит он ждёт (З16-и1г)
+X = 31 if D < 31 else 30
+XDUE, XWHY = (LAST, "последний день месяца") if X == 31 else (due_of(M, X), "вчера — этот месяц ждёт")
+s2, d2 = api("PATCH", f"/admin/expense-templates/{tid}", {"day": X}, "boss")
 s3, d3 = api("PATCH", f"/admin/expense-templates/{tid}", {"day": D, "amount_pln": 4500, "method": "bank"}, "boss")
-check(f"переименовать в имя второго → 409 с его id; число 31 → ближайший срок {LAST} (последний день месяца); вернуть число — «изменения» 1",
-      s == 409 and d.get("id") == tid2 and s2 == 200 and (d2.get("template") or {}).get("next_due") == LAST
+check(f"переименовать в имя второго → 409 с его id; число {X} → ближайший срок {XDUE} ({XWHY}); вернуть число — «изменения» 1",
+      s == 409 and d.get("id") == tid2 and s2 == 200 and (d2.get("template") or {}).get("next_due") == XDUE
       and s3 == 200 and d3.get("changed") == 1, J([s, s2, (d2.get("template") or {}).get("next_due"), s3, d3.get("changed")]))
 
 section("ждут внесения")
