@@ -378,6 +378,60 @@
     border:1px solid var(--hair); border-radius:10px; padding:7px 10px; font-size:12px; color:var(--dim);
     box-shadow:0 10px 28px rgba(0,0,0,.5)}
   .chtip b{display:block; color:var(--txt); font-size:15px; font-variant-numeric:tabular-nums}
+  /* З17-и3 (№13 «б»): карта загрузки «час × день недели». Строка — клубные сутки, клетка — час (зазор 2 px), цвет —
+     занятость: пять ступеней одного красного от тёмного к светлому (ярче — плотнее; соседние ступени различимы и при
+     дальтонизме, ΔE OKLab ≥ 9,8), ноль — бледная клетка, закрыто по сменам — пунктир (с точкой — играли и в закрытый
+     час). Над строкой — скобки смен с именем. Подсказка — общая с графиками (chTip), Tab — строка, ← → — часы. */
+  .chart.heat{--hm0:rgba(255,255,255,.045); --hm1:#721c1f; --hm2:#a82d30; --hm3:#de4544; --hm4:#fd776e; --hm5:#ffb5ac}
+  .chart.heat .hmplot{background:var(--panel); border:1px solid var(--hair); border-radius:14px; padding:10px 14px 10px}
+  .chart.heat .hmrow{display:grid; grid-template-columns:26px minmax(0,1fr); column-gap:8px; align-items:end}
+  .chart.heat .hmrow + .hmrow{margin-top:3px}
+  .chart.heat .hmday{font-size:11px; color:var(--dim); line-height:26px; text-align:right}
+  .chart.heat .hmline{min-width:0}
+  .chart.heat .hmlane{position:relative; height:13px}
+  .chart.heat .nosh .hmlane{display:none}
+  .chart.heat .hmsh{position:absolute; top:6px; bottom:0; border:1px solid rgba(201,204,214,.42); border-bottom:0;
+    border-radius:5px 5px 0 0; container-type:inline-size}
+  @container (max-width:44px){ .chart.heat .hmsh span{display:none} } /* имя в узкой скобке не влезет — оно в подсказке */
+  .chart.heat .hmsh.cl{border-left:0; border-top-left-radius:0}
+  .chart.heat .hmsh.cr{border-right:0; border-top-right-radius:0}
+  .chart.heat .hmsh span{position:absolute; left:6px; top:-7px; max-width:calc(100% - 12px); padding:0 4px;
+    background:var(--panel); font-size:10.5px; line-height:13px; color:var(--neu); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis}
+  .chart.heat .bars{height:26px; grid-template-columns:repeat(24,minmax(0,1fr))}
+  .chart.heat .bars:focus-visible{outline-offset:2px}
+  .chart.heat .bar{display:block}
+  .chart.heat .bar i{position:absolute; inset:1px; width:auto; border-radius:3px; background:var(--hm0)}
+  .chart.heat .bar i.h1, .chart.heat .hmleg i.h1{background:var(--hm1)}
+  .chart.heat .bar i.h2, .chart.heat .hmleg i.h2{background:var(--hm2)}
+  .chart.heat .bar i.h3, .chart.heat .hmleg i.h3{background:var(--hm3)}
+  .chart.heat .bar i.h4, .chart.heat .hmleg i.h4{background:var(--hm4)}
+  .chart.heat .bar i.h5, .chart.heat .hmleg i.h5{background:var(--hm5)}
+  .chart.heat .hmleg i.h0{background:var(--hm0)}
+  .chart.heat .bar.off i, .chart.heat .hmleg i.hmoff{background:transparent; border:1px dashed rgba(255,255,255,.16)}
+  .chart.heat .bar.play i::after, .chart.heat .hmleg i.hmplay::after{content:''; position:absolute; left:50%; top:50%;
+    width:4px; height:4px; margin:-2px 0 0 -2px; border-radius:50%; background:var(--neu)}
+  .chart.heat .hmleg i.hmplay{position:relative}
+  .chart.heat .bar.on{z-index:1}
+  .chart.heat .bar.on i{box-shadow:0 0 0 2px var(--txt)}
+  .chart.heat .hmnone{height:26px; display:flex; align-items:center; padding:0 10px; font-size:11.5px; color:var(--dim);
+    border:1px dashed var(--hair); border-radius:6px}
+  .chart.heat .hmx{display:grid; grid-template-columns:repeat(24,minmax(0,1fr)); margin:6px 0 0 34px; font-size:11px;
+    color:var(--dim)}
+  .chart.heat .hmx span{display:flex; justify-content:center; white-space:nowrap}
+  .chart.heat .hmleg{flex-wrap:wrap; gap:6px 16px}
+  .chart.heat .hmleg .hmsc b{display:inline-flex; gap:2px; margin:0 2px}
+  .chart.heat .hmleg i{width:14px}
+  .chart.heat .hmtable th, .chart.heat .hmtable td{padding:6px 5px; font-size:12px}
+  .chart.heat .hmtable th{letter-spacing:0; font-size:11px}
+  @media (max-width:640px){
+    .chart.heat .hmplot{padding:9px 8px 8px}
+    .chart.heat .hmrow{grid-template-columns:20px minmax(0,1fr); column-gap:5px}
+    .chart.heat .hmday{line-height:22px; font-size:10.5px}
+    .chart.heat .bars, .chart.heat .hmnone{height:22px}
+    .chart.heat .hmsh span{font-size:10px}
+    .chart.heat .hmx{margin-left:25px; font-size:10px}
+  }
   /* В2: плитки товаров — продажа в один тап у стойки */
   .gtiles{display:flex; flex-wrap:wrap; gap:10px; margin:2px 0 10px}
   .gtile{background:var(--card); border:1px solid var(--hair); border-radius:12px; padding:10px 14px;
@@ -6158,7 +6212,9 @@ async function renderReports(){
   if (!body) return;
   body.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try{
-    const d = await api('/admin/reports/' + repTab + '?' + repQuery());
+    // З17-и3: «Загрузке» — и шаблоны смен для карты (не загрузились — карта без скобок)
+    const [d, sh] = await Promise.all([api('/admin/reports/' + repTab + '?' + repQuery()),
+      repTab === 'load' ? api('/admin/shifts').catch(() => null) : null]);
     const p = d.period, pv = d.prev_period;
     document.getElementById('repLabel').textContent =
       repDate(p.from) + ' — ' + repDate(p.to) + ' · ' + repPlural(p.days, 'день', 'дня', 'дней') +
@@ -6167,7 +6223,7 @@ async function renderReports(){
       const el = document.getElementById(id);
       el.value = ruDate(v); el.classList.remove('bad');
     }
-    ({money:paintMoney, guests:paintGuests, load:paintLoad, staff:paintStaff, coins:paintCoins})[repTab](d);
+    ({money:paintMoney, guests:paintGuests, load:paintLoad, staff:paintStaff, coins:paintCoins})[repTab](d, sh);
     if (repTab === 'coins') loadBurnPreview();
     mountIcons(body);
   }catch(e){
@@ -6499,9 +6555,106 @@ function paintGuests(d){
         'Никто не пропал — все возвращаются')}`;
 }
 
-function paintLoad(d){
+/* З17-и3 (№13 «б», З-Р6): карта загрузки «час × день недели» по heat[7][24] (З17-и2). Строка — клубные сутки дня
+   недели (с report_hour: ночь после пятницы — в пятнице, как у смен), столбцы — часы от report_hour. Цвет — занятость
+   часа: пять ступеней одного красного от 0 до самого плотного часа периода (его число — в легенде), ноль — бледная
+   клетка, закрыто по сменам — пунктир (с точкой — играли и в закрытый час). Над строкой — скобки активных шаблонов
+   смен (день смены — день её начала, как в графике). Подсказка — общая с графиками: наведение, Tab — строка, ← → —
+   часы; «Числа таблицей» — занятость матрицей. Дня недели нет в периоде — строка «в периоде нет …». */
+const HEAT_DOW = [['понедельник', 'понедельника', 'понедельников'], ['вторник', 'вторника', 'вторников'],
+  ['среду', 'среды', 'сред'], ['четверг', 'четверга', 'четвергов'], ['пятницу', 'пятницы', 'пятниц'],
+  ['субботу', 'субботы', 'суббот'], ['воскресенье', 'воскресенья', 'воскресений']];
+// сколько раз каждый день недели (пн — 0) входит в период
+function heatDays(p){
+  const n = [0, 0, 0, 0, 0, 0, 0];
+  if (!p || !p.from || !p.to) return n;
+  for (const t = new Date(p.from + 'T12:00:00'), end = new Date(p.to + 'T12:00:00'); t <= end; t.setDate(t.getDate() + 1))
+    n[(t.getDay() + 6) % 7]++;
+  return n;
+}
+// скобки смен по строкам: смена с днём начала w идёт от w·1440 + начало (минуты недели клуба — от report_hour
+// понедельника) на свою длину; через границу клубных суток — два куска: у первого нет правого бортика, у второго — левого.
+// Пересекающиеся смены (их можно сохранить «всё равно», З15-и1) — ярусами: lv — ярус скобки в строке, 0 — верхний
+function heatShifts(shifts, rh){
+  const W = 7 * 1440, out = [[], [], [], [], [], [], []];
+  for (const s of shifts || []){
+    if (!s.active) continue;
+    const len = ((s.end_min - s.start_min) % 1440 + 1440) % 1440 || 1440, t = mmHH(s.start_min) + '–' + mmHH(s.end_min);
+    for (let w = 0; w < 7; w++){
+      if (!(s.days_mask & (1 << w))) continue;
+      let a = ((w * 1440 + s.start_min - rh * 60) % W + W) % W, left = len, cut = false;
+      while (left > 0){
+        const r = Math.floor(a / 1440), from = a - r * 1440, to = Math.min(1440, from + left);
+        out[r].push({name: s.name, t, from, to, cl: cut, cr: from + left > 1440});
+        left -= to - from; a = (a + to - from) % W; cut = true;
+      }
+    }
+  }
+  for (const ps of out){
+    ps.sort((x, y) => x.from - y.from || (y.to - y.from) - (x.to - x.from));
+    const ends = [];
+    for (const p of ps){
+      let l = ends.findIndex(e => e <= p.from);
+      if (l < 0){ l = ends.length; ends.push(0); }
+      ends[l] = p.to; p.lv = l;
+    }
+  }
+  return out;
+}
+function repHeat(d, shifts, rh){
+  const heat = d.heat || [];
+  if (heat.length !== 7 || !heat.some(r => (r || []).some(c => c && c.hours > 0))) return repEmpty('За этот период данных нет');
+  if (!(d.capacity || {}).computers) return repEmpty('ПК в ёмкости нет — занятость не считается');
+  const n = heatDays(d.period), sh = shifts ? heatShifts(shifts, rh) : null;
+  const lv = sh ? Math.max(1, ...[].concat(...sh).map(p => p.lv + 1)) : 1; // ярусов скобок — одинаково во всех строках
+  const cols = Array.from({length: 24}, (_, i) => (rh + i) % 24);
+  const cell = (w, h) => (heat[w] || [])[h] || {};
+  let max = 0, off = false, play = false;
+  heat.forEach((r, w) => { if (n[w]) cols.forEach(h => { const c = cell(w, h);
+    if (c.occupancy_pct == null){ off = true; if (c.hours > 0) play = true; } else max = Math.max(max, +c.occupancy_pct); }); });
+  const step = v => v <= 0 || max <= 0 ? 0 : Math.min(5, Math.ceil(v / max * 5 - 1e-9));
+  const span = h => h + ':00–' + (h + 1) % 24 + ':00';
+  const rows = heat.map((r, w) => {
+    const lane = sh ? `<div class="hmlane" style="height:${lv * 13}px">${sh[w].map(p => `<div class="hmsh${p.cl ? ' cl' : ''}${p.cr ? ' cr' : ''}" `
+      + `style="left:calc(${(p.from / 14.4).toFixed(3)}% + 1px); width:calc(${((p.to - p.from) / 14.4).toFixed(3)}% - 2px); top:${p.lv * 13 + 6}px" `
+      + `title="${esc(p.name + ' · ' + p.t)}"><span>${esc(p.name)}</span></div>`).join('')}</div>` : '';
+    if (!n[w]) return `<div class="hmrow"><span class="hmday">${DAYS_RU[w]}</span><div class="hmline">${lane}`
+      + `<div class="hmnone">в периоде нет ${HEAT_DOW[w][2]}</div></div></div>`;
+    const cells = cols.map((h, i) => {
+      const c = cell(w, h), v = c.occupancy_pct, k = v == null ? 0 : step(+v);
+      const names = sh ? [...new Set(sh[w].filter(p => p.from < (i + 1) * 60 && p.to > i * 60).map(p => p.name))] : null;
+      const when = (h < rh ? 'ночь с ' + DAYS_RU[w] + ' на ' + DAYS_RU[(w + 1) % 7] : DAYS_RU[w]) + ' · ' + span(h);
+      const full = v == null ? 'клуб закрыт по сменам' : repPct(v);
+      const more = [v != null || c.hours > 0 ? 'наиграно ' + repHours(c.hours) : '',
+        c.sessions ? repPlural(c.sessions, 'сессия', 'сессии', 'сессий') : '',
+        v != null && n[w] > 1 ? 'за ' + repPlural(n[w], ...HEAT_DOW[w]) : '',
+        names ? (names.length ? (names.length > 1 ? 'смены ' : 'смена ') + names.join(' и ') : 'смены нет') : ''].filter(Boolean).join(' · ');
+      return `<div class="bar${v == null ? ' off' + (c.hours > 0 ? ' play' : '') : ''}" data-v="${v ?? ''}" data-date="${esc(when)}" `
+        + `data-full="${esc(full)}" data-more="${esc(more)}" data-tip="${esc(when + ' · ' + full + (more ? ' · ' + more : ''))}">`
+        + `<i${k ? ` class="h${k}"` : ''}></i></div>`;
+    }).join('');
+    return `<div class="hmrow"><span class="hmday">${DAYS_RU[w]}</span><div class="hmline">${lane}<div class="bars" tabindex="0" `
+      + `aria-label="${DAYS_RU[w]} — занятость по часам, стрелки ← → по часам">${cells}</div></div></div>`;
+  }).join('');
+  const leg = `<div class="chleg hmleg"><span class="hmsc" title="ступени — доли самого плотного часа периода: до 20, 40, 60, 80 и 100 % от него">0%<b>`
+    + [0, 1, 2, 3, 4, 5].map(k => `<i class="h${k}"></i>`).join('') + `</b>${repPct(max)}</span>`
+    + (off ? '<span><i class="hmoff"></i>клуб закрыт по сменам</span>' : '')
+    + (play ? '<span><i class="hmoff hmplay"></i>играли и в закрытый час</span>' : '') + '</div>';
+  const table = `<details class="chtable"><summary>Числа таблицей</summary><div class="tablewrap hmtable"><table>`
+    + `<tr><th>День</th>${cols.map(h => '<th>' + h + ':00</th>').join('')}</tr>`
+    + heat.map((r, w) => `<tr><td><b>${DAYS_RU[w]}</b></td>` + (n[w] ? cols.map(h => { const v = cell(w, h).occupancy_pct;
+        return `<td><span class="repL">${h}:00</span>${v == null ? '—' : repPct(v)}</td>`; }).join('')
+        : `<td colspan="24" class="muted">в периоде нет ${HEAT_DOW[w][2]}</td>`) + '</tr>').join('')
+    + '</table></div></details>';
+  return `<figure class="chart heat">${leg}<div class="hmplot${sh && sh.some(r => r.length) ? '' : ' nosh'}">${rows}`
+    + `<div class="hmx">${cols.map((h, i) => `<span>${i % 3 === 0 ? h + ':00' : ''}</span>`).join('')}</div></div>${table}</figure>`;
+}
+
+function paintLoad(d, sh){
   const t = d.totals, k = d.delta, w = d.prev || {}, cap = d.capacity || {};
   const days = d.days || [], hours = d.hours || [];
+  const rh = Number((ovCache && ovCache.report_hour) ?? 8), shifts = sh && sh.shifts; // З17-и3: граница суток и смены — для карты
+  const act = (shifts || []).filter(s => s.active).length;
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
        ${repKpi('Наиграно', repHours(t.hours), k.hours, {was:repHours(w.hours)})}
@@ -6518,8 +6671,13 @@ function paintLoad(d){
         cols:['День', 'Наиграно', 'Сессий']})}
      <div class="sect">Загрузка по часам суток${d.peak_hour >= 0 ? ' · пик в ' + d.peak_hour + ':00' : ''}</div>
      ${repChart(hours, {name:'Загрузка по часам суток', value:x => x.hours, unit:'ч', tick:repTickH, fmt:repHours, full:repHours,
-        date:x => x.hour + ':00', more:x => repPlural(x.sessions, 'сессия', 'сессии', 'сессий'),
-        x:(x, i) => i % 3 === 0 ? x.hour + ':00' : '', cols:['Час', 'Наиграно', 'Сессий'], last:false})}
+        date:x => x.hour + ':00', more:x => repPlural(x.sessions, 'сессия', 'сессии', 'сессий')
+          + (x.occupancy_pct == null ? '' : ' · занятость ' + repPct(x.occupancy_pct)), // З17-и3: занятость часа (З17-и2)
+        x:(x, i) => i % 3 === 0 ? x.hour + ':00' : '', cols:['Час', 'Наиграно', 'Сессий · занятость'], last:false})}
+     <div class="sect">Карта загрузки · <span style="text-transform:none; letter-spacing:0">строка — клубные сутки с ${rh}:00:
+       ночь после пятницы — в пятнице; цвет — занятость часа, ярче — плотнее; ${act ? 'скобки — смены по нынешним шаблонам'
+       : shifts ? 'шаблонов смен нет — клуб открыт круглые сутки' : 'шаблоны смен не загрузились'}</span></div>
+     ${repHeat(d, shifts, rh)}
      <div class="sect">Зоны · <span style="text-transform:none; letter-spacing:0">занятость — от всех ПК зоны, кроме тех, что в ремонте
        сейчас; сессия — в зоне своего тарифа</span></div>
      ${repTable(['Зона','ПК','Наиграно','Сессий','Занятость'], (d.zones||[]).map(z =>
