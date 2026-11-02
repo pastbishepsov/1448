@@ -6039,6 +6039,8 @@ function repPlural(n, one, few, many){
   return n + ' ' + (a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many);
 }
 function repHours(h){ return (+h || 0).toLocaleString('ru-RU') + ' ч'; }
+/* З17-и1: занятость — «8,3%», как часы; null — делить не на что (у зоны нет ПК или все в ремонте) */
+function repPct(v){ return v == null ? '—' : (+v).toLocaleString('ru-RU') + '%'; }
 /* Чип роста. null с бэкенда = в прошлом периоде было пусто, процент
    бессмыслен. invert — метрика, где рост это плохо (например простой). */
 function dlt(v, invert){
@@ -6504,9 +6506,10 @@ function paintLoad(d){
     `<div class="kpis">
        ${repKpi('Наиграно', repHours(t.hours), k.hours, {was:repHours(w.hours)})}
        ${repKpi('Сессий', t.sessions, k.sessions, {was:w.sessions})}
-       ${repKpi('Занятость', t.occupancy_pct + '%', k.occupancy_pct,
-                {title:cap.computers + ' ПК × ' + cap.open_hours_per_day + ' ч в сутки — часы работы берутся из активных смен',
-                 was:w.occupancy_pct + '%'})}
+       ${repKpi('Занятость', repPct(t.occupancy_pct), k.occupancy_pct,
+                {title:cap.computers + ' ПК × ' + cap.open_hours_per_day + ' ч в сутки — часы работы берутся из активных смен'
+                   + (cap.repair ? '; в ремонте сейчас ' + cap.repair + ' ПК — в ёмкость не входят' : ''),
+                 was:repPct(w.occupancy_pct)})}
        ${repKpi('Средняя сессия', t.avg_minutes + ' мин', k.avg_minutes, {was:w.avg_minutes + ' мин'})}
      </div>
      <div class="sect">Часы игры по дням</div>
@@ -6517,14 +6520,16 @@ function paintLoad(d){
      ${repChart(hours, {name:'Загрузка по часам суток', value:x => x.hours, unit:'ч', tick:repTickH, fmt:repHours, full:repHours,
         date:x => x.hour + ':00', more:x => repPlural(x.sessions, 'сессия', 'сессии', 'сессий'),
         x:(x, i) => i % 3 === 0 ? x.hour + ':00' : '', cols:['Час', 'Наиграно', 'Сессий'], last:false})}
-     <div class="sect">Зоны</div>
+     <div class="sect">Зоны · <span style="text-transform:none; letter-spacing:0">занятость — от всех ПК зоны, кроме тех, что в ремонте
+       сейчас; сессия — в зоне своего тарифа</span></div>
      ${repTable(['Зона','ПК','Наиграно','Сессий','Занятость'], (d.zones||[]).map(z =>
-        `<tr><td><b>${esc(z.zone)}</b></td><td>${z.computers}</td><td>${repHours(z.hours)}</td>
-         <td>${z.sessions}</td><td>${z.occupancy_pct}%</td></tr>`), 'Сессий за период не было')}
+        `<tr><td><b>${esc(z.zone)}</b>${z.deleted ? ' <span class="muted">· зона удалена</span>' : ''}</td>
+         <td>${z.computers}${z.repair ? ' <span class="muted">· в ремонте ' + z.repair + '</span>' : ''}</td><td>${repHours(z.hours)}</td>
+         <td>${z.sessions}</td><td>${repPct(z.occupancy_pct)}</td></tr>`), 'Зон и ПК нет')}
      <div class="sect">Компьютеры</div>
      ${repTable(['ПК','Зона','Наиграно','Сессий','Занятость'], (d.computers||[]).map(c =>
-        `<tr><td><b>${esc(c.name)}</b></td><td class="muted">${esc(c.zone)}</td><td>${repHours(c.hours)}</td>
-         <td>${c.sessions}</td><td>${c.occupancy_pct}%</td></tr>`), 'Сессий за период не было')}`;
+        `<tr><td><b>${esc(c.name)}</b>${c.repair ? ' <span class="muted">· в ремонте</span>' : ''}</td><td class="muted">${esc(c.zone)}</td>
+         <td>${repHours(c.hours)}</td><td>${c.sessions}</td><td>${repPct(c.occupancy_pct)}</td></tr>`), 'ПК не заведены')}`;
 }
 
 function paintStaff(d){

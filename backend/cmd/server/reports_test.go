@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
@@ -283,6 +285,50 @@ func TestFillDaysБезДыр(t *testing.T) {
 // З15-и4 (№30): смена момента в «Персонал → по сменам» — по табелю. Деньги — к смене того, кто принял; иначе — смена по
 // графику этого момента, если её люди на месте, а нет — заступившая последней; записи без имени смены не в счёт; конец
 // записи — уже не её момент.
+// З17-и1 (№7, З-Р6): занятость зоны — от всех её ПК, ремонт — не в ёмкости, нули видны, удалённая зона — без ПК.
+func TestLoadZones(t *testing.T) {
+	std, vip, tmp := uuid.New(), uuid.New(), uuid.New()
+	zones := []models.Zone{{ID: std, Name: "Standard"}, {ID: vip, Name: "VIP"}, {ID: tmp, Name: "Tmp"}}
+	pcs := map[string]loadPCs{std.String(): {Total: 9}, vip.String(): {Total: 3, Repair: 1}, "": {Total: 1}}
+	vs, ss := vip.String(), std.String()
+	use := []loadUse{
+		{ZoneID: &vs, Zone: "VIP", Minutes: 360, Cnt: 1},
+		{ZoneID: &ss, Zone: "Standard", Minutes: 120, Cnt: 1},
+		{Zone: "", Minutes: 60, Cnt: 2},    // ПК без зоны
+		{Zone: "Old", Minutes: 30, Cnt: 1}, // зону удалили, имя осталось в снимке
+	}
+	got := loadZones(zones, pcs, use, 1440)
+	type want struct {
+		zone     string
+		pcs, rep int64
+		hours    float64
+		sessions int64
+		occ      any
+		deleted  bool
+	}
+	wants := []want{
+		{"VIP", 3, 1, 6, 1, 12.5, false},     // 360 / (2 ПК не в ремонте × 1440)
+		{"Standard", 9, 0, 2, 1, 0.9, false}, // 120 / (9 × 1440)
+		{"без зоны", 1, 0, 1, 2, 4.2, false}, // 60 / 1440
+		{"Old", 0, 0, 0.5, 1, nil, true},     // ПК нет — делить не на что
+		{"Tmp", 0, 0, 0, 0, nil, false},      // зона без ПК и сессий — с нулями
+	}
+	if len(got) != len(wants) {
+		t.Fatalf("строк %d, ждали %d: %v", len(got), len(wants), got)
+	}
+	for i, w := range wants {
+		g := got[i]
+		_, del := g["deleted"]
+		if g["zone"] != w.zone || g["computers"] != w.pcs || g["repair"] != w.rep || g["hours"] != w.hours ||
+			g["sessions"] != w.sessions || g["occupancy_pct"] != w.occ || del != w.deleted {
+			t.Errorf("строка %d: %v, ждали %+v", i, g, w)
+		}
+	}
+	if loadZones(zones[:2], map[string]loadPCs{vs: {Total: 3}}, []loadUse{{ZoneID: &vs, Minutes: 360, Cnt: 1}}, 1440)[0]["occupancy_pct"] != 8.3 {
+		t.Errorf("6 часов на одном ПК из трёх — 8,3 %%, а не 25 %%")
+	}
+}
+
 func TestShiftByTimesheet(t *testing.T) {
 	base := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
 	at := func(hh, mm int) time.Time { return base.Add(time.Duration(hh*60+mm) * time.Minute) }

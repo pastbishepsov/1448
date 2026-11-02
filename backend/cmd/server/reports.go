@@ -873,6 +873,88 @@ func aggLoad(p period, shifts []models.Shift, computers int64) loadAgg {
 	return a
 }
 
+// ── Зоны и ПК в «Загрузке» (З17-и1, №7, З-Р6) ─────────────────────────
+
+// loadPCs — ПК зоны сейчас: всего и из них в ремонте. Истории статусов нет — «на момент отчёта».
+type loadPCs struct {
+	Total, Repair int64
+}
+
+// loadUse — наигранное за период по зоне сессии: её снимок (З16), у сессии без снимка — зона её ПК. ZoneID — nil у
+// сессии без зоны и у удалённой зоны (её имя осталось в снимке).
+type loadUse struct {
+	ZoneID  *string
+	Zone    string
+	Minutes int64
+	Cnt     int64
+}
+
+// loadZones — таблица «Зоны» (З17-и1, №7, З-Р6): у зоны — все её ПК, ёмкость — ПК не в ремонте × часы работы
+// (раньше делитель — только ПК, на которых были сессии: 6 часов на одном ПК из трёх давали 25 %, а не 8,3 %); зоны без
+// сессий — с нулями; «без зоны» — если есть такие ПК или сессии; сессии удалённой зоны — своей строкой без ПК.
+// Занятость без ёмкости (нет ПК или все в ремонте) — nil, а не 0: делить не на что. pcs — по id зоны, "" — без зоны.
+// Порядок — по наигранному, при равенстве — по имени. Чистая (юнит).
+func loadZones(zones []models.Zone, pcs map[string]loadPCs, use []loadUse, openMin int64) []gin.H {
+	type zoneRow struct {
+		id, name     string
+		pcs          loadPCs
+		minutes, cnt int64
+		deleted      bool
+	}
+	var rows []*zoneRow
+	byKey := map[string]*zoneRow{}
+	add := func(key string, r *zoneRow) *zoneRow {
+		rows = append(rows, r)
+		byKey[key] = r
+		return r
+	}
+	for _, z := range zones {
+		id := z.ID.String()
+		add(id, &zoneRow{id: id, name: z.Name, pcs: pcs[id]})
+	}
+	if p := pcs[""]; p.Total > 0 {
+		add("", &zoneRow{name: zoneLabel(""), pcs: p})
+	}
+	for _, u := range use {
+		key := ""
+		switch {
+		case u.ZoneID != nil:
+			key = *u.ZoneID
+		case u.Zone != "":
+			key = "удалена:" + u.Zone
+		}
+		r := byKey[key]
+		if r == nil {
+			r = add(key, &zoneRow{name: zoneLabel(u.Zone), deleted: key != ""})
+		}
+		r.minutes += u.Minutes
+		r.cnt += u.Cnt
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].minutes != rows[j].minutes {
+			return rows[i].minutes > rows[j].minutes
+		}
+		return rows[i].name < rows[j].name
+	})
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		var occ any // ёмкости нет — nil
+		if capacity := openMin * (r.pcs.Total - r.pcs.Repair); capacity > 0 {
+			occ = math.Round(float64(r.minutes)/float64(capacity)*1000) / 10
+		}
+		row := gin.H{"zone": r.name, "computers": r.pcs.Total, "repair": r.pcs.Repair,
+			"hours": math.Round(float64(r.minutes)/60*10) / 10, "sessions": r.cnt, "occupancy_pct": occ}
+		if r.id != "" {
+			row["zone_id"] = r.id
+		}
+		if r.deleted {
+			row["deleted"] = true
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
 // GET /admin/reports/load — загрузка зала за период (owner).
 func handleReportLoad(c *gin.Context) {
 	p, prev, reportHour, ok := periodFromQuery(c)
@@ -881,10 +963,13 @@ func handleReportLoad(c *gin.Context) {
 	}
 	var shifts []models.Shift
 	db.Order("sort, start_min").Find(&shifts)
-	var computers int64
+	// З17-и1 (№7, З-Р6): ПК в ремонте сейчас — не в ёмкости (истории статусов нет — на момент отчёта)
+	var computers, repair int64
 	db.Model(&models.Computer{}).Count(&computers)
+	db.Model(&models.Computer{}).Where("status = ?", models.ComputerStatusMaintenance).Count(&repair)
+	inService := computers - repair
 
-	cur, old := aggLoad(p, shifts, computers), aggLoad(prev, shifts, computers)
+	cur, old := aggLoad(p, shifts, inService), aggLoad(prev, shifts, inService)
 
 	var dayRows []struct {
 		D       time.Time
@@ -923,47 +1008,61 @@ func handleReportLoad(c *gin.Context) {
 		hours = append(hours, gin.H{"hour": h, "hours": math.Round(float64(v[0])/60*10) / 10, "sessions": v[1]})
 	}
 
-	var zoneRows []struct {
-		Zone    string
-		Minutes int64
-		Cnt     int64
-		Pcs     int64
+	// З17-и1 (№7, З-Р6): зоны — от всех их ПК, сессии — по снимку зоны (З16), зоны без сессий — с нулями
+	var zoneList []models.Zone
+	db.Order("sort, name").Find(&zoneList)
+	var pcCounts []struct {
+		ZoneID *string
+		Total  int64
+		Repair int64
 	}
-	countedSessions().
-		Select("COALESCE(computers.zone,'—') AS zone, COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt, COUNT(DISTINCT computers.id) AS pcs").
-		Joins("JOIN computers ON computers.id = sessions.computer_id").
-		Where("sessions.started_at >= ? AND sessions.started_at < ?", p.From, p.To).
-		Group("zone").Order("minutes DESC").Scan(&zoneRows)
-	openMin := openMinutesInPeriod(shifts, p)
-	zones := make([]gin.H, 0, len(zoneRows))
-	for _, r := range zoneRows {
-		occ := 0.0
-		if capacity := openMin * r.Pcs; capacity > 0 {
-			occ = math.Round(float64(r.Minutes)/float64(capacity)*1000) / 10
+	db.Model(&models.Computer{}).
+		Select("zone_id::text AS zone_id, COUNT(*) AS total, COUNT(*) FILTER (WHERE status = 'maintenance') AS repair").
+		Group("zone_id").Scan(&pcCounts)
+	pcsByZone := map[string]loadPCs{}
+	for _, r := range pcCounts {
+		key := ""
+		if r.ZoneID != nil {
+			key = *r.ZoneID
 		}
-		zones = append(zones, gin.H{"zone": r.Zone, "hours": math.Round(float64(r.Minutes)/60*10) / 10,
-			"sessions": r.Cnt, "computers": r.Pcs, "occupancy_pct": occ})
+		pcsByZone[key] = loadPCs{Total: r.Total, Repair: r.Repair}
 	}
+	var use []loadUse
+	countedSessions().
+		Select("(CASE WHEN sessions.xp_per_min IS NOT NULL THEN sessions.zone_id ELSE computers.zone_id END)::text AS zone_id, "+
+			"CASE WHEN sessions.xp_per_min IS NOT NULL THEN sessions.zone_name ELSE COALESCE(computers.zone, '') END AS zone, "+
+			"COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt").
+		Joins("LEFT JOIN computers ON computers.id = sessions.computer_id").
+		Where("sessions.started_at >= ? AND sessions.started_at < ?", p.From, p.To).
+		Group("1, 2").Scan(&use)
+	openMin := openMinutesInPeriod(shifts, p)
+	zones := loadZones(zoneList, pcsByZone, use, openMin)
 
+	// З17-и1: все ПК — машина без сессий видна с нулями; «в ремонте» — сейчас
 	var pcRows []struct {
 		Name    string
 		Zone    string
+		Status  string
 		Minutes int64
 		Cnt     int64
 	}
-	countedSessions().
-		Select("computers.name AS name, COALESCE(computers.zone,'—') AS zone, COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt").
-		Joins("JOIN computers ON computers.id = sessions.computer_id").
-		Where("sessions.started_at >= ? AND sessions.started_at < ?", p.From, p.To).
-		Group("computers.name, computers.zone").Order("minutes DESC").Scan(&pcRows)
+	db.Raw("SELECT computers.name, COALESCE(computers.zone, '') AS zone, computers.status::text AS status, "+
+		"COALESCE(SUM("+sessionMinutes+"), 0) AS minutes, COUNT(sessions.id) AS cnt FROM computers "+
+		"LEFT JOIN sessions ON sessions.computer_id = computers.id AND "+sessionCounted+
+		" AND sessions.started_at >= ? AND sessions.started_at < ? "+
+		"GROUP BY computers.id ORDER BY minutes DESC, computers.name", p.From, p.To).Scan(&pcRows)
 	pcs := make([]gin.H, 0, len(pcRows))
 	for _, r := range pcRows {
 		occ := 0.0
 		if openMin > 0 {
 			occ = math.Round(float64(r.Minutes)/float64(openMin)*1000) / 10
 		}
-		pcs = append(pcs, gin.H{"name": r.Name, "zone": r.Zone, "sessions": r.Cnt,
-			"hours": math.Round(float64(r.Minutes)/60*10) / 10, "occupancy_pct": occ})
+		row := gin.H{"name": r.Name, "zone": zoneLabel(r.Zone), "sessions": r.Cnt,
+			"hours": math.Round(float64(r.Minutes)/60*10) / 10, "occupancy_pct": occ}
+		if r.Status == string(models.ComputerStatusMaintenance) {
+			row["repair"] = true
+		}
+		pcs = append(pcs, row)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -975,7 +1074,7 @@ func handleReportLoad(c *gin.Context) {
 			"occupancy_pct": pctDelta(cur.Occupancy, old.Occupancy),
 			"avg_minutes":   pctDelta(cur.AvgMin, old.AvgMin),
 		},
-		"capacity": gin.H{"computers": computers, "open_minutes": openMin,
+		"capacity": gin.H{"computers": inService, "total": computers, "repair": repair, "open_minutes": openMin,
 			"open_hours_per_day": math.Round(float64(openMin)/float64(p.Days)/60*10) / 10},
 		"days": fillDays(p, byDay), "hours": hours, "zones": zones, "computers": pcs,
 		"peak_hour": peakHour,
