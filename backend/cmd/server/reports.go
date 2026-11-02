@@ -791,6 +791,19 @@ func handleReportGuests(c *gin.Context) {
 // хвост ночной смены, начатой накануне. Пересечения смен не удваиваются.
 // Смен нет вовсе — считаем круглосуточно. Чистая функция (тест).
 func openMinutesPerDay(shifts []models.Shift, d time.Time) int {
+	n := 0
+	for _, v := range openCoverage(shifts, d) {
+		if v {
+			n++
+		}
+	}
+	return n
+}
+
+// openCoverage — какие минуты календарного дня d покрыты активными сменами: то же, что openMinutesPerDay, но
+// поминутно — для нарезки по часам (З17-и2). Смен нет вовсе — все.
+func openCoverage(shifts []models.Shift, d time.Time) [1440]bool {
+	var covered [1440]bool
 	active := false
 	for _, s := range shifts {
 		if s.Active {
@@ -799,9 +812,11 @@ func openMinutesPerDay(shifts []models.Shift, d time.Time) int {
 		}
 	}
 	if !active {
-		return 1440
+		for i := range covered {
+			covered[i] = true
+		}
+		return covered
 	}
-	var covered [1440]bool
 	mark := func(from, to int) {
 		if from < 0 {
 			from = 0
@@ -829,13 +844,7 @@ func openMinutesPerDay(shifts []models.Shift, d time.Time) int {
 			mark(0, s.EndMin)
 		}
 	}
-	n := 0
-	for _, v := range covered {
-		if v {
-			n++
-		}
-	}
-	return n
+	return covered
 }
 
 func openMinutesInPeriod(shifts []models.Shift, p period) int64 {
@@ -844,6 +853,118 @@ func openMinutesInPeriod(shifts []models.Shift, p period) int64 {
 		total += int64(openMinutesPerDay(shifts, d))
 	}
 	return total
+}
+
+// ── Нарезка по часам (З17-и2, №13, З-Р6 «б») ──────────────────────────
+
+// hourSlice — кусок сессии в часе стенных часов клуба: клубные сутки куска (полночь), час и минуты игры в нём.
+type hourSlice struct {
+	Day     time.Time
+	Hour    int
+	Minutes float64
+}
+
+// sliceSession — нарезка сессии по часам стенных часов (часы — в поясе start; З17-и2, №13): played минут игры делятся
+// по часам её отрезка [start, end) пропорционально длине куска — когда были паузы, не знаем, поэтому они ложатся
+// равномерно. Раньше вся длина сессии ложилась в час её начала: пять часов с 18:00 — столбик «18:00», 19–22 пусто.
+// Отрезка нет (end не позже start) — все минуты в час начала. Клубные сутки куска — по reportHour: ночь после пятницы —
+// пятница, как у смен и «Наиграно». Чистая (юнит).
+func sliceSession(start, end time.Time, played float64, reportHour int) []hourSlice {
+	if played <= 0 {
+		return nil
+	}
+	if !end.After(start) {
+		return []hourSlice{{Day: clubDayOf(start, reportHour), Hour: start.Hour(), Minutes: played}}
+	}
+	loc := start.Location()
+	total := end.Sub(start).Seconds()
+	var out []hourSlice
+	for t := start; t.Before(end); {
+		lt := t.In(loc)
+		// до конца часа стенных часов — отсчётом времени, а не time.Date: осенью час «2» идёт дважды (оба раза — в «2»),
+		// весной его нет — после «1» сразу «3»
+		next := lt.Truncate(time.Minute).Add(time.Duration(60-lt.Minute()) * time.Minute)
+		if next.After(end) {
+			next = end
+		}
+		out = append(out, hourSlice{Day: clubDayOf(lt, reportHour), Hour: lt.Hour(), Minutes: played * next.Sub(t).Seconds() / total})
+		t = next
+	}
+	return out
+}
+
+// loadSession — сессия для нарезки: отрезок игры и минуты (у идущей — учтённые биллингом, конец — «сейчас»).
+type loadSession struct {
+	Start, End time.Time
+	Minutes    float64
+}
+
+// hourCell — ячейка нарезки: минуты игры, сколько сессий шло в этом часе, ёмкость (минут работы клуба × ПК в ёмкости).
+type hourCell struct {
+	Minutes  float64
+	Sessions int64
+	Open     int64
+}
+
+// loadByHour — нарезка сессий: по часам суток (hours) и по «день недели клубных суток × час» (heat, понедельник —
+// первый). Сессия считается в часе, если в нём есть её кусок. Ёмкость — open (минут работы по сменам за период,
+// openByClubHour) × pcs. Чистая (юнит).
+func loadByHour(sessions []loadSession, reportHour int, open [7][24]int64, pcs int64) (hours [24]hourCell, heat [7][24]hourCell) {
+	for _, s := range sessions {
+		var inHour [24]bool
+		var inCell [7][24]bool
+		for _, sl := range sliceSession(s.Start, s.End, s.Minutes, reportHour) {
+			dw := dowMonday(sl.Day)
+			hours[sl.Hour].Minutes += sl.Minutes
+			heat[dw][sl.Hour].Minutes += sl.Minutes
+			if !inHour[sl.Hour] {
+				inHour[sl.Hour] = true
+				hours[sl.Hour].Sessions++
+			}
+			if !inCell[dw][sl.Hour] {
+				inCell[dw][sl.Hour] = true
+				heat[dw][sl.Hour].Sessions++
+			}
+		}
+	}
+	for d := 0; d < 7; d++ {
+		for h := 0; h < 24; h++ {
+			heat[d][h].Open = open[d][h] * pcs
+			hours[h].Open += open[d][h] * pcs
+		}
+	}
+	return hours, heat
+}
+
+// openByClubHour — минуты работы клуба по сменам за период, разложенные по «день недели клубных суток × час»: час h
+// клубных суток d — календарный день d, если h ≥ reportHour, иначе d+1 (утро после ночи). Чистая (юнит).
+func openByClubHour(shifts []models.Shift, p period, reportHour int) [7][24]int64 {
+	var out [7][24]int64
+	for d := p.FromDay; !d.After(p.ToDay); d = d.AddDate(0, 0, 1) {
+		dw := dowMonday(d)
+		today, tomorrow := openCoverage(shifts, d), openCoverage(shifts, d.AddDate(0, 0, 1))
+		for h := 0; h < 24; h++ {
+			cov := &today
+			if h < reportHour {
+				cov = &tomorrow
+			}
+			for m := h * 60; m < h*60+60; m++ {
+				if cov[m] {
+					out[dw][h]++
+				}
+			}
+		}
+	}
+	return out
+}
+
+// cellOut — ячейка нарезки в JSON: часы, сессии, занятость; занятость nil — клуб в этот час закрыт или ПК нет.
+func cellOut(c hourCell) gin.H {
+	var occ any
+	if c.Open > 0 {
+		occ = math.Round(c.Minutes/float64(c.Open)*1000) / 10
+	}
+	return gin.H{"hours": math.Round(c.Minutes/60*10) / 10, "sessions": c.Sessions, "occupancy_pct": occ}
 }
 
 type loadAgg struct {
@@ -985,27 +1106,47 @@ func handleReportLoad(c *gin.Context) {
 		byDay[r.D.Format("2006-01-02")] = [2]float64{math.Round(float64(r.Minutes)/60*10) / 10, float64(r.Cnt)}
 	}
 
-	var hourRows []struct {
-		H       int
-		Minutes int64
-		Cnt     int64
+	// З17-и2 (№13, З-Р6 «б»): часы суток — нарезкой сессий по часам стенных часов клуба (паузы — пропорционально,
+	// идущая — до «сейчас»), сессии те же, что в «Наиграно» (по старту в периоде); пик — по нарезке; heat — день недели
+	// клубных суток × час
+	var lsRows []struct {
+		StartedAt time.Time
+		EndedAt   *time.Time
+		Status    string
+		Minutes   int64
 	}
 	countedSessions().
-		Select("EXTRACT(HOUR FROM started_at)::int AS h, COALESCE(SUM("+sessionMinutes+"),0) AS minutes, COUNT(*) AS cnt").
-		Where("started_at >= ? AND started_at < ?", p.From, p.To).
-		Group("h").Order("h").Scan(&hourRows)
-	byHour := map[int][2]int64{}
-	peakHour, peakVal := -1, int64(-1)
-	for _, r := range hourRows {
-		byHour[r.H] = [2]int64{r.Minutes, r.Cnt}
-		if r.Minutes > peakVal {
-			peakHour, peakVal = r.H, r.Minutes
+		Select("sessions.started_at, sessions.ended_at, sessions.status, "+sessionMinutes+" AS minutes").
+		Where("started_at >= ? AND started_at < ?", p.From, p.To).Scan(&lsRows)
+	now := time.Now()
+	ls := make([]loadSession, 0, len(lsRows))
+	for _, r := range lsRows {
+		end := r.StartedAt // завершённая без ended_at — всё в час начала
+		if r.Status == string(models.SessionStatusActive) {
+			end = now
+		} else if r.EndedAt != nil {
+			end = *r.EndedAt
+		}
+		ls = append(ls, loadSession{Start: r.StartedAt.In(models.ClubLocation), End: end.In(models.ClubLocation),
+			Minutes: float64(r.Minutes)})
+	}
+	byHour, heatCells := loadByHour(ls, reportHour, openByClubHour(shifts, p, reportHour), inService)
+	peakHour, peakVal := -1, 0.0
+	hours := make([]gin.H, 0, 24)
+	for h, c := range byHour {
+		row := cellOut(c)
+		row["hour"] = h
+		hours = append(hours, row)
+		if c.Minutes > peakVal {
+			peakHour, peakVal = h, c.Minutes
 		}
 	}
-	hours := make([]gin.H, 0, 24)
-	for h := 0; h < 24; h++ {
-		v := byHour[h]
-		hours = append(hours, gin.H{"hour": h, "hours": math.Round(float64(v[0])/60*10) / 10, "sessions": v[1]})
+	heat := make([][]gin.H, 7)
+	for d := range heatCells {
+		heat[d] = make([]gin.H, 24)
+		for h, c := range heatCells[d] {
+			heat[d][h] = cellOut(c)
+		}
 	}
 
 	// З17-и1 (№7, З-Р6): зоны — от всех их ПК, сессии — по снимку зоны (З16), зоны без сессий — с нулями
@@ -1077,7 +1218,7 @@ func handleReportLoad(c *gin.Context) {
 		"capacity": gin.H{"computers": inService, "total": computers, "repair": repair, "open_minutes": openMin,
 			"open_hours_per_day": math.Round(float64(openMin)/float64(p.Days)/60*10) / 10},
 		"days": fillDays(p, byDay), "hours": hours, "zones": zones, "computers": pcs,
-		"peak_hour": peakHour,
+		"peak_hour": peakHour, "heat": heat, // З17-и2: heat[день недели клубных суток, пн — 0][час]
 	})
 }
 

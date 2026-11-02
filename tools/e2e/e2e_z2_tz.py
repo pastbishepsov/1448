@@ -2,8 +2,9 @@
 """З2-и1 «Часовой пояс соединения с базой» (№4, сценарий B ревью): отчёты считают дни и часы в поясе клуба,
 даже когда DATABASE_URL пояса не задаёт — стенд так и запущен, Postgres живёт в Etc/UTC. Утреннее
 пополнение (report_hour:30 по клубу — день по UTC в это время ещё вчерашний) ложится в свой день, сумма
-столбиков равна итогу; сессия 20:00–22:00 — в часе 20, пик — 20. Всё — в пустом дне прошлого, чтобы чужие
-строки стенда не мешали. Гость Guest33. Идемпотентен: пополнение отменяется, сессия удаляется."""
+столбиков равна итогу; сессия 20:00–22:00 — в часах 20 и 21 по часу (с З17-и2 сессии режутся по часам), пик — 20.
+Всё — в пустом дне прошлого, чтобы чужие строки стенда не мешали. Гость Guest33. Идемпотентен: пополнение
+отменяется, сессия удаляется."""
 from _z import *
 
 rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
@@ -36,8 +37,8 @@ at_end(lambda: sql(f"DELETE FROM sessions WHERE id='{sid}'"))
 s, ld = api("GET", f"/admin/reports/load?from={day}&to={day}", None, "boss")
 hours = {h.get("hour"): h for h in ld.get("hours", [])}
 busy = {h: v for h, v in hours.items() if v.get("sessions")}
-check("загрузка по часам: сессия в часе 20, 2 ч", s == 200 and hours.get(20, {}).get("sessions") == 1
-      and near(hours.get(20, {}).get("hours", 0), 2), J(busy))
-check("пик — 20:00", ld.get("peak_hour") == 20, ld.get("peak_hour"))
+check("загрузка по часам: сессия 20:00–22:00 — в часах 20 и 21 по 1 ч (З17-и2: нарезка по часам)", s == 200
+      and sorted(busy) == [20, 21] and all(v.get("sessions") == 1 and near(v.get("hours", 0), 1) for v in busy.values()), J(busy))
+check("пик — 20:00 (первый из равных)", ld.get("peak_hour") == 20, ld.get("peak_hour"))
 check(f"по дням — в своём дне {day}", [(x.get("date"), x.get("count")) for x in ld.get("days", [])] == [(day, 1)], J(ld.get("days")))
 done()
