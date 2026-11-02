@@ -64,7 +64,8 @@ const check = (name, cond, detail) => out.push((cond ? 'ok   ' : 'FAIL ') + name
     STR = Object.assign({}, SH_RU, SH_LANGS.ru);
     return o;
   }).catch(e => ({ err: e.message }));
-  check('shell ru', /Депозит 33 zł отменён у стойки — с кошелька снято 12.5 zł, в кошельке 4 zł/.test(sh.ru || ''), JSON.stringify(sh));
+  // З16-и1е: суммы в уведомлениях — как ценники киоска: «12,50», а не «12.5», как пришло с сервера
+  check('shell ru', /Депозит 33 zł отменён у стойки — с кошелька снято 12,50 zł, в кошельке 4 zł/.test(sh.ru || ''), JSON.stringify(sh));
   check('shell en', /Top-up 33 zł voided at the desk/.test(sh.en || ''), sh.en);
   check('shell pl', /Wpłata 33 zł anulowana przy ladzie/.test(sh.pl || ''), sh.pl);
   check('js-ошибок в шелле нет', e2.length === 0, e2.join(' | '));

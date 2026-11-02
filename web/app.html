@@ -3091,17 +3091,17 @@ function ntfText(n){
       if (p.status === 'delivering' && p.computer) t += ' → ' + p.computer;
       return t;
     }
-    case 'kitchen_unpaid': return T(p.bar_pln > 0 ? 'ntf_unpaid' : 'ntf_kt_unpaid', {z: p.total_pln || 0}); // Ж6: бар в долг — тот же долг у стойки
+    case 'kitchen_unpaid': return T(p.bar_pln > 0 ? 'ntf_unpaid' : 'ntf_kt_unpaid', {z: fmtPln(p.total_pln)}); // Ж6: бар в долг — тот же долг у стойки
     case 'streak_frozen': return T('ntf_streak_frozen', {n: p.days || 1, left: p.left || 0});
     case 'birthday_gift': return T('ntf_birthday', {t: p.case_tier || ''});
     case 'booking_cancel':
       return STR.ntf_bk_cancel + (p.start_time ? ' · ' + hm(p.start_time) : '') + (p.computer ? ' (' + p.computer + ')' : '');
     case 'booking_restore':
       return STR.ntf_bk_restore + (p.start_time ? ' · ' + hm(p.start_time) : '');
-    case 'deposit':
-      return T('ntf_deposit', {c: fmt(p.coins || 0), a: p.amount_pln || 0});
+    case 'deposit': // З16-и1е: суммы — как ценники («0,34», «12,50», «30»), а не как пришли с сервера («0.34», «12.5»)
+      return T('ntf_deposit', {c: fmt(p.coins || 0), a: fmtPln(p.amount_pln)});
     case 'deposit_void': // Ж1: отмена у стойки — сколько снято и что осталось
-      return T('ntf_deposit_void', {a: p.amount_pln || 0, r: p.refund_pln || 0, w: p.wallet_pln || 0});
+      return T('ntf_deposit_void', {a: fmtPln(p.amount_pln), r: fmtPln(p.refund_pln), w: fmtPln(p.wallet_pln)});
     case 'grant_xp':
       return T('ntf_grant_xp', {n: fmt(p.amount || 0)}) + (p.levels_gained > 0 ? T('ntf_grant_xp_lvl', {l: p.level}) : '');
     case 'grant_case':
@@ -3279,7 +3279,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-01.1';
+const APP_VER = '2026-11-01.2';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
