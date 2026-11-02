@@ -189,9 +189,10 @@ func handleAdminRedeemCoins(c *gin.Context) {
 	})
 }
 
-// redeemZoneFor — зона выдачи (Ж2): явная из запроса; иначе зона ПК активной
-// сессии гостя; иначе — если зон в клубе нет — без зоны, а если есть —
-// «zone_required». Коды: zone_not_found | zone_required | "".
+// redeemZoneFor — зона выдачи (Ж2): явная из запроса; иначе зона активной
+// сессии гостя (снимок, З16-и2: минуты — туда, где их сейчас потратят);
+// иначе — если зон в клубе нет — без зоны, а если есть — «zone_required».
+// Коды: zone_not_found | zone_required | "".
 func redeemZoneFor(zoneIDStr string, userID uuid.UUID) (*models.Zone, string) {
 	if zoneIDStr != "" {
 		var z models.Zone
@@ -202,7 +203,7 @@ func redeemZoneFor(zoneIDStr string, userID uuid.UUID) (*models.Zone, string) {
 	}
 	var s models.Session
 	if db.Where("user_id = ? AND status = ?", userID, models.SessionStatusActive).First(&s).Error == nil {
-		if z := zoneByID(zoneOfComputer(s.ComputerID)); z != nil {
+		if z := zoneByID(sessionZoneID(&s)); z != nil {
 			return z, ""
 		}
 	}

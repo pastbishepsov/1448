@@ -797,10 +797,12 @@ func handleGetMySessions(c *gin.Context) {
 			activeComputer = pc.Name
 			// Пакет привязан к зоне (Р10): считать «сколько осталось» по всем
 			// пакетам сразу значило бы обещать гостю время, которое на ЭТОЙ
-			// машине не потратить.
-			packMinutes = livePackMinutes(sessions[i].UserID, pc.ZoneID, time.Now())
-			zoneMinutes = liveGrantMinutes(sessions[i].UserID, pc.ZoneID)
-			if z := zoneByID(pc.ZoneID); z != nil {
+			// машине не потратить. З16-и2: зона — сессии (снимок), как у
+			// биллинга: ПК перевели под гостем — его пакет тратится дальше.
+			zid := sessionZoneID(&sessions[i])
+			packMinutes = livePackMinutes(sessions[i].UserID, zid, time.Now())
+			zoneMinutes = liveGrantMinutes(sessions[i].UserID, zid)
+			if z := zoneByID(zid); z != nil {
 				activeZone = z.Name
 			}
 		}

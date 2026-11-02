@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
 func TestValidateZone(t *testing.T) {
@@ -74,5 +76,22 @@ func TestSameZoneID(t *testing.T) {
 	}
 	if zoneLabel("") != "без зоны" || zoneLabel("VIP") != "VIP" {
 		t.Errorf("zoneLabel: %q, %q", zoneLabel(""), zoneLabel("VIP"))
+	}
+}
+
+// З16-и2: зона сессии — её снимок (и без зоны — тоже снимок); снимка нет — зона ПК, и только тогда её спрашиваем.
+func TestZoneOfSession(t *testing.T) {
+	std, vip := uuid.New(), uuid.New()
+	xp := int64(10)
+	asked := 0
+	pc := func() *uuid.UUID { asked++; return &vip }
+	if got := zoneOfSession(&models.Session{ZoneID: &std, XPPerMin: &xp}, pc); got == nil || *got != std || asked != 0 {
+		t.Errorf("снимок Standard, ПК уже в VIP: %v, зону ПК спросили %d раз", got, asked)
+	}
+	if got := zoneOfSession(&models.Session{XPPerMin: &xp}, pc); got != nil || asked != 0 {
+		t.Errorf("снимок без зоны, ПК в VIP: %v, зону ПК спросили %d раз", got, asked)
+	}
+	if got := zoneOfSession(&models.Session{ZoneID: &std}, pc); got == nil || *got != vip || asked != 1 {
+		t.Errorf("сессия без снимка — зона ПК: %v, зону ПК спросили %d раз", got, asked)
 	}
 }

@@ -123,10 +123,11 @@ func settleSessionMinutes(s *models.Session, user *models.User, targetMinutes in
 		return false, db.First(user, "id = ?", s.UserID).Error
 	}
 	rateGrosz := models.GroszFromPLN(s.EffectiveRatePLN)
-	// Е2-и3: зона машины — по ней выбираются пакеты. Читаем до транзакции:
-	// внутри она уже не изменится, а держать лишний запрос под блокировкой
-	// пользователя незачем.
-	zoneID := zoneOfComputer(s.ComputerID)
+	// Е2-и3: зона — по ней выбираются пакеты и зонные минуты. Читаем до
+	// транзакции: внутри она уже не изменится, а держать лишний запрос под
+	// блокировкой пользователя незачем. З16-и2: зона сессии (снимок), а не
+	// нынешняя зона машины — ПК перевели под гостем, его пакет тратится дальше.
+	zoneID := sessionZoneID(s)
 
 	err = db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -373,7 +374,8 @@ func billSession(s *models.Session, now time.Time) bool {
 		checkAchievements(s.UserID, fullPlayerStats(s.UserID, now))
 	}
 
-	zoneID := zoneOfComputer(s.ComputerID)
+	// З16-и2: зона сессии (снимок), как в settleSessionMinutes
+	zoneID := sessionZoneID(s)
 	packLeft := livePackMinutes(s.UserID, zoneID, now) // Е2-и3
 	grantLeft := liveGrantMinutes(s.UserID, zoneID)    // Ж2: зонные минуты, годные здесь
 	left := minutesLeft(user.CoinMinutes+grantLeft, packLeft, user.WalletGrosz, rateGrosz, s.MoneyMinutes)
@@ -425,11 +427,13 @@ func billSession(s *models.Session, now time.Time) bool {
 // оживляет — иначе гость на нуле получал бы второй бесплатный грейс.
 // К0-и2 (KIOSK.md): до этой правки пакет, купленный у стойки на нуле, сессию
 // не спасал — тик всё равно завершал её по zero_since.
+// З16-и2: «своя зона» — зона сессии (снимок), а не нынешняя зона машины.
 func reviveActiveSession(userID uuid.UUID, zoneID *uuid.UUID) {
 	q := db.Model(&models.Session{}).
 		Where("user_id = ? AND status = ?", userID, models.SessionStatusActive)
 	if zoneID != nil {
-		q = q.Where("computer_id IN (SELECT id FROM computers WHERE zone_id = ?)", *zoneID)
+		q = q.Where("((sessions.xp_per_min IS NOT NULL AND sessions.zone_id = ?) OR "+
+			"(sessions.xp_per_min IS NULL AND computer_id IN (SELECT id FROM computers WHERE zone_id = ?)))", *zoneID, *zoneID)
 	}
 	q.Updates(map[string]any{"warn15_at": nil, "warn5_at": nil, "zero_since": nil})
 }

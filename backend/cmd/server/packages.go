@@ -832,8 +832,10 @@ func refundSuffix(refund int64, method string) string {
 // зоне. Гостя пересадили в другую (Г2-и3) — с этой минуты пакет молчит и
 // платит кошелёк: иначе часы VIP уходили бы по цене STANDARD.
 
-// zoneOfComputer — зона машины сессии. nil — машина вне зон: пакеты к ней
-// неприменимы по определению, платит кошелёк по клубному тарифу.
+// zoneOfComputer — нынешняя зона машины. nil — машина вне зон: пакеты к ней
+// неприменимы по определению, платит кошелёк по клубному тарифу. Зона
+// сессии — sessionZoneID (снимок, З16-и2); эта — для самой машины
+// (компенсация инцидента) и для сессии без снимка.
 func zoneOfComputer(pcID uuid.UUID) *uuid.UUID {
 	var pc models.Computer
 	if err := db.Select("zone_id").First(&pc, "id = ?", pcID).Error; err != nil {

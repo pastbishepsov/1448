@@ -30,9 +30,10 @@ type sessionForecast struct {
 	BookingDeadline *time.Time // чужая бронь отрежет раньше (Г3): start − booking_lock_min
 }
 
-// forecastSession — прогноз для активной сессии s гостя u за машиной зоны
-// zoneID. Считает ровно как тик биллинга: зонные минуты этой зоны + пул без
-// зоны + пакеты зоны + минуты, которые кошелёк ещё покрывает по тарифу сессии.
+// forecastSession — прогноз для активной сессии s гостя u в зоне zoneID —
+// зоне сессии (sessionZoneID, З16-и2: снимок, а не нынешняя зона машины).
+// Считает ровно как тик биллинга: зонные минуты этой зоны + пул без зоны +
+// пакеты зоны + минуты, которые кошелёк ещё покрывает по тарифу сессии.
 func forecastSession(s *models.Session, u *models.User, zoneID *uuid.UUID, now time.Time) sessionForecast {
 	f := sessionForecast{
 		RateGrosz:   models.GroszFromPLN(s.EffectiveRatePLN),

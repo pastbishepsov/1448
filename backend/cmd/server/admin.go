@@ -417,7 +417,7 @@ func usersNowAt(users []models.User, now time.Time) map[string]gin.H {
 		}
 		if u := byID[s.UserID]; u != nil && s.Computer != nil {
 			row["computer"] = s.Computer.Name
-			f := forecastSession(s, u, s.Computer.ZoneID, now)
+			f := forecastSession(s, u, sessionZoneID(s), now) // З16-и2: по зоне сессии (снимок)
 			row["minutes_left"] = f.MinutesLeft
 			if f.Until != nil {
 				row["until"] = f.Until
@@ -584,17 +584,19 @@ func handleAdminUserCard(c *gin.Context) {
 		var pc models.Computer
 		if db.Select("id, name, zone_id").First(&pc, "id = ?", act.ComputerID).Error == nil {
 			now := time.Now()
+			// З16-и2: зона — сессии (снимок), а не нынешняя зона ПК: по ней пакеты, минуты и выдача минут «сюда»
+			zid := sessionZoneID(&act)
 			activeSess = gin.H{
-				"id": act.ID, "computer": pc.Name, "computer_id": pc.ID, "zone_id": pc.ZoneID,
+				"id": act.ID, "computer": pc.Name, "computer_id": pc.ID, "zone_id": zid,
 				"started_at": act.StartedAt, "paused_at": act.PausedAt, "paused_by": act.PausedBy,
 				"ready_at": act.ReadyAt, "ready_deadline": act.ReadyDeadline, "shell_wait_until": act.ShellWaitUntil,
 				"waiting":  sessionWaitingReady(&act), // окно [Готов!] или ожидание шелла — деньги не идут
 				"rate_pln": act.EffectiveRatePLN, "billed_minutes": act.BilledMinutes, "zero_since": act.ZeroSince,
 			}
-			if z := zoneByID(pc.ZoneID); z != nil {
+			if z := zoneByID(zid); z != nil {
 				activeSess["zone"] = z.Name
 			}
-			for k, v := range forecastFields(&user, forecastSession(&act, &user, pc.ZoneID, now)) {
+			for k, v := range forecastFields(&user, forecastSession(&act, &user, zid, now)) {
 				activeSess[k] = v
 			}
 		}
@@ -673,7 +675,8 @@ func handleAdminComputers(c *gin.Context) {
 				sess["billed_minutes"] = s.BilledMinutes
 				sess["charged_grosz"] = s.ChargedGrosz
 				sess["zero_since"] = s.ZeroSince
-				for k, v := range forecastFields(s.User, forecastSession(s, s.User, pc.ZoneID, now)) {
+				// З16-и2: прогноз — по зоне сессии (снимок): ПК перевели под гостем — его пакет считается дальше
+				for k, v := range forecastFields(s.User, forecastSession(s, s.User, sessionZoneID(s), now)) {
 					sess[k] = v
 				}
 			}

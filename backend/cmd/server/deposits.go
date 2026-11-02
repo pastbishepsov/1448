@@ -228,7 +228,8 @@ func depositHoursHint(user *models.User, amountGrosz int64, now time.Time) gin.H
 		if rateGrosz <= 0 {
 			return nil
 		}
-		zoneID := zoneOfComputer(sess.ComputerID)
+		// З16-и2: зона сессии (снимок), как у биллинга
+		zoneID := sessionZoneID(&sess)
 		f := forecastSession(&sess, user, zoneID, now) // весь запас: кошелёк после депозита + минуты
 		hint := gin.H{
 			"minutes":      minutesAffordable(amountGrosz, rateGrosz, 0), // сколько добавил именно этот депозит

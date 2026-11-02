@@ -98,6 +98,22 @@ func sameZoneID(a, b *uuid.UUID) bool {
 	return *a == *b
 }
 
+// sessionZoneID — зона сессии для пакетов, зонных минут, прогноза и выдачи минут «сюда» (З16-и2): её снимок (З16-и1),
+// а не нынешняя зона машины — ПК перевели в другую зону под гостем, а пакет его зоны тратится дальше; пересадка с
+// тарифом новой зоны снимок меняет, с прежним — нет (З16-и1а). Сессия без снимка (без ставок XP: 091 таких не
+// оставила, но код их не исключает) — зона её ПК, как до З16-и2.
+func sessionZoneID(s *models.Session) *uuid.UUID {
+	return zoneOfSession(s, func() *uuid.UUID { return zoneOfComputer(s.ComputerID) })
+}
+
+// zoneOfSession — чистая часть sessionZoneID (юнит): зону ПК спрашивает, только если снимка нет.
+func zoneOfSession(s *models.Session, pcZone func() *uuid.UUID) *uuid.UUID {
+	if s.XPPerMin != nil {
+		return s.ZoneID
+	}
+	return pcZone()
+}
+
 // zoneLabel — зона словами для журнала и ответов: пустое имя — «без зоны» (клубный тариф).
 func zoneLabel(name string) string {
 	if name == "" {
