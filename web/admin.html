@@ -4445,6 +4445,7 @@ async function impApply(){
 let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
   money: ['deposit','deposit_void','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn','incident_compensate', // К8: компенсация — обязательство
+          'zone_minutes_move','zone_minutes_burn', // З18-и1: минуты удаляемой зоны — тоже обязательство клуба
           'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
           'kitchen_done','kitchen_pay','kitchen_cancel', // кухню считают у той же стойки (ревью 26.08)
           'sale_paid','settle','kitchen_order','shift_close', // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
@@ -4461,7 +4462,8 @@ const AUD_GROUPS = {
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
              'seat_cancel','session_move'], // ревью 26.08
   bookings: ['booking_create','booking_cancel','booking_restore'],
-  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release'], // Ж4-и3
+  pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release', // Ж4-и3
+       'zone_minutes_move','zone_minutes_burn'], // З18-и1
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','sale_paid','settle','debt_write_off','debt_restore','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
@@ -4502,6 +4504,7 @@ const AUD_LABEL = {
   expense_template_create:'регулярный: новый', expense_template_update:'регулярный: правка', // З9-и5
   login_failed:'вход: неверный пароль', // З0-и3: серия неудач входа персонала — только владельцу
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
+  zone_minutes_move:'зона: минуты перенесены', zone_minutes_burn:'зона: минуты сожжены', // З18-и1
   coin_redeem:'монеты: время за монеты',
   coin_burn:'монеты: сгорание',
   coin_redeem_void:'монеты: отмена выдачи',
@@ -4550,6 +4553,7 @@ const AUD_ICON = {
   staff_erase:'cross', // З14-и4
   work_start:'clock', work_stop:'check', work_edit:'edit',
   zone_create:'plus', zone_update:'edit', zone_delete:'cross',
+  zone_minutes_move:'clock', zone_minutes_burn:'cross', // З18-и1
   coin_redeem:'clock',
   coin_burn:'clock',
   coin_redeem_void:'cross',
@@ -9279,16 +9283,20 @@ async function renderZones(){
       + (d.without_zone ? ' — таких сейчас ' + d.without_zone : ''));
     setHTML('zonesTable', zonesCache.length === 0
       ? '<div class="empty"><span data-ic="monitor"></span>Зон нет — все ПК на клубном тарифе</div>'
-      : `<table><tr><th>Зона</th><th>Цена часа</th><th>VAT</th><th>Час в монетах</th><th>Компьютеров</th><th></th></tr>
+      : `<table><tr><th>Зона</th><th>Цена часа</th><th>VAT</th><th>Час в монетах</th><th>Компьютеров</th><th>У гостей</th><th></th></tr>
       ${zonesCache.map(z => `<tr>
         <td><b>${esc(z.name)}</b></td>
         <td>${fmtPLN(z.rate_pln)} zł</td>
         <td class="muted"><span class="vatL">VAT</span>${esc(vatLabel(z.vat_pct))}</td>
         <td class="muted" title="цена часа × курс погашения — считает конвертер">${z.coins_per_hour}</td>
         <td class="muted">${z.computers}</td>
+        <td class="muted" title="минуты за монеты и компенсации — годны только в этой зоне"><span class="vatL">у гостей</span>${
+          z.live_minutes ? packHM(z.live_minutes) + ' · ' + repPlural(z.live_guests, 'гость', 'гостя', 'гостей') : '—'}</td>
         <td style="white-space:nowrap">
           <button class="btn ghost mini" onclick="zoneEdit('${z.id}')"><span data-ic="edit"></span>Правка</button>
-          ${z.computers === 0 ? `<button class="btn ghost mini danger" onclick="armZoneDelete(this,'${z.id}')">✕</button>` : ''}
+          ${!z.delete_block ? `<button class="btn ghost mini danger" onclick="armZoneDelete(this,'${z.id}')">✕</button>`
+            : z.delete_block === 'has_minutes' ? `<button class="btn ghost mini danger" title="у гостей есть минуты этой зоны — сначала перенеси или сожги их"
+                onclick="zoneEdit('${z.id}', true)">✕</button>` : ''}
         </td></tr>`).join('')}</table>`);
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -9447,7 +9455,7 @@ async function deletePack(id){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
-function zoneEdit(id){
+function zoneEdit(id, del){
   const z = zonesCache.find(x => x.id === id) || {sort:0};
   const isNew = !z.id;
   openDrawer(isNew ? 'Новая зона' : 'Зона · ' + z.name, `
@@ -9465,7 +9473,72 @@ function zoneEdit(id){
       <button class="btn mini" onclick="zoneSave('${z.id||''}')"><span data-ic="save"></span>Сохранить</button>
       <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
     </div>
-  </div>`);
+  </div>${isNew ? '' : `<div class="dsub" id="zn_delh">Удалить зону</div>
+  <div class="uform" id="zn_del" style="margin-top:0">${zoneDelHtml(z)}</div>`}`);
+  if (del){ const h = document.getElementById('zn_delh'); if (h) h.scrollIntoView({block:'start'}); } // ✕ в списке — сразу к мастеру
+}
+/* З18-и1 (№8, З-Р7): что держит зону и мастер её удаления. Минуты за монеты и компенсации годны только в своей
+   зоне, без зоны они стали бы годны везде (30 мин по 10 zł/ч отыгрывались на VIP) — поэтому сначала перенести их в
+   другую зону, минута в минуту, или сжечь (гостям — уведомление, в журнал — строка на гостя), и только потом удалить.
+   ПК переводят в шторке ПК; проданные пакеты держат зону навсегда — её можно только переименовать; непроданные
+   пакеты каталога удаляют в «Пакетах времени». Мастер — только когда зону держат одни минуты. */
+const guestsGen = n => n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? 'гостя' : 'гостей'); // «у 1 гостя», «у 2 гостей»
+function zoneDelHtml(z){
+  const out = [];
+  if (z.computers) out.push(`<div class="muted">В зоне ${z.computers} ПК — сначала переведи их в другую зону (шторка ПК → «Зона»).</div>`);
+  if (z.package_sales) out.push(`<div class="muted">По зоне продавали пакеты (${z.package_sales}) — в истории продаж она нужна: удалить
+    нельзя, можно только переименовать (поле «Название» выше).</div>`);
+  else if (z.packages) out.push(`<div class="muted">В каталоге ${repPlural(z.packages, 'пакет', 'пакета', 'пакетов')} этой зоны — сначала
+    удали ${z.packages === 1 ? 'его' : 'их'} в «Пакетах времени».</div>`);
+  const m = packHM(z.live_minutes || 0);
+  if (z.live_minutes && z.delete_block !== 'has_minutes'){ // мастер — только когда держат одни минуты: жечь их зря незачем
+    if (z.delete_block !== 'package_history') out.push(`<div class="muted">И у ${guestsGen(z.live_guests)} ${m} этой зоны — перенести или
+      сжечь их можно будет здесь же, когда зону не будет держать ничего другого.</div>`);
+  }else if (z.live_minutes){
+    const others = zonesCache.filter(x => x.id !== z.id);
+    out.push(`<div class="muted">У ${guestsGen(z.live_guests)} ${m} этой зоны — выданы за монеты или в компенсацию и годны только
+      здесь. Без зоны они стали бы годны везде, поэтому сначала перенеси их в другую зону или сожги.</div>`
+      + (others.length ? `<label class="muted" style="margin-bottom:-6px" for="zn_to">Перенести в зону — минута в минуту (час здесь —
+        ${fmtPLN(z.rate_pln)} zł)</label>
+      <select id="zn_to" class="input">${others.map(x => `<option value="${x.id}">${esc(x.name)} · ${fmtPLN(x.rate_pln)} zł/ч</option>`).join('')}</select>` : '')
+      + `<div style="display:flex; gap:10px; flex-wrap:wrap">${others.length
+          ? `<button class="btn mini" id="zn_move" onclick="zoneMinutes('${z.id}', false, this)"><span data-ic="clock"></span>Перенести ${m}</button>` : ''}
+        <button class="btn ghost mini" id="zn_burn" onclick="armButton(this, 'Сжечь ${m}? Ещё раз', () => zoneMinutes('${z.id}', true, this))">Сжечь ${m}</button>
+      </div>
+      <div class="muted">Гостям придёт уведомление, в журнал — строка на каждого.</div>`);
+  }
+  if (!z.delete_block) out.push(`<div class="muted">Зону ничто не держит: ПК, пакетов и минут у гостей нет.</div>
+    <div><button class="btn ghost mini danger" id="zn_drop" onclick="zoneDelete(this, '${z.id}')"><span data-ic="cross"></span>Удалить зону</button></div>`);
+  return out.join('');
+}
+// шторка зоны открыта — перерисовать только «Удалить зону» (набранное в полях выше не теряется)
+function zoneDelPaint(id){
+  const box = document.getElementById('zn_del'), z = zonesCache.find(x => x.id === id);
+  if (box && z){ box.innerHTML = zoneDelHtml(z); mountIcons(box); }
+}
+async function zoneMinutes(id, burn, btn){
+  const to = burn ? '' : (document.getElementById('zn_to') || {}).value || '';
+  if (!burn && !to){ toast('⚠ Выбери зону, куда перенести минуты'); return; }
+  btn.disabled = true;
+  try{
+    const r = await api('/admin/zones/' + id + '/move-minutes', {method:'POST', body: JSON.stringify(burn ? {burn: true} : {to_zone_id: to})});
+    toast(burn ? '✓ Сожжено ' + packHM(r.minutes) + ' у ' + guestsGen(r.guests) + ' — гостям ушло уведомление'
+               : '✓ ' + packHM(r.minutes) + ' перенесены в «' + r.to.name + '» — гостям ушло уведомление');
+  }catch(e){ toast('⚠ ' + e.message); }
+  finally{ if (btn.isConnected) btn.disabled = false; }
+  await renderZones();
+  zoneDelPaint(id);
+}
+function zoneDelete(btn, id){
+  armButton(btn, 'Удалить? Ещё раз', async () => {
+    try{
+      await api('/admin/zones/' + id, {method:'DELETE'});
+      toast('✓ Зона удалена');
+      closeDrawer();
+    }catch(e){ toast('⚠ ' + e.message); }
+    await renderZones();
+    zoneDelPaint(id);
+  });
 }
 async function zoneSave(id){
   const name = document.getElementById('zn_name').value.trim();

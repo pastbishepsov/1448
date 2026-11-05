@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -93,5 +94,50 @@ func TestZoneOfSession(t *testing.T) {
 	}
 	if got := zoneOfSession(&models.Session{ZoneID: &std}, pc); got == nil || *got != vip || asked != 1 {
 		t.Errorf("сессия без снимка — зона ПК: %v, зону ПК спросили %d раз", got, asked)
+	}
+}
+
+// З18-и1: что держит зону от удаления — сначала то, что мастер не решает, последними — живые минуты.
+func TestZoneDeleteBlock(t *testing.T) {
+	cases := []struct {
+		name string
+		h    zoneHold
+		want string
+	}{
+		{"пустая зона — удаляется", zoneHold{}, ""},
+		{"ПК — первыми", zoneHold{Computers: 3, Sales: 1, Packages: 1, Minutes: 30, Guests: 1}, "has_computers"},
+		{"продажи пакетов — навсегда, даже без каталога", zoneHold{Sales: 2, Minutes: 30, Guests: 1}, "package_history"},
+		{"непроданные пакеты каталога", zoneHold{Packages: 1, Minutes: 30, Guests: 1}, "has_packages"},
+		{"только живые минуты — мастер", zoneHold{Minutes: 30, Guests: 1}, "has_minutes"},
+	}
+	for _, tc := range cases {
+		if got := zoneDeleteBlock(tc.h); got != tc.want {
+			t.Errorf("%s: zoneDeleteBlock = %q, ожидалось %q", tc.name, got, tc.want)
+		}
+	}
+	if got := zoneMinutesText(zoneHold{Minutes: 45, Guests: 2}); !strings.HasPrefix(got, "У 2 гостей 45 мин этой зоны") {
+		t.Errorf("текст 409: %q", got)
+	}
+	for n, want := range map[int64]string{1: "1 гостя", 2: "2 гостей", 5: "5 гостей", 11: "11 гостей", 21: "21 гостя", 111: "111 гостей"} {
+		if got := guestsGen(n); got != want {
+			t.Errorf("guestsGen(%d) = %q, ожидалось %q", n, got, want)
+		}
+	}
+}
+
+// З18-и1: перенос и сжигание — по гостям в порядке первой выдачи, злотые — по тарифу каждой выдачи.
+func TestMinutesByGuest(t *testing.T) {
+	a, b := uuid.New(), uuid.New()
+	got := minutesByGuest([]models.MinuteGrant{
+		{UserID: a, MinutesLeft: 30, RatePLN: 10},
+		{UserID: b, MinutesLeft: 20, RatePLN: 10},
+		{UserID: a, MinutesLeft: 15, RatePLN: 30},
+	})
+	if len(got) != 2 || got[0].UserID != a || got[0].Minutes != 45 || got[0].PLN != 12.5 ||
+		got[1].UserID != b || got[1].Minutes != 20 || got[1].PLN != 3.33 {
+		t.Errorf("minutesByGuest = %+v", got)
+	}
+	if got := minutesByGuest(nil); len(got) != 0 {
+		t.Errorf("без выдач — пусто: %+v", got)
 	}
 }

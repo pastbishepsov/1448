@@ -16,6 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
@@ -42,8 +44,16 @@ var zoneErrors = map[string]string{
 	"has_computers":  "В зоне есть компьютеры — сначала перенеси их в другую",
 	// Е2-и1: пакеты привязаны к зоне (Р10), и у гостей на руках купленные
 	// минуты именно этой зоны. Молча снести её нельзя.
-	"has_packages": "На эту зону есть пакеты времени — сначала выключи или удали их",
+	// З18-и1: проданный пакет не удаляется (has_sales), а продажи держат зону навсегда — отдельным кодом ниже;
+	// сюда доходят только пакеты каталога, которые ни разу не продавали, — их можно удалить.
+	"has_packages": "В каталоге есть пакеты этой зоны — сначала удали их в «Пакетах времени»",
 	"bad_vat":      vatBadMessage, // З13-и1
+	// З18-и1 (№8, З-Р7; из №40 — «только переименовать»)
+	"package_history":   "По зоне продавали пакеты — в истории продаж она нужна: удалить нельзя, можно только переименовать",
+	"bad_target":        "Выбери одно: зону, куда перенести минуты, или «сжечь»",
+	"to_zone_not_found": "Зона, куда переносим минуты, не найдена",
+	"same_zone":         "Минуты уже в этой зоне — выбери другую",
+	"no_minutes":        "Живых минут в зоне нет — их уже перенесли, сожгли или отыграли",
 }
 
 func zoneFail(c *gin.Context, status int, code string) {
@@ -122,30 +132,25 @@ func zoneLabel(name string) string {
 	return name
 }
 
-// GET /admin/zones — зоны с ценами и числом машин (staff: цену видно у стойки).
+// GET /admin/zones — зоны с ценами и числом машин (staff: цену видно у стойки). З18-и1: и что держит зону — живые
+// минуты гостей (и у скольких), пакеты в каталоге, продажи пакетов, `delete_block` — почему её не удалить ("" — можно).
 func handleAdminZones(c *gin.Context) {
 	var zones []models.Zone
 	db.Order("sort, name").Find(&zones)
-	var counts []struct {
-		ZoneID string
-		N      int64
-	}
-	db.Model(&models.Computer{}).Select("zone_id, COUNT(*) AS n").
-		Where("zone_id IS NOT NULL").Group("zone_id").Scan(&counts)
-	byZone := map[string]int64{}
-	for _, r := range counts {
-		byZone[r.ZoneID] = r.N
-	}
+	holds := zoneHolds()
 	var loose int64
 	db.Model(&models.Computer{}).Where("zone_id IS NULL").Count(&loose)
 
 	out := make([]gin.H, 0, len(zones))
 	for i := range zones {
 		z := zones[i]
+		h := holds[z.ID.String()]
 		out = append(out, gin.H{"id": z.ID, "name": z.Name, "rate_pln": z.RatePLN,
-			"sort": z.Sort, "computers": byZone[z.ID.String()],
+			"sort": z.Sort, "computers": h.Computers,
 			"coins_per_hour": coinsPerHourFor(z.RatePLN), // В4-2: конвертер считает сам
-			"vat_pct":        z.VatPct})                  // З13-и1
+			"vat_pct":        z.VatPct,                   // З13-и1
+			"live_minutes":   h.Minutes, "live_guests": h.Guests, "packages": h.Packages, "package_sales": h.Sales,
+			"delete_block": zoneDeleteBlock(h)})
 	}
 	club, _ := defaultClub()
 	base := 0.0
@@ -265,45 +270,251 @@ func handleAdminZoneUpdate(c *gin.Context) {
 		zoneFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
+	renamed := ""
 	if name != z.Name { // кэш имени у машин зоны
 		db.Model(&models.Computer{}).Where("zone_id = ?", z.ID).Update("zone", name)
+		// З18-и1 (из №40): и снимок имени у живых остатков — минут за монеты и компенсаций и пакетов, иначе гость видит
+		// «60 мин Tmp» у зоны, которой с таким именем уже нет. Отыгранное, отменённое и просроченное — история: как продали.
+		g := db.Model(&models.MinuteGrant{}).Where("zone_id = ? AND minutes_left > 0", z.ID).Update("zone_name", name).RowsAffected
+		p := db.Model(&models.UserPackage{}).
+			Where("zone_id = ? AND minutes_left > 0 AND voided_at IS NULL AND (expires_at IS NULL OR expires_at > now())", z.ID).
+			Update("zone_name", name).RowsAffected
+		if g+p > 0 {
+			renamed = fmt.Sprintf(" · имя у живых остатков: выдач минут — %d, пакетов — %d", g, p)
+		}
 	}
 	if len(changes) > 0 {
-		logAdminAction(c, "zone_update", nil, strings.Join(changes, ", "))
+		logAdminAction(c, "zone_update", nil, strings.Join(changes, ", ")+renamed)
 	}
 	c.JSON(http.StatusOK, gin.H{"zone": gin.H{"id": z.ID, "name": name, "rate_pln": rate, "vat_pct": vat}})
 }
 
-// DELETE /admin/zones/:id — удалить пустую зону (owner).
+// DELETE /admin/zones/:id — удалить зону, которую ничто не держит (owner). Е2-и1: пакеты база и так защищает (FK
+// RESTRICT), но владелец увидел бы голое «db_error» — говорим сами, что держит зону. З18-и1: и живые минуты гостей
+// (409 has_minutes — мастер в шторке зоны), и продажи пакетов (409 package_history — только переименовать).
 func handleAdminZoneDelete(c *gin.Context) {
 	var z models.Zone
 	if err := db.First(&z, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "zone_not_found", "message": "Зона не найдена"})
 		return
 	}
-	var n int64
-	db.Model(&models.Computer{}).Where("zone_id = ?", z.ID).Count(&n)
-	if n > 0 {
-		zoneFail(c, http.StatusConflict, "has_computers")
+	if zoneHeld(c, zoneHolds()[z.ID.String()]) {
 		return
 	}
-	// Е2-и1: у зоны есть пакеты — база их и так защищает (FK RESTRICT), но
-	// владелец увидел бы голое «db_error» и решил, что система сломалась.
-	// Проверяем сами и говорим, что именно держит зону.
-	db.Model(&models.TimePackage{}).Where("zone_id = ?", z.ID).Count(&n)
-	if n == 0 {
-		db.Model(&models.UserPackage{}).Where("zone_id = ?", z.ID).Count(&n)
-	}
-	if n > 0 {
-		zoneFail(c, http.StatusConflict, "has_packages")
-		return
-	}
-	if err := db.Delete(&z).Error; err != nil {
+	// удаление — условием: минуты, выданные в зону между проверкой и удалением, удержат её, а не станут «годны везде»
+	res := db.Exec("DELETE FROM zones WHERE id = ? AND NOT EXISTS "+
+		"(SELECT 1 FROM minute_grants WHERE zone_id = ? AND minutes_left > 0)", z.ID, z.ID)
+	if res.Error != nil {
 		zoneFail(c, http.StatusInternalServerError, "db_error")
+		return
+	}
+	if res.RowsAffected == 0 {
+		if !zoneHeld(c, zoneHolds()[z.ID.String()]) { // держать нечем — значит, зону уже удалили параллельно
+			c.JSON(http.StatusNotFound, gin.H{"code": "zone_not_found", "message": "Зона не найдена"})
+		}
 		return
 	}
 	logAdminAction(c, "zone_delete", nil, z.Name)
 	c.JSON(http.StatusOK, gin.H{"deleted": z.ID})
+}
+
+// ── З18-и1 (OWNER.md, №8, З-Р7): зона с живыми минутами ──────────────────────────────────────────────────────────────
+//
+// Минуты за монеты и компенсации (minute_grants, Ж2) годны только в своей зоне, а FK у них — ON DELETE SET NULL:
+// удаление зоны молча делало их «годными везде», и 30 минут по 10 zł/ч отыгрывались на VIP (ревью 23.09, №8,
+// сценарий L). Теперь удаление при живых минутах — 409 has_minutes с числом минут и гостей, а мастер в шторке зоны
+// (POST /admin/zones/:id/move-minutes) переносит их в другую зону — зона и имя у выдачи новые, минута в минуту, оценка
+// в злотых — по тарифу выдачи, как была, — или сжигает (остаток — 0); каждому гостю — уведомление, в журнал — строка
+// на гостя. Продажи пакетов держат зону навсегда (user_packages, FK RESTRICT): 409 package_history — только
+// переименовать; раньше говорили «выключи или удали пакеты», а проданный пакет не удаляется.
+
+// zoneHold — что держит зону: ПК, продажи пакетов, пакеты в каталоге, живые минуты и у скольких гостей.
+type zoneHold struct {
+	Computers, Sales, Packages, Minutes, Guests int64
+}
+
+// zoneDeleteBlock — чистая (юнит): почему зону сейчас нельзя удалить; "" — можно. Сначала то, что мастер не решает
+// (ПК переносят в шторке ПК, продажи держат зону навсегда, каталог правят в «Пакетах»), последними — минуты.
+func zoneDeleteBlock(h zoneHold) string {
+	switch {
+	case h.Computers > 0:
+		return "has_computers"
+	case h.Sales > 0:
+		return "package_history"
+	case h.Packages > 0:
+		return "has_packages"
+	case h.Minutes > 0:
+		return "has_minutes"
+	}
+	return ""
+}
+
+// zoneHolds — zoneHold всех зон (ключ — id зоны): четыре сгруппированных запроса на весь список.
+func zoneHolds() map[string]zoneHold {
+	out := map[string]zoneHold{}
+	var rows []struct {
+		ZoneID string
+		N, G   int64
+	}
+	add := func(set func(h *zoneHold, n, g int64)) {
+		for _, r := range rows {
+			h := out[r.ZoneID]
+			set(&h, r.N, r.G)
+			out[r.ZoneID] = h
+		}
+		rows = nil
+	}
+	db.Model(&models.Computer{}).Select("zone_id, COUNT(*) AS n").Where("zone_id IS NOT NULL").Group("zone_id").Scan(&rows)
+	add(func(h *zoneHold, n, _ int64) { h.Computers = n })
+	db.Model(&models.UserPackage{}).Select("zone_id, COUNT(*) AS n").Group("zone_id").Scan(&rows)
+	add(func(h *zoneHold, n, _ int64) { h.Sales = n })
+	db.Model(&models.TimePackage{}).Select("zone_id, COUNT(*) AS n").Group("zone_id").Scan(&rows)
+	add(func(h *zoneHold, n, _ int64) { h.Packages = n })
+	db.Model(&models.MinuteGrant{}).Select("zone_id, COALESCE(SUM(minutes_left),0) AS n, COUNT(DISTINCT user_id) AS g").
+		Where("zone_id IS NOT NULL AND minutes_left > 0").Group("zone_id").Scan(&rows)
+	add(func(h *zoneHold, n, g int64) { h.Minutes, h.Guests = n, g })
+	return out
+}
+
+// zoneHeld — 409 тем, что держит зону (true), или ничего (false — удалять можно).
+func zoneHeld(c *gin.Context, h zoneHold) bool {
+	switch code := zoneDeleteBlock(h); code {
+	case "":
+		return false
+	case "package_history":
+		c.JSON(http.StatusConflict, gin.H{"code": code, "message": zoneErrors[code], "sales": h.Sales})
+	case "has_minutes":
+		c.JSON(http.StatusConflict, gin.H{"code": code, "message": zoneMinutesText(h), "minutes": h.Minutes, "guests": h.Guests})
+	default:
+		zoneFail(c, http.StatusConflict, code)
+	}
+	return true
+}
+
+// guestsGen — «у 1 гостя», «у 2 гостей», «у 21 гостя»: родительный падеж после «у».
+func guestsGen(n int64) string {
+	if n%10 == 1 && n%100 != 11 {
+		return fmt.Sprintf("%d гостя", n)
+	}
+	return fmt.Sprintf("%d гостей", n)
+}
+
+// zoneMinutesText — текст 409 has_minutes (юнит): сколько минут, у скольких гостей и что сделать.
+func zoneMinutesText(h zoneHold) string {
+	return fmt.Sprintf("У %s %d мин этой зоны — перенеси их в другую зону или сожги (шторка зоны): без зоны они стали бы "+
+		"годны везде", guestsGen(h.Guests), h.Minutes)
+}
+
+type zoneMinutesRequest struct {
+	ToZoneID string `json:"to_zone_id"`
+	Burn     bool   `json:"burn"`
+}
+
+// guestMinutes — живые минуты зоны у одного гостя: сколько и во сколько злотых по тарифу выдачи.
+type guestMinutes struct {
+	UserID  uuid.UUID
+	Minutes int
+	PLN     float64
+}
+
+// minutesByGuest — чистая (юнит): выдачи по гостям в порядке первой выдачи; злотые — минуты × тариф выдачи / 60.
+func minutesByGuest(grants []models.MinuteGrant) []guestMinutes {
+	var out []guestMinutes
+	at := map[uuid.UUID]int{}
+	for _, g := range grants {
+		i, ok := at[g.UserID]
+		if !ok {
+			i = len(out)
+			at[g.UserID] = i
+			out = append(out, guestMinutes{UserID: g.UserID})
+		}
+		out[i].Minutes += g.MinutesLeft
+		out[i].PLN += float64(g.MinutesLeft) * g.RatePLN / 60
+	}
+	for i := range out {
+		out[i].PLN = round2(out[i].PLN)
+	}
+	return out
+}
+
+// POST /admin/zones/:id/move-minutes — живые минуты зоны (owner): {to_zone_id} — в другую зону, {burn: true} — сжечь.
+func handleAdminZoneMoveMinutes(c *gin.Context) {
+	var z models.Zone
+	if err := db.First(&z, "id = ?", c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "zone_not_found", "message": "Зона не найдена"})
+		return
+	}
+	var req zoneMinutesRequest
+	toID := ""
+	if err := c.ShouldBindJSON(&req); err == nil {
+		toID = strings.TrimSpace(req.ToZoneID)
+	}
+	if req.Burn == (toID != "") { // ни того ни другого, оба сразу или битое тело
+		zoneFail(c, http.StatusBadRequest, "bad_target")
+		return
+	}
+	var to *models.Zone
+	if !req.Burn {
+		var t models.Zone
+		if err := db.First(&t, "id = ?", toID).Error; err != nil {
+			zoneFail(c, http.StatusNotFound, "to_zone_not_found")
+			return
+		}
+		if t.ID == z.ID {
+			zoneFail(c, http.StatusBadRequest, "same_zone")
+			return
+		}
+		to = &t
+	}
+	var grants []models.MinuteGrant
+	err := db.Transaction(func(tx *gorm.DB) error {
+		// под замком: тик биллинга, снимающий минуты с этих выдач, подождёт и увидит новую зону или нулевой остаток
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("zone_id = ? AND minutes_left > 0", z.ID).Order("created_at").Find(&grants).Error; err != nil {
+			return err
+		}
+		if len(grants) == 0 {
+			return nil
+		}
+		ids := make([]uuid.UUID, len(grants))
+		for i := range grants {
+			ids[i] = grants[i].ID
+		}
+		q := tx.Model(&models.MinuteGrant{}).Where("id IN ?", ids)
+		if to != nil {
+			return q.Updates(map[string]any{"zone_id": to.ID, "zone_name": to.Name}).Error
+		}
+		return q.UpdateColumn("minutes_left", 0).Error
+	})
+	if err != nil {
+		respondDBError(c, err)
+		return
+	}
+	if len(grants) == 0 {
+		zoneFail(c, http.StatusConflict, "no_minutes")
+		return
+	}
+	per := minutesByGuest(grants)
+	total, value := 0, 0.0
+	for _, g := range per {
+		total += g.Minutes
+		value += g.PLN
+		target := g.UserID
+		if to != nil {
+			notifyUser(g.UserID, "zone_minutes_moved", map[string]any{"minutes": g.Minutes, "from": z.Name, "to": to.Name})
+			logAdminAction(c, "zone_minutes_move", &target, fmt.Sprintf("минуты зоны %s → %s: %d мин", z.Name, to.Name, g.Minutes))
+			reviveActiveSession(g.UserID, &to.ID) // гость сейчас в той зоне — минуты оживляют сессию, как выдача
+		} else {
+			notifyUser(g.UserID, "zone_minutes_burned", map[string]any{"minutes": g.Minutes, "zone": z.Name})
+			logAdminAction(c, "zone_minutes_burn", &target, fmt.Sprintf("минуты зоны %s сожжены: %d мин (%.2f zł по тарифу выдачи)",
+				z.Name, g.Minutes, g.PLN))
+		}
+	}
+	out := gin.H{"minutes": total, "guests": len(per), "value_pln": round2(value), "burned": req.Burn}
+	if to != nil {
+		out["to"] = gin.H{"id": to.ID, "name": to.Name}
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // zoneFieldsFor — поля обновления ПК при смене зоны: единственный путь, где

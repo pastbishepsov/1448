@@ -409,6 +409,8 @@ func main() {
 		own.POST("/zones", handleAdminZoneCreate)
 		own.PATCH("/zones/:id", handleAdminZoneUpdate)
 		own.DELETE("/zones/:id", handleAdminZoneDelete)
+		// З18-и1: живые минуты зоны — в другую зону или сжечь (мастер в шторке зоны)
+		own.POST("/zones/:id/move-minutes", handleAdminZoneMoveMinutes)
 		own.GET("/work", handleWorkList)
 		own.POST("/work", handleWorkCreate)
 		own.PATCH("/work/:id", handleWorkUpdate)

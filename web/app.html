@@ -934,6 +934,8 @@ const STR_RU = {
   ntf_pack_added: '▶ Пакет «{n}»: +{m} мин ({z})',
   ntf_pack_void: '↩ Выдача пакета «{n}» отменена',
   ntf_pack_soon: '⏳ Пакет «{n}» сгорит через {d} дн — осталось {m} мин',
+  ntf_zone_moved: '⏱ {m} мин зоны «{f}» теперь в зоне «{t}»', // З18-и1: минуты удаляемой зоны — перенесли или сожгли
+  ntf_zone_burned: '🔥 Зону «{z}» закрыли — сгорело {m} мин этой зоны',
   topup_title: 'Пополнение баланса',
   topup_body: 'Пока пополнить можно у стойки клуба — админ зачислит койны сразу. Онлайн-оплата (BLIK/карта) приедет вместе со Stripe в спринте 6.',
   topup_ok: 'Понял',
@@ -1215,6 +1217,8 @@ const STR_EN = {
   ntf_pack_added: '▶ Package “{n}”: +{m} min ({z})',
   ntf_pack_void: '↩ Package “{n}” was cancelled',
   ntf_pack_soon: '⏳ Package “{n}” expires in {d} d — {m} min left',
+  ntf_zone_moved: '⏱ {m} min of zone “{f}” are now in zone “{t}”',
+  ntf_zone_burned: '🔥 Zone “{z}” was closed — {m} min of that zone are gone',
   topup_title: 'Balance top-up',
   topup_body: 'For now top up at the club desk — the admin credits coins instantly. Online payment (BLIK/card) arrives with Stripe.',
   topup_ok: 'Got it',
@@ -1493,6 +1497,8 @@ const STR_PL = {
   ntf_pack_added: '▶ Pakiet „{n}”: +{m} min ({z})',
   ntf_pack_void: '↩ Wydanie pakietu „{n}” anulowano',
   ntf_pack_soon: '⏳ Pakiet „{n}” wygasa za {d} dn — zostało {m} min',
+  ntf_zone_moved: '⏱ {m} min ze strefy „{f}” jest teraz w strefie „{t}”',
+  ntf_zone_burned: '🔥 Strefę „{z}” zamknięto — przepadło {m} min z tej strefy',
   topup_title: 'Doładowanie konta',
   topup_body: 'Na razie doładujesz przy ladzie klubu — admin doda monety od ręki. Płatność online (BLIK/karta) przyjedzie ze Stripe.',
   topup_ok: 'Jasne',
@@ -3140,6 +3146,11 @@ function ntfText(n){
       return T('ntf_pack_void', {n: p.name || ''});
     case 'package_expiring':
       return T('ntf_pack_soon', {n: p.name || '', d: p.days_left || 0, m: p.minutes || 0});
+    // З18-и1: владелец удаляет зону — её минуты у гостя перенесли в другую зону или сожгли
+    case 'zone_minutes_moved':
+      return T('ntf_zone_moved', {m: p.minutes || 0, f: p.from || '', t: p.to || ''});
+    case 'zone_minutes_burned':
+      return T('ntf_zone_burned', {m: p.minutes || 0, z: p.zone || ''});
     // Е1: сервер сам подтвердил сессию по истечении окна (Р1).
     case 'ready_auto':
       return STR.ntf_ready_auto;
@@ -3279,7 +3290,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-01.2';
+const APP_VER = '2026-11-02.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

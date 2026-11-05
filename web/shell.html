@@ -1329,6 +1329,8 @@ const SH_RU = {
   ntf_pack_added: "▶ Пакет «{n}»: +{m} мин ({z})",
   ntf_pack_void: "↩ Выдача пакета «{n}» отменена",
   ntf_pack_soon: "⏳ Пакет «{n}» сгорит через {d} дн — осталось {m} мин",
+  ntf_zone_moved: "⏱ {m} мин зоны «{f}» теперь в зоне «{t}»", // З18-и1: минуты удаляемой зоны — перенесли или сожгли
+  ntf_zone_burned: "🔥 Зону «{z}» закрыли — сгорело {m} мин этой зоны",
   tab_food_title: "Кухня",
   cases_empty: "Кейсов пока нет.<br>Играй, поднимай уровень, выполняй ачивки.",
   cases_odds_link: "шансы дропа",
@@ -1878,6 +1880,8 @@ const SH_EN = {
   ntf_pack_added: "▶ Package “{n}”: +{m} min ({z})",
   ntf_pack_void: "↩ Package “{n}” was cancelled",
   ntf_pack_soon: "⏳ Package “{n}” expires in {d} d — {m} min left",
+  ntf_zone_moved: "⏱ {m} min of zone “{f}” are now in zone “{t}”",
+  ntf_zone_burned: "🔥 Zone “{z}” was closed — {m} min of that zone are gone",
   tab_food_title: "Kitchen",
   cases_empty: "No cases yet.<br>Play, level up, earn achievements.",
   cases_odds_link: "drop odds",
@@ -2427,6 +2431,8 @@ const SH_PL = {
   ntf_pack_added: "▶ Pakiet „{n}”: +{m} min ({z})",
   ntf_pack_void: "↩ Wydanie pakietu „{n}” anulowano",
   ntf_pack_soon: "⏳ Pakiet „{n}” wygasa za {d} dn — zostało {m} min",
+  ntf_zone_moved: "⏱ {m} min ze strefy „{f}” jest teraz w strefie „{t}”",
+  ntf_zone_burned: "🔥 Strefę „{z}” zamknięto — przepadło {m} min z tej strefy",
   tab_food_title: "Kuchnia",
   cases_empty: "Nie masz jeszcze skrzynek.<br>Graj, zdobywaj poziomy i osiągnięcia.",
   cases_odds_link: "szanse dropu",
@@ -4110,6 +4116,9 @@ function notifText(n){
     case 'package_added': return T('ntf_pack_added', {n: p.name || '', m: p.minutes || 0, z: p.zone || ''});
     case 'package_void': return T('ntf_pack_void', {n: p.name || ''});
     case 'package_expiring': return T('ntf_pack_soon', {n: p.name || '', d: p.days_left || 0, m: p.minutes || 0});
+    // З18-и1: владелец удаляет зону — её минуты у гостя перенесли в другую зону или сожгли
+    case 'zone_minutes_moved': return T('ntf_zone_moved', {m: p.minutes || 0, f: p.from || '', t: p.to || ''});
+    case 'zone_minutes_burned': return T('ntf_zone_burned', {m: p.minutes || 0, z: p.zone || ''});
     // К8 (Р4): админ компенсировал проблему с ПК — минуты в запас и/или деньги на кошелёк
     case 'incident_compensation': {
       const parts = [];
