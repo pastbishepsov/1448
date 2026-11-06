@@ -5,9 +5,10 @@
 (у Guest48 30 мин, у Guest49 15), минуты на VIP не тратятся; переименование — новое имя у живых выдач; мастер —
 POST /admin/zones/:id/move-minutes: перенос в Standard (тратятся там, гостям — уведомление, в журнал — строка на гостя),
 сжечь (остаток 0, уведомление), потом удаление — 200; продажи пакетов держат зону — 409 package_history («только
-переименовать»), непроданный пакет каталога — 409 has_packages. Временные зоны «z18 …» и всё их — удаляются в начале и
-в конце; выдачи и погашения Guest48 и Guest49 — тоже (гости З18–З19), монеты им ставятся SQL-ом, кошелёк Guest48
-докладывается до 30 zł."""
+переименовать»), непроданный пакет каталога — 409 has_packages. З18-и1а (миграция 092): сожжённое — у выдачи момент и
+сколько (burned_at, burned_minutes), и «Сгорело за период» в «Деньгах» и «Кассе» — строкой «минуты зоны» по тарифу
+выдачи, и после удаления зоны — с её именем. Временные зоны «z18 …» и всё их — удаляются в начале и в конце; выдачи и
+погашения Guest48 и Guest49 — тоже (гости З18–З19), монеты им ставятся SQL-ом, кошелёк Guest48 докладывается до 30 zł."""
 from _z import *
 
 G1, G2 = "Guest48", "Guest49"
@@ -104,6 +105,8 @@ s1, r1 = api("POST", f"/admin/users/{U2}/redeem", {"zone_id": ZB, "minutes": 20}
 s, d = api("DELETE", f"/admin/zones/{ZB}", None, "boss")
 check("новая «z18 Tmp», Guest49 — 20 мин; удаление — 409 «У 1 гостя 20 мин этой зоны»",
       s1 == 200 and s == 409 and d.get("message", "").startswith("У 1 гостя 20 мин этой зоны"), f"{s1} {s} {d.get('message')}")
+burned = lambda url="/admin/reports/money?preset=today": api("GET", url, None, "boss")[1].get("burned") or {}
+B0 = burned()
 s, d = api("POST", f"/admin/zones/{ZB}/move-minutes", {"burn": True}, "boss")
 nb = note(U2, "zone_minutes_burned")
 check("сжечь — 200: 20 мин у 1 гостя на 3,33 zł по тарифу выдачи; остаток выдачи — 0; гостю — zone_minutes_burned; в журнале",
@@ -113,6 +116,20 @@ check("сжечь — 200: 20 мин у 1 гостя на 3,33 zł по тари
       f"{s} {J(d)} · {grants(U2)} · {nb} · {last_audit('zone_minutes_burn', U2)}")
 s, d = api("DELETE", f"/admin/zones/{ZB}", None, "boss")
 check("после сжигания удаление — 200", s == 200 and zone(ZB) is None, f"{s} {J(d)}")
+mark = sql(f"SELECT burned_minutes || '|' || (burned_at IS NOT NULL)::text || '|' || (burned_at > now() - interval '5 minutes')::text "
+           f"|| '|' || COALESCE(zone_id::text, 'нет') FROM minute_grants WHERE user_id = '{U2}' AND zone_name = 'z18 Tmp'")
+check("З18-и1а: у сожжённой выдачи — сколько и когда (burned_minutes 20, burned_at — только что); зоны у неё больше нет, имя осталось",
+      mark == "20|true|true|нет", mark)
+B1, BK = burned(), burned("/admin/cash/book?preset=today")
+m0, m1 = B0.get("minutes") or {}, B1.get("minutes") or {}
+it = next((x for x in B1.get("items") or [] if x.get("kind") == "minutes" and x.get("guest") == G2), {})
+check("«Сгорело за период» за сегодня: «минуты» +1 строка, +20 мин, +3,33 zł; итог +3,33 zł — сумма пакетов, минут и монет",
+      m1.get("count") == (m0.get("count") or 0) + 1 and m1.get("minutes") == (m0.get("minutes") or 0) + 20
+      and near(m1.get("pln", 0) - (m0.get("pln") or 0), 3.33) and near(B1.get("pln", 0) - (B0.get("pln") or 0), 3.33)
+      and near(B1.get("pln", 0), sum((B1.get(k) or {}).get("pln", 0) for k in ("packages", "minutes", "coins"))), J([m0, m1, B1.get("pln")]))
+check("в списке сгоревшего — «минуты» Guest49: зона «z18 Tmp» (её уже удалили), 20 мин, 3,33 zł; «Касса» отдаёт то же",
+      it.get("name") == "z18 Tmp" and it.get("qty") == 20 and it.get("pln") == 3.33 and BK.get("minutes") == m1
+      and BK.get("pln") == B1.get("pln"), J([it, BK.get("minutes")]))
 
 section("пакеты держат зону")
 s, d = api("POST", "/admin/zones", {"name": "z18 Пак", "rate_pln": 12}, "boss")

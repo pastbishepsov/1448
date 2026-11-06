@@ -32,6 +32,10 @@ type MinuteGrant struct {
 	// З5-и2 (миграция 068): тариф выданных минут, zł/ч — по нему «должны
 	// временем» считается в злотых. Выдача — тариф выдачи, компенсация — зоны.
 	RatePLN float64 `json:"rate_pln" gorm:"type:decimal(8,2);not null;default:0"`
+	// З18-и1а (миграция 092): остаток сожгли в мастере удаления зоны (З18-и1) — когда и сколько минут; «Сгорело за
+	// период» берёт их по моменту сгорания. NULL и 0 — не сжигали.
+	BurnedAt      *time.Time `json:"burned_at,omitempty"`
+	BurnedMinutes int        `json:"burned_minutes" gorm:"not null;default:0"`
 }
 
 func (g *MinuteGrant) BeforeCreate(tx *gorm.DB) error {

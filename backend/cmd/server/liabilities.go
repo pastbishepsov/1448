@@ -12,7 +12,8 @@ package main
 //
 // «Сгорело за период» — обязательства, ушедшие без игры: просроченные пакеты — неотыгранный остаток по доле
 // цены (у подаренного — минуты без злотых), по моменту срока; монеты, сгоревшие у неактивных (В4-3), — по
-// нынешнему курсу погашения, по моменту сгорания. Список — последние maxBurnItems.
+// нынешнему курсу погашения, по моменту сгорания; З18-и1а — минуты за монеты и компенсации, сожжённые в мастере
+// удаления зоны (З18-и1), — по тарифу выдачи, по моменту сгорания (миграция 092). Список — последние maxBurnItems.
 //
 // Блок — в «Деньгах» и в «Бухгалтерии» → «Касса» (рядом с ящиком): GET /admin/reports/money и
 // GET /admin/cash/book отдают `liabilities` и `burned`.
@@ -96,19 +97,22 @@ func liabilitiesNow() gin.H {
 
 const maxBurnItems = 100
 
-// burnedRow — одно сгорание периода: пакет (остаток на момент срока) или монеты.
+// burnedRow — одно сгорание периода: пакет (остаток на момент срока), минуты зоны (З18-и1а) или монеты.
 type burnedRow struct {
-	Kind   string // package | coins
+	Kind   string // package | minutes | coins
 	ID     uuid.UUID
 	UserID uuid.UUID
-	Name   string // у пакета — его название
-	Qty    int64  // минуты пакета или монеты
-	Grosz  int64  // пакет — по доле цены (подаренный — 0); монеты — по курсу погашения
+	Name   string // у пакета — его название, у минут — зона выдачи
+	Qty    int64  // минуты пакета или выдачи либо монеты
+	Grosz  int64  // пакет — по доле цены (подаренный — 0); минуты — по тарифу выдачи; монеты — по курсу погашения
 	Gift   bool   // подаренный пакет (З11-и5)
 	At     time.Time
 }
 
-// sortBurned — порядок списка «Сгорело» (чистая, тест): свежие сверху, при равном моменте — пакеты, потом
+// burnedKindOrder — при равном моменте: пакеты, минуты зоны, монеты.
+var burnedKindOrder = map[string]int{"package": 0, "minutes": 1, "coins": 2}
+
+// sortBurned — порядок списка «Сгорело» (чистая, тест): свежие сверху, при равном моменте — пакеты, минуты, потом
 // монеты, дальше по id.
 func sortBurned(rows []burnedRow) {
 	sort.SliceStable(rows, func(i, j int) bool {
@@ -117,7 +121,7 @@ func sortBurned(rows []burnedRow) {
 			return a.At.After(b.At)
 		}
 		if a.Kind != b.Kind {
-			return a.Kind == "package"
+			return burnedKindOrder[a.Kind] < burnedKindOrder[b.Kind]
 		}
 		return a.ID.String() < b.ID.String()
 	})
@@ -132,17 +136,27 @@ SELECT 'package' AS kind, id, user_id, name, minutes_left AS qty,
   FROM user_packages
  WHERE voided_at IS NULL AND minutes_left > 0 AND expires_at >= ? AND expires_at < ? AND expires_at <= now()`
 
-// burnedIn — «Сгорело за период»: пакеты и монеты, итоги и список.
+// burnedMinutesSQL — минуты за монеты и компенсации, сожжённые в мастере удаления зоны (З18-и1а) в окне [from, to):
+// по моменту сгорания; в злотых — по тарифу выдачи, как «должны временем»; имя — зона выдачи (после удаления зоны —
+// её прежнее имя: zone_id обнуляется, zone_name остаётся).
+const burnedMinutesSQL = `
+SELECT 'minutes' AS kind, id, user_id, zone_name AS name, burned_minutes AS qty,
+       ROUND(burned_minutes * rate_pln * 100 / 60.0)::bigint AS grosz, false AS gift, burned_at AS at
+  FROM minute_grants
+ WHERE burned_minutes > 0 AND burned_at >= ? AND burned_at < ?`
+
+// burnedIn — «Сгорело за период»: пакеты, минуты зоны и монеты, итоги и список.
 func burnedIn(from, to time.Time) gin.H {
-	var packs []burnedRow
+	var packs, mins []burnedRow
 	db.Raw(burnedPacksSQL, from, to).Scan(&packs)
+	db.Raw(burnedMinutesSQL, from, to).Scan(&mins)
 	var burns []models.CoinBurn
 	db.Where("created_at >= ? AND created_at < ?", from, to).Find(&burns)
 	sr := spendRate()
 
-	var packG, packMin, giftMin, coins int64
-	packGuests, coinGuests := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
-	rows := make([]burnedRow, 0, len(packs)+len(burns))
+	var packG, packMin, giftMin, coins, minG, minQty int64
+	packGuests, coinGuests, minGuests := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
+	rows := make([]burnedRow, 0, len(packs)+len(mins)+len(burns))
 	for _, p := range packs {
 		packG += p.Grosz
 		packMin += p.Qty
@@ -151,6 +165,12 @@ func burnedIn(from, to time.Time) gin.H {
 		}
 		packGuests[p.UserID] = true
 		rows = append(rows, p)
+	}
+	for _, m := range mins {
+		minG += m.Grosz
+		minQty += m.Qty
+		minGuests[m.UserID] = true
+		rows = append(rows, m)
 	}
 	for _, b := range burns {
 		coins += b.Coins
@@ -174,9 +194,12 @@ func burnedIn(from, to time.Time) gin.H {
 	}
 	pln := models.PLNFromGrosz
 	return gin.H{
-		"pln": pln(packG + coinG),
+		"pln": pln(packG + minG + coinG),
 		"packages": gin.H{"pln": pln(packG), "count": len(packs), "minutes": packMin, "gift_minutes": giftMin,
 			"guests": len(packGuests)},
+		// З18-и1а: минуты зоны, сожжённые в мастере её удаления
+		"minutes": gin.H{"pln": pln(minG), "count": len(mins), "minutes": minQty,
+			"guests": len(minGuests)},
 		"coins": gin.H{"pln": pln(coinG), "coins": coins, "count": len(burns), "guests": len(coinGuests), "rate": sr},
 		"items": items, "items_total": len(rows),
 	}

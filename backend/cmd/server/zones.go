@@ -326,7 +326,8 @@ func handleAdminZoneDelete(c *gin.Context) {
 // (POST /admin/zones/:id/move-minutes) переносит их в другую зону — зона и имя у выдачи новые, минута в минуту, оценка
 // в злотых — по тарифу выдачи, как была, — или сжигает (остаток — 0); каждому гостю — уведомление, в журнал — строка
 // на гостя. Продажи пакетов держат зону навсегда (user_packages, FK RESTRICT): 409 package_history — только
-// переименовать; раньше говорили «выключи или удали пакеты», а проданный пакет не удаляется.
+// переименовать; раньше говорили «выключи или удали пакеты», а проданный пакет не удаляется. З18-и1а: сжигание
+// пишет у выдачи момент и сколько сожгли (burned_at, burned_minutes, миграция 092) — для «Сгорело за период».
 
 // zoneHold — что держит зону: ПК, продажи пакетов, пакеты в каталоге, живые минуты и у скольких гостей.
 type zoneHold struct {
@@ -484,7 +485,9 @@ func handleAdminZoneMoveMinutes(c *gin.Context) {
 		if to != nil {
 			return q.Updates(map[string]any{"zone_id": to.ID, "zone_name": to.Name}).Error
 		}
-		return q.UpdateColumn("minutes_left", 0).Error
+		// З18-и1а: сколько и когда сожгли — у выдачи (SET берёт прежний minutes_left), «Сгорело за период» — по ним
+		return q.Updates(map[string]any{"minutes_left": 0, "burned_at": gorm.Expr("now()"),
+			"burned_minutes": gorm.Expr("burned_minutes + minutes_left")}).Error
 	})
 	if err != nil {
 		respondDBError(c, err)

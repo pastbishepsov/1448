@@ -5,8 +5,9 @@
 // Снова «z18 Окно» с 20 мин Guest49 — «Сжечь 20 мин» (два нажатия) — остаток 0, удаление. У Standard в шторке — «В зоне
 // 9 ПК» и «продавали пакеты … только переименовать», кнопки удаления нет. PWA гостей — уведомления «⏱ 30 мин зоны
 // «z18 Окно» теперь в зоне «Standard»» и «🔥 Зону «z18 Окно» закрыли — сгорело 20 мин этой зоны»; киоск и PWA — тексты
-// RU/EN/PL; APP_VER поднят парой с манифестом. Телефон 360 — шторка с мастером без прокрутки вбок. В конце зоны «z18 …»,
-// выдачи и погашения Guest48 и Guest49 удаляются (и при падении тоже).
+// RU/EN/PL; APP_VER поднят парой с манифестом. З18-и1а: в «Отчёты → Деньги» плитка «— минуты» «Сгорело за период» и строка
+// «Минуты зоны «z18 Окно»» Guest49 — 20 мин, 3,33 zł. Телефон 360 — шторка с мастером без прокрутки вбок. В конце зоны
+// «z18 …», выдачи и погашения Guest48 и Guest49 удаляются (и при падении тоже).
 const z = require('./_z');
 const { chromium } = require('playwright-core');
 const { CHROME } = require('./_env');
@@ -106,6 +107,29 @@ const { CHROME } = require('./_env');
   z.check('журнал: «зона: минуты перенесены», «зона: минуты сожжены» — в «Деньгах» и «ПК и зонах»',
     JSON.stringify(aud) === JSON.stringify(['зона: минуты перенесены', 'зона: минуты сожжены', true, true]), JSON.stringify(aud));
   await page.evaluate(() => closeDrawer());
+
+  // З18-и1а: сожжённое — в «Сгорело за период» «Денег»: плитка «— минуты» и строка в списке
+  await z.nav(page, 'stats');
+  await page.waitForFunction(() => !!document.getElementById('repLiab'), null, { timeout: 15000 }).catch(() => {});
+  await z.sleep(800);
+  const rep = (await z.api('GET', '/admin/reports/money?' + await page.evaluate(() => repQuery()), undefined, 'boss')).data;
+  const BM = (rep.burned || {}).minutes || {};
+  const fmt = v => (Math.round((+v || 0) * 100) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł';
+  const sb = await page.evaluate(g => {
+    const tile = [...document.querySelectorAll('#repLiab .kpi')].find(k => k.firstChild.textContent.trim() === '— минуты');
+    const s = document.getElementById('repBurnList'), tb = s && s.nextElementSibling && s.nextElementSibling.nextElementSibling
+      && s.nextElementSibling.nextElementSibling.querySelector('table');
+    const rows = tb ? [...tb.rows].slice(1).map(r => [...r.cells].map(c => [...c.childNodes]
+      .filter(x => !(x.classList && x.classList.contains('repL'))).map(x => x.textContent).join('').replace(/\s+/g, ' ').trim())) : [];
+    if (s) s.scrollIntoView({ block: 'start' });
+    return { tile: tile ? tile.querySelector('b').innerText.replace(/\s+/g, ' ').trim() : null, title: tile ? tile.title : '',
+      row: rows.find(r => r[1] === g && /^Минуты зоны/.test(r[2])) || null }; }, G2);
+  await z.sleep(300);
+  await z.shot(page, 'z18_zone_burned');
+  z.check(`«Деньги»: в ряду «Сгорело за период» — «— минуты» ${fmt(BM.pln)} («сожжены при удалении зоны, по тарифу выдачи»); в списке `
+    + `сгоревшего — Guest49 «Минуты зоны «${ZN}»», 20 мин, 3,33 zł`,
+    BM.count > 0 && sb.tile === fmt(BM.pln) && /сожжены при удалении зоны, по тарифу выдачи/.test(sb.title)
+    && !!sb.row && sb.row[2] === `Минуты зоны «${ZN}»` && sb.row[3] === '20 мин' && sb.row[4] === '3,33 zł', JSON.stringify({ BM, sb }));
 
   // гость: уведомления в PWA — настоящие (move и burn выше), тексты киоска и PWA — RU/EN/PL
   const br = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });

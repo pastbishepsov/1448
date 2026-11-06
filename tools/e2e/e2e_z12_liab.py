@@ -3,8 +3,8 @@
 /admin/reports/money и GET /admin/cash/book (только владельцу) отдают liabilities — снимок «сколько клуб должен гостям
 сейчас»: кошельки, пакеты (неотыгранный остаток по доле цены, подаренные — 0 zł), монеты на руках (по курсу погашения),
 минуты за монеты и компенсации (по тарифу выдачи), минус дебиторка; и burned — «Сгорело за период»: просроченные
-пакеты (остаток по доле цены, у подаренного — 0 zł) по моменту срока и монеты, сгоревшие у неактивных, по курсу
-погашения. Каждая часть сходится с прямым SQL до гроша и с «Кошельками гостей», «Долгом временем», «Монетами → на
+пакеты (остаток по доле цены, у подаренного — 0 zł) по моменту срока, монеты, сгоревшие у неактивных, по курсу
+погашения, и (З18-и1а) минуты, сожжённые при удалении зоны, по тарифу выдачи — по моменту сгорания. Каждая часть сходится с прямым SQL до гроша и с «Кошельками гостей», «Долгом временем», «Монетами → на
 руках», «должны временем» и «Дебиторкой сейчас»; оба отчёта отдают одно и то же. На приращениях пополнение, пакет,
 подарок пакета, погашение монет временем, просроченные пакеты, сгоревшие монеты и долг двигают ровно свои строки.
 Данные: гость Guest43 (монеты докладываются до 1000; за PC-09 — продажа в долг, сессия в конце завершается); позиция
@@ -75,8 +75,11 @@ def direct():
       (SELECT COALESCE(SUM(CASE WHEN method = 'comp' THEN 0 ELSE ROUND(price_pln * 100 * minutes_left / minutes_total) END), 0) FROM user_packages WHERE {burnt}),
       (SELECT count(*) FROM user_packages WHERE {burnt}),
       (SELECT COALESCE(SUM(coins), 0) FROM coin_burns WHERE created_at >= {DAY0} AND created_at < {DAY1}),
-      (SELECT ROUND(COALESCE(SUM(coins), 0) * 100 / {rate}) FROM coin_burns WHERE created_at >= {DAY0} AND created_at < {DAY1}))"""
-    k = ["wallets", "packs", "pack_min", "coins", "coins_g", "min_g", "rcv", "burn_packs", "burn_count", "burn_coins", "burn_coins_g"]
+      (SELECT ROUND(COALESCE(SUM(coins), 0) * 100 / {rate}) FROM coin_burns WHERE created_at >= {DAY0} AND created_at < {DAY1}),
+      (SELECT COALESCE(SUM(ROUND(burned_minutes * rate_pln * 100 / 60.0)), 0) FROM minute_grants
+        WHERE burned_minutes > 0 AND burned_at >= {DAY0} AND burned_at < {DAY1}))"""
+    k = ["wallets", "packs", "pack_min", "coins", "coins_g", "min_g", "rcv", "burn_packs", "burn_count", "burn_coins", "burn_coins_g",
+         "burn_min_g"]
     return dict(zip(k, (int(float(x)) for x in sql(q).split("|"))))
 
 
@@ -84,15 +87,15 @@ def as_api(L, B):
     return {"wallets": g(part(L, "wallets")), "packs": g(part(L, "packages")), "pack_min": part(L, "packages", "minutes"),
             "coins": part(L, "coins", "coins"), "coins_g": g(part(L, "coins")), "min_g": g(part(L, "minutes")),
             "rcv": g(part(L, "receivable")), "burn_packs": g(part(B, "packages")), "burn_count": part(B, "packages", "count"),
-            "burn_coins": part(B, "coins", "coins"), "burn_coins_g": g(part(B, "coins"))}
+            "burn_coins": part(B, "coins", "coins"), "burn_coins_g": g(part(B, "coins")), "burn_min_g": g(part(B, "minutes"))}
 
 
 def sums_ok(L, B):
     """Одна цифра — сумма своих частей: клуб должен = кошельки + пакеты + монеты + минуты, обязательства = должен −
-    дебиторка; сгорело = пакеты + монеты."""
+    дебиторка; сгорело = пакеты + минуты зоны (З18-и1а) + монеты."""
     owed = sum(g(part(L, k)) for k in ("wallets", "packages", "coins", "minutes"))
     return g(L.get("owed_pln")) == owed and g(L.get("net_pln")) == owed - g(part(L, "receivable")) \
-        and g(B.get("pln")) == g(part(B, "packages")) + g(part(B, "coins"))
+        and g(B.get("pln")) == g(part(B, "packages")) + g(part(B, "minutes")) + g(part(B, "coins"))
 
 
 def same_as_sql(L, B):
@@ -105,9 +108,9 @@ section("снимок: прямой SQL, свои части, оба отчёт�
 L0, B0, M0 = snap()
 ok, bad = same_as_sql(L0, B0)
 check("«Обязательства клуба» и «Сгорело» за сегодня — как прямой SQL до гроша: кошельки, пакеты (минуты тоже), монеты, минуты, "
-      "дебиторка, сгоревшие пакеты и монеты", ok and L0 and B0, J(bad))
+      "дебиторка, сгоревшие пакеты, минуты зоны и монеты", ok and L0 and B0, J(bad))
 check("одна цифра — сумма частей: клуб должен = кошельки + пакеты + монеты + минуты, обязательства = должен − дебиторка; "
-      "сгорело = пакеты + монеты", sums_ok(L0, B0), J({k: L0.get(k) for k in ("owed_pln", "net_pln")}))
+      "сгорело = пакеты + минуты зоны + монеты", sums_ok(L0, B0), J({k: L0.get(k) for k in ("owed_pln", "net_pln")}))
 book = api("GET", "/admin/cash/book?preset=today", None, "boss")[1]
 check("«Бухгалтерия → Касса» отдаёт то же: liabilities и burned за тот же период",
       book.get("liabilities") == L0 and (book.get("burned") or {}).get("pln") == B0.get("pln")

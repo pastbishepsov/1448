@@ -26,7 +26,7 @@ func TestLiabSum(t *testing.T) {
 	}
 }
 
-// Список «Сгорело»: свежие сверху; в один момент — пакеты раньше монет, дальше по id.
+// Список «Сгорело»: свежие сверху; в один момент — пакеты, минуты зоны (З18-и1а), монеты, дальше по id.
 func TestSortBurned(t *testing.T) {
 	t0 := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
 	id := func(s string) uuid.UUID { return uuid.MustParse("00000000-0000-0000-0000-" + s) }
@@ -36,9 +36,10 @@ func TestSortBurned(t *testing.T) {
 		{Kind: "package", ID: id("000000000004"), At: t0},
 		{Kind: "package", ID: id("000000000003"), At: t0},
 		{Kind: "coins", ID: id("000000000005"), At: t0.Add(time.Minute)},
+		{Kind: "minutes", ID: id("000000000006"), At: t0},
 	}
 	sortBurned(rows)
-	want := []string{"000000000005", "000000000003", "000000000004", "000000000001", "000000000002"}
+	want := []string{"000000000005", "000000000003", "000000000004", "000000000006", "000000000001", "000000000002"}
 	for i, w := range want {
 		if got := rows[i].ID.String()[24:]; got != w {
 			t.Fatalf("позиция %d: %s (%s), ждали %s", i, got, rows[i].Kind, w)
