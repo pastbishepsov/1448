@@ -531,3 +531,49 @@ func TestSeedCatalogPilotGamesRoot(t *testing.T) {
 		t.Errorf("сид потерял вид целей: {GAMES}=%d steam=%d абсолютных=%d", tmpl, steam, abs)
 	}
 }
+
+// З18-и2: путь с буквой диска или сетевой — в команде и в аргументах; шаблон {GAMES} и ссылки — нет.
+func TestHasDiskPath(t *testing.T) {
+	for s, want := range map[string]bool{
+		`C:\Games\cs2.exe`: true, `D:/online/x.exe`: true, `\\nas\games\x.exe`: true, `--dir=G:\Games`: true,
+		`{GAMES}\CS2\cs2.exe`: false, `steam://rungameid/730`: false, `https://example.com/a.jpg`: false,
+		`ms-settings:display`: false, `discord://`: false, `cmd`: false, ``: false,
+	} {
+		if got := hasDiskPath(s); got != want {
+			t.Errorf("hasDiskPath(%q) = %v, ждали %v", s, got, want)
+		}
+	}
+	if !argsHaveDiskPath(`["-novid","--dir=E:\\games"]`) || argsHaveDiskPath(`["-novid","{GAMES}\\x"]`) {
+		t.Error("argsHaveDiskPath: путь в аргументе — по строке массива, без экранирования JSON")
+	}
+}
+
+// З18-и2: «было → стало» — только по присланным и изменившимся команде, аргументам и обложке; у новой — что задано.
+func TestCatalogCommandDiff(t *testing.T) {
+	stored := `["-x", "-y"]` // jsonb с пробелами, как отдаёт Postgres
+	old := models.CatalogApp{ID: "z1", Name: "Z", Category: "game", Target: sp(`{GAMES}\Z\z.exe`), Args: &stored,
+		CoverURL: sp("/covers/z.jpg")}
+	f := catalogFields{ID: "z1", Target: sp(`C:\Z\z.exe`), Args: json.RawMessage(`["-x","-y"]`), Name: sp("Новое имя")}
+	d := catalogCommandDiff(&f, &old)
+	if len(d) != 1 || d[0] != (cmdDiff{Field: "target", Old: `{GAMES}\Z\z.exe`, New: `C:\Z\z.exe`, Disk: true}) {
+		t.Errorf("та же команда в аргументах, имя — не команда: ждали только target с диском, получено %+v", d)
+	}
+	f = catalogFields{ID: "z1", Args: json.RawMessage(`[]`), CoverURL: sp("")}
+	d = catalogCommandDiff(&f, &old)
+	if len(d) != 2 || d[0].Field != "args" || d[0].Old != `["-x","-y"]` || d[0].New != "" || d[1].Field != "cover_url" ||
+		d[1].New != "" || cmdChanged(d[1:]) || !cmdChanged(d) {
+		t.Errorf("очистка args и обложки: %+v", d)
+	}
+	if got := cmdDiffText(d); got != `args «["-x","-y"]» → пусто · cover_url «/covers/z.jpg» → пусто` {
+		t.Errorf("текст для журнала: %q", got)
+	}
+	nw := catalogFields{ID: "z2", Name: sp("Z2"), Category: sp("game"), Target: sp("steam://rungameid/1")}
+	if d := catalogCommandDiff(&nw, nil); len(d) != 1 || d[0] != (cmdDiff{Field: "target", New: "steam://rungameid/1"}) ||
+		cmdSetText(d) != "target «steam://rungameid/1»" {
+		t.Errorf("новая запись — что задано: %+v", d)
+	}
+	form := catalogFields{ID: "z1", Name: sp("Z"), Category: sp("game"), Target: sp(`{GAMES}\Z\z.exe`)}
+	if d := catalogCommandDiff(formFields(&form), &old); len(d) != 2 || d[0].Field != "args" || d[1].Field != "cover_url" {
+		t.Errorf("форма без args и обложки — значит очистить их: %+v", d)
+	}
+}

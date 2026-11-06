@@ -22,6 +22,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,7 +44,7 @@ const (
 	maxCoverURLLen   = 500
 	maxTargetLen     = 500
 	maxImportApps    = 500     // записей за один импорт
-	maxImportBytes   = 4 << 20 // тело импорта ≤4МБ
+	maxImportBytes   = 1 << 20 // тело импорта ≤1 МБ — общий потолок maxRequestBody (З18-и2: было «4 МБ»)
 	catalogExportVer = 1       // версия формата импорта/экспорта
 )
 
@@ -413,7 +414,21 @@ func handleAdminCatalogUpsert(c *gin.Context) {
 	// явно — enabled остаётся за тумблером (Б0-и3), а загруженная обложка
 	// (cover/cover_type/cover_at) переживает правку формы.
 	var existing models.CatalogApp
-	if err := db.First(&existing, "id = ?", req.ID).Error; err == nil {
+	var was *models.CatalogApp // З18-и2: запись до правки — для «было → стало» в журнале
+	if db.First(&existing, "id = ?", req.ID).Error == nil {
+		prev := existing
+		was = &prev
+	}
+	details := app.ID
+	if was == nil {
+		details += " (новая)"
+	}
+	if d := catalogCommandDiff(formFields(&req), was); len(d) > 0 && was != nil {
+		details += ": " + cmdDiffText(d)
+	} else if len(d) > 0 {
+		details += ": " + cmdSetText(d)
+	}
+	if was != nil {
 		app.Enabled = existing.Enabled
 		if err := db.Model(&existing).Select("name", "category", "subtitle", "tag", "emoji",
 			"color_a", "color_b", "target", "args", "cover_url", "sort", "updated_at").
@@ -425,8 +440,25 @@ func handleAdminCatalogUpsert(c *gin.Context) {
 		respondDBError(c, err)
 		return
 	}
-	logAdminAction(c, "catalog_upsert", nil, app.ID)
+	logAdminAction(c, "catalog_upsert", nil, details)
 	c.JSON(http.StatusOK, gin.H{"id": app.ID, "ok": true})
+}
+
+// formFields — поля формы как поля импорта: форма присылает запись целиком, и не присланная (null) команда или
+// обложка — значит «очистить», а у импорта «не трогать». Копия: сама форма не меняется.
+func formFields(req *catalogFields) *catalogFields {
+	f := *req
+	empty := ""
+	if f.Target == nil {
+		f.Target = &empty
+	}
+	if f.CoverURL == nil {
+		f.CoverURL = &empty
+	}
+	if len(bytes.TrimSpace(f.Args)) == 0 {
+		f.Args = json.RawMessage("null")
+	}
+	return &f
 }
 
 // trimPtr — обрезать пробелы; пустая строка = NULL в БД.
@@ -678,6 +710,9 @@ func handleAdminCatalogExport(c *gin.Context) {
 type catalogImportRequest struct {
 	Apps   []catalogFields `json:"apps"`
 	DryRun bool            `json:"dry_run"`
+	// З18-и2 (из №40): корень игр из файла экспорта — в плане; применить вместе с импортом — по галочке
+	GamesRoot      *string `json:"games_root"`
+	ApplyGamesRoot bool    `json:"apply_games_root"`
 }
 
 // POST /admin/catalog/import — массовое наполнение каталога (owner).
@@ -686,15 +721,18 @@ type catalogImportRequest struct {
 // у существующей записи меняются ТОЛЬКО присланные поля (пустая строка —
 // очистить, отсутствие поля — не трогать). dry_run=true считает план, ничего
 // не записывая; запись идёт одной транзакцией — либо всё, либо ничего.
+// З18-и2: в плане — «было → стало» по команде и обложке и корень игр из файла; тело больше потолка (без
+// заявленного размера его обрывает MaxBytesReader общей мидлвари) — 413 «до 1 МБ», а не «Пустое тело».
 func handleAdminCatalogImport(c *gin.Context) {
 	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxImportBytes+1))
-	if err != nil || len(bytes.TrimSpace(body)) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Пустое тело запроса"})
-		return
-	}
-	if len(body) > maxImportBytes {
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) || len(body) > maxImportBytes {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"code": "import_too_big",
 			"message": fmt.Sprintf("Файл импорта — до %d МБ", maxImportBytes>>20)})
+		return
+	}
+	if err != nil || len(bytes.TrimSpace(body)) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Пустое тело запроса"})
 		return
 	}
 	var req catalogImportRequest
@@ -733,12 +771,13 @@ func handleAdminCatalogImport(c *gin.Context) {
 		f       *catalogFields
 		isOld   bool
 		changes []string
+		diff    []cmdDiff // З18-и2: «было → стало» по target, args, cover_url
 	}
 	steps := make([]importStep, 0, len(req.Apps))
 	plan := make([]gin.H, 0, len(req.Apps))
 	errs := make([]gin.H, 0)
 	seen := make(map[string]int, len(req.Apps))
-	created, updated, unchanged := 0, 0, 0
+	created, updated, unchanged, commands := 0, 0, 0, 0
 	for i := range req.Apps {
 		f := &req.Apps[i]
 		f.ID = strings.TrimSpace(f.ID)
@@ -756,6 +795,10 @@ func handleAdminCatalogImport(c *gin.Context) {
 		row := gin.H{"index": i, "id": f.ID}
 		step := importStep{f: f, isOld: isOld}
 		if isOld {
+			step.diff = catalogCommandDiff(f, old)
+			if cmdChanged(step.diff) {
+				commands++
+			}
 			step.changes = catalogImportChanges(f, old)
 			if len(step.changes) == 0 {
 				unchanged++
@@ -771,6 +814,10 @@ func handleAdminCatalogImport(c *gin.Context) {
 			if f.Name != nil {
 				row["name"] = strings.TrimSpace(*f.Name)
 			}
+			step.diff = catalogCommandDiff(f, nil)
+		}
+		if len(step.diff) > 0 {
+			row["diff"] = step.diff
 		}
 		steps = append(steps, step)
 		plan = append(plan, row)
@@ -781,13 +828,44 @@ func handleAdminCatalogImport(c *gin.Context) {
 			"errors":  errs, "items": plan})
 		return
 	}
+	// корень игр из файла (экспорт его пишет): пустой — как не прислан; применить — только верный и по галочке
+	curRoot, fileRoot := settingString(gamesRootKey, ""), ""
+	if req.GamesRoot != nil {
+		fileRoot = strings.TrimSpace(*req.GamesRoot)
+	}
+	var root gin.H
+	if fileRoot != "" {
+		ok, msg := validateGamesRoot(fileRoot)
+		root = gin.H{"file": fileRoot, "current": curRoot, "differs": fileRoot != curRoot, "ok": ok}
+		if !ok {
+			root["message"] = msg
+		}
+	}
+	setRoot := req.ApplyGamesRoot && root != nil && root["differs"] == true
+	if req.ApplyGamesRoot && (root == nil || root["ok"] != true) {
+		msg := "Корня игр в файле нет"
+		if root != nil {
+			msg, _ = root["message"].(string)
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_games_root", "message": msg + " — ничего не сохранено"})
+		return
+	}
 	if req.DryRun {
-		c.JSON(http.StatusOK, gin.H{"dry_run": true, "total": len(req.Apps), "created": created,
-			"updated": updated, "unchanged": unchanged, "items": plan})
+		out := gin.H{"dry_run": true, "total": len(req.Apps), "created": created,
+			"updated": updated, "unchanged": unchanged, "commands": commands, "items": plan}
+		if root != nil {
+			out["games_root"] = root
+		}
+		c.JSON(http.StatusOK, out)
 		return
 	}
 
 	err = db.Transaction(func(tx *gorm.DB) error {
+		if setRoot {
+			if e := catalogSetRootTx(tx, fileRoot); e != nil {
+				return e
+			}
+		}
 		for _, st := range steps {
 			f := st.f
 			if st.isOld {
@@ -835,11 +913,155 @@ func handleAdminCatalogImport(c *gin.Context) {
 		respondDBError(c, err)
 		return
 	}
-	logAdminAction(c, "catalog_import", nil,
-		fmt.Sprintf("импорт каталога: %d записей (+%d новых, %d обновлено, %d без изменений)",
-			len(req.Apps), created, updated, unchanged))
-	c.JSON(http.StatusOK, gin.H{"ok": true, "total": len(req.Apps), "created": created,
-		"updated": updated, "unchanged": unchanged, "items": plan})
+	// З18-и2: строка на запись, у которой меняются команда или обложка, — «было → стало», откатить есть чем
+	for _, st := range steps {
+		if st.isOld && len(st.diff) > 0 {
+			logAdminAction(c, "catalog_import", nil, st.f.ID+": "+cmdDiffText(st.diff))
+		}
+	}
+	if setRoot {
+		logAdminAction(c, "catalog_config", nil, fmt.Sprintf("games_root: %q → %q (из файла импорта)", curRoot, fileRoot))
+		root["applied"] = true
+	}
+	sum := fmt.Sprintf("импорт каталога: %d записей (+%d новых, %d обновлено, %d без изменений)",
+		len(req.Apps), created, updated, unchanged)
+	if commands > 0 {
+		sum += fmt.Sprintf("; команды запуска изменены у %d", commands)
+	}
+	logAdminAction(c, "catalog_import", nil, sum)
+	out := gin.H{"ok": true, "total": len(req.Apps), "created": created,
+		"updated": updated, "unchanged": unchanged, "commands": commands, "items": plan}
+	if root != nil {
+		out["games_root"] = root
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// catalogSetRootTx — корень игр в той же транзакции, что импорт (upsert по ключу, как settingSetString).
+func catalogSetRootTx(tx *gorm.DB, root string) error {
+	var s models.Setting
+	if err := tx.First(&s, "key = ?", gamesRootKey).Error; err == nil {
+		return tx.Model(&s).Update("value", root).Error
+	}
+	return tx.Create(&models.Setting{Key: gamesRootKey, Value: root}).Error
+}
+
+// ── З18-и2 (OWNER.md, №33 «а»): «было → стало» по команде запуска и обложке ──────────────────────────────────────────
+//
+// target и args — команда, которую агент выполняет на каждом ПК зала (exec.Command(target, args…)), cover_url — что
+// видит гость. Превью импорта показывало «cs2 → target» без значений, журнал — счётчики (импорт) и id (форма): старого
+// значения нигде не было, откатить нечем (ревью 23.09, №30). Теперь у записи в плане импорта — «было → стало» по этим
+// трём полям (у новой — что будет), путь с буквой диска или сетевой помечен; в журнал — та же строка.
+
+// cmdDiff — «было → стало» одного из полей; Disk — в новом значении путь с буквой диска или сетевой (UNC).
+type cmdDiff struct {
+	Field string `json:"field"`
+	Old   string `json:"old"`
+	New   string `json:"new"`
+	Disk  bool   `json:"disk,omitempty"`
+}
+
+// diskPathRe — буква диска (C:\, D:/ — не в середине слова: «https://» и «steam://» не путь) или UNC (\\nas\games).
+var diskPathRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[^\\/\s"]+[\\/]`)
+
+// hasDiskPath — чистая (юнит): в команде есть путь с буквой диска или сетевой. {GAMES}\…, steam://…, https://…,
+// ms-settings:… — нет.
+func hasDiskPath(s string) bool { return diskPathRe.MatchString(s) }
+
+// argsHaveDiskPath — то же по аргументам: JSON-массив строк, каждая — без экранирования JSON.
+func argsHaveDiskPath(args string) bool {
+	var arr []string
+	if json.Unmarshal([]byte(args), &arr) != nil {
+		return hasDiskPath(args)
+	}
+	for _, a := range arr {
+		if hasDiskPath(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// compactArgs — args из БД в компактном виде: Postgres хранит jsonb со своими пробелами, а сравниваем с присланным.
+func compactArgs(s string) string {
+	if s == "" {
+		return ""
+	}
+	if v, ok, _ := normalizeArgs(json.RawMessage(s)); ok {
+		if v == nil {
+			return ""
+		}
+		return *v
+	}
+	return s
+}
+
+// catalogCommandDiff — чистая (юнит): «было → стало» по target, args и cover_url — у существующей записи только
+// изменившиеся из присланных (как catalogImportChanges), у новой (old == nil) — что задано.
+func catalogCommandDiff(f *catalogFields, old *models.CatalogApp) []cmdDiff {
+	cur := map[string]string{}
+	if old != nil {
+		cur["target"], cur["args"], cur["cover_url"] = deref(old.Target), compactArgs(deref(old.Args)), deref(old.CoverURL)
+	}
+	next := catalogImportUpdates(f)
+	var out []cmdDiff
+	for _, col := range []string{"target", "args", "cover_url"} {
+		v, sent := next[col]
+		if !sent {
+			continue
+		}
+		s := ""
+		if v != nil {
+			s = fmt.Sprint(v)
+		}
+		if s == cur[col] {
+			continue
+		}
+		d := cmdDiff{Field: col, Old: cur[col], New: s}
+		switch col {
+		case "target":
+			d.Disk = hasDiskPath(s)
+		case "args":
+			d.Disk = argsHaveDiskPath(s)
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// cmdChanged — меняется ли команда запуска (target или args), а не только обложка.
+func cmdChanged(ds []cmdDiff) bool {
+	for _, d := range ds {
+		if d.Field != "cover_url" {
+			return true
+		}
+	}
+	return false
+}
+
+// cmdDiffText — чистая (юнит): «было → стало» словами для журнала — «target «{GAMES}\x.exe» → «C:\x.exe» · args
+// пусто → «["-novid"]»».
+func cmdDiffText(ds []cmdDiff) string {
+	q := func(s string) string {
+		if s == "" {
+			return "пусто"
+		}
+		return "«" + s + "»"
+	}
+	parts := make([]string, 0, len(ds))
+	for _, d := range ds {
+		parts = append(parts, d.Field+" "+q(d.Old)+" → "+q(d.New))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// cmdSetText — что задано у новой записи (форма): «target «steam://rungameid/1» · args «["-novid"]»».
+func cmdSetText(ds []cmdDiff) string {
+	parts := make([]string, 0, len(ds))
+	for _, d := range ds {
+		parts = append(parts, d.Field+" «"+d.New+"»")
+	}
+	return strings.Join(parts, " · ")
 }
 
 // catalogImportUpdates — колонки, которые импорт меняет у существующей записи:
@@ -892,15 +1114,7 @@ func catalogImportChanges(f *catalogFields, old *models.CatalogApp) []string {
 	// args в БД — jsonb: Postgres хранит его со своими пробелами, поэтому
 	// сравниваем оба значения в одном (компактном) виде, иначе реимпорт
 	// собственного экспорта показывал бы «изменился args» на ровном месте.
-	oldArgs := deref(old.Args)
-	if oldArgs != "" {
-		if v, ok, _ := normalizeArgs(json.RawMessage(oldArgs)); ok {
-			oldArgs = ""
-			if v != nil {
-				oldArgs = *v
-			}
-		}
-	}
+	oldArgs := compactArgs(deref(old.Args))
 	cur := map[string]string{
 		"name": old.Name, "category": old.Category,
 		"subtitle": deref(old.Subtitle), "tag": deref(old.Tag), "emoji": deref(old.Emoji),

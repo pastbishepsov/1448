@@ -774,6 +774,21 @@
   .ryItem{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:6px 0; border-top:1px solid var(--hair)}
   .ryItem:first-child{border-top:0}
   .ryItem select.input{width:auto; min-width:110px}
+  /* З18-и2: превью импорта каталога — «было → стало» по команде запуска и обложке; путь на диске — оранжевым */
+  .impRow{padding:5px 0; border-bottom:1px solid rgba(255,255,255,.06)}
+  .impHead{display:flex; gap:8px; align-items:baseline}
+  .impHead b{min-width:92px; overflow:hidden; text-overflow:ellipsis}
+  .impHead .impName{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .impDiff{display:flex; gap:8px; align-items:baseline; margin-top:3px; font-size:12px; line-height:1.45}
+  .impDiff .impF{flex:none; width:68px; color:var(--dim)}
+  .impDiff .impV{flex:1; min-width:0; overflow-wrap:anywhere}
+  .impDiff code,.impDiff .impF,.impRoot code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px}
+  .impDiff .impOld{color:var(--dim)}
+  .impDisk{color:var(--orange); font-weight:700; white-space:nowrap}
+  .impCmdN{color:var(--txt); font-weight:700}
+  .impRoot{display:flex; gap:8px; align-items:flex-start; margin:0 0 10px; overflow-wrap:anywhere}
+  label.impRoot{cursor:pointer}
+  .impRoot input{flex:none; margin:2px 0 0}
 </style>
 </head>
 <body>
@@ -4375,7 +4390,8 @@ function openCatalogImport(){
     импорт не касается — удалять записи можно только вручную.</div>
   <div class="muted" style="margin-top:6px">Обязательны <code>id</code>, <code>name</code>, <code>category</code>
     (game | app | system | platform). Путь на сетевом диске — через <code>{GAMES}</code>,
-    в JSON слэши двойные: <code>"target": "{GAMES}\\\\CS2\\\\cs2.exe"</code>.</div>
+    в JSON слэши двойные: <code>"target": "{GAMES}\\\\CS2\\\\cs2.exe"</code>. За раз — до 500 записей
+    и до 1 МБ.</div>
   <textarea id="impText" class="input" style="min-height:180px; margin-top:12px; font-family:ui-monospace,Consolas,monospace; font-size:12px"
     placeholder='[{"id":"cs2","name":"Counter-Strike 2","category":"game","subtitle":"Steam","tag":"CS2","sort":10}]'></textarea>
   <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap">
@@ -4386,9 +4402,14 @@ function openCatalogImport(){
   </div>
   <div id="impResult" style="margin-top:14px"></div>`);
 }
+/* З18-и2: тело импорта — до 1 МБ (общий потолок сервера). Проверяем то, что уйдёт на сервер: файл экспорта с отступами
+   ужимается при отправке, поэтому файл до 4 МБ читаем, а решает размер тела; больше 4 МБ в 1 МБ не ужмётся — не читаем */
+const IMP_MAX = 1 << 20, IMP_FILE_MAX = 4 << 20;
+const impMB = n => (n / 1048576).toFixed(1).replace('.', ',');
 function impFromFile(inp){
   const f = inp.files && inp.files[0];
   if (!f) return;
+  if (f.size > IMP_FILE_MAX){ impShow(`<div>⚠ Файл ${impMB(f.size)} МБ — импорт берёт до 1 МБ за раз: раздели файл на части</div>`); return; }
   const r = new FileReader();
   r.onload = () => { document.getElementById('impText').value = r.result; impPreview(); };
   r.readAsText(f);
@@ -4400,7 +4421,32 @@ function impParse(){
   try{ d = JSON.parse(t); }catch(err){ throw new Error('JSON не разобрался: ' + err.message); }
   const apps = Array.isArray(d) ? d : d.apps;
   if (!Array.isArray(apps) || !apps.length) throw new Error('Ожидается массив записей или {"apps":[…]}');
-  return apps;
+  // З18-и2: корень игр из файла экспорта — в превью, применить по галочке; пустой — как не прислан
+  const root = !Array.isArray(d) && typeof d.games_root === 'string' ? d.games_root.trim() : '';
+  return {apps, root};
+}
+function impBody(o){
+  const b = JSON.stringify(o);
+  const n = new Blob([b]).size;
+  if (n > IMP_MAX) throw new Error(`Импорт — до 1 МБ за раз, а здесь ${impMB(n)} МБ: раздели файл на части`);
+  return b;
+}
+/* З18-и2: «было → стало» по команде запуска (её агент выполняет на каждом ПК зала) и обложке; у новой — что будет */
+const impVal = (v, cls) => v ? `<code${cls ? ' class="' + cls + '"' : ''}>${esc(v)}</code>` : '<span class="muted">пусто</span>';
+function impDiffHTML(it){
+  return (it.diff || []).map(x => `<div class="impDiff"><span class="impF">${esc(x.field)}</span><span class="impV">${
+    it.action === 'create' ? impVal(x.new) : impVal(x.old, 'impOld') + ' → ' + impVal(x.new)}${x.disk
+    ? ' <span class="impDisk" title="Путь с буквой диска или сетевой: агент выполнит его на каждом ПК зала. Игры с сетевого диска — через {GAMES}">⚠ путь на диске</span>'
+    : ''}</span></div>`).join('');
+}
+function impRootHTML(r){
+  if (!r) return '';
+  const f = `<code>${esc(r.file)}</code>`;
+  if (!r.ok) return `<div class="setwarn impRoot"><span>⚠ ${esc(r.message || 'Корень игр не подходит')} — а в файле ${f}. Импорт корень не тронет.</span></div>`;
+  if (!r.differs) return `<div class="setnote impRoot"><span>Корень игр в файле — ${f}, такой же, как у клуба.</span></div>`;
+  return `<label class="setnote impRoot"><input id="impRoot" type="checkbox"><span>${r.current
+    ? `Корень игр в файле — ${f}, у клуба — <code>${esc(r.current)}</code>. <b>Сменить вместе с импортом</b>: записи с {GAMES} на всех ПК начнут запускаться из нового корня.`
+    : `Корень игр в файле — ${f}, у клуба он не задан: записи с {GAMES} сейчас не запустятся. <b>Задать вместе с импортом</b>.`}</span></label>`;
 }
 function impShow(html){
   const box = document.getElementById('impResult');
@@ -4418,25 +4464,33 @@ function impErrors(e){
 }
 async function impPreview(){
   try{
-    const apps = impParse();
-    const d = await api('/admin/catalog/import', {method:'POST', body: JSON.stringify({apps, dry_run:true})});
-    impShow(`<div class="muted" style="margin-bottom:8px">Всего ${d.total}: новых ${d.created}, обновится ${d.updated}${d.unchanged ? ', без изменений ' + d.unchanged : ''}</div>
+    const {apps, root} = impParse();
+    const d = await api('/admin/catalog/import', {method:'POST', body: impBody({apps, games_root: root || undefined, dry_run:true})});
+    const items = d.items || [], disk = items.filter(it => (it.diff || []).some(x => x.disk)).length;
+    impShow(`<div class="muted" style="margin-bottom:8px">Всего ${d.total}: новых ${d.created}, обновится ${d.updated}${d.unchanged ? ', без изменений ' + d.unchanged : ''}${
+      d.commands ? ` · <span class="impCmdN">команды запуска меняются у ${d.commands}</span>` : ''}${
+      disk ? ` · <span class="impDisk">⚠ путь на диске — у ${disk}</span>` : ''}</div>
+    ${impRootHTML(d.games_root)}
     <div style="max-height:330px; overflow:auto">
-    ${(d.items || []).map(it => `<div style="display:flex; gap:8px; align-items:baseline; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.06)">
-      <b style="min-width:92px; overflow:hidden; text-overflow:ellipsis">${esc(it.id)}</b>
-      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(it.name || '')}</span>
+    ${items.map(it => `<div class="impRow"><div class="impHead">
+      <b>${esc(it.id)}</b><span class="impName">${esc(it.name || '')}</span>
       <span class="muted" style="white-space:nowrap">${it.action === 'create' ? 'новая'
         : ((it.changes || []).length ? '→ ' + esc(it.changes.join(', ')) : 'без изменений')}</span>
-    </div>`).join('')}</div>
+    </div>${impDiffHTML(it)}</div>`).join('')}</div>
     <button class="btn" style="margin-top:12px" onclick="impApply()"><span data-ic="save"></span>Сохранить ${d.total} записей</button>`);
   }catch(e){ if (e.data) impErrors(e); else impShow(`<div>⚠ ${esc(e.message)}</div>`); }
 }
 async function impApply(){
   try{
-    const apps = impParse();
-    const d = await api('/admin/catalog/import', {method:'POST', body: JSON.stringify({apps, dry_run:false})});
-    toast(`✓ Импорт: ${d.total} записей (+${d.created} новых, ${d.updated} обновлено)`);
-    if (d.unchanged) toast(`${d.unchanged} записей уже совпадали — их не трогали`);
+    const {apps, root} = impParse();
+    const cb = document.getElementById('impRoot');
+    const d = await api('/admin/catalog/import', {method:'POST', body: impBody({apps, games_root: root || undefined,
+      apply_games_root: !!(cb && cb.checked) || undefined, dry_run:false})});
+    const r = d.games_root || {};
+    if (r.applied) catGamesRoot = r.file;
+    // одним тостом: второй тост заменял первый — «Импорт: …» не успевали прочитать
+    toast(`✓ Импорт: ${d.total} записей (+${d.created} новых, ${d.updated} обновлено${d.unchanged ? ', ' + d.unchanged + ' уже совпадали' : ''})`
+      + (r.applied ? ' · корень игр: ' + r.file : ''));
     closeDrawer(); renderCatalogTab();
   }catch(e){ if (e.data) impErrors(e); else toast('⚠ ' + e.message); }
 }
