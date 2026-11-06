@@ -527,7 +527,7 @@ func expenseOut(e *models.Expense, names map[string]string, cps map[string]strin
 		"has_photo": e.PhotoAt != nil, "created_at": e.CreatedAt, "updated_at": e.UpdatedAt,
 	}
 	if e.PhotoAt != nil {
-		row["photo"] = fmt.Sprintf("/api/v1/admin/expenses/%s/photo?v=%d", e.ID, e.PhotoAt.Unix())
+		row["photo"] = "/api/v1/admin/expenses/" + e.ID.String() + "/photo?v=" + imageVersion(*e.PhotoAt) // З18-и3: мс
 	}
 	if e.DrawerAt != nil { // З9-и3а: расход из кассы — в ящике
 		row["drawer_at"] = e.DrawerAt

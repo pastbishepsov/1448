@@ -138,9 +138,9 @@ func TestCatalogCoverURLUploadWins(t *testing.T) {
 	if got := catalogCoverURL(&a); got != link {
 		t.Errorf("без загрузки должна быть ссылка, получено %q", got)
 	}
-	at := time.Unix(1700000000, 0)
+	at := time.Unix(1700000000, 123e6) // З18-и3: версия — в миллисекундах
 	a.CoverAt = &at
-	if got := catalogCoverURL(&a); got != "/api/v1/catalog/cs2/cover?v=1700000000" {
+	if got := catalogCoverURL(&a); got != "/api/v1/catalog/cs2/cover?v=1700000000123" {
 		t.Errorf("загруженная обложка не победила ссылку: %q", got)
 	}
 	empty := models.CatalogApp{ID: "x"}
@@ -155,10 +155,10 @@ func TestCatalogCoverURLUploadWins(t *testing.T) {
 // владелец, — иначе форма правки затирала бы ссылку своим же значением.
 func TestDecorateCatalogAppCoverFields(t *testing.T) {
 	link := "/covers/cs2.jpg"
-	at := time.Unix(1700000000, 0)
+	at := time.Unix(1700000000, 123e6)
 	pub := models.CatalogApp{ID: "cs2", CoverURL: &link, CoverAt: &at}
 	decorateCatalogApp(&pub, "", true)
-	if pub.Cover != "/api/v1/catalog/cs2/cover?v=1700000000" || deref(pub.CoverURL) != pub.Cover {
+	if pub.Cover != "/api/v1/catalog/cs2/cover?v=1700000000123" || deref(pub.CoverURL) != pub.Cover {
 		t.Errorf("публичная выдача: cover=%q cover_url=%q", pub.Cover, deref(pub.CoverURL))
 	}
 	adm := models.CatalogApp{ID: "cs2", CoverURL: &link, CoverAt: &at}

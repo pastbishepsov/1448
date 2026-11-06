@@ -89,6 +89,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Не удалось подключиться к БД: %v", err)
 	}
+	// З18-и3: модели с картинкой в таблице (обложка, фото) читаются без её байтов — images.go
+	if err := registerOmitBlobs(db); err != nil {
+		log.Fatalf("Не удалось подключить чтение без байтов картинок: %v", err)
+	}
 	var dbTZ string
 	if err := db.Raw("SHOW TimeZone").Scan(&dbTZ).Error; err != nil {
 		log.Fatalf("База не ответила, в каком она часовом поясе: %v", err)

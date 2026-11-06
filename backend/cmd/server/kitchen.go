@@ -65,7 +65,7 @@ func goodPhotoURL(g *models.Good) string {
 	if g.PhotoAt == nil {
 		return ""
 	}
-	return "/api/v1/goods/" + g.ID.String() + "/photo?v=" + fmt.Sprint(g.PhotoAt.Unix())
+	return "/api/v1/goods/" + g.ID.String() + "/photo?v=" + imageVersion(*g.PhotoAt) // З18-и3: версия — в миллисекундах
 }
 
 // GET /me/menu — меню кухни для гостя: только включённые позиции; закончилось —
@@ -649,31 +649,9 @@ func kitchenProgress(userID uuid.UUID) {
 
 // ── Фото позиции (Г7): BYTEA в БД, байты живут только в этих трёх ручках ──
 
-// GET /goods/:id/photo — публичная отдача фото (как статика обложек).
-func handleGoodPhoto(c *gin.Context) {
-	var row struct {
-		Photo     []byte
-		PhotoType *string
-		PhotoAt   *time.Time
-	}
-	if err := db.Raw("SELECT photo, photo_type, photo_at FROM goods WHERE id = ?", c.Param("id")).
-		Scan(&row).Error; err != nil || len(row.Photo) == 0 || row.PhotoAt == nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	etag := fmt.Sprintf(`"g%d"`, row.PhotoAt.Unix())
-	c.Header("Cache-Control", "public, max-age=300")
-	c.Header("ETag", etag)
-	if c.GetHeader("If-None-Match") == etag {
-		c.Status(http.StatusNotModified)
-		return
-	}
-	ct := "image/jpeg"
-	if row.PhotoType != nil && *row.PhotoType != "" {
-		ct = *row.PhotoType
-	}
-	c.Data(http.StatusOK, ct, row.Photo)
-}
+// GET /goods/:id/photo — публичная отдача фото (как статика обложек): вне лимитера, кэш на сутки по адресу с версией,
+// 304 без чтения байтов (З18-и3, images.go).
+func handleGoodPhoto(c *gin.Context) { photoImage.serve(c, c.Param("id")) }
 
 // PUT /admin/goods/:id/photo — владелец кладёт фото (сырое тело запроса).
 func handleAdminGoodPhotoPut(c *gin.Context) {

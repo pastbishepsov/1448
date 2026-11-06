@@ -81,11 +81,20 @@ func rateLimitExempt(path string) bool {
 	return strings.HasPrefix(path, "/icons") || strings.HasPrefix(path, "/covers")
 }
 
+// rateLimitImage — GET картинок из базы (обложка плитки, фото позиции кухни) лимитер не режет, как статику /covers
+// (З18-и3, ревью 23.09 №35): киоск грузит 30+ обложек разом, а при облачном сервере весь клуб за одним NAT-адресом
+// делит 10 rps — треть плиток приходила пустой (429). Нагрузку держит кэш: по адресу с версией — сутки, повтор с
+// ETag — 304 без чтения байтов (images.go). Фото документа расхода — только владельцу и по одному: под лимитером.
+func rateLimitImage(method, route string) bool {
+	return method == http.MethodGet && (route == "/api/v1/catalog/:id/cover" || route == "/api/v1/goods/:id/photo")
+}
+
 // rateLimitMiddleware — глобальный лимитер (кроме /health и статики).
 func rateLimitMiddleware() gin.HandlerFunc {
 	rl := newRateLimiter()
 	return func(c *gin.Context) {
-		if rateLimitExempt(c.FullPath()) || rateLimitExempt(c.Request.URL.Path) {
+		route := c.FullPath()
+		if rateLimitExempt(route) || rateLimitExempt(c.Request.URL.Path) || rateLimitImage(c.Request.Method, route) {
 			c.Next()
 			return
 		}

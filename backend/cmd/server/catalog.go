@@ -267,7 +267,7 @@ func validateCatalogFields(f *catalogFields, full bool) (code, msg string) {
 // ссылки, введённой руками (владелец загрузил файл — значит, им и заменил).
 func catalogCoverURL(a *models.CatalogApp) string {
 	if a.CoverAt != nil {
-		return fmt.Sprintf("/api/v1/catalog/%s/cover?v=%d", a.ID, a.CoverAt.Unix())
+		return "/api/v1/catalog/" + a.ID + "/cover?v=" + imageVersion(*a.CoverAt) // З18-и3: версия — в миллисекундах
 	}
 	if a.CoverURL != nil {
 		return strings.TrimSpace(*a.CoverURL)
@@ -539,31 +539,9 @@ func handleAdminCatalogDelete(c *gin.Context) {
 // (как фото позиции кухни, Г7: папки для загрузок нет ни в клубе — /web
 // примонтирован read-only, ни на Railway — эфемерная ФС.)
 
-// GET /catalog/:id/cover — публичная отдача обложки.
-func handleCatalogCover(c *gin.Context) {
-	var row struct {
-		Cover     []byte
-		CoverType *string
-		CoverAt   *time.Time
-	}
-	if err := db.Raw("SELECT cover, cover_type, cover_at FROM catalog_apps WHERE id = ?", c.Param("id")).
-		Scan(&row).Error; err != nil || len(row.Cover) == 0 || row.CoverAt == nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	etag := fmt.Sprintf(`"c%d"`, row.CoverAt.Unix())
-	c.Header("Cache-Control", "public, max-age=300")
-	c.Header("ETag", etag)
-	if c.GetHeader("If-None-Match") == etag {
-		c.Status(http.StatusNotModified)
-		return
-	}
-	ct := "image/jpeg"
-	if row.CoverType != nil && *row.CoverType != "" {
-		ct = *row.CoverType
-	}
-	c.Data(http.StatusOK, ct, row.Cover)
-}
+// GET /catalog/:id/cover — публичная отдача обложки: вне лимитера, кэш на сутки по адресу с версией, 304 без
+// чтения байтов (З18-и3, images.go).
+func handleCatalogCover(c *gin.Context) { coverImage.serve(c, c.Param("id")) }
 
 // PUT /admin/catalog/:id/cover — владелец кладёт обложку (сырое тело запроса,
 // Content-Type = image/jpeg|png|webp), один в один как фото позиции кухни.
