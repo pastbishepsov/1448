@@ -993,6 +993,8 @@ func warnPackagesExpiring(now time.Time) int {
 // GET /admin/packages/expiring — кого предупредит ближайший прогон (owner).
 // Тот же вопрос, что у монет («кто потеряет сейчас», В4-3): владелец должен
 // видеть, что случится, до того как оно случится.
+// З18-и4 (№39): блок «Сгорают скоро» в «Экономике» — у строки ник гостя, в ответе итоги: minutes — сколько минут
+// сгорает, to_warn — скольким пакетам уведомление ещё не ушло (столько и предупредит «Предупредить сейчас»).
 func handleAdminPackagesExpiring(c *gin.Context) {
 	now := time.Now()
 	warnDays := settingInt64("pack_warn_days", packWarnDaysDef)
@@ -1001,16 +1003,30 @@ func handleAdminPackagesExpiring(c *gin.Context) {
 	          AND expires_at IS NOT NULL AND expires_at > ?`, now).
 		Order("expires_at ASC").Find(&packs)
 	out := make([]gin.H, 0, len(packs))
+	due := make([]*models.UserPackage, 0, len(packs))
+	ids := make([]string, 0, len(packs))
+	minutes, toWarn := 0, 0
 	for i := range packs {
 		if !packWarnDue(*packs[i].ExpiresAt, now, warnDays) {
 			continue
 		}
-		row := userPackOut(&packs[i], now)
-		row["user_id"] = packs[i].UserID
-		row["warned"] = packs[i].WarnedAt != nil
+		due = append(due, &packs[i])
+		ids = append(ids, packs[i].UserID.String())
+		minutes += packs[i].MinutesLeft
+		if packs[i].WarnedAt == nil {
+			toWarn++
+		}
+	}
+	nick := nicknamesByID(ids)
+	for _, p := range due {
+		row := userPackOut(p, now)
+		row["user_id"] = p.UserID
+		row["nickname"] = nick[p.UserID.String()]
+		row["warned"] = p.WarnedAt != nil
 		out = append(out, row)
 	}
-	c.JSON(http.StatusOK, gin.H{"warn_days": warnDays, "count": len(out), "packages": out})
+	c.JSON(http.StatusOK, gin.H{"warn_days": warnDays, "count": len(out), "minutes": minutes, "to_warn": toWarn,
+		"packages": out})
 }
 
 // POST /admin/packages/warn — предупредить сейчас, не дожидаясь фонового

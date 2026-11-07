@@ -774,6 +774,12 @@
   .ryItem{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:6px 0; border-top:1px solid var(--hair)}
   .ryItem:first-child{border-top:0}
   .ryItem select.input{width:auto; min-width:110px}
+  /* З18-и4 (№39): «Сгорают скоро» под пакетами — кто вот-вот потеряет минуты пакета; нечего сгорать — без оранжевого */
+  .packSoon{border:1px solid var(--hair); border-left:3px solid var(--orange); border-radius:12px; padding:10px 12px 12px;
+    margin:12px 0 0; max-width:900px}
+  .packSoon.calm{border-left-color:var(--hair)}
+  .packSoon h4{margin:0 0 4px; font-size:14px}
+  .packSoon .tablewrap{margin-top:8px}
   /* З18-и2: превью импорта каталога — «было → стало» по команде запуска и обложке; путь на диске — оранжевым */
   .impRow{padding:5px 0; border-bottom:1px solid rgba(255,255,255,.06)}
   .impHead{display:flex; gap:8px; align-items:baseline}
@@ -1193,6 +1199,8 @@
           <span class="muted" id="packsHint"></span>
         </div>
         <div class="tablewrap" id="packsTable"><div class="skel"></div><div class="skel"></div></div>
+        <!-- З18-и4 (№39): кто вот-вот потеряет минуты пакета и «Предупредить сейчас» (Е2-и5) — renderPackSoon -->
+        <div class="packSoon calm" id="packSoon"><div class="skel"></div></div>
 
         <!-- Ж8-и3 (Ж-Р12): табло зала под ТВ — своя страница /board под токеном, без логина -->
         <div class="sect">Табло зала</div>
@@ -2715,7 +2723,7 @@ function renderPCDrawer(id){
              onkeydown="if(event.key==='Enter')seatGuest('${pc.id}')">
       <div class="segs" title="На сколько садится — чтобы не посадить впритык к чужой брони (Г3)">${[30,60,120,180].map(m =>
         `<button class="${seatPlan===m?'on':''}" onclick="seatPlan=${m}; renderPCDrawer('${pc.id}')">${m} мин</button>`).join('')}</div>
-      ${!pc.shell_online ? `<div class="muted" style="color:#93c5fd">⏻ ПК не на связи — включу по сети и подожду его ${readyWaitMin()} мин; деньги пойдут только после [Готов!]</div>` : ''}
+      ${!pc.shell_online ? seatOfflineNote() : ''}
       <button class="btn" style="width:100%; justify-content:center" onclick="seatGuest('${pc.id}')">
         <span data-ic="clock"></span>Начать сессию</button>
       <div id="seatCands"></div>
@@ -2772,7 +2780,15 @@ async function pcRelease(id){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 let ovCache = null; // последний /admin/overview — настройки стойке не видны, а это окно из него
-function readyWaitMin(){ return (ovCache && ovCache.ready_wait_min) || 7; }
+// З18-и4 (из №40): 0 — окно [Готов!] выключено, а не «7 мин»; 7 — только пока сводка не пришла (дефолт сервера)
+function readyWaitMin(){ const v = ovCache && ovCache.ready_wait_min; return Number.isFinite(v) ? v : 7; }
+// посадка на ПК без связи: окно есть — ждём и будим по сети; окна нет — деньги идут сразу, по сети сервер не будит
+function seatOfflineNote(){
+  const w = readyWaitMin();
+  return w > 0 ? `<div class="muted" style="color:#93c5fd">⏻ ПК не на связи — включу по сети и подожду его ${w} мин; деньги пойдут только после [Готов!]</div>`
+    : '<div class="muted" style="color:var(--orange)">⏻ ПК не на связи, а окно [Готов!] выключено («Экономика» → «Сессия у ПК») — деньги пойдут сразу с посадки, по сети не бужу</div>';
+}
+const readyMoneyNote = () => readyWaitMin() > 0 ? 'до [Готов!] деньги не идут' : 'окна [Готов!] нет — деньги идут с посадки';
 let seatPlan = 30; // Ж4-и5: «на сколько» — по умолчанию минимальный сеанс, как считал сервер без параметра
 async function pcUnhold(id){
   try{
@@ -2875,7 +2891,7 @@ function paintGroupDrawer(){
     ${g.cands ? `<div class="muted">Гость ${g.cands.i + 1}: подходит несколько — выбери:</div>` + candsHtml(g.cands.list, 'grpPick') : ''}
     ${[...usedPc].length !== pendRows.filter(x => x.pc).length ? '<div class="muted" style="color:var(--orange)">⚠ Один ПК выбран дважды</div>' : ''}
     <button class="btn" style="width:100%; justify-content:center" onclick="grpSeatAll()" ${g.busy ? 'disabled' : ''}><span data-ic="users"></span>Посадить всех${g.result ? ' ещё раз (кто не сел)' : ''}</button>
-    <div class="muted">Каждый платит со своего кошелька; до [Готов!] деньги не идут. Кто не сел — останется в списке с причиной.</div>
+    <div class="muted">Каждый платит со своего кошелька; ${readyMoneyNote()}. Кто не сел — останется в списке с причиной.</div>
   </div>`;
   openDrawer('Компания', body);
   const firstEmpty = g.guests.findIndex(x => !x.id);
@@ -3686,9 +3702,9 @@ function uFormHtml(){
         `<option value="${p.id}"${p.id === cur.id ? ' selected' : ''}>${esc(p.name)}${p.zone ? ' · ' + esc(p.zone) : ''}${p.shell_online ? '' : ' · ⏻ не на связи'}</option>`).join('')}</select>
       <div class="segs" title="На сколько садится — чтобы не посадить впритык к чужой брони (Г3)">${[30,60,120,180].map(m =>
         `<button class="${seatPlan===m?'on':''}" onclick="seatPlan=${m}; renderUserDrawer()">${m} мин</button>`).join('')}</div>
-      ${!cur.shell_online ? `<div class="muted" style="color:#93c5fd">⏻ ПК не на связи — включу по сети и подожду его ${readyWaitMin()} мин; деньги пойдут только после [Готов!]</div>` : ''}
+      ${!cur.shell_online ? seatOfflineNote() : ''}
       <button class="btn" style="width:100%; justify-content:center" onclick="seatFromCard()"><span data-ic="monitor"></span>Посадить за ${esc(cur.name)}</button>
-      <div class="muted">Без пароля гостя; тариф и таланты — его собственные · до [Готов!] деньги не идут</div>
+      <div class="muted">Без пароля гостя; тариф и таланты — его собственные · ${readyMoneyNote()}</div>
     </div>`;
   }
   if (uForm === 'deposit') return `<div class="uform">
@@ -9395,6 +9411,42 @@ function packDur(m){
   return (h ? h + ' ч' : '') + (r ? (h ? ' ' : '') + r + ' мин' : '');
 }
 
+/* З18-и4 (№39): «Сгорают скоро» — пакеты, которым до срока pack_warn_days дней или меньше (GET /admin/packages/expiring):
+   кому уведомление уйдёт или уже ушло. Фон шлёт его сам раз в 6 часов, по одному на пакет; «Предупредить сейчас» — тот
+   же прогон, не дожидаясь фона (POST /admin/packages/warn, Е2-и5). Раньше всё это было только в API. */
+async function renderPackSoon(){
+  const box = document.getElementById('packSoon');
+  if (!box) return;
+  let d;
+  try{ d = await api('/admin/packages/expiring'); }
+  catch(e){ box.className = 'packSoon calm'; box.innerHTML = `<div class="muted">⚠ ${esc(e.message)}</div>`; return; }
+  const list = d.packages || [], days = +d.warn_days || 0, left = +d.to_warn || 0;
+  box.className = 'packSoon' + (days > 0 && list.length ? '' : ' calm');
+  if (days <= 0){
+    box.innerHTML = '<h4>Сгорают скоро</h4><div class="muted">Предупреждения выключены: в карточке «Сгорание пакетов» выше — 0 дней. Пакет со сроком сгорит молча.</div>';
+    return;
+  }
+  box.innerHTML = `<h4>Сгорают скоро: ${list.length ? repPlural(list.length, 'пакет', 'пакета', 'пакетов') + ' на ' + (+d.minutes || 0) + ' мин' : 'нет'}</h4>
+    <div class="muted">Пакеты, которым до срока ${repPlural(days, 'день', 'дня', 'дней')} или меньше: гость получит уведомление в киоске и в приложении — само, раз в 6 часов, по одному на пакет.${
+      list.length ? ' Уже предупреждены: ' + (list.length - left) + ' из ' + list.length + '.' : ''}</div>
+    ${list.length ? `<div class="tablewrap"><table><tr><th>Гость</th><th>Пакет</th><th>Осталось</th><th>Сгорит</th><th>Уведомление</th></tr>
+    ${list.map(p => `<tr><td><b><a href="#" class="lnk" onclick="event.preventDefault(); openUserDrawer('${p.user_id}')">${esc(p.nickname || 'гость')}</a></b></td>
+      <td>${esc(p.name)}${p.zone ? '<span class="muted">&nbsp;· ' + esc(p.zone) + '</span>' : ''}</td>
+      <td>${packDur(+p.minutes_left || 0)}</td>
+      <td style="white-space:nowrap">${fmtTime(p.expires_at)}<span class="muted">&nbsp;· через ${repPlural(+p.days_left || 0, 'день', 'дня', 'дней')}</span></td>
+      <td>${p.warned ? '<span class="st available">отправлено</span>' : '<span class="muted">ждёт</span>'}</td></tr>`).join('')}</table></div>` : ''}
+    ${left ? `<div class="toolrow" style="margin-top:10px"><button class="btn mini" id="packWarnBtn" onclick="packWarnNow(this)"><span data-ic="bell"></span>Предупредить сейчас — ${repPlural(left, 'пакет', 'пакета', 'пакетов')}</button></div>` : ''}`;
+  mountIcons(box);
+}
+async function packWarnNow(btn){
+  if (btn) btn.disabled = true;
+  try{
+    const d = await api('/admin/packages/warn', {method:'POST'});
+    toast(d.warned ? `✓ Предупредили: ${repPlural(d.warned, 'пакет', 'пакета', 'пакетов')} — гостям ушло уведомление` : 'Предупреждать некого — уведомления уже ушли');
+  }catch(e){ toast('⚠ ' + e.message); }
+  renderPackSoon();
+}
+
 function packEdit(id){
   if (!isOwner()){ toast('Пакеты заводит владелец'); return; }
   if (!zonesCache.length){ toast('⚠ Сначала заведи зону — у пакета она обязательна'); return; }
@@ -9641,6 +9693,9 @@ const SETTINGS_GROUPS = [
     ['coin_idle_days', 'set_idle', 'Монеты не трогаем, пока гость не играет, дней', 0, 3650],
     ['coin_burn_pct_week', 'set_burnpct', 'Потом сгорает в неделю, % (0 — не жечь)', 0, 100],
     ['coin_burn_warn_days', 'set_burnwarn', 'Предупредить гостя за столько дней до начала', 0, 365]]},
+  // З18-и4 (№39): предупреждение о сгорании пакета (Е2-и5) — раньше только curl'ом; кому уйдёт — «Сгорают скоро» ниже
+  {t:'Сгорание пакетов', why:'Пакет со сроком сгорает вместе с остатком. Гостю заранее уходит уведомление в киоске и в приложении — само, по одному на пакет; кто его получит, видно в «Сгорают скоро» под пакетами ниже.', f:[
+    ['pack_warn_days', 'set_packwarn', 'Предупредить гостя о сгорании пакета за столько дней (0 — молчать)', 0, 30]]},
   {t:'Лимиты персонала', why:'Дневные потолки на каждого админа в клубные сутки; 0 — без лимита. Владельца они не касаются.', f:[
     ['admin_day_xp_cap', 'set_xpcap', 'XP-начисления в день на админа', 0, 10000000],
     ['admin_day_deposit_cap_pln', 'set_depcap', 'Депозиты в день на админа, zł', 0, 1000000],
@@ -9651,8 +9706,10 @@ const SETTINGS_GROUPS = [
     ['report_hour', 'set_rhour', 'Час границы клубных суток (0–23)', 0, 23],
     ['seg_new_days', 'set_segnew', '«Новые»: первый визит не раньше стольких дней до конца периода — отчёт «Гости», сводка смены, фильтр у стойки', 1, 365],
     ['seg_lost_days', 'set_seglost', '«Пропавшие»: дней без визита', 2, 730]]},
-  {t:'Сессия у ПК', why:'Правила игры за компьютером: с каким кошельком пускать, сколько ждать на нуле, пауза и простой.', f:[
+  // З18-и4 (№39): окно [Готов!] (Е1) — раньше только curl'ом
+  {t:'Сессия у ПК', why:'Правила игры за компьютером: с каким кошельком пускать, сколько ждать на нуле, пауза и простой. Окно [Готов!]: после посадки у стойки деньги не идут, пока гость не нажмёт [Готов!] на ПК (не нажал — пойдут сами); столько же ждём ПК без связи — не включился, посадка снимается без денег.', f:[
     ['min_start_minutes', 'set_minstart', 'Порог старта: кошелёк должен покрывать минут (0 — пускать всех)', 0, 1440],
+    ['ready_wait_min', 'set_readywait', 'Окно [Готов!] после посадки у стойки, мин (0 — окна нет, деньги идут сразу)', 0, 30],
     ['zero_grace_min', 'set_grace', 'Ноль кошелька: минут до автозавершения', 0, 60],
     ['pause_limit_min', 'set_pause', 'Лимит паузы на сессию, мин (0 — пауза выключена)', 0, 240],
     ['afk_stop_min', 'set_afk', 'AFK: минут простоя до автопаузы или завершения (0 — выкл)', 0, 240]]},
@@ -9689,6 +9746,7 @@ const settingsFields = () => SETTINGS_GROUPS.flatMap(g => g.f.map(([key, id, lab
 async function renderSettings(){
   renderZones();    // В4-5: цены зон живут здесь же, в «Экономике»
   renderPackages(); // Е2-и4: и пакеты времени — там же, это тот же прайс
+  renderPackSoon(); // З18-и4: и кто вот-вот потеряет минуты пакета
   renderBoardBox(); // Ж8-и3: табло зала — токен и ссылка
   try{
     const [d] = await Promise.all([api('/admin/settings'), vatLoad(), ryLoad()]); // З13-и2: ставки — для «ставки пополнения»; З13-и7 — ryczałtu
@@ -9705,7 +9763,8 @@ function paintSettings(){
       ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>` : ''}${
         key === 'acc_vat_moment' ? `<div class="setwarn hidden" id="setVatWarn">⚠ Меняет расчёт VAT и за прошлые месяцы: продажи по ставкам и выгрузка за них посчитаются по-новому. Меняйте вместе с бухгалтером, лучше с первого числа. «Сохранить» переспросит.</div>` : ''}${
         key === 'acc_gift_vat' ? '<div class="setnote" id="setVatNote"></div>' : ''}${
-        key === 'acc_ryczalt_time' ? '<div class="setnote" id="setFormNote"></div>' : ''}`).join('')}
+        key === 'acc_ryczalt_time' ? '<div class="setnote" id="setFormNote"></div>' : ''}${
+        key === 'ready_wait_min' ? '<div class="setwarn hidden" id="setReadyWarn">⚠ Окна нет: деньги идут с посадки у стойки, пока гость идёт к ПК, а ПК без связи сервер не ждёт и по сети не будит — платят и за тёмную машину.</div>' : ''}`).join('')}
   </div>`).join('');
   setPaints++;
   settingsDirty();
@@ -9760,6 +9819,8 @@ function settingsDirty(){
   document.getElementById('setUndo').classList.toggle('hidden', n === 0);
   document.getElementById('setRhourWarn')?.classList.toggle('hidden', !('report_hour' in ch));
   document.getElementById('setVatWarn')?.classList.toggle('hidden', !vatCalcChanged(ch)); // З13-и2
+  const rw = document.getElementById('set_readywait'); // З18-и4: окно [Готов!] выключено — сказать, чем это обернётся
+  document.getElementById('setReadyWarn')?.classList.toggle('hidden', !rw || rw.value.trim() === '' || Number(rw.value) !== 0);
   const note = document.getElementById('setVatNote');
   if (note) note.innerHTML = vatNoteHtml();
   const fnote = document.getElementById('setFormNote'); // З13-и7
@@ -9782,6 +9843,9 @@ async function saveSettings(btn){
       settingsLoaded = d.settings || settingsLoaded;
       paintSettings();
       toast(`✓ Сохранено настроек: ${n} — в журнале «было → стало»`);
+      // З18-и4: подсказки посадки и «Сгорают скоро» — сразу по новым значениям, не дожидаясь сводки
+      if ('ready_wait_min' in ch && ovCache) ovCache.ready_wait_min = Number(settingsLoaded.ready_wait_min);
+      if ('pack_warn_days' in ch) renderPackSoon();
     }catch(e){ toast('⚠ ' + e.message); }
   };
   // граница суток переписывает прошлые отчёты — сохраняем со взводом; З13-и2: смена расчёта VAT — тоже
