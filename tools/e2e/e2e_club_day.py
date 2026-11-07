@@ -62,7 +62,8 @@ check(f"настройка report_hour={rh} (сейчас {hour_now}:xx) → к�
       s == 200, f"{s} {d}")
 
 # ── A: депозит до границы суток виден админу в тех же клубных сутках («через полночь» — и после полуночи) ──
-s, dep = api("POST", f"/admin/users/{g}/deposit", {"amount_pln": 7, "method": "cash"}, a1)
+# З18-и4в: картой — пополнение уезжает в прошлое, отмена наличного вынула бы его из сегодняшнего ящика
+s, dep = api("POST", f"/admin/users/{g}/deposit", {"amount_pln": 7, "method": "card"}, a1)
 sql(f"UPDATE deposits SET created_at = (date_trunc('day', now() AT TIME ZONE '{TZ}') {dep_sql}) AT TIME ZONE '{TZ}' WHERE id='{dep['deposit_id']}'")
 # курсор — сразу после этого депозита: страница не зависит от того, сколько пополнений стенд накопил за сутки
 # (трек З, З8-и2: после десятка прогонов за день новые пополнения вытесняли его за 200-ю строку)

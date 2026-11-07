@@ -5,14 +5,18 @@
 возвращается гостю, как и раньше. Раньше отмена возвращала товар на склад (фантомная «потеря» при
 инвентаризации), а заказ оставался «оплаченным» — перерассчитать было нельзя (409 already_paid).
 Guest38, «Woda 0.5» от стойки: картой и кошельком. Идемпотентен: остаток товара возвращается к исходному,
-кошелёк докладывается до 10 zł; заказы остаются рассчитанными."""
+кошелёк докладывается до 10 zł; заказы остаются рассчитанными. Проверка берёт 2 шт: меньше — сначала корректировка
+до 2 (З18-и4в; при остатке 1 заказ кошельком падал на out_of_stock)."""
 from _z import *
 
 g = uid("Guest38")
 W = sql("SELECT id FROM goods WHERE name='Woda 0.5'")
 stock = lambda: int(sql(f"SELECT stock FROM goods WHERE id='{W}'"))
+stock_orig = stock()
+if stock_orig < 2:  # З18-и4в: проверке нужны 2 шт — картой и кошельком
+    stock_to(W, 2, "z6: остаток для проверки")
 stock0 = stock()
-at_end(lambda: stock_to(W, stock0, "z6 уборка: остаток как до проверки"))  # З10-и3: не SQL — партии не разойдутся с остатком
+at_end(lambda: stock_to(W, stock_orig, "z6 уборка: остаток как до проверки"))  # З10-и3: не SQL — партии не разойдутся с остатком
 order_row = lambda oid: sql(f"SELECT COALESCE(pay_method,'—') || '|' || (paid_at IS NULL)::text || '|' || (sale_id IS NULL)::text FROM kitchen_orders WHERE id='{oid}'")
 in_debt = lambda oid: any(i.get("id") == oid and i.get("kind") == "kitchen"
                           for i in api("GET", f"/admin/users/{g}/debt", None, "admin1")[1].get("items", []))

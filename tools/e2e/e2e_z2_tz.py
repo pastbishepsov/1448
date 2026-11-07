@@ -17,7 +17,8 @@ day = sql(f"""SELECT g::date FROM generate_series(((now() AT TIME ZONE '{TZ}')::
 check(f"пустой день для проверки найден: {day}", day, day)
 
 section(f"утреннее пополнение {day} {rh:02d}:30 по клубу")
-dep = topup("Guest33", 100, method="cash", who="boss")
+# З18-и4в: картой — пополнение уезжает в прошлое, отмена наличного вынула бы его из сегодняшнего ящика
+dep = topup("Guest33", 100, method="card", who="boss")
 at_end(lambda: api("POST", f"/admin/deposits/{dep}/void", {}, "boss"))
 sql(f"UPDATE deposits SET created_at = {at_club(day, f'{rh:02d}:30')} WHERE id='{dep}'")
 s, m = api("GET", f"/admin/reports/money?from={day}&to={day}", None, "boss")

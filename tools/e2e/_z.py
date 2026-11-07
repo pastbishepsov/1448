@@ -283,14 +283,20 @@ def hire_temp(nick, keep=False, **profile):
         at_end(lambda: _retire(nick))
     return uid(nick)
 
-def drawer_ready(who):
+def drawer_ready(who, floor=0):
     """Ящик заведён (З8-и1): на стенде без истории ящика первая сдача — нулевая точка, а проверке нужны
     ожидаемое и расхождения. Тогда who (на смене) сдаёт кассу пересчётом 500 zł — это начальный остаток — и
-    снова выходит на смену. Возвращает предпросмотр кассы who."""
+    снова выходит на смену. floor (З18-и4в) — «должно быть» не меньше floor zł: ниже — коррекция владельца «в ящике
+    floor zł» (проверке, которая сдаёт с недостачей или ставит «ожидаемое + 5», отрицательная сумма — 400). Возвращает
+    предпросмотр кассы who."""
     p = api("GET", "/admin/work/closeout", None, who)[1]
     if p.get("baseline"):
         api("POST", "/admin/work/stop", {"counted_pln": 500}, who)
         api("POST", "/admin/work/start", {}, who)
+        p = api("GET", "/admin/work/closeout", None, who)[1]
+    if floor and p.get("expected_pln", 0) < floor:
+        api("POST", "/admin/cash/events", {"kind": "correct", "stated_pln": floor,
+                                           "note": f"проверка: ящик стенда до {floor} zł"}, "boss")
         p = api("GET", "/admin/work/closeout", None, who)[1]
     return p
 

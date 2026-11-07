@@ -47,7 +47,8 @@ section("сутки в отчёте «Деньги» в дни перевода 
 set_settings(report_hour=8)
 rh = 8
 for day, hhmm, want in (("2026-03-29", f"{rh:02d}:30", "2026-03-29"), ("2025-10-26", f"{rh - 1:02d}:30", "2025-10-25")):
-    dep = topup("Guest33", 50, method="cash", who="boss")
+    # З18-и4в: картой — пополнение уезжает в прошлое, отмена наличного вынула бы его из сегодняшнего ящика
+    dep = topup("Guest33", 50, method="card", who="boss")
     at_end(lambda dep=dep: api("POST", f"/admin/deposits/{dep}/void", {}, "boss"))
     sql(f"UPDATE deposits SET created_at = {at_club(day, hhmm)} WHERE id='{dep}'")
     s, m = api("GET", f"/admin/reports/money?from={want}&to={want}", None, "boss")

@@ -37,8 +37,8 @@ wallet = lambda: int(sql(f"SELECT wallet_grosz FROM users WHERE id='{g}'"))
 coins = lambda: int(sql(f"SELECT coins_balance FROM users WHERE id='{g}'"))
 w0, c0 = wallet(), coins()
 print(f"Guest27: кошелёк {w0} гр, монет {c0}")
-def deposit(amount, tok=a1):
-    s, d = api("POST", f"/admin/users/{g}/deposit", {"amount_pln": amount, "method": "cash"}, tok)
+def deposit(amount, tok=a1, method="cash"):
+    s, d = api("POST", f"/admin/users/{g}/deposit", {"amount_pln": amount, "method": method}, tok)
     assert s == 201, (s, d)
     return d
 def void(dep_id, tok): return api("POST", f"/admin/deposits/{dep_id}/void", {}, tok)
@@ -92,7 +92,8 @@ s, v = void(d3["deposit_id"], a2)
 check("чужой депозит другим админом → 403 not_yours", s == 403 and v.get("code") == "not_yours", f"{s} {v.get('code')} {v.get('message')}")
 s, v = void(d3["deposit_id"], ot)
 check("чужой депозит владельцем → 200, вернулось 20", s == 200 and near(v.get("refund_pln"), 20), f"{s} {v}")
-d4 = deposit(20)
+# З18-и4в: картой — пополнение уезжает в прошлое, отмена наличного вынула бы его из сегодняшнего ящика
+d4 = deposit(20, method="card")
 sql(f"UPDATE deposits SET created_at = created_at - interval '2 days' WHERE id='{d4['deposit_id']}'")
 s, v = void(d4["deposit_id"], a1)
 check("свой, но позавчерашний → 403 too_old", s == 403 and v.get("code") == "too_old", f"{s} {v.get('code')}")

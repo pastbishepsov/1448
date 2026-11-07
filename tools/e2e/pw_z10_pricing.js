@@ -8,7 +8,7 @@
 // у админа нет ни кнопки, ни «Закупок» в палитре. Журнал «закупка: цены», палитра «закупки». Телефон 360 — без прокрутки.
 // Данные: позиции «z10p Цены окно» и «z10p Цены ящик» (категория z10) заводятся каждый прогон и в конце удаляются вместе с
 // поставками; контрагент «z10p Поставщик UI» живёт между прогонами (первый прогон заводит его с экрана); расходы поставок
-// в конце сторнируются; продажа — картой.
+// в конце сторнируются; продажа — картой, в уборке отменяется (З18-и4в: иначе копится в «Что покупают» стенда).
 const z = require('./_z');
 (async () => {
   const A = 'z10p Цены окно', B = 'z10p Цены ящик', MARK = 'z10p цены', CP = 'z10p Поставщик UI';
@@ -16,7 +16,11 @@ const z = require('./_z');
   const gone = async () => { // расходы поставок проверки — по заметке «поставка от …: z10p Цены …» (и после упавшего прогона)
     for (const eid of z.rows(`SELECT id FROM expenses WHERE storno_at IS NULL AND note LIKE '%z10p Цены%'`))
       await z.api('POST', `/admin/expenses/${eid}/storno`, { reason: 'уборка проверки' }, 'boss');
-    for (const n of [A, B]) for (const id of z.rows(`SELECT id FROM goods WHERE name = '${n}'`)) z.dropGood(id);
+    for (const n of [A, B]) for (const id of z.rows(`SELECT id FROM goods WHERE name = '${n}'`)) {
+      for (const s of z.rows(`SELECT id FROM sales WHERE good_id = '${id}' AND voided_at IS NULL`)) // З18-и4в
+        await z.api('POST', `/admin/sales/${s}/void`, {}, 'boss');
+      z.dropGood(id);
+    }
   };
   await gone(); z.atEnd(gone);
   const mk = async (name, price) => ((await z.api('POST', '/admin/goods', { name, category: 'z10', price_pln: price }, 'boss')).data.good || {}).id;
