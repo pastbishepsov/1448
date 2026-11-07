@@ -40,7 +40,7 @@ check("у владельца одна новая строка login_failed пр�
 check("… в ней сколько неудач и IP, автора нет (кто подбирал — неизвестно)", new and "10 неверных" in new[0].get("text", "")
       and "IP" in new[0].get("text", "") and "admin" not in new[0], new and new[0].get("text"))
 check("админу строка login_failed не видна", fails("admin1") == [], J(fails("admin1")))
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 own = int(sql(f"SELECT count(*) FROM admin_actions WHERE admin_id='{zid}' AND action <> 'login_failed' "
               f"AND created_at >= {at_club(club_day(), f'{rh:02d}:00')}"))
 acts = {r["nickname"]: r.get("actions_today") for r in api("GET", "/admin/staff", None, "boss")[1]["staff"]}

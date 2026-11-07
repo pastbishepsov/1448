@@ -63,8 +63,8 @@ async function api(method, path, body, who) {
 }
 
 // ── клубные сутки и персонал ──
-// клубные сутки 'ГГГГ-ММ-ДД' (от report_hour по часам клуба), как их считает сервер; offset — ±дни
-const clubDay = (offset = 0) => sql(`SELECT (((now() AT TIME ZONE 'Europe/Warsaw') - make_interval(hours => COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')::int))::date + ${offset})::text`);
+// клубные сутки 'ГГГГ-ММ-ДД' (от report_hour по часам клуба), как их считает сервер; offset — ±дни; строки нет — с полуночи (З18-и4б)
+const clubDay = (offset = 0) => sql(`SELECT (((now() AT TIME ZONE 'Europe/Warsaw') - make_interval(hours => COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')::int))::date + ${offset})::text`);
 // временный сотрудник z<N>… (пароль STAFF_PASS, нанят 30 дней назад); повторный прогон возвращает того же
 // человека (аккаунт не удалить — FK); в конце увольняется сам, незакрытая запись табеля снимается. Наём с З14-и3
 // требует сменить пароль при первом входе — проверкам это не нужно (это проверяет e2e_z14_password): флаг снят SQL-ом

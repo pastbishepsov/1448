@@ -8,7 +8,7 @@
 from _z import *
 
 # значения по умолчанию из settings.go: строку с таким значением можно убрать — поведение клуба не меняется
-DEFAULTS = {"report_hour": "8", "seg_lost_days": "21", "admin_day_comp_cap_min": "0", "admin_day_comp_cap_pln": "0",
+DEFAULTS = {"report_hour": "0", "seg_lost_days": "21", "admin_day_comp_cap_min": "0", "admin_day_comp_cap_pln": "0",
             "admin_day_deposit_cap_pln": "0"}
 
 orig = dict(r.split("|", 1) for r in rows("SELECT key, value FROM settings"))

@@ -73,7 +73,7 @@ var settingBounds = map[string][2]int64{
 	"admin_day_comp_cap_pln":    {0, 1000000}, // Ж0-и2 (Ж-Р2): дневной потолок компенсаций админа деньгами, 0 = без лимита
 	"admin_day_comp_cap_min":    {0, 100000},  // Ж0-и2 (Ж-Р2): то же минутами, 0 = без лимита
 	"admin_day_case_cap":        {0, 1000},    // З0-и4 (№9 «а»): кейсов в клубные сутки на админа, 0 = без лимита
-	"report_hour":               {0, 23},   // Б10-и1: граница клубных суток для сводки смены
+	"report_hour":               {0, 23},   // Б10-и1: граница клубных суток; 0 — с полуночи (З18-и4б)
 	"seg_new_days":              {1, 365},  // Б10-и2: сегмент «новые» — окно первого визита
 	"seg_lost_days":             {2, 730},  // Б10-и2: сегмент «пропавшие» — дней без визита
 	"coins_per_pln_spend":       {1, 1000}, // В4-2: монет за 1 zł ПРИ СПИСАНИИ (курс погашения)
@@ -130,7 +130,7 @@ var settingDefaults = map[string]int64{
 	"admin_day_comp_cap_pln":    0, // Ж0-и2
 	"admin_day_comp_cap_min":    0, // Ж0-и2
 	"admin_day_case_cap":        0, // З0-и4
-	"report_hour":               8,
+	"report_hour":               reportHourDef,
 	"seg_new_days":              14,
 	"seg_lost_days":             21,
 	"coins_per_pln_spend":       coinsPerPLNSpend,

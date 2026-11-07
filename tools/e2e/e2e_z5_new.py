@@ -26,7 +26,7 @@ check("регистрация без визита не меняет «Новых
 sql(f"UPDATE users SET registered_at='{reg36}' WHERE id='{g36}'")
 
 section("в отчёте и сводке — первая сессия не раньше seg_new_days до конца суток")
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 D = sql(f"""SELECT g::date FROM generate_series(((now() AT TIME ZONE '{TZ}')::date - 25)::timestamp,
     ((now() AT TIME ZONE '{TZ}')::date - 3)::timestamp, interval '1 day') AS g
     WHERE NOT EXISTS (SELECT 1 FROM sessions WHERE started_at >= ((g - interval '6 days' + interval '{rh} hours') AT TIME ZONE '{TZ}')

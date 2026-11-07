@@ -17,7 +17,7 @@ const z = require('./_z');
     for (const id of z.rows(`SELECT id FROM goods WHERE name = '${NAME}'`)) z.dropGood(id);
   };
   await gone(); z.atEnd(gone);
-  const TZ = 'Europe/Warsaw', rh = +z.sql(`SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')`);
+  const TZ = 'Europe/Warsaw', rh = +z.sql(`SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')`);
   const month = z.sql(`SELECT to_char(((now() AT TIME ZONE '${TZ}') - interval '${rh} hours')::date, 'YYYY-MM')`);
   const prev = z.sql(`SELECT to_char('${month}-01'::date - interval '1 month', 'YYYY-MM')`);
   const at = (day, hhmm) => `(('${day}'::date + time '${hhmm}') AT TIME ZONE '${TZ}')`;

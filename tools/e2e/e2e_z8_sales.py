@@ -9,7 +9,7 @@
 from _z import *
 
 STUB = "z8 заглушка"
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 sales = lambda who="admin1", q="": api("GET", f"/admin/sales{q}", None, who)
 
 

@@ -204,7 +204,7 @@ func returnsMonth(s string, reportHour int, now time.Time) (period, bool) {
 // GET /admin/reports/returns?month=ГГГГ-ММ — возвраты месяца по дню отмены
 // (owner); без month — прошлый месяц.
 func handleReportReturns(c *gin.Context) {
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	p, ok := returnsMonth(c.Query("month"), reportHour, time.Now())
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_month", "message": "Месяц — в формате ГГГГ-ММ и не позже текущего"})

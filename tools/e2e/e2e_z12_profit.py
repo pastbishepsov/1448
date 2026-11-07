@@ -19,7 +19,7 @@ PACK = sql("SELECT id FROM time_packages WHERE active ORDER BY price_pln, name L
 PRICE = float(sql(f"SELECT price_pln FROM time_packages WHERE id = '{PACK}'") or 0)
 CAT, CATN = (sql("SELECT id || '|' || name FROM expense_categories WHERE NOT purchase AND NOT hidden ORDER BY sort, name LIMIT 1") or "|").split("|")
 TODAY = club_day()
-RH = sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8'), 2, '0') || ':00'")
+RH = sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0'), 2, '0') || ':00'")
 
 
 def gone():

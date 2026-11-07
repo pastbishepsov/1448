@@ -1,7 +1,8 @@
 // З7-и1 (№41), браузер: «Экономика» — карточки по смыслу (с З13-и2 — и «Бухгалтерия», с З18-и4 — и «Сгорание пакетов»:
 // девять), у каждой строка «на что
 // влияет»; «Сохранить» без правок ничего не отправляет; правка одной настройки подсвечена, уходит одна и одной строкой в журнал; у часа
-// границы суток — предупреждение про прошлые отчёты и взвод на «Сохранить». Таблица settings в конце — как была.
+// границы суток — предупреждение про прошлые отчёты и взвод на «Сохранить» (с З18-и4б поле часа — после «Свой час границы» в
+// «Сутках клуба»; сам выбор — в pw_z18_day). Таблица settings в конце — как была.
 const z = require('./_z');
 const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лимиты персонала', 'Клубные сутки и сегменты', 'Сессия у ПК', 'Брони', 'Стрики и ДР', 'Мышь и коврик', 'Бухгалтерия'];
 (async () => {
@@ -26,11 +27,12 @@ const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лим�
   z.check('у каждой карточки — строка «на что влияет»', cards.length === 9 && cards.every(c => c.why.length > 20), JSON.stringify(cards.map(c => c.why)));
   const where = id => (cards.find(c => c.ids.includes(id)) || {}).t;
   z.check('поля на своих местах: час суток — «Клубные сутки», кейсы админа — «Лимиты персонала», DPI — «Мышь и коврик», форма учёта (З13-и7), '
-    + 'плательщик VAT, подарки в VAT и ставка ryczałtu времени — «Бухгалтерия»; окно [Готов!] (З18-и4) — «Сессия у ПК», 39 полей',
-    where('set_rhour') === 'Клубные сутки и сегменты' && where('set_casecap') === 'Лимиты персонала' && where('set_mousedpi') === 'Мышь и коврик'
+    + 'плательщик VAT, подарки в VAT и ставка ryczałtu времени — «Бухгалтерия»; окно [Готов!] (З18-и4) — «Сессия у ПК»; «Сутки клуба» '
+    + '(З18-и4б) — «Клубные сутки», 40 полей',
+    where('set_rhour') === 'Клубные сутки и сегменты' && where('set_rmode') === 'Клубные сутки и сегменты' && where('set_casecap') === 'Лимиты персонала' && where('set_mousedpi') === 'Мышь и коврик'
     && where('set_accform') === 'Бухгалтерия' && where('set_vatpayer') === 'Бухгалтерия' && where('set_giftvat') === 'Бухгалтерия'
     && where('set_rytime') === 'Бухгалтерия' && where('set_readywait') === 'Сессия у ПК' && where('set_packwarn') === 'Сгорание пакетов'
-    && cards.reduce((n, c) => n + c.ids.length, 0) === 39,
+    && cards.reduce((n, c) => n + c.ids.length, 0) === 40,
     JSON.stringify(cards.map(c => [c.t, c.ids.length])));
   await z.shot(page, 'z7_settings');
 
@@ -51,6 +53,8 @@ const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лим�
   z.check(`ушёл один PUT и только с «пропавшими»: {"seg_lost_days":${v + 1}}`, puts.length === 1 && puts[0] === JSON.stringify({ seg_lost_days: v + 1 }), puts.join(' | '));
   z.check(`в журнале одна строка «seg_lost_days: ${v}→${v + 1}»`, audit() === a0 + 1 && last() === `seg_lost_days: ${v}→${v + 1}`, `+${audit() - a0}: ${last()}`);
 
+  // З18-и4б: при сутках с полуночи поле часа спрятано — сначала «Свой час границы» (на HEAD выбора нет — сразу поле)
+  if (await page.$('#set_rmode') && await page.inputValue('#set_rmode') === '0') await page.selectOption('#set_rmode', '1');
   const rh = +(await page.inputValue('#set_rhour')), rh2 = (rh + 1) % 24;
   await page.fill('#set_rhour', String(rh2));
   const warn = await page.evaluate(() => { const w = document.getElementById('setRhourWarn'); return w && !w.classList.contains('hidden') ? w.textContent.replace(/\s+/g, ' ').trim() : null; });

@@ -45,7 +45,7 @@ func shiftWindow(dateStr string, reportHour int, now time.Time) (from, to time.T
 // и часы, новые гости, брони, инциденты. Всё в одном месте — решение
 // 2026-07-21, Telegram-доставка в бэклоге.
 func handleAdminStatsShift(c *gin.Context) {
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	from, to, key, ok := shiftWindow(c.Query("date"), reportHour, time.Now())
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_date", "message": "date — в формате YYYY-MM-DD"})

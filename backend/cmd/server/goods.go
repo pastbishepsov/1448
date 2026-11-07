@@ -914,7 +914,7 @@ const salesFeedWhere = "(created_at >= ? AND created_at < ?) OR (paid_at >= ? AN
 // Роли, решение №3 трека Б: admin видит только текущие клубные сутки,
 // owner листает любой день.
 func handleAdminSales(c *gin.Context) {
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	from, to, key, ok := shiftWindow(c.Query("date"), reportHour, time.Now())
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_date", "message": "date — в формате ГГГГ-ММ-ДД"})
@@ -1047,7 +1047,7 @@ func isKitchenSale(saleID uuid.UUID) bool {
 
 // saleVoidAllowed — права на отмену (canVoidSale) с ответом 403; вернул false — выходить.
 func saleVoidAllowed(c *gin.Context, sale *models.Sale) bool {
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	from, to, _, _ := shiftWindow("", reportHour, time.Now())
 	if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
 		c.GetString("user_id"), sale.CreatedAt, from, to); !ok {

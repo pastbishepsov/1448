@@ -7,7 +7,7 @@ const z = require('./_z');
 (async () => {
   const STUB = 'z8 заглушка', g = z.uid('Guest39'), boss = z.uid('boss');
   const W = z.sql("SELECT id FROM goods WHERE name='Woda 0.5'"), pc = z.sql("SELECT id FROM computers WHERE name='PC-06'");
-  const rh = Number(z.sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"));
+  const rh = Number(z.sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"));
   const from = `(('${z.clubDay(0)}'::date + time '${String(rh).padStart(2, '0')}:00') AT TIME ZONE 'Europe/Warsaw')`;
   z.sql(`DELETE FROM kitchen_orders WHERE name = '${STUB}'`); // хвост упавшего прогона
   z.atEnd(() => z.sql(`DELETE FROM kitchen_orders WHERE name = '${STUB}'`));

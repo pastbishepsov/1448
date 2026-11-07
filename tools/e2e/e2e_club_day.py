@@ -6,8 +6,9 @@
 депозит со 160-й позиции дня находится фильтром «Деньги»; owner — любой день, admin — текущий.
 Идемпотентен: свои строки удаляет, настройки возвращает. От загрузки стенда не зависит (З15-и2а): депозит для журнала —
 свежий, 160 строк, которые его отодвигают, — между ним и «сейчас». От часа — тоже (З18-и4а): «сегодня» — клубные сутки,
-а не дата календаря (до 08:00 они ещё вчерашние), в 23:xx — сценарий «в тот же день» вместо «через полночь»."""
-import os, json, subprocess, sys, time, urllib.request, urllib.error, urllib.parse, datetime as dt
+а не дата календаря (до 08:00 они ещё вчерашние), в 23:xx — сценарий «в тот же день» вместо «через полночь». Граница
+стенда в конце — какая была (З18-и4б: по умолчанию сутки с полуночи), а не 8."""
+import atexit, os, json, subprocess, sys, time, urllib.request, urllib.error, urllib.parse, datetime as dt
 
 from _env import API, BASE, HOST, PORT, DB, SRV_LOG, MOCK_AGENT, agent_log  # стенд задаётся окружением, см. README
 def sql(q):
@@ -35,11 +36,14 @@ def near(a, b): return abs(float(a) - float(b)) < 0.005
 a1 = login("admin1", "Admin12345"); ot = login("boss", "Boss12345")
 g = sql("SELECT id FROM users WHERE nickname='Guest28'")
 admin1 = sql("SELECT id FROM users WHERE nickname='admin1'")
+# З18-и4б: граница стенда — какая была (после миграции 093 — 0, с полуночи); её и возвращаем, раньше возвращали 8
+RH0 = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 def cleanup():
     sql("DELETE FROM admin_actions WHERE details LIKE 'e2e-zh3%'")
     sql("DELETE FROM settings WHERE key IN ('admin_day_deposit_cap_pln')")
-    api("PUT", "/admin/settings", {"report_hour": 8}, ot)
+    api("PUT", "/admin/settings", {"report_hour": RH0}, ot)
 cleanup()
+atexit.register(lambda: api("PUT", "/admin/settings", {"report_hour": RH0}, ot))  # и при обрыве на середине
 TZ = "Europe/Warsaw"  # часовой пояс клуба (CLUB_TZ сервера); сессия psql может жить в UTC
 day_of = lambda off=0: sql(f"SELECT ((now() AT TIME ZONE '{TZ}')::date + {off})::text")  # дата по часам клуба
 hour_now = int(sql(f"SELECT EXTRACT(HOUR FROM now() AT TIME ZONE '{TZ}')"))
@@ -80,7 +84,7 @@ check(f"report_hour={rh2}: тот же депозит из журнала адм
 s, au_o = api("GET", f"/admin/audit?kind=deposit&limit=200&day={day_of(-1)}", None, ot)
 check("владелец с ?day=вчера видит этот депозит", f"deposit:{dep['deposit_id']}" in [x.get("id") for x in au_o.get("items", [])], f"n={au_o.get('count')} day={au_o.get('day')}")
 api("POST", f"/admin/deposits/{dep['deposit_id']}/void", {}, ot)  # уборка денег гостя (владелец: депозит прошлых суток)
-api("PUT", "/admin/settings", {"report_hour": 8}, ot)  # дальше — граница стенда
+api("PUT", "/admin/settings", {"report_hour": RH0}, ot)  # дальше — граница стенда
 
 # ── B: KPI «Выручка сегодня» = итог отчёта «Деньги» за сегодня ──
 api("POST", f"/admin/users/{g}/deposit", {"amount_pln": 12, "method": "card"}, a1)
@@ -92,7 +96,8 @@ s, rm = api("GET", "/admin/reports/money?preset=today", None, ot)
 check(f"KPI revenue_today_pln {ov.get('revenue_today_pln')} = отчёт «Деньги» за сегодня {rm['totals']['revenue_pln']} (пополнения+товары+пакеты)",
       near(ov.get("revenue_today_pln", -1), rm["totals"]["revenue_pln"]), f"{ov.get('revenue_today')}")
 check("состав KPI совпадает с отчётом: депозиты, товары, пакеты", near(ov["revenue_today"]["deposits_pln"], rm["totals"]["deposits_pln"]) and near(ov["revenue_today"]["goods_pln"], rm["totals"]["goods_pln"]) and near(ov["revenue_today"]["packs_pln"], rm["totals"]["packs_pln"]), f"{ov.get('revenue_today')} vs {rm['totals']}")
-check("окно KPI — клубные сутки от 08:00", str(ov.get("day_from", "")).find("T08:00:00") > 0 and ov.get("report_hour") == 8, f"{ov.get('day_from')}")
+check(f"окно KPI — клубные сутки от {RH0:02d}:00 (граница стенда)", str(ov.get("day_from", "")).find(f"T{RH0:02d}:00:00") > 0
+      and ov.get("report_hour") == RH0, f"{ov.get('day_from')}")
 
 # ── C: журнал страницами; депозит со 160-й позиции находится фильтром «Деньги» ──
 # З15-и2а: депозит свежий, а 160 строк журнала, которые его отодвигают, — между ним и «сейчас» (через микросекунду после
@@ -127,8 +132,8 @@ s, pb = api("GET", "/admin/audit?before=abc", None, a1)
 check("before не по формату → 400 bad_before", s == 400 and pb.get("code") == "bad_before", f"{s} {pb.get('code')}")
 s, pd = api("GET", "/admin/audit?day=2026-13-40", None, ot)
 check("владелец: day не по формату → 400 bad_day", s == 400 and pd.get("code") == "bad_day", f"{s} {pd.get('code')}")
-# З18-и4а: текущие клубные сутки — от 08:00 по часам клуба (до 08:00 это ещё вчерашняя дата), не дата календаря
-club_now = sql(f"SELECT ((now() AT TIME ZONE '{TZ}') - interval '8 hours')::date::text")
+# З18-и4а: текущие клубные сутки — от границы стенда по часам клуба (до неё это ещё вчерашняя дата), не дата календаря
+club_now = sql(f"SELECT ((now() AT TIME ZONE '{TZ}') - interval '{RH0} hours')::date::text")
 s, pa = api("GET", f"/admin/audit?day={day_of(-3)}", None, a1)
 check("админ: ?day игнорируется — всегда текущие клубные сутки", pa.get("day") == club_now, f"{pa.get('day')} при {club_now}")
 s, po = api("GET", "/admin/audit?limit=30", None, ot)

@@ -520,6 +520,8 @@
   .setcard label{font-size:12px; font-weight:700; color:var(--dim); margin-bottom:-3px}
   .setcard .input{width:100%; padding:9px 12px; font-size:14px}
   .setcard .input.changed{border-color:var(--acc); box-shadow:0 0 0 1px rgba(255,39,64,.28)}
+  /* З18-и4б: поле своего часа границы суток — под выбором «Сутки клуба», тем же шагом */
+  .setcard .setsub{display:flex; flex-direction:column; gap:8px}
   .setwarn{font-size:12px; line-height:1.4; color:var(--orange); background:rgba(251,146,60,.08);
     border:1px solid rgba(251,146,60,.32); border-radius:9px; padding:8px 10px}
   /* З13-и2: «Бухгалтерия» — что значат выбранные варианты, простыми словами */
@@ -1762,7 +1764,7 @@ async function refresh(){
     setText('kRev', (+ov.revenue_today_pln || 0).toLocaleString('ru-RU') + ' zł');
     if (ov.revenue_today){ // Ж3-и2: из чего сложилось и с какого часа сутки
       const r = ov.revenue_today, box = document.getElementById('kRevBox');
-      if (box) box.title = 'за клубные сутки с ' + String(ov.report_hour ?? 8).padStart(2, '0') + ':00 — те же цифры, что в отчёте «Деньги»: пополнения '
+      if (box) box.title = 'за клубные сутки с ' + String(ov.report_hour ?? 0).padStart(2, '0') + ':00 — те же цифры, что в отчёте «Деньги»: пополнения '
         + fmtPLN(r.deposits_pln) + ' zł (' + (r.deposits || 0) + ') · товары ' + fmtPLN(r.goods_pln) + ' zł (' + (r.sales || 0) + ') · пакеты ' + fmtPLN(r.packs_pln) + ' zł · без отменённых и без оплат кошельком';
     }
     setText('kSessions', ov.active_sessions);
@@ -5014,7 +5016,7 @@ async function renderShift(){
     if (!shiftDate) shiftMax = d.date; // текущая смена = правая граница листания
     shiftDate = d.date;
     document.getElementById('shDate').textContent =
-      d.date + ' · с ' + d.report_hour + ':00';
+      d.date + ' · с ' + String(d.report_hour ?? 0).padStart(2, '0') + ':00'; // З18-и4б: «с 00:00», а не «с 0:00»
     const m = d.revenue.by_method || {};
     document.getElementById('shiftKpis').innerHTML =
       `<div class="kpi" title="${moneyParts(d.revenue)} · нал ${fmtPLN(m.cash||0)} · карта ${fmtPLN(m.card||0)} · BLIK ${fmtPLN(m.blik||0)} — те же цифры, что в отчёте «Деньги» за этот день">Выручка <b>${fmtPLN(d.revenue.total_pln)} zł</b></div>
@@ -6732,7 +6734,7 @@ function repHeat(d, shifts, rh){
 function paintLoad(d, sh){
   const t = d.totals, k = d.delta, w = d.prev || {}, cap = d.capacity || {};
   const days = d.days || [], hours = d.hours || [];
-  const rh = Number((ovCache && ovCache.report_hour) ?? 8), shifts = sh && sh.shifts; // З17-и3: граница суток и смены — для карты
+  const rh = Number((ovCache && ovCache.report_hour) ?? 0), shifts = sh && sh.shifts; // З17-и3: граница суток и смены — для карты
   const act = (shifts || []).filter(s => s.active).length;
   document.getElementById('repBody').innerHTML =
     `<div class="kpis">
@@ -6753,8 +6755,8 @@ function paintLoad(d, sh){
         date:x => x.hour + ':00', more:x => repPlural(x.sessions, 'сессия', 'сессии', 'сессий')
           + (x.occupancy_pct == null ? '' : ' · занятость ' + repPct(x.occupancy_pct)), // З17-и3: занятость часа (З17-и2)
         x:(x, i) => i % 3 === 0 ? x.hour + ':00' : '', cols:['Час', 'Наиграно', 'Сессий · занятость'], last:false})}
-     <div class="sect">Карта загрузки · <span style="text-transform:none; letter-spacing:0">строка — клубные сутки с ${rh}:00:
-       ночь после пятницы — в пятнице; цвет — занятость часа, ярче — плотнее; ${act ? 'скобки — смены по нынешним шаблонам'
+     <div class="sect">Карта загрузки · <span style="text-transform:none; letter-spacing:0">${rh ? `строка — клубные сутки с ${rh}:00:
+       ночь после пятницы — в пятнице` : 'строка — сутки с 0:00, как календарь: ночь после пятницы — уже в субботе'}; цвет — занятость часа, ярче — плотнее; ${act ? 'скобки — смены по нынешним шаблонам'
        : shifts ? 'шаблонов смен нет — клуб открыт круглые сутки' : 'шаблоны смен не загрузились'}</span></div>
      ${repHeat(d, shifts, rh)}
      <div class="sect">Зоны · <span style="text-transform:none; letter-spacing:0">занятость — от всех ПК зоны, кроме тех, что в ремонте
@@ -7480,7 +7482,7 @@ function outProfHtml(){
 }
 function paintOut(){
   const box = document.getElementById('accBody'), d = outData || {}, per = d.period || {}, sheets = d.sheets || [], r = outReq || {}, s = outSet;
-  const csv = outFmt === 'csv', rh = Number(s.report_hour ?? 8), hh = String(rh).padStart(2, '0') + ':00';
+  const csv = outFmt === 'csv', rh = Number(s.report_hour ?? 0), hh = String(rh).padStart(2, '0') + ':00';
   const running = !outPeriod.from && outPeriod.month && outPeriod.month === outCur;
   box.innerHTML = `
     <div class="toolrow">
@@ -7493,7 +7495,7 @@ function paintOut(){
       </div>
     </div>
     <div id="outMain">
-      <div class="muted" id="outLabel" style="margin:-4px 0 10px">${per.from ? ruDate(per.from) + ' — ' + ruDate(per.to) : ''} · клубные сутки с ${hh} до ${hh} следующего дня${running ? ' · месяц ещё идёт: в файле — то, что есть на момент скачивания' : ''}</div>
+      <div class="muted" id="outLabel" style="margin:-4px 0 10px">${per.from ? ruDate(per.from) + ' — ' + ruDate(per.to) : ''} · клубные сутки с ${rh ? hh + ' до ' + hh + ' следующего дня' : '00:00 до 24:00, как календарь'}${running ? ' · месяц ещё идёт: в файле — то, что есть на момент скачивания' : ''}</div>
       <div class="toolrow">
         <div class="segs" id="outFmt"><button data-f="xlsx" class="${csv ? '' : 'on'}" onclick="outFmtSet('xlsx')">XLSX — листы в одном файле</button><button data-f="csv" class="${csv ? 'on' : ''}" onclick="outFmtSet('csv')">CSV — архив, файл на лист</button></div>
         <div class="segs" id="outLang"><button data-l="pl" class="${outLang === 'pl' ? 'on' : ''}" onclick="outLangSet('pl')">Заголовки по-польски</button><button data-l="ru" class="${outLang === 'ru' ? 'on' : ''}" onclick="outLangSet('ru')">По-русски</button></div>
@@ -9702,8 +9704,9 @@ const SETTINGS_GROUPS = [
     ['admin_day_comp_cap_pln', 'set_compcap', 'Компенсации по проблемам в день на админа, zł', 0, 1000000],
     ['admin_day_comp_cap_min', 'set_compcapmin', 'Компенсации минутами в день на админа', 0, 100000],
     ['admin_day_case_cap', 'set_casecap', 'Кейсов в день на админа, штук', 0, 1000]]},
-  {t:'Клубные сутки и сегменты', why:'Где кончаются одни клубные сутки и начинаются другие — для сводки смены и отчётов; кого считать новым гостем, а кого пропавшим.', f:[
-    ['report_hour', 'set_rhour', 'Час границы клубных суток (0–23)', 0, 23],
+  // З18-и4б (З-Р38): сутки по умолчанию — с полуночи, свой час границы — опцией (выбор «Сутки клуба» над полем часа)
+  {t:'Клубные сутки и сегменты', why:'Сутки клуба — по ним сводка смены, отчёты, касса и дневные лимиты админов. По умолчанию — с полуночи, 00:00–24:00, как календарь: так удобно клубу 24/7. Свой час границы — если ночная смена должна целиком попадать в сутки своего начала. Сегменты — кого считать новым гостем, а кого пропавшим.', f:[
+    ['report_hour', 'set_rhour', 'Час начала суток (1–23)', 0, 23],
     ['seg_new_days', 'set_segnew', '«Новые»: первый визит не раньше стольких дней до конца периода — отчёт «Гости», сводка смены, фильтр у стойки', 1, 365],
     ['seg_lost_days', 'set_seglost', '«Пропавшие»: дней без визита', 2, 730]]},
   // З18-и4 (№39): окно [Готов!] (Е1) — раньше только curl'ом
@@ -9757,9 +9760,9 @@ async function renderSettings(){
 function paintSettings(){
   document.getElementById('setGrid').innerHTML = SETTINGS_GROUPS.map(g => `<div class="setcard">
     <h4>${esc(g.t)}</h4><div class="why">${esc(g.why)}</div>
-    ${g.f.map(([key, id, label, min, max, step, opts]) => `<label for="${id}">${esc(label)}</label>
+    ${g.f.map(([key, id, label, min, max, step, opts]) => rhourWrap(key, `<label for="${id}">${esc(label)}</label>
       ${opts ? `<select id="${id}" class="input" onchange="settingsDirty()">${settingOptions(opts, settingsLoaded[key])}</select>`
-        : `<input id="${id}" class="input" type="number" min="${min}" max="${max}"${step ? ` step="${step}"` : ''} value="${esc(settingsLoaded[key] ?? '')}" oninput="settingsDirty()">`}
+        : `<input id="${id}" class="input" type="number" min="${min}" max="${max}"${step ? ` step="${step}"` : ''} value="${esc(settingsLoaded[key] ?? '')}" oninput="settingsDirty()">`}`) + `
       ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>` : ''}${
         key === 'acc_vat_moment' ? `<div class="setwarn hidden" id="setVatWarn">⚠ Меняет расчёт VAT и за прошлые месяцы: продажи по ставкам и выгрузка за них посчитаются по-новому. Меняйте вместе с бухгалтером, лучше с первого числа. «Сохранить» переспросит.</div>` : ''}${
         key === 'acc_gift_vat' ? '<div class="setnote" id="setVatNote"></div>' : ''}${
@@ -9767,6 +9770,25 @@ function paintSettings(){
         key === 'ready_wait_min' ? '<div class="setwarn hidden" id="setReadyWarn">⚠ Окна нет: деньги идут с посадки у стойки, пока гость идёт к ПК, а ПК без связи сервер не ждёт и по сети не будит — платят и за тёмную машину.</div>' : ''}`).join('')}
   </div>`).join('');
   setPaints++;
+  settingsDirty();
+}
+/* З18-и4б (решение основателя 07.11, З-Р38): большинство клубов работают 24/7 — сутки по умолчанию с полуночи, свой час
+   границы — опция. «Сутки клуба» — не отдельная настройка: «С полуночи» — report_hour 0, «Свой час границы» открывает поле
+   часа; 0 и в нём — та же полночь. Свой час был сохранён — возвращается при обратном переключении */
+const rhourOwn = () => Number(settingsLoaded.report_hour || 0) !== 0;
+const RHOUR_MODES = [[0, 'С полуночи — 00:00–24:00'], [1, 'Свой час границы']];
+function rhourWrap(key, field){
+  if (key !== 'report_hour') return field;
+  const own = rhourOwn() ? 1 : 0;
+  return `<label for="set_rmode">Сутки клуба</label>
+      <select id="set_rmode" class="input" onchange="rmodeSet()">${RHOUR_MODES.map(([v, t]) => `<option value="${v}"${v === own ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
+      <div class="setsub${own ? '' : ' hidden'}" id="setRhourBox">${field}</div>`;
+}
+function rmodeSet(){
+  const own = document.getElementById('set_rmode').value === '1', el = document.getElementById('set_rhour');
+  document.getElementById('setRhourBox').classList.toggle('hidden', !own);
+  if (!own) el.value = 0;
+  else if (Number(el.value) === 0){ el.value = rhourOwn() ? settingsLoaded.report_hour : ''; el.placeholder = 'например, 8'; el.focus(); }
   settingsDirty();
 }
 // З13-и2: настройка-выбор — варианты [значение, подпись] или 'vat' (ставки VAT с сервера); значения нет в списке —
@@ -9818,6 +9840,8 @@ function settingsDirty(){
   document.getElementById('setBar').classList.toggle('dirty', n > 0);
   document.getElementById('setUndo').classList.toggle('hidden', n === 0);
   document.getElementById('setRhourWarn')?.classList.toggle('hidden', !('report_hour' in ch));
+  const rm = document.getElementById('set_rmode'); // З18-и4б: выбор «Сутки клуба» подсвечен, если он не как на сервере
+  rm?.classList.toggle('changed', (rm.value === '1') !== rhourOwn());
   document.getElementById('setVatWarn')?.classList.toggle('hidden', !vatCalcChanged(ch)); // З13-и2
   const rw = document.getElementById('set_readywait'); // З18-и4: окно [Готов!] выключено — сказать, чем это обернётся
   document.getElementById('setReadyWarn')?.classList.toggle('hidden', !rw || rw.value.trim() === '' || Number(rw.value) !== 0);

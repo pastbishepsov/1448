@@ -82,7 +82,7 @@ p2 = exp_()
 d7_before = book("preset=d7").get("days", [])
 # по правилу: последняя сдача вчерашних клубных суток, а нет её — первая после них (сегодняшняя, в т. ч. z9t); сдали
 # без пересчёта — первый пересчёт после неё
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 y0, y1 = at_club(club_day(-1), f"{rh:02d}:00"), at_club(club_day(0), f"{rh:02d}:00")
 pts = [r.split("|") for r in rows(f"SELECT id, counted_grosz IS NOT NULL, created_at < {y1} FROM shift_closeouts "
                                   f"WHERE opening_grosz IS NOT NULL AND created_at >= {y0} ORDER BY created_at")]

@@ -42,7 +42,10 @@ check(f"09:00–21:00 легли как есть: {D} 09:00 → 21:00, 720 ми�
       and row == f"{D} 09:00|{D} 21:00|720|{D}", f"{s} {row}")
 
 section("сутки в отчёте «Деньги» в дни перевода часов")
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+# З18-и4б: стенд — с полуночи, а «до границы — в предыдущих сутках» в дни перевода нужен свой час позже 01:00: на время
+# секции — 8, как в решении 24.09 (полночь в дни перевода — e2e_z18_day)
+set_settings(report_hour=8)
+rh = 8
 for day, hhmm, want in (("2026-03-29", f"{rh:02d}:30", "2026-03-29"), ("2025-10-26", f"{rh - 1:02d}:30", "2025-10-25")):
     dep = topup("Guest33", 50, method="cash", who="boss")
     at_end(lambda dep=dep: api("POST", f"/admin/deposits/{dep}/void", {}, "boss"))

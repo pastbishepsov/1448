@@ -43,7 +43,7 @@ at_end(gone)
 sql(f"UPDATE users SET coins_balance = GREATEST(coins_balance, 1000), coin_minutes = 0 WHERE id = '{G44}'")
 ensure_wallet("Guest44", 20)
 good = (api("POST", "/admin/goods", {"name": NAME, "category": "z12", "price_pln": 7, "stock": 10}, "boss")[1].get("good") or {}).get("id")
-RH = sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8'), 2, '0') || ':00'")
+RH = sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0'), 2, '0') || ':00'")
 g = lambda v: round((v or 0) * 100)
 
 

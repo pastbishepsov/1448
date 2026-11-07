@@ -14,7 +14,10 @@ G = "Guest47"
 drop = lambda: sql(f"DELETE FROM sessions WHERE ended_reason = 'z17h' AND user_id = '{uid(G)}'")
 drop()
 at_end(drop)
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8')"))
+# З18-и4б: стенд — с полуночи, а ночь 23:00–02:00 проверяется в строке heat своих суток («а не в следующем дне») — на
+# время свой час границы 8 (вернётся как был); при полуночи часы после 00:00 — уже следующий день
+set_settings(report_hour=8)
+rh = 8
 D = sql(f"""SELECT g::date::text FROM generate_series(((now() AT TIME ZONE '{TZ}')::date - 400)::timestamp,
     ((now() AT TIME ZONE '{TZ}')::date - 3)::timestamp, interval '1 day') AS g
     WHERE NOT EXISTS (SELECT 1 FROM sessions WHERE started_at >= ((g + interval '{rh} hours') AT TIME ZONE '{TZ}')

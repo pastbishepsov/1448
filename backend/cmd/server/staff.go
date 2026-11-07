@@ -118,7 +118,7 @@ func handleAdminStaffList(c *gin.Context) {
 // сдачи (З9-и3в): такая остаётся в списке с пометкой, но в «не объяснено» не
 // идёт. Свежие сверху.
 func cashDiffs(now time.Time) gin.H {
-	p, _ := resolvePeriod("d7", "", "", int(settingInt64("report_hour", 8)), now)
+	p, _ := resolvePeriod("d7", "", "", clubDayHour(), now)
 	var cos []models.ShiftCloseout
 	db.Where("created_at >= ? AND created_at < ? AND diff_grosz IS NOT NULL AND diff_grosz <> 0 AND NOT baseline", p.From, now).
 		Order("created_at DESC").Find(&cos)
@@ -201,7 +201,7 @@ func handleAdminStaffPromote(c *gin.Context) {
 	// на смене; З15-и5: прежний период остаётся в истории, новый начинается сегодня — в клубные сутки, как и дата
 	// увольнения без даты (раньше увольнение просто стиралось)
 	now := time.Now()
-	today := clubDayOf(now, int(settingInt64("report_hour", 8)))
+	today := clubDayOf(now, clubDayHour())
 	var p models.StaffProfile
 	hasCard := db.First(&p, "user_id = ?", user.ID).Error == nil
 	returned := hasCard && p.DismissedAt != nil
@@ -246,7 +246,7 @@ func futureShiftsFrom(now time.Time, reportHour int) time.Time {
 // clearFutureShifts — снять сотрудника со всех будущих смен. Возвращает,
 // сколько записей графика убрано (владельцу важно это увидеть в тосте).
 func clearFutureShifts(userID uuid.UUID) int64 {
-	from := futureShiftsFrom(time.Now(), int(settingInt64("report_hour", 8)))
+	from := futureShiftsFrom(time.Now(), clubDayHour())
 	res := db.Where("user_id = ? AND date >= ?", userID, from).Delete(&models.ShiftAssignment{})
 	return res.RowsAffected
 }
@@ -713,7 +713,7 @@ func handleAdminStaffDismiss(c *gin.Context) {
 		return
 	}
 	now := time.Now()
-	today := clubDayOf(now, int(settingInt64("report_hour", 8))) // З14-и2: «сегодня» — клубные сутки, ночью это вчера
+	today := clubDayOf(now, clubDayHour()) // З14-и2: «сегодня» — клубные сутки, ночью это вчера
 	if date == nil {
 		date = &today
 	}
@@ -821,7 +821,7 @@ func leaveShiftOf(userID uuid.UUID, now time.Time) leaveShift {
 	if w == nil {
 		return leaveShift{}
 	}
-	today := clubDayOf(now, int(settingInt64("report_hour", 8)))
+	today := clubDayOf(now, clubDayHour())
 	s := leaveShift{Entry: w, SameDay: w.Date.Format("2006-01-02") == today.Format("2006-01-02")}
 	var sched *time.Time
 	if w.ShiftID != nil {
@@ -935,9 +935,9 @@ func handleAdminStaffShift(c *gin.Context) {
 	now := time.Now()
 	var future int64
 	db.Model(&models.ShiftAssignment{}).Where("user_id = ? AND date >= ?", user.ID,
-		futureShiftsFrom(now, int(settingInt64("report_hour", 8)))).Count(&future)
+		futureShiftsFrom(now, clubDayHour())).Count(&future)
 	out := gin.H{"user_id": user.ID, "nickname": user.Nickname, "role": user.Role, "future_shifts": future, "open_shift": nil,
-		"club_today": clubDayOf(now, int(settingInt64("report_hour", 8))).Format("2006-01-02")} // З14-и2: позже — увольнение отложенное
+		"club_today": clubDayOf(now, clubDayHour()).Format("2006-01-02")} // З14-и2: позже — увольнение отложенное
 	var lp []models.StaffProfile
 	if db.Where("user_id = ? AND leave_on IS NOT NULL", user.ID).Limit(1).Find(&lp); len(lp) == 1 {
 		out["leave_on"] = dateOut(lp[0].LeaveOn) // уже назначено — новая дата заменит
@@ -1187,7 +1187,7 @@ func leaveExpired(leaveOn *time.Time, today time.Time) bool {
 func staffLeft(userID string, now time.Time) bool {
 	var ps []models.StaffProfile
 	db.Select("user_id", "leave_on").Where("user_id = ? AND leave_on IS NOT NULL", userID).Limit(1).Find(&ps)
-	return len(ps) == 1 && leaveExpired(ps[0].LeaveOn, clubDayOf(now, int(settingInt64("report_hour", 8))))
+	return len(ps) == 1 && leaveExpired(ps[0].LeaveOn, clubDayOf(now, clubDayHour()))
 }
 
 // scheduleLeave — назначить отложенное увольнение: дата, кто и почему — в карточку; роль и смены — как есть до конца
@@ -1327,7 +1327,7 @@ func finishLeave(p *models.StaffProfile, now time.Time) bool {
 
 // finishLeaves — завершить отложенные увольнения, у которых последний день прошёл: сколько завершено.
 func finishLeaves(now time.Time) int {
-	today := clubDayOf(now, int(settingInt64("report_hour", 8)))
+	today := clubDayOf(now, clubDayHour())
 	var ps []models.StaffProfile
 	db.Where("leave_on IS NOT NULL AND leave_on < ?", today.Format("2006-01-02")).Find(&ps)
 	n := 0

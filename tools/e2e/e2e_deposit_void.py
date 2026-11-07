@@ -126,7 +126,7 @@ check("losses: отыграно по ошибочным депозитам ≥ 3
 s, cr = api("GET", "/admin/reports/coins?preset=today", None, ot)
 # начало клубных суток — по часам клуба и report_hour, как у сервера: сессия psql стенда живёт в UTC,
 # и прежнее «date_trunc('day', now()) + 8 ч» давало 10:00 по Варшаве (трек З, З2-и1)
-rh = "make_interval(hours => COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')::int)"
+rh = "make_interval(hours => COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')::int)"
 dbc = sql(f"SELECT COALESCE(SUM(coins_granted + bonus_coins - coins_taken),0) FROM deposits WHERE created_at >= "
           f"((((now() AT TIME ZONE 'Europe/Warsaw') - {rh})::date + {rh}) AT TIME ZONE 'Europe/Warsaw')")
 check("reports/coins: монеты за депозиты = выдано − забрано при отмене", s == 200 and int(cr["totals"]["deposits"]) == int(float(dbc)), f"{cr.get('totals', {}).get('deposits')} vs {dbc}")

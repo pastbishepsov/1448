@@ -17,7 +17,12 @@ const pct = v => v == null ? '—' : String(v).replace('.', ',') + '%';
   const wake = () => z.sql("UPDATE shifts SET active = true WHERE name IN ('День', 'Ночь') AND NOT active RETURNING id");
   drop(); dropTpl(); wake(); // и после оборванного прогона: шаблоны стенда — снова включены
   z.atEnd(drop); z.atEnd(dropTpl); z.atEnd(wake);
-  const rh = +z.sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8')");
+  // З18-и4б: стенд — с полуночи, а карта проверяется с ночью в строке пятницы — на время свой час границы 8 (вернётся как был)
+  const rh0 = z.rows("SELECT value FROM settings WHERE key = 'report_hour'")[0];
+  z.atEnd(() => { z.sql("DELETE FROM settings WHERE key = 'report_hour'");
+    if (rh0 !== undefined) z.sql(`INSERT INTO settings (key, value, updated_at) VALUES ('report_hour', '${rh0}', now())`); });
+  z.sql("INSERT INTO settings (key, value, updated_at) VALUES ('report_hour', '8', now()) ON CONFLICT (key) DO UPDATE SET value = '8'");
+  const rh = 8;
   // понедельник недели клубных суток без единой начатой сессии
   const MON = z.sql(`SELECT g::date::text FROM generate_series(((now() AT TIME ZONE 'Europe/Warsaw')::date - 400)::timestamp,
     ((now() AT TIME ZONE 'Europe/Warsaw')::date - 10)::timestamp, interval '1 day') AS g WHERE extract(isodow FROM g) = 1

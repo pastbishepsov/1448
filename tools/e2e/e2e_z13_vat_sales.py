@@ -68,7 +68,7 @@ api("PATCH", f"/admin/packages/{PACK}", {"vat_pct": 5}, "boss")
 new_good = lambda name, price, vat: (api("POST", "/admin/goods", {"name": name, "category": MARK, "price_pln": price, "stock": 20, "vat_pct": vat}, "boss")[1].get("good") or {}).get("id")
 A, K = new_good(A_NAME, 6, 23), new_good(K_NAME, 10, 8)
 sql(f"UPDATE stock_lots SET price_grosz = 250 WHERE good_id = '{A}'")  # себестоимость напитка — 2,50 zł за штуку
-RH = sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8'), 2, '0') || ':00'")
+RH = sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0'), 2, '0') || ':00'")
 D0, D1 = club_day(-1), club_day(0)  # вчера и сегодня: шаг у границы клубных суток не уходит за период
 Q = f"from={D0}&to={D1}"
 g = lambda v: round((v or 0) * 100)

@@ -318,7 +318,8 @@ check("в журнале — все виды сегодняшних операц
 about = pairs(book.get("O eksporcie") or EMPTY)
 check("«O eksporcie»: клуб, период, клубные сутки, плательщик VAT, «przy wykorzystaniu — bon różnego przeznaczenia», ставка "
       "пополнения 23%, подарки «nie», формат, число строк журнала",
-      about.get("Okres") == f"{DMY} — {DMY}" and about.get("Klub") and "dnia następnego" in (about.get("Doba klubowa") or "")
+      about.get("Okres") == f"{DMY} — {DMY}" and about.get("Klub")
+      and (settings()["report_hour"] and "dnia następnego" or "od 00:00 do 24:00") in (about.get("Doba klubowa") or "")  # З18-и4б
       and about.get("Podatnik VAT") == "tak — czynny podatnik VAT" and about.get("VAT od doładowań portfela") == "przy wykorzystaniu — bon różnego przeznaczenia"
       and about.get("Stawka VAT doładowań") == "23%" and about.get("Nieodpłatne przekazanie towarów w VAT") == "nie" and about.get("Format") == "XLSX"
       and f"wierszy: {len(ops)}" in (about.get("Arkusze") or ""), J(about, 1500))

@@ -88,7 +88,7 @@ func handleAdminDepositVoid(c *gin.Context) {
 		depositVoidFail(c, http.StatusConflict, "already_void")
 		return
 	}
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	from, to, _, _ := shiftWindow("", reportHour, time.Now())
 	createdBy := ""
 	if dep.CreatedBy != nil {

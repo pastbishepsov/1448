@@ -152,7 +152,8 @@ def done():
 
 # ── клубное время ────────────────────────────────────────────────────────────────────────────────
 def _report_hour():
-    return int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+    # З18-и4б: строки нет — сутки с полуночи, как у сервера (reportHourDef = 0)
+    return int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 
 def club_day(offset=0):
     """Клубные сутки 'ГГГГ-ММ-ДД' (от report_hour по часам клуба), как их считает сервер; offset — ±дни."""

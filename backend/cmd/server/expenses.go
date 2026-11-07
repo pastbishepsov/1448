@@ -449,7 +449,7 @@ func placeTill(tx *gorm.DB, e *models.Expense, anchor time.Time) {
 
 // tillDay — клубные сутки дня операции: [report_hour того дня, report_hour следующего).
 func tillDay(d time.Time) (from, to time.Time) {
-	rh := int(settingInt64("report_hour", 8))
+	rh := clubDayHour()
 	return time.Date(d.Year(), d.Month(), d.Day(), rh, 0, 0, 0, time.Local),
 		time.Date(d.Year(), d.Month(), d.Day()+1, rh, 0, 0, 0, time.Local)
 }

@@ -75,7 +75,7 @@ kpkw(None, "acc_form")  # и KPiR: лист профиля — второй (З1
 g = lambda v: round((v or 0) * 100)
 D, Y = club_day(0), club_day(-1)
 DAY, YDAY, MONTH = f"from={D}&to={D}", f"from={Y}&to={Y}", f"month={D[:7]}"
-RH = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8')"))
+RH = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0')"))
 T_DAY = f"{D[8:]}.{D[5:7]}.{D[:4]} {RH:02d}:00"  # конец вчерашних клубных суток — «на конец» вчерашнего периода
 T_SQL = at_club(D, f"{RH:02d}:00")
 

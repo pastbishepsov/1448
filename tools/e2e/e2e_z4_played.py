@@ -42,7 +42,7 @@ check("«Персонал → по сменам»: +0,5 ч", abs(d["по сме�
 check("сводка = «Загрузка» (с точностью до округления часов)", abs(a["сводка"] - a["загрузка"]) <= 3, J(a))
 
 section("ночная сессия через report_hour — в сутках начала и в сводке, и в отчётах")
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 win = lambda col: (f"{col} >= ((g + interval '{rh} hours') AT TIME ZONE '{TZ}') "
                    f"AND {col} < ((g + interval '2 days {rh} hours') AT TIME ZONE '{TZ}')")
 D = sql(f"""SELECT g::date FROM generate_series(((now() AT TIME ZONE '{TZ}')::date - 25)::timestamp,

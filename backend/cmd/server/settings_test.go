@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -39,5 +42,37 @@ func TestSettingChanges(t *testing.T) {
 	keys, changes = settingChanges(was, map[string]int64{"report_hour": 8, "seg_lost_days": 21})
 	if len(keys) != 0 || len(changes) != 0 {
 		t.Errorf("без правок: ключи %v, журнал %v — должно быть пусто", keys, changes)
+	}
+}
+
+// З18-и4б (решение основателя 07.11, З-Р38): сутки клуба по умолчанию — с полуночи, и граница читается в одном месте —
+// clubDayHour. Раньше каждая из 28 ручек читала settingInt64("report_hour", 8) со своим значением по умолчанию: новая
+// ручка с другим числом развела бы сутки у отчётов и у кассы.
+func TestClubDayHourOnePlace(t *testing.T) {
+	if reportHourDef != 0 || settingDefaults["report_hour"] != 0 {
+		t.Errorf("по умолчанию сутки с полуночи: reportHourDef %d, settingDefaults %d", reportHourDef, settingDefaults["report_hour"])
+	}
+	files, _ := filepath.Glob("*.go")
+	reads := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			if !strings.Contains(line, `settingInt64("report_hour"`) {
+				continue
+			}
+			reads++
+			if !strings.Contains(line, `settingInt64("report_hour", reportHourDef)`) || !strings.Contains(line, "func clubDayHour()") {
+				t.Errorf("%s:%d: граница суток — только через clubDayHour(): %s", f, i+1, strings.TrimSpace(line))
+			}
+		}
+	}
+	if reads != 1 {
+		t.Errorf("report_hour читается в %d местах, а должен в одном — clubDayHour", reads)
 	}
 }

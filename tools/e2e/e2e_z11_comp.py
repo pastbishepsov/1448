@@ -36,7 +36,7 @@ tok("z11ct")  # вход в админку открывает смену
 drawer_ready("z11ct")
 at_end(gone)
 # выданное z11ct за эти клубные сутки до проверки (компенсация прогона на HEAD, где подарков нет, остаётся) — потолок сверх него
-DAY0 = at_club(club_day(), sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8'), 2, '0') || ':00'"))
+DAY0 = at_club(club_day(), sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0'), 2, '0') || ':00'"))
 CT = uid("z11ct")
 USED0 = int(sql(f"""SELECT COALESCE((SELECT SUM(comp_grosz) FROM incidents WHERE resolved_by = '{CT}' AND compensated_at >= {DAY0}), 0)
   + COALESCE((SELECT SUM(ROUND(total_pln * 100)) FROM sales WHERE method = 'comp' AND voided_at IS NULL AND created_by = '{CT}' AND created_at >= {DAY0}), 0)

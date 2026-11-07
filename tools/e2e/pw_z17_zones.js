@@ -13,7 +13,7 @@ const z = require('./_z');
   const repair = async st => (await z.api('PATCH', `/admin/computers/${vip2}/status`, { status: st }, 'admin1')).status;
   z.atEnd(() => repair('available'));
   const nAll = +z.sql('SELECT count(*) FROM computers');
-  const rh = +z.sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8')");
+  const rh = +z.sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0')");
   const D = z.sql(`SELECT g::date::text FROM generate_series(((now() AT TIME ZONE 'Europe/Warsaw')::date - 400)::timestamp,
     ((now() AT TIME ZONE 'Europe/Warsaw')::date - 3)::timestamp, interval '1 day') AS g WHERE NOT EXISTS (SELECT 1 FROM sessions
     WHERE started_at >= ((g + interval '${rh} hours') AT TIME ZONE 'Europe/Warsaw')

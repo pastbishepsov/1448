@@ -156,7 +156,7 @@ func targetPlayer(c *gin.Context) *models.User {
 // KPI. Депозит в 23:50 пропадал из журнала админа в 00:00, а дневной потолок
 // обнулялся посреди ночной смены. Теперь «сегодня» одно — клубные сутки.
 func clubDayStart(now time.Time) time.Time {
-	return clubDayStartAt(int(settingInt64("report_hour", 8)), now)
+	return clubDayStartAt(clubDayHour(), now)
 }
 
 // clubDayStartAt — чистая часть (тест на границу 07:59/08:00).
@@ -192,7 +192,7 @@ func handleAdminOverview(c *gin.Context) {
 			[]models.BookingStatus{models.BookingStatusPending, models.BookingStatusConfirmed}, time.Now()).
 		Count(&upcomingBookings)
 
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	today := clubDayOf(time.Now(), reportHour)
 	day := makePeriod(today, today, reportHour, "today")
 	var bookingsToday int64

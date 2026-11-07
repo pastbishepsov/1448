@@ -559,7 +559,7 @@ func handleSupplyPricingPut(c *gin.Context) {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", drawerLock).Error; err != nil { // расход — как все расходы (З9-и3а)
 			return err
 		}
-		opDate := clubDayOf(s.CreatedAt.In(clubLocation), int(settingInt64("report_hour", 8))) // без даты документа — день приёмки
+		opDate := clubDayOf(s.CreatedAt.In(clubLocation), clubDayHour()) // без даты документа — день приёмки
 		if doc.DocDate != nil {
 			opDate = *doc.DocDate
 		}

@@ -15,7 +15,7 @@ club = sql("SELECT id FROM clubs ORDER BY created_at LIMIT 1")
 drop = lambda: sql(f"DELETE FROM work_entries WHERE user_id = '{zid}'")
 drop()
 at_end(drop)
-RH = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+RH = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 D0, D1, D2 = club_day(0), club_day(-1), club_day(-2)
 T0 = at_club(D0, f"{RH:02d}:00")  # начало сегодняшних клубных суток
 

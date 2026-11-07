@@ -129,7 +129,7 @@ check("z15d сдал кассу на 1,00 меньше, чем должно бы
 s, st = api("GET", "/admin/staff", None, "boss")
 cd = st.get("cash_diffs") or {}
 it = next((x for x in cd.get("items", []) if x.get("id") == co), {})
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 n7 = int(sql(f"SELECT count(*) FROM shift_closeouts WHERE created_at >= {at_club(club_day(-6), f'{rh:02d}:00')} AND diff_grosz IS NOT NULL "
              f"AND diff_grosz <> 0 AND NOT baseline"))
 check("недостача z15d — в «расхождениях за 7 дней»: кто, должно, пересчитано, −1,00, не объяснена", s == 200 and it.get("nickname") == DD

@@ -20,7 +20,7 @@ drop()
 at_end(drop)
 repair = lambda st: api("PATCH", f"/admin/computers/{P['VIP-02']['id']}/status", {"status": st}, "admin1")[0]
 at_end(lambda: repair("available"))
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0')"))
 win = (f"started_at >= ((g + interval '{rh} hours') AT TIME ZONE '{TZ}') "
        f"AND started_at < ((g + interval '1 day {rh} hours') AT TIME ZONE '{TZ}')")
 EMPTY = rows(f"""SELECT g::date::text FROM generate_series(((now() AT TIME ZONE '{TZ}')::date - 400)::timestamp,

@@ -470,8 +470,9 @@ func exportVatDays(p period, a vatAgg, lang int) xsheet {
 var exportAboutWords = map[string][2]string{
 	"club": {"Клуб", "Klub"}, "address": {"Адрес", "Adres"}, "nip": {"NIP", "NIP"}, "nip_none": {"не задан", "nie podano"},
 	"period": {"Период", "Okres"}, "day": {"Клубные сутки", "Doba klubowa"},
-	"day_v": {"с %02d:00 до %02d:00 следующего дня", "od %02d:00 do %02d:00 dnia następnego"},
-	"made":  {"Сделана", "Wygenerowano"}, "format": {"Формат", "Format"}, "lang": {"Язык", "Język"},
+	"day_v":  {"с %02d:00 до %02d:00 следующего дня", "od %02d:00 do %02d:00 dnia następnego"},
+	"day_v0": {"с 00:00 до 24:00 — календарные сутки", "od 00:00 do 24:00 — doba kalendarzowa"}, // З18-и4б: с полуночи
+	"made":   {"Сделана", "Wygenerowano"}, "format": {"Формат", "Format"}, "lang": {"Язык", "Język"},
 	"lang_v":  {"русский", "polski"},
 	"profile": {"Профиль учёта", "Profil ewidencji"}, // З13-и6: значения и строки профиля — export_profiles.go
 	"payer":   {"Плательщик VAT", "Podatnik VAT"}, "payer_yes": {"да — czynny podatnik VAT", "tak — czynny podatnik VAT"},
@@ -547,7 +548,11 @@ func exportAbout(p period, reportHour int, cfg vatConfig, a vatAgg, pd profileDa
 	add("nip", cText(nip))
 	add("address", cText(address))
 	add("period", cText(p.FromDay.Format("02.01.2006")+" — "+p.ToDay.Format("02.01.2006")))
-	add("day", cText(fmt.Sprintf(ta(lang, "day_v"), reportHour, reportHour)))
+	day := fmt.Sprintf(ta(lang, "day_v"), reportHour, reportHour)
+	if reportHour == 0 { // З18-и4б: сутки с полуночи — по умолчанию
+		day = ta(lang, "day_v0")
+	}
+	add("day", cText(day))
 	add("made", cText(made.In(p.FromDay.Location()).Format("02.01.2006 15:04")+" · "+by)) // по часам клуба, как журнал
 	add("format", cText(format))
 	add("lang", cText(ta(lang, "lang_v")))

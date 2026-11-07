@@ -238,7 +238,7 @@ func handleCoinRedeemVoid(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"code": "already_void", "message": "Выдача уже отменена"})
 		return
 	}
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	from, to, _, _ := shiftWindow("", reportHour, time.Now())
 	createdBy := ""
 	if rec.CreatedBy != nil {

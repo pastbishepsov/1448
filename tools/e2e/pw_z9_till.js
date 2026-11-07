@@ -71,7 +71,7 @@ const z = require('./_z');
 
   // задним числом: по правилу — последняя сдача вчерашних клубных суток, нет её — первая после них; сдали без пересчёта —
   // первый пересчёт после неё. Сдача-начальный остаток ничего не объясняет: расход «уже в начальном остатке»
-  const rh = String(+z.sql(`SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')`)).padStart(2, '0');
+  const rh = String(+z.sql(`SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')`)).padStart(2, '0');
   const at = d => `(('${d}'::date + time '${rh}:00') AT TIME ZONE 'Europe/Warsaw')`;
   const pts = z.rows(`SELECT id, counted_grosz IS NOT NULL, created_at < ${at(z.clubDay(0))} FROM shift_closeouts
     WHERE opening_grosz IS NOT NULL AND created_at >= ${at(z.clubDay(-1))} ORDER BY created_at`).map(r => r.split('|'));

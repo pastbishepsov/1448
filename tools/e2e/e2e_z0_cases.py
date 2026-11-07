@@ -12,7 +12,7 @@ at_end(lambda: sql(f"DELETE FROM cases WHERE user_id='{g32}' AND source='admin_g
 case = lambda who: api("POST", f"/admin/users/{g32}/grant", {"type": "case", "case_tier": "light", "reason": "e2e z0 кейсы"}, who)
 # сколько z0case уже выдал за эти клубные сутки (повторный прогон в тот же день)
 used = int(sql(f"SELECT count(*) FROM admin_grants WHERE admin_id='{zid}' AND grant_type='case' AND created_at >= "
-               f"{at_club(club_day(), '%02d:00' % settings().get('report_hour', 8))}"))
+               f"{at_club(club_day(), '%02d:00' % settings().get('report_hour', 0))}"))
 
 section("потолок у админа")
 s, d = set_settings(admin_day_case_cap=used + 2)

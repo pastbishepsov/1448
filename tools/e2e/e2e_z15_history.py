@@ -26,7 +26,7 @@ U, V, W = "z15u", "z15v", "z15w"
 R1, R2, R3 = "z15 переезд", "z15 учёба", "z15 снова"
 BASE_DAY = datetime.date.fromisoformat(club_day(0))
 D = lambda n: (BASE_DAY + datetime.timedelta(days=n)).isoformat()
-RH = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+RH = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 boss = uid("boss")
 ids = {n: hire_temp(n) for n in (U, V, W)}
 zu, zv, zw = ids[U], ids[V], ids[W]

@@ -60,7 +60,7 @@ func closeoutFrom(entryStart, lastCloseout *time.Time, dayStart time.Time) time.
 // дата записи табеля (ночная смена — вчерашняя), без смены — клубные сутки.
 // З8-и1: «должно быть» считает ящик (drawer.go) — отсюда берётся только дата.
 func closeoutWindow(adminID uuid.UUID, entry *models.WorkEntry, now time.Time) (from, day time.Time) {
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	dayStart, _, _, _ := shiftWindow("", reportHour, now)
 	day = clubDayOf(now, reportHour)
 	var start, lastAt *time.Time

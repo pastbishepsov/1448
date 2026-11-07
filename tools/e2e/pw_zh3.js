@@ -42,7 +42,8 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   const kpi = await page.evaluate(() => ({ tab: curTab, kind: audKind, chip: document.querySelector('#s-grants .segs button.on') && document.querySelector('#s-grants .segs button.on').textContent, title: document.getElementById('kRevBox').title,
     kinds: [...new Set(audData.map(x => x.kind))], money: AUD_GROUPS.money }));
   check('KPI «Выручка сегодня» у админа → Журнал с чипом «Деньги», строки только денежных видов', kpi.tab === 'grants' && kpi.kind === 'money' && kpi.chip === 'Деньги' && kpi.kinds.every(k => kpi.money.includes(k)), JSON.stringify(kpi).slice(0, 300));
-  check('подсказка KPI называет состав и час суток', /клубные сутки с 08:00/.test(kpi.title) && /пополнения/.test(kpi.title) && /товары/.test(kpi.title), kpi.title.slice(0, 160));
+  const RH = psql(`SELECT lpad(COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0'), 2, '0')`); // З18-и4б: граница стенда
+  check('подсказка KPI называет состав и час суток', kpi.title.includes(`клубные сутки с ${RH}:00`) && /пополнения/.test(kpi.title) && /товары/.test(kpi.title), kpi.title.slice(0, 160));
   // и3: «Все» — 100 строк + кнопка «Ещё 100»; клик — вторая страница
   await page.click('#s-grants .segs button[data-k="all"]');
   await sleep(1200);

@@ -7,7 +7,7 @@
 отменяется, сессия удаляется."""
 from _z import *
 
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 # последний день в прошлом (40–400 дней назад), где нет ни живых пополнений, ни сессий
 day = sql(f"""SELECT g::date FROM generate_series(((now() AT TIME ZONE '{TZ}')::date - 400)::timestamp,
     ((now() AT TIME ZONE '{TZ}')::date - 40)::timestamp, interval '1 day') AS g WHERE NOT EXISTS (SELECT 1 FROM deposits WHERE voided_at IS NULL

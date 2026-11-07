@@ -215,7 +215,7 @@ func handleWorkStart(c *gin.Context) {
 		return
 	}
 	now := time.Now()
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	// З15-и1: сначала назначение, потом шаблон по времени
 	sh, day, _ := shiftFor(userID, now)
 	if sh == nil { // пришёл вне смены — тоже фиксируем, день по клубным суткам
@@ -318,7 +318,7 @@ func hoursRU(minutes int64) string {
 // GET /admin/work/me — моё состояние: на смене или нет (staff).
 func handleWorkMe(c *gin.Context) {
 	userID, _ := uuid.Parse(c.GetString("user_id"))
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	now := time.Now()
 	day := clubDayOf(now, reportHour)
 
@@ -645,7 +645,7 @@ func openWorkOnLogin(user *models.User, now time.Time) (opened bool, autoClosedP
 	if !ok {
 		return false, false
 	}
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	sh, day, _ := shiftFor(user.ID, now) // З15-и1: сначала назначение, потом шаблон по времени
 	if sh == nil {
 		day = clubDayOf(now, reportHour)

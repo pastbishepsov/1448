@@ -53,7 +53,7 @@ def snap():
 
 g = lambda v: round((v or 0) * 100)  # злотые → гроши
 part = lambda L, k, f="pln": (L.get(k) or {}).get(f, 0)
-DAY0, DAY1 = (at_club(club_day(i), sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '8'), 2, '0') || ':00'"))
+DAY0, DAY1 = (at_club(club_day(i), sql("SELECT lpad(COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0'), 2, '0') || ':00'"))
               for i in (0, 1))
 
 

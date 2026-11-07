@@ -93,7 +93,7 @@ func auditOwnerOnly(action string) bool {
 func handleAdminAudit(c *gin.Context) {
 	ownerView := c.GetString("user_role") == string(models.UserRoleOwner)
 	now := time.Now()
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 
 	limit := 100
 	if v, err := strconv.Atoi(c.Query("limit")); err == nil {

@@ -45,7 +45,7 @@ E0 = exp()
 month = club_day()[:7]  # клубный месяц сейчас
 prev = sql(f"SELECT to_char('{month}-01'::date - interval '1 month', 'YYYY-MM')")
 nxt = sql(f"SELECT to_char('{month}-01'::date + interval '1 month', 'YYYY-MM')")
-RH = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+RH = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 
 
 def sell(method, **kw):

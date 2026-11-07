@@ -385,7 +385,7 @@ func kitchenQueue(live, closed []models.KitchenOrder) []models.KitchenOrder {
 // загруженный день только что пришедший заказ в очередь не попадал, а значок
 // «в работе · ждут оплаты» считался по обрезанному списку.
 func handleAdminKitchenOrders(c *gin.Context) {
-	reportHour := int(settingInt64("report_hour", 8))
+	reportHour := clubDayHour()
 	from, to, _, _ := shiftWindow("", reportHour, time.Now())
 	var live, closed []models.KitchenOrder
 	db.Where("status IN ? OR ("+kitchenDebtWhere+")", kitchenOpenStatuses).
@@ -585,7 +585,7 @@ func handleAdminKitchenCancel(c *gin.Context) {
 	if o.SaleID != nil {
 		var sale models.Sale
 		if db.First(&sale, "id = ?", *o.SaleID).Error == nil && sale.VoidedAt == nil {
-			from, to, _, _ := shiftWindow("", int(settingInt64("report_hour", 8)), time.Now())
+			from, to, _, _ := shiftWindow("", clubDayHour(), time.Now())
 			if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
 				c.GetString("user_id"), sale.CreatedAt, from, to); !ok {
 				c.JSON(http.StatusForbidden, gin.H{"code": code, "message": kitchenRefundErrors[code]})

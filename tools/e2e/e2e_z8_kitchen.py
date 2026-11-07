@@ -12,7 +12,7 @@ from _z import *
 
 STUB = "z8 заглушка"
 OPEN = "('new','accepted','preparing','delivering')"
-rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '8')"))
+rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
 F = at_club(club_day(0), f"{rh:02d}:00")
 T = at_club(sql(f"SELECT ('{club_day(0)}'::date + 1)::text"), f"{rh:02d}:00")
 CLOSED = f"created_at >= {F} AND created_at < {T} AND (status = 'cancelled' OR (status = 'done' AND paid_at IS NOT NULL))"
