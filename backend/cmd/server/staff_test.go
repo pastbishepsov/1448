@@ -1,12 +1,28 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/pastbishepsov/1448/backend/internal/models"
 )
+
+// З18-и4е: «сегодня» «Персонала» — клубные сутки, как у увольнения (З14-и2): наём без даты, график без from, приход вне
+// смены. Даты календаря как «сегодня» staff.go, shifts.go и timesheet.go не строят — только через clubDayOf: наём
+// календарным «сегодня» ночью при своей границе давал «Дата увольнения раньше даты найма» тому, кого увольняли той же ночью.
+func TestStaffTodayOnePlace(t *testing.T) {
+	for _, f := range []string{"staff.go", "shifts.go", "timesheet.go"} {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(src), "now.Day(), 0, 0, 0, 0") {
+			t.Errorf("%s: «сегодня» «Персонала» — клубные сутки через clubDayOf, не дата календаря", f)
+		}
+	}
+}
 
 func TestCanChangeStaffRole(t *testing.T) {
 	cases := []struct {

@@ -8374,18 +8374,19 @@ function dateOf(id, label){
 function isoDate(d){
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
-/* З18-и4д (З-Р38, решение основателя 07.11): «сегодня» форм «Бухгалтерии» — клубные сутки сервера, а не дата календаря
-   браузера: со своим часом границы ночью до него — ещё вчерашняя дата, как у кассы, отчётов и «Ждут внесения»; часы и
-   пояс устройства не мешают. Из сводки (club_today, обновляется каждые 7–30 с); сутки, кончившиеся после неё (day_to), —
-   следующие; сводки ещё нет — календарь браузера. */
+/* З18-и4д (З-Р38, решение основателя 07.11): «сегодня» форм «Бухгалтерии» и «Персонала» (З18-и4е) — клубные сутки
+   сервера, а не дата календаря браузера: со своим часом границы ночью до него — ещё вчерашняя дата, как у кассы, отчётов,
+   «Ждут внесения» и увольнения; часы и пояс устройства не мешают. Из сводки (club_today, обновляется каждые 7–30 с);
+   сутки, кончившиеся после неё (day_to), — следующие; сводки ещё нет — календарь браузера. */
 function clubToday(){
   const ov = ovCache;
   if (!ov || !ov.club_today) return isoDate(new Date());
-  if (ov.day_to && Date.now() >= Date.parse(ov.day_to)){
-    const [y, m, d] = ov.club_today.split('-').map(Number);
-    return isoDate(new Date(y, m - 1, d + 1));
-  }
-  return ov.club_today;
+  return ov.day_to && Date.now() >= Date.parse(ov.day_to) ? isoAdd(ov.club_today, 1) : ov.club_today;
+}
+// ГГГГ-ММ-ДД ± n суток — по стенным часам, часы и перевод времени в расчёт не входят
+function isoAdd(iso, n){
+  const [y, m, d] = iso.split('-').map(Number);
+  return isoDate(new Date(y, m - 1, d + n));
 }
 function mmHH(min){ return Math.floor(min/60) + ':' + String(min%60).padStart(2, '0'); }
 function mmHH2(min){ return String(Math.floor(min/60)).padStart(2, '0') + ':' + String(min%60).padStart(2, '0'); }
@@ -8396,7 +8397,7 @@ function schWeek(delta){
 }
 async function renderSchedule(){
   try{
-    const from = mondayOf(new Date());
+    const from = mondayOf(new Date(clubToday() + 'T12:00:00')); // З18-и4е: текущая неделя — та, где клубные сутки
     from.setDate(from.getDate() + schWeekOff*7);
     const [sh, sc] = await Promise.all([
       api('/admin/shifts'),
@@ -8424,7 +8425,7 @@ function paintSchedule(){
     mountIcons(wrap);
     return;
   }
-  const todayKey = isoDate(new Date());
+  const todayKey = clubToday(); // З18-и4е: «сегодня» графика — клубные сутки (ночная смена — день её начала)
   let head = '<tr><th>Смена</th>';
   schDays.forEach(d => {
     const dt = new Date(d.date + 'T12:00:00');
@@ -8671,10 +8672,10 @@ async function loadMyShift(){
    графику идёт, а не отметился никто — красным: у стойки пусто. Клик — «Персонал» с табелем. */
 let ownerShift = null;
 async function loadOwnerShift(){
-  const today = new Date(), yday = new Date(Date.now() - 86400000);
+  const today = clubToday(); // З18-и4е: открытые смены — за вчерашние и сегодняшние клубные сутки
   try{
     const [w, plan] = await Promise.all([
-      api('/admin/work?from=' + isoDate(yday) + '&to=' + isoDate(today)),
+      api('/admin/work?from=' + isoAdd(today, -1) + '&to=' + today),
       api('/admin/shifts/now').catch(() => ({items: []}))]);
     ownerShift = {open: (w.entries || []).filter(e => e.open), plan: plan.items || []};
   }catch(e){ ownerShift = null; }
@@ -8942,8 +8943,8 @@ function tsEdit(id){
   const e = tsCache.find(x => x.id === id);
   const isNew = !e;
   // Клуб работает ночью: toISOString() до 02:00 по Варшаве отдавал вчерашнюю
-  // дату, и часы уезжали в чужие сутки (ревью 26.08).
-  const today = isoDate(new Date());
+  // дату, и часы уезжали в чужие сутки (ревью 26.08); новая запись — на клубные сутки (З18-и4е).
+  const today = clubToday();
   openDrawer(isNew ? 'Запись табеля' : 'Правка · ' + (e.nickname || ''), `
   <div class="uform">
     ${isNew ? `<label class="muted" style="margin-bottom:-6px">Сотрудник</label>
@@ -9024,7 +9025,7 @@ function staffPeriodsHtml(list, withReason){
 }
 
 function hireDrawer(){
-  const today = isoDate(new Date()); // локальные сутки, не UTC (ревью 26.08)
+  const today = clubToday(); // З18-и4е: клубные сутки, как у увольнения, — нанятого ночью можно уволить той же ночью
   openDrawer('Новый сотрудник', `
   <div class="uform">
     <label class="muted" style="margin-bottom:-6px">Ник для входа в админку</label>
@@ -9103,7 +9104,7 @@ async function dismissDrawer(id, nick){
   try{ p = await api('/admin/staff/' + id + '/shift'); }catch(e){} // не пришло — шторка как раньше, без предупреждения
   dmPrev = p;
   // З14-и2: по умолчанию — сегодняшние клубные сутки (ночью это ещё вчера): позже — увольнение отложенное
-  const today = (p && p.club_today) || isoDate(new Date()); // локальные сутки, не UTC (ревью 26.08)
+  const today = (p && p.club_today) || clubToday(); // без ответа сервера — клубные сутки из сводки (З18-и4е)
   openDrawer('Увольнение · ' + nick, `
   <div class="uform">
     ${leaveShiftHtml(p, 'dismiss')}
@@ -9128,7 +9129,7 @@ let dmPrev = null;
 function dmSync(){
   const el = document.getElementById('dm_date'), when = document.getElementById('dmWhen'), note = document.getElementById('dmNote');
   if (!el || !when || !note) return;
-  const p = dmPrev || {}, v = dateIso(el), today = p.club_today || isoDate(new Date()), later = !!v && v > today;
+  const p = dmPrev || {}, v = dateIso(el), today = p.club_today || clubToday(), later = !!v && v > today;
   const fut = dmPrev ? +p.future_shifts || 0 : -1;
   document.getElementById('lvShift')?.classList.toggle('hidden', later); // смену закроет не сейчас, а завершение увольнения
   const was = p.leave_on ? 'Уже назначено: уходит ' + ruDate(p.leave_on) + (later ? ' — новая дата заменит. ' : ' — «Уволить» с этой датой уволит сейчас. ') : '';

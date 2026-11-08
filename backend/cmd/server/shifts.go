@@ -395,10 +395,10 @@ func handleAdminShiftDelete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": s.ID, "deleted": true})
 }
 
-// GET /admin/shifts/schedule?from=YYYY-MM-DD&days=7 — график (staff).
+// GET /admin/shifts/schedule?from=YYYY-MM-DD&days=7 — график (staff); без from — с сегодняшних клубных суток (З18-и4е).
 func handleAdminShiftSchedule(c *gin.Context) {
 	now := time.Now()
-	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	from := clubDayOf(now, clubDayHour())
 	if q := c.Query("from"); q != "" {
 		d, err := time.ParseInLocation("2006-01-02", q, now.Location())
 		if err != nil {

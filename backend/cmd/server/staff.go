@@ -644,8 +644,8 @@ func handleAdminStaffHire(c *gin.Context) {
 	}
 	now := time.Now()
 	user := newStaffUser(strings.TrimSpace(req.Nickname), string(hash), now)
-	if hired == nil {
-		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if hired == nil { // З18-и4е: «сегодня» — клубные сутки, как у увольнения: нанятого ночью можно уволить той же ночью
+		today := clubDayOf(now, clubDayHour())
 		hired = &today
 	}
 	err = db.Transaction(func(tx *gorm.DB) error {
