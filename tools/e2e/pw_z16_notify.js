@@ -31,16 +31,20 @@ const { CHROME } = require('./_env');
 
   const br = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   z.atEnd(() => br.close());
-  const toastIs = (p, want) => p.waitForFunction(w => { const t = document.getElementById('toast'); return !!t && t.textContent === w; },
-    want, { timeout: 20000 }).then(() => true).catch(() => false);
+  // З18-и4ж: тосты страница складывает списком (обёртка над toast, как в pw_zh5): тост лимитера «Слишком много запросов»
+  // при входе — всплеск запросов с одного IP стенда — перекрывал нужный, и проверка его не видела
+  const toastLog = p => p.evaluate(() => { window.__toasts = []; const t = toast; toast = (msg, ...r) => { __toasts.push(String(msg)); return t(msg, ...r); }; });
+  const toastIs = (p, want) => p.waitForFunction(w => (window.__toasts || []).includes(w), want, { timeout: 20000 }).then(() => true).catch(() => false);
+  const toasts = p => p.evaluate(() => (window.__toasts || []).join(' | '));
 
   // киоск нового ПК: тост — с ближайшим опросом уведомлений (раз в 12 с)
   const k = await (await br.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   k.on('pageerror', e => z.jsErrors.push('киоск: ' + e.message));
   await k.goto(z.BASE + '/shell?pc=' + pc('VIP-01'), { waitUntil: 'load' });
+  await toastLog(k);
   await k.fill('#nick', G); await k.fill('#pass', z.GUEST_PASS); await k.click('#authBtn');
   const kOk = await toastIs(k, WANT);
-  z.check(`киоск VIP-01: тост «${WANT}»`, kOk, await z.text(k, '#toast'));
+  z.check(`киоск VIP-01: тост «${WANT}»`, kOk, await toasts(k));
   await z.shot(k, 'z16_notify_kiosk');
   const ks = await k.evaluate(() => {
     const n = (c, zone, r, tariff) => notifText({ type: 'session_moved', payload: tariff === undefined ? { computer: c }
@@ -63,10 +67,11 @@ const { CHROME } = require('./_env');
   const a = await (await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage();
   a.on('pageerror', e => z.jsErrors.push('PWA: ' + e.message));
   await a.goto(z.BASE + '/app', { waitUntil: 'load' });
+  await toastLog(a);
   await a.fill('#nick', G); await a.fill('#pass', z.GUEST_PASS); await a.click('#authBtn');
   const aOk = await toastIs(a, WANT);
   const feed = await a.evaluate(() => { const f = document.getElementById('ntfFeed'); return f ? f.textContent : ''; });
-  z.check(`PWA: тост и строка ленты уведомлений «${WANT}»`, aOk && feed.includes(WANT), `${await z.text(a, '#toast')} · ${feed.slice(0, 160)}`);
+  z.check(`PWA: тост и строка ленты уведомлений «${WANT}»`, aOk && feed.includes(WANT), `${await toasts(a)} · ${feed.slice(0, 160)}`);
   await z.shot(a, 'z16_notify_pwa');
   const as = await a.evaluate(() => {
     const n = (c, zone, r, tariff) => ntfText({ type: 'session_moved', payload: { computer: c, zone, rate_pln: r, tariff } });

@@ -1,9 +1,10 @@
 // З18-и4г «Журнал админа, потолки и отмена — с начала смены», браузер: временный админ z18p на смене, начатой до начала
 // текущих суток (запись табеля сдвинута SQL-ом; по возможности — с 20:00 накануне). Его пополнение 6 zł картой «до
-// полуночи» — в «Журнале» (чип «Деньги», «Ещё 100» до него), над журналом — «Журнал — с начала твоей смены, с 20:00
-// вчера: она началась раньше текущих суток»; «Продажи смены» — «с 20:00 вчера · …» вместо даты суток, продажа «z18p Сок»
-// той же смены — в ленте с «Вернуть». Не на смене — подписи нет, лента — с даты суток. Телефон 360 — подпись без прокрутки
-// вбок. В конце пополнение и продажа отменены, позиция удалена, записи табеля z18p — тоже, z18p уволен.
+// полуночи» — в «Журнале» (чип «Деньги», страница «Ещё 100» с момента сразу после него), над журналом — «Журнал — с
+// начала твоей смены, с 20:00 вчера: она началась раньше текущих суток»; «Продажи смены» — «с 20:00 вчера · …» вместо
+// даты суток, продажа «z18p Сок» той же смены — в итогах ленты (и в списке, если он не обрезан). Не на смене — подписи
+// нет, лента — с даты суток. Телефон 360 — подпись без прокрутки вбок. В конце пополнение и продажа отменены, позиция
+// удалена, записи табеля z18p — тоже, z18p уволен.
 const z = require('./_z');
 (async () => {
   const NICK = 'z18p', G = z.uid('Guest49'), GOOD = 'z18p Сок';
@@ -36,14 +37,15 @@ const z = require('./_z');
   await z.nav(page, 'grants');
   await page.click('#s-grants .segs button[data-k="money"]');
   await z.sleep(1200);
+  // З18-и4ж: журнал листается страницами по 100, а стенд за сутки копит тысячи денежных строк проверок — двадцать «Ещё 100»
+  // до пополнения не доставали; к нему — курсором страницы («Ещё 100» с момента сразу после него), как листает сам журнал
+  const has = () => page.evaluate(id => audData.some(x => x.id === 'deposit:' + id), dep);
   const find = async () => {
-    for (let i = 0; i < 20; i++) {
-      const st = await page.evaluate(id => ({ has: audData.some(x => x.id === 'deposit:' + id), more: audHasMore }), dep);
-      if (st.has || !st.more) return st.has;
-      await page.evaluate(() => audMore());
-      await z.sleep(700);
-    }
-    return false;
+    if (await has()) return true;
+    const cur = z.sql(`SELECT to_char((created_at + interval '1 second') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM deposits WHERE id = '${dep}'`);
+    await page.evaluate(c => { audBefore = c; audHasMore = true; return audMore(); }, cur);
+    await z.sleep(700);
+    return has();
   };
   const found = await find();
   const j = await page.evaluate(id => {
@@ -59,9 +61,17 @@ const z = require('./_z');
   await z.nav(page, 'goods');
   await page.waitForFunction(() => /zł/.test((document.getElementById('salesTotal') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
   const st = await page.evaluate(id => ({ label: (document.getElementById('salesTotal') || {}).textContent || '',
-    has: salesCache.some(x => x.id === id) }), sale);
-  z.check(`«Продажи смены · ${since} · …» вместо даты суток; продажа «${GOOD}» его смены — в ленте`,
-    st.label.startsWith(`${since} · `) && st.has, JSON.stringify(st));
+    has: salesCache.some(x => x.id === id), total: (lastSalesResp || {}).total_count, capped: (lastSalesResp || {}).total_count > salesCache.length }), sale);
+  // З18-и4ж: в списке — 300 последних продаж окна, а стенд за сутки копит их больше: продажа смены ищется по итогам окна —
+  // за 10 минут до начала смены её в окне нет, на одну меньше
+  z.sql(`UPDATE sales SET created_at = ${S} - interval '10 minutes', paid_at = ${S} - interval '10 minutes' WHERE id = '${sale}'`);
+  await page.evaluate(() => renderGoods());
+  await page.waitForFunction(n => (lastSalesResp || {}).total_count !== n, st.total, { timeout: 8000 }).catch(() => {});
+  const out = await page.evaluate(() => (lastSalesResp || {}).total_count);
+  z.sql(`UPDATE sales SET created_at = ${M}, paid_at = ${M} WHERE id = '${sale}'`);
+  await page.evaluate(() => renderGoods()); await z.sleep(1200);
+  z.check(`«Продажи смены · ${since} · …» вместо даты суток; продажа «${GOOD}» его смены — в итогах окна (за 10 минут до начала смены — на одну меньше) и в списке, если он не обрезан`,
+    st.label.startsWith(`${since} · `) && (st.has || st.capped) && out === st.total - 1, JSON.stringify({ ...st, out }));
   await z.shot(page, 'z18_journal_sales');
 
   // не на смене — как раньше: подписи нет, лента — с даты суток

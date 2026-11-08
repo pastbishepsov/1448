@@ -66,10 +66,19 @@ check(f"журнал z18j: пополнение 7 zł в {loc(M)} — до на�
       f"{ok_in} {J({k: au.get(k) for k in ('day', 'from', 'to', 'shift')})}")
 ok_out, _ = seen(d_out)
 check("пополнение за 10 минут до начала смены — не видно", not ok_out, str(ok_out))
+# З18-и4ж: лента отдаёт 300 последних продаж окна, а стенд за сутки копит их больше — продажа смены ищется по итогам окна
+# (total_count): за 10 минут до начала смены её в окне нет — на одну меньше; в списке — если он не обрезан
 s, fs = api("GET", "/admin/sales", None, NICK)
-check("«Продажи смены»: продажа его смены до начала суток — в ленте, окно — с начала смены (shift, from)",
-      bool(sale) and sale in [x.get("id") for x in fs.get("sales", [])] and fs.get("shift") is True and same_at(fs.get("from"), S),
-      J({k: fs.get(k) for k in ("date", "from", "shift", "count")}))
+sql(f"UPDATE sales SET created_at = {S} - interval '10 minutes', paid_at = {S} - interval '10 minutes' WHERE id = '{sale}'")
+n_out = api("GET", "/admin/sales", None, NICK)[1].get("total_count")
+sql(f"UPDATE sales SET created_at = {M}, paid_at = {M} WHERE id = '{sale}'")
+listed = sale in [x.get("id") for x in fs.get("sales", [])]
+capped = (fs.get("total_count") or 0) > len(fs.get("sales", []))
+check("«Продажи смены»: продажа его смены до начала суток — в итогах окна (за 10 минут до начала смены — на одну меньше) и в "
+      "списке, если он не обрезан; окно — с начала смены (shift, from)",
+      bool(sale) and fs.get("total_count") is not None and n_out == fs.get("total_count") - 1 and (listed or capped)
+      and fs.get("shift") is True and same_at(fs.get("from"), S),
+      J({**{k: fs.get(k) for k in ("date", "from", "shift", "count", "total_count")}, "без неё": n_out, "в списке": listed}))
 s, card = api("GET", f"/admin/users/{uid(G)}", None, NICK)
 ids = [x.get("id") for x in card.get("deposits", [])]
 check("карточка гостя у z18j: пополнение его смены — есть, до смены — нет", d_in in ids and d_out not in ids, f"{len(ids)} строк")

@@ -4,7 +4,8 @@
 движения склада, и «Потери» за прошлые дни менялись задним числом. Движение склада помнит цену на свой момент
 (stock_moves.price_pln), и «Потери» считаются по ней: новая цена позиции прошлые потери не переписывает. Новая
 позиция без движений и с нулевым остатком удаляется. Позиции «z6 бой» и «z6 с остатком» (выключенные) живут
-на стенде между прогонами — удалить их нельзя, в этом и смысл; цена и остаток после прогона — как были."""
+на стенде между прогонами — удалить их нельзя, в этом и смысл; цена и остаток после прогона — как были (остаток
+возвращается корректировкой, а не приходом: приход ждал бы цен у владельца, З18-и4ж)."""
 import time
 from _z import *
 
@@ -25,11 +26,11 @@ check("позиция «z6 бой» есть (5,00 zł)", g, g)
 sql(f"UPDATE goods SET price_pln=5 WHERE id='{g}'")
 st0 = int(sql(f"SELECT stock FROM goods WHERE id='{g}'"))
 if st0 < 3:
-    api("POST", f"/admin/goods/{g}/stock", {"delta": 10, "reason": "supply", "note": "z6"}, "boss")
+    api("POST", f"/admin/goods/{g}/stock", {"delta": 10, "reason": "adjust", "note": "z6"}, "boss")
     st0 = int(sql(f"SELECT stock FROM goods WHERE id='{g}'"))
 b = losses()
 s, _ = api("POST", f"/admin/goods/{g}/stock", {"delta": -3, "reason": "adjust", "note": "z6: бой"}, "boss")
-at_end(lambda: api("POST", f"/admin/goods/{g}/stock", {"delta": 3, "reason": "supply", "note": "z6: вернуть остаток"}, "boss"))
+at_end(lambda: api("POST", f"/admin/goods/{g}/stock", {"delta": 3, "reason": "adjust", "note": "z6: вернуть остаток"}, "boss"))
 a = losses()
 check("«бой −3» → «Потери» +3 шт и +15,00 zł", s == 200 and a.get("units", 0) - b.get("units", 0) == 3
       and near(a.get("pln", 0) - b.get("pln", 0), 15), f"{s} {J(b)} → {J(a)}")

@@ -5,7 +5,8 @@
 kitchen_order_id: у заказа кухни и его отмены движение знает свой заказ (миграция 075). Отказы те же: списание в минус
 — 409, приход выше потолка — 409, две кассы разом не продадут больше остатка; отмена заказа от стойки,
 оплаченного сразу, возвращает товар один раз. Итог: остаток позиции = сумма её движений.
-Данные: позиция «z10 Движение склада» (категория z10) живёт между прогонами, в конце выключена; «z10 Однодневка» и
+Данные: позиция «z10 Движение склада» (категория z10) живёт между прогонами, в конце выключена, её приход +10 в конце
+отменяется (З18-и4ж: иначе поставка ждала бы цен у владельца — «Закупки» стенда копили по одной за прогон); «z10 Однодневка» и
 «z10 Пустая» заводятся каждый прогон и удаляются SQL вместе со своим движением, партией и поставкой (продаж у них нет); Guest40 за PC-04
 (кошелёк докладывается до 30 zł, сессия в конце завершается)."""
 import threading
@@ -64,11 +65,17 @@ s, d = api("POST", "/admin/goods", {"name": G, "category": "z10", "price_pln": 4
 gid = (d.get("good") or {}).get("id") or sql(f"SELECT id FROM goods WHERE name = '{G}'")
 api("PATCH", f"/admin/goods/{gid}", {"active": True, "price_pln": 4.5}, "boss")
 at_end(lambda: api("PATCH", f"/admin/goods/{gid}", {"active": False}, "boss"))
-if stock(gid) != 20:  # повторный прогон: остаток — к 20 приходом или корректировкой, как у стойки (продажа «всего» ≤ 99 шт)
-    k = 20 - stock(gid)
-    api("POST", f"/admin/goods/{gid}/stock", {"delta": k, "reason": "supply" if k > 0 else "adjust", "note": f"{MARK}: к 20"}, "admin1")
+if stock(gid) != 20:  # повторный прогон: остаток — к 20 корректировкой (продажа «всего» ≤ 99 шт); З18-и4ж: не приходом —
+    k = 20 - stock(gid)  # он ждал бы цен у владельца
+    api("POST", f"/admin/goods/{gid}/stock", {"delta": k, "reason": "adjust", "note": f"{MARK}: к 20"}, "admin1")
 st0, t = stock(gid), now()
 s1, _ = api("POST", f"/admin/goods/{gid}/stock", {"delta": 10, "reason": "supply", "note": f"{MARK}: приход"}, "admin1")
+# З18-и4ж: приход — поставка из одной строки; в конце её отменяем (всё взятое из неё к тому времени вернули отмены), а
+# упавший прогон отменяет её в уборке
+sup = sql(f"SELECT s.id FROM supplies s JOIN stock_lots l ON l.supply_id = s.id WHERE l.good_id = '{gid}' AND s.status = 'waiting' "
+          f"AND s.note = '{MARK}: приход' ORDER BY s.created_at DESC LIMIT 1")
+at_end(lambda: sup and sql(f"SELECT status FROM supplies WHERE id = '{sup}'") == "waiting"
+       and api("POST", f"/admin/supplies/{sup}/cancel", {}, "admin1"))
 s2, _ = api("POST", f"/admin/goods/{gid}/stock", {"delta": -3, "reason": "adjust", "note": f"{MARK}: бой"}, "admin1")
 m = moves_after(gid, t)
 check("приход +10 и корректировка −3 от admin1 → 200 и 200; остаток +7; движения «+10 · приход», «−3 · корректировка» с заметкой, по цене 4,50",
@@ -149,6 +156,11 @@ check("отмена оплаченного сразу заказа → прод�
                                                                    row(1, "void", "отмена заказа кухни", A1, order=oid)], J([s2, voided, m2], 600))
 
 section("итог")
+st9 = stock(gid)
+s, d = api("POST", f"/admin/supplies/{sup}/cancel", {}, "admin1") if sup else (0, {})
+check(f"приход +10 в конце отменён (З18-и4ж): поставка «отменена», остаток {st9} → {st9 - 10} — «Закупки» стенда не копят поставки проверки",
+      s == 200 and sql(f"SELECT status FROM supplies WHERE id = '{sup}'") == "cancelled" and stock(gid) == st9 - 10,
+      J([sup, s, d.get("code"), stock(gid)]))
 tot = sql(f"SELECT COALESCE(SUM(delta), 0) FROM stock_moves WHERE good_id = '{gid}'")
 check(f"«{G}»: остаток {stock(gid)} = сумма всех его движений", str(stock(gid)) == tot, J([stock(gid), tot]))
 done()
