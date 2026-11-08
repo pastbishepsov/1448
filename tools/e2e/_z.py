@@ -18,7 +18,7 @@ __all__ = ["API", "BASE", "DB", "SRV_LOG", "TZ", "GUEST_PASS", "STAFF_PASS", "sq
            "tokens", "password_of", "jwt_claims", "api", "J", "check", "near", "section", "at_end", "done", "club_day", "at_club", "settings",
            "set_settings", "restore_settings", "wallet", "topup", "ensure_wallet", "pcs", "seat", "end", "end_all", "free_pcs",
            "hire_temp", "dismiss", "drawer_ready", "audit", "ws_admin", "ws_read", "agent_start", "agent_stop",
-           "drop_good", "stock_to"]
+           "drop_good", "stock_to", "pin_shift"]
 
 TZ = "Europe/Warsaw"  # часовой пояс клуба; сессия psql может жить в UTC — время клуба только через AT TIME ZONE
 GUEST_PASS, STAFF_PASS = "Guest12345", "Admin12345"
@@ -299,6 +299,15 @@ def drawer_ready(who, floor=0):
                                            "note": f"проверка: ящик стенда до {floor} zł"}, "boss")
         p = api("GET", "/admin/work/closeout", None, who)[1]
     return p
+
+def pin_shift(nick):
+    """Открытая смена nick — «с сейчас» на время проверки, в конце — как была (З18-и4г): «сегодня» админа раздвигает его
+    смена, начатая раньше суток, а проверке нужны сами клубные сутки. Не на смене — вход (tok) откроет смену с «сейчас»."""
+    tok(nick)
+    for r in rows(f"SELECT id || '|' || started_at FROM work_entries WHERE user_id = '{uid(nick)}' AND ended_at IS NULL"):
+        wid, start = r.split("|", 1)
+        sql(f"UPDATE work_entries SET started_at = now() WHERE id = '{wid}'")
+        at_end(lambda wid=wid, start=start: sql(f"UPDATE work_entries SET started_at = '{start}' WHERE id = '{wid}' AND ended_at IS NULL"))
 
 def _retire(nick):
     """Уборка временного сотрудника: уволить и снять незакрытую запись табеля (вход открывает смену)."""

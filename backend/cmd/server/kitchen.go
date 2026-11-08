@@ -385,8 +385,7 @@ func kitchenQueue(live, closed []models.KitchenOrder) []models.KitchenOrder {
 // загруженный день только что пришедший заказ в очередь не попадал, а значок
 // «в работе · ждут оплаты» считался по обрезанному списку.
 func handleAdminKitchenOrders(c *gin.Context) {
-	reportHour := clubDayHour()
-	from, to, _, _ := shiftWindow("", reportHour, time.Now())
+	from, to, _, shift := staffDay(c, time.Now()) // З18-и4г: у админа закрытые — и его смены, если она началась раньше суток
 	var live, closed []models.KitchenOrder
 	db.Where("status IN ? OR ("+kitchenDebtWhere+")", kitchenOpenStatuses).
 		Order("created_at").Find(&live)
@@ -426,7 +425,7 @@ func handleAdminKitchenOrders(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"count": len(out), "open": open, "orders": out,
-		"unpaid": unpaid, "unpaid_pln": roundPLN(unpaidSum), "closed_total": closedTotal})
+		"unpaid": unpaid, "unpaid_pln": roundPLN(unpaidSum), "closed_total": closedTotal, "from": from, "to": to, "shift": shift})
 }
 
 type kitchenStatusRequest struct {
@@ -585,7 +584,7 @@ func handleAdminKitchenCancel(c *gin.Context) {
 	if o.SaleID != nil {
 		var sale models.Sale
 		if db.First(&sale, "id = ?", *o.SaleID).Error == nil && sale.VoidedAt == nil {
-			from, to, _, _ := shiftWindow("", clubDayHour(), time.Now())
+			from, to, _, _ := staffDay(c, time.Now()) // З18-и4г
 			if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
 				c.GetString("user_id"), sale.CreatedAt, from, to); !ok {
 				c.JSON(http.StatusForbidden, gin.H{"code": code, "message": kitchenRefundErrors[code]})

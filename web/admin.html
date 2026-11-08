@@ -4687,6 +4687,14 @@ async function audMore(btn){
   }catch(e){ toast('⚠ ' + e.message); }
   finally{ audLoading = false; }
 }
+// З18-и4г: «с 20:00 вчера» — начало окна админа, когда его смена началась раньше текущих суток (сервер: shift, from)
+function shiftSince(iso){
+  const d = new Date(iso), now = new Date(), y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  const day = d.toDateString() === now.toDateString() ? '' : d.toDateString() === y.toDateString() ? ' вчера'
+    : ' ' + String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
+  return 'с ' + hhmm(iso) + day;
+}
 function relTime(iso){
   const s = Math.floor((Date.now() - new Date(iso))/1000);
   if (s < 60) return 'только что';
@@ -4695,11 +4703,13 @@ function relTime(iso){
   return fmtTime(iso);
 }
 let audKey = ''; // фильтр+день, для которых загружен audData
+let audShift = null; // З18-и4г: у админа — начало окна, если его смена началась раньше суток (иначе null)
 async function renderAudit(useCache){
   if (audKind === 'incidents') return renderIncidents(); // К8-и3: свой раздел
   const key = audKind + '|' + audDay;
   if (!useCache || key !== audKey){
     const d = await api(audQuery(null));
+    audShift = !isOwner() && d.shift ? d.from : null;
     if (key !== audKey){ // другой фильтр или день — с чистого листа
       audData = d.items || []; audKey = key;
       audHasMore = !!d.has_more; audBefore = d.next_before || null;
@@ -4713,7 +4723,8 @@ async function renderAudit(useCache){
 function paintAudit(){
   const q = audQ.toLowerCase();
   const rows = audData.filter(x => !q || (x.nickname||'').toLowerCase().includes(q) || (x.admin||'').toLowerCase().includes(q));
-  const dayNote = audDay && isOwner() ? `<div class="muted" style="margin-bottom:8px">Клубные сутки ${esc(ruDate(audDay))} — от часа отчёта до следующего</div>` : '';
+  const dayNote = audDay && isOwner() ? `<div class="muted" style="margin-bottom:8px">Клубные сутки ${esc(ruDate(audDay))} — от часа отчёта до следующего</div>`
+    : audShift ? `<div class="muted" id="audShiftNote" style="margin-bottom:8px">Журнал — с начала твоей смены, ${esc(shiftSince(audShift))}: она началась раньше текущих суток</div>` : '';
   setHTML('auditTable', rows.length === 0
     ? dayNote + (audData.length === 0
       ? '<div class="empty"><span data-ic="scroll"></span>Журнал пуст — действия персонала будут записываться сюда</div>'
@@ -5546,7 +5557,7 @@ async function voidSale(id, quiet, how, pln){ // З11-и2: how — как вер
    «в долг · рассчитается при выходе» и ссылка на карточку («Рассчитать» там). */
 let openReceipts = new Set(), salesCache = [];
 function paintSales(d){
-  setText('salesTotal', (d.date || '') + ' · ' + fmtPLN(d.total_pln || 0) + ' zł' +
+  setText('salesTotal', (d.shift && d.from ? shiftSince(d.from) : (d.date || '')) + ' · ' + fmtPLN(d.total_pln || 0) + ' zł' + // З18-и4г
     (d.wallet_pln ? ' · кошельком: ' + fmtPLN(d.wallet_pln) + ' zł (не выручка)' : '') +
     (d.unpaid ? ' · в долг: ' + fmtPLN(d.unpaid_pln || 0) + ' zł (' + d.unpaid + ', не выручка)' : '') +
     (d.comp ? ' · подарено: ' + fmtPLN(d.comp_pln || 0) + ' zł (' + d.comp + ', не выручка)' : '') + // З11-и5

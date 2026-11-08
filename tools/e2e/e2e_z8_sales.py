@@ -37,6 +37,7 @@ def same(d, t):
 shown = lambda d: {k: d.get(k) for k in ("total_count", "count", "voided", "unpaid", "unpaid_pln", "total_pln", "wallet_pln")}
 
 sql(f"DELETE FROM sales WHERE name = '{STUB}'")  # хвост упавшего прогона
+pin_shift("admin1")  # З18-и4г: лента admin1 — сами клубные сутки, его смена не раздвигает окно
 section("итог ленты — по всему окну клубных суток")
 s, d0 = sales()
 t0 = truth(club_day(0))

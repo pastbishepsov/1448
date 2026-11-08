@@ -81,6 +81,16 @@ async function hireTemp(nick, { keep = false } = {}) {
   if (!keep) atEnd(async () => { await dismiss(nick); sql(`DELETE FROM work_entries WHERE ended_at IS NULL AND user_id='${uid(nick)}'`); });
   return uid(nick);
 }
+// З18-и4г: открытая смена nick — «с сейчас» на время проверки, в конце — как была: «сегодня» админа раздвигает его смена,
+// начатая раньше суток, а проверке нужны сами клубные сутки. Не на смене — вход (tok) откроет смену с «сейчас»
+async function pinShift(nick) {
+  await tok(nick);
+  for (const r of rows(`SELECT id || '|' || started_at FROM work_entries WHERE user_id = '${uid(nick)}' AND ended_at IS NULL`)) {
+    const [id, start] = [r.slice(0, r.indexOf('|')), r.slice(r.indexOf('|') + 1)];
+    sql(`UPDATE work_entries SET started_at = now() WHERE id = '${id}'`);
+    atEnd(() => sql(`UPDATE work_entries SET started_at = '${start}' WHERE id = '${id}' AND ended_at IS NULL`));
+  }
+}
 async function dismiss(nick, body = {}) { // уволить от владельца; уже player — пропуск
   if (['', 'player'].includes(sql(`SELECT role FROM users WHERE nickname='${nick}'`))) return { status: 200, data: {} };
   delete cache[nick];
@@ -126,4 +136,4 @@ const shot = (page, name, fullPage = false) => page.screenshot({ path: `${OUT}/z
 const text = (page, sel) => page.evaluate(s => { const e = document.querySelector(s); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; }, sel);
 
 module.exports = { API, BASE, DB, OUT, WEB_DIR, GUEST_PASS, STAFF_PASS, passwordOf, sleep, rows, sql, uid, dropGood, call, login, tok, api,
-  clubDay, hireTemp, dismiss, check, atEnd, done, crash, jsErrors, openAdmin, nav, shot, text };
+  clubDay, hireTemp, dismiss, pinShift, check, atEnd, done, crash, jsErrors, openAdmin, nav, shot, text };

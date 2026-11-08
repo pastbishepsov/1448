@@ -155,6 +155,8 @@ func targetPlayer(c *gin.Context) *models.User {
 // (startOfToday), report_hour у отчётов и сводки смены, календарный день у
 // KPI. Депозит в 23:50 пропадал из журнала админа в 00:00, а дневной потолок
 // обнулялся посреди ночной смены. Теперь «сегодня» одно — клубные сутки.
+// З18-и4г: у роли admin — ещё и его смена, если она началась раньше суток
+// (adminSince, staffDay).
 func clubDayStart(now time.Time) time.Time {
 	return clubDayStartAt(clubDayHour(), now)
 }
@@ -163,6 +165,59 @@ func clubDayStart(now time.Time) time.Time {
 func clubDayStartAt(reportHour int, now time.Time) time.Time {
 	from, _, _, _ := shiftWindow("", reportHour, now)
 	return from
+}
+
+// adminShiftReach — дальше этого «сегодня» админа за открытой сменой не тянется: забытая запись табеля не открывает
+// неделю (З18-и4г).
+const adminShiftReach = 24 * time.Hour
+
+// adminFromAt — начало «сегодня» админа (чистая, тест): клубные сутки dayFrom, а если его открытая смена («Я пришёл»)
+// началась раньше — с её начала, но не дальше adminShiftReach назад. З18-и4г (З-Р38, решение основателя 07.11): с
+// сутками с полуночи ночная смена резалась пополам — в 00:00 из журнала админа уходило всё с 20:00, дневные потолки
+// начинались заново, а своё пополнение в 23:50 он уже не мог отменить.
+func adminFromAt(dayFrom time.Time, shiftStart *time.Time, now time.Time) time.Time {
+	if shiftStart == nil || !shiftStart.Before(dayFrom) {
+		return dayFrom
+	}
+	from := *shiftStart
+	if reach := now.Add(-adminShiftReach); from.Before(reach) {
+		from = reach
+	}
+	if from.Before(dayFrom) {
+		return from
+	}
+	return dayFrom
+}
+
+// shiftStartOf — начало открытой смены сотрудника («Я пришёл»); nil — не на смене.
+func shiftStartOf(userID string) *time.Time {
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		return nil
+	}
+	if w := openEntryFor(id); w != nil {
+		return &w.StartedAt
+	}
+	return nil
+}
+
+// adminSince — начало «сегодня» админа adminID на момент now (adminFromAt по его открытой смене): дневные потолки,
+// депозиты в карточке гостя, список проблем.
+func adminSince(adminID string, now time.Time) time.Time {
+	return adminFromAt(clubDayStart(now), shiftStartOf(adminID), now)
+}
+
+// staffDay — окно «сегодня» для запроса персонала: клубные сутки [from, to) и их дата; у роли admin from — с начала его
+// смены, если она началась раньше суток (shift — окно раздвинуто сменой). Одно окно у журнала и ленты зала, продаж и
+// кухни смены и отмены своего (canVoidSale) — З18-и4г.
+func staffDay(c *gin.Context, now time.Time) (from, to time.Time, key string, shift bool) {
+	from, to, key, _ = shiftWindow("", clubDayHour(), now)
+	if c.GetString("user_role") == string(models.UserRoleAdmin) {
+		if f := adminFromAt(from, shiftStartOf(c.GetString("user_id")), now); f.Before(from) {
+			from, shift = f, true
+		}
+	}
+	return from, to, key, shift
 }
 
 // adminDayCapExceeded — превышен ли дневной потолок админа
@@ -487,7 +542,7 @@ func handleAdminUserCard(c *gin.Context) {
 	var deposits []models.Deposit
 	depQ := db.Where("user_id = ?", user.ID)
 	if !ownerView {
-		depQ = depQ.Where("created_at >= ?", clubDayStart(time.Now())) // Ж3: клубные сутки
+		depQ = depQ.Where("created_at >= ?", adminSince(c.GetString("user_id"), time.Now())) // Ж3, З18-и4г: сутки или смена
 	}
 	depQ.Order("created_at DESC").Limit(20).Find(&deposits)
 

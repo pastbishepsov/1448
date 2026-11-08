@@ -17,6 +17,7 @@ F = at_club(club_day(0), f"{rh:02d}:00")
 T = at_club(sql(f"SELECT ('{club_day(0)}'::date + 1)::text"), f"{rh:02d}:00")
 CLOSED = f"created_at >= {F} AND created_at < {T} AND (status = 'cancelled' OR (status = 'done' AND paid_at IS NOT NULL))"
 queue = lambda: api("GET", "/admin/kitchen/orders", None, "admin1")[1]
+pin_shift("admin1")  # З18-и4г: очередь admin1 — сами клубные сутки, его смена не раздвигает окно
 
 
 def truth():

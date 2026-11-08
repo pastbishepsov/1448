@@ -88,7 +88,7 @@ func handleAdminGrant(c *gin.Context) {
 		if cap := settingInt64("admin_day_xp_cap", 0); cap > 0 {
 			var used int64
 			db.Model(&models.AdminGrant{}).Select("COALESCE(SUM(amount),0)").
-				Where("admin_id = ? AND grant_type = 'xp' AND created_at >= ?", adminID, clubDayStart(time.Now())). // Ж3: клубные сутки
+				Where("admin_id = ? AND grant_type = 'xp' AND created_at >= ?", adminID, adminSince(adminID.String(), time.Now())). // Ж3, З18-и4г: сутки или смена
 				Scan(&used)
 			if adminDayCapExceeded(float64(used), float64(req.Amount), float64(cap)) {
 				c.JSON(http.StatusForbidden, gin.H{"code": "day_cap",
@@ -104,7 +104,7 @@ func handleAdminGrant(c *gin.Context) {
 		if cap := settingInt64("admin_day_case_cap", 0); cap > 0 {
 			var used int64
 			db.Model(&models.AdminGrant{}).
-				Where("admin_id = ? AND grant_type = 'case' AND created_at >= ?", adminID, clubDayStart(time.Now())).
+				Where("admin_id = ? AND grant_type = 'case' AND created_at >= ?", adminID, adminSince(adminID.String(), time.Now())).
 				Count(&used)
 			if adminDayCapExceeded(float64(used), 1, float64(cap)) {
 				c.JSON(http.StatusForbidden, gin.H{"code": "day_cap",

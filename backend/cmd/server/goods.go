@@ -920,8 +920,9 @@ func handleAdminSales(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "bad_date", "message": "date — в формате ГГГГ-ММ-ДД"})
 		return
 	}
+	shift := false
 	if c.GetString("user_role") != string(models.UserRoleOwner) {
-		from, to, key, _ = shiftWindow("", reportHour, time.Now())
+		from, to, key, shift = staffDay(c, time.Now()) // З18-и4г: у админа — и его смена, если она началась раньше суток
 	}
 	var sales []models.Sale
 	db.Where(salesFeedWhere, from, to, from, to).
@@ -960,13 +961,14 @@ func handleAdminSales(c *gin.Context) {
 	for i := range sales {
 		out = append(out, saleOut(&sales[i], nick))
 	}
-	c.JSON(http.StatusOK, gin.H{"date": key, "count": len(out), "total_count": sum.N, "sales": out,
+	c.JSON(http.StatusOK, gin.H{"date": key, "from": from, "to": to, "shift": shift, "count": len(out), "total_count": sum.N, "sales": out,
 		"total_pln": roundPLN(sum.Total), "wallet_pln": roundPLN(sum.Wallet), "voided": sum.Voided,
 		"unpaid": sum.Unpaid, "unpaid_pln": roundPLN(sum.UnpaidPln), "comp": sum.Comps, "comp_pln": roundPLN(sum.Comp)})
 }
 
 // canVoidSale — чистая (тест в goods_test.go): владелец отменяет любую продажу,
-// админ — только свою и только в пределах текущих клубных суток. Смена сдана —
+// админ — только свою и только в пределах текущих клубных суток (З18-и4г: и своей
+// смены, если она началась раньше — окно staffDay). Смена сдана —
 // исправляет владелец, иначе «отмена» становится тихим способом убрать выручку.
 func canVoidSale(role, saleCreatedBy, userID string, saleAt, dayFrom, dayTo time.Time) (bool, string) {
 	if role == string(models.UserRoleOwner) {
@@ -1047,8 +1049,7 @@ func isKitchenSale(saleID uuid.UUID) bool {
 
 // saleVoidAllowed — права на отмену (canVoidSale) с ответом 403; вернул false — выходить.
 func saleVoidAllowed(c *gin.Context, sale *models.Sale) bool {
-	reportHour := clubDayHour()
-	from, to, _, _ := shiftWindow("", reportHour, time.Now())
+	from, to, _, _ := staffDay(c, time.Now()) // З18-и4г: у админа — и его смена, если она началась раньше суток
 	if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
 		c.GetString("user_id"), sale.CreatedAt, from, to); !ok {
 		goodFail(c, http.StatusForbidden, code)

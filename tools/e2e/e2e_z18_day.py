@@ -27,6 +27,7 @@ def dep(pln, at, who="admin1"):
 
 
 at_end(lambda: [api("POST", f"/admin/deposits/{d}/void", {}, "boss") for d in deps])
+pin_shift("admin1")  # З18-и4г: журнал admin1 — сами клубные сутки, его смена не раздвигает окно
 kpi = lambda: (api("GET", "/admin/overview", None, "admin1")[1].get("revenue_today") or {}).get("deposits_pln", -1)
 day_dep = lambda d: (api("GET", f"/admin/reports/money?from={d}&to={d}", None, "boss")[1].get("totals") or {}).get("deposits_pln", -1)
 

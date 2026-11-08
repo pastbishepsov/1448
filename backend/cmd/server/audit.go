@@ -69,8 +69,9 @@ func auditOwnerOnly(action string) bool {
 
 // GET /admin/audit — лента событий: источники (начисления, депозиты и их
 // отмены, продажи и их отмены, admin_actions) сливаются по времени.
-// Роли (Б1-и4, решение №3): owner видит всё; admin — текущие клубные сутки и
-// без owner-событий (auditOwnerOnly: settings_update, staff_*, login_failed,
+// Роли (Б1-и4, решение №3): owner видит всё; admin — текущие клубные сутки (а
+// если его смена началась раньше — с её начала, не дальше суток назад; в ответе
+// shift: true — З18-и4г) и без owner-событий (auditOwnerOnly: settings_update, staff_*, login_failed,
 // shift_close, work_edit, cash_correct, cash_event_void и бухгалтерия).
 //
 // Ж3-и3 (№14, №22): параметры и слияние.
@@ -100,7 +101,7 @@ func handleAdminAudit(c *gin.Context) {
 		limit = max(1, min(v, 200))
 	}
 	var from, to time.Time
-	windowed := true
+	windowed, sinceShift := true, false
 	dayKey := ""
 	if ownerView {
 		if d := c.Query("day"); d != "" {
@@ -114,7 +115,7 @@ func handleAdminAudit(c *gin.Context) {
 			windowed = false
 		}
 	} else {
-		from, to, dayKey, _ = shiftWindow("", reportHour, now)
+		from, to, dayKey, sinceShift = staffDay(c, now) // З18-и4г: и его смена, если она началась раньше суток
 	}
 	var before time.Time
 	if b := c.Query("before"); b != "" {
@@ -376,6 +377,9 @@ func handleAdminAudit(c *gin.Context) {
 	}
 	if windowed {
 		resp["day"], resp["from"], resp["to"] = dayKey, from, to
+	}
+	if !ownerView {
+		resp["shift"] = sinceShift
 	}
 	c.JSON(http.StatusOK, resp)
 }

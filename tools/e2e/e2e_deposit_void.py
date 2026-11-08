@@ -141,8 +141,10 @@ cd = [x for x in card.get("deposits", []) if x["id"] == d1["deposit_id"]]
 check("карточка гостя: депозит с voided_at и refund_grosz", bool(cd) and cd[0].get("voided_at") and cd[0].get("refund_grosz") == 5000, f"{cd[0] if cd else card.get('deposits')}")
 
 # ── E: дневной лимит админа отменённым не съедается ──
-# живые депозиты admin1 за клубные сутки (Ж3: от report_hour, а не с полуночи) — лимит ставим на 50 zł выше
-used = float(sql(f"SELECT COALESCE(SUM(amount_pln),0) FROM deposits WHERE created_by=(SELECT id FROM users WHERE nickname='admin1') AND voided_at IS NULL AND created_at >= '{ov2['day_from']}'"))
+# живые депозиты admin1 за его «сегодня» — клубные сутки, а если его смена началась раньше, то с её начала (З18-и4г;
+# начало окна — как у сервера, из ответа журнала) — лимит ставим на 50 zł выше
+since = api("GET", "/admin/audit?limit=1", None, a1)[1].get("from") or ov2["day_from"]
+used = float(sql(f"SELECT COALESCE(SUM(amount_pln),0) FROM deposits WHERE created_by=(SELECT id FROM users WHERE nickname='admin1') AND voided_at IS NULL AND created_at >= '{since}'"))
 cap = int(used) + 50
 api("PUT", "/admin/settings", {"admin_day_deposit_cap_pln": cap}, ot)
 s, d6 = api("POST", f"/admin/users/{g}/deposit", {"amount_pln": 40, "method": "cash"}, a1)

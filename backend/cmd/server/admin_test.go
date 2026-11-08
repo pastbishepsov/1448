@@ -180,3 +180,29 @@ func TestAuditOwnerOnly(t *testing.T) {
 		}
 	}
 }
+
+// З18-и4г: «сегодня» админа — клубные сутки, а если его смена началась раньше — с её начала, но не дальше суток назад.
+func TestAdminFromAt(t *testing.T) {
+	loc := time.FixedZone("CET", 3600)
+	at := func(d, h, m int) time.Time { return time.Date(2026, 11, d, h, m, 0, 0, loc) }
+	day := at(8, 0, 0) // сутки с полуночи 08.11
+	ptr := func(x time.Time) *time.Time { return &x }
+	cases := []struct {
+		name  string
+		shift *time.Time
+		now   time.Time
+		want  time.Time
+	}{
+		{"не на смене — клубные сутки", nil, at(8, 2, 0), day},
+		{"ночная смена с 20:00 вчера, сейчас 02:00 — с 20:00", ptr(at(7, 20, 0)), at(8, 2, 0), at(7, 20, 0)},
+		{"дневная смена с 08:00 — сутки, а не позже", ptr(at(8, 8, 0)), at(8, 10, 0), day},
+		{"смена ровно с полуночи — сутки", ptr(day), at(8, 3, 0), day},
+		{"забытая смена с 06.11 — не дальше суток назад", ptr(at(6, 9, 0)), at(8, 14, 0), at(7, 14, 0)},
+		{"забытая смена, сейчас 00:30 — последние сутки", ptr(at(6, 9, 0)), at(8, 0, 30), at(7, 0, 30)},
+	}
+	for _, tc := range cases {
+		if got := adminFromAt(day, tc.shift, tc.now); !got.Equal(tc.want) {
+			t.Errorf("%s: %v, ожидалось %v", tc.name, got, tc.want)
+		}
+	}
+}

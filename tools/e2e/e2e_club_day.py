@@ -44,6 +44,13 @@ def cleanup():
     api("PUT", "/admin/settings", {"report_hour": RH0}, ot)
 cleanup()
 atexit.register(lambda: api("PUT", "/admin/settings", {"report_hour": RH0}, ot))  # и при обрыве на середине
+# З18-и4г: «сегодня» админа раздвигает его смена, начатая раньше суток, — здесь проверяются сами клубные сутки: открытая
+# смена admin1 на время проверки — «с сейчас», в конце — как была
+_pin = sql(f"SELECT id || '|' || started_at FROM work_entries WHERE user_id = '{admin1}' AND ended_at IS NULL")
+if _pin:
+    _wid, _start = _pin.split("|", 1)
+    sql(f"UPDATE work_entries SET started_at = now() WHERE id = '{_wid}'")
+    atexit.register(lambda: sql(f"UPDATE work_entries SET started_at = '{_start}' WHERE id = '{_wid}' AND ended_at IS NULL"))
 TZ = "Europe/Warsaw"  # часовой пояс клуба (CLUB_TZ сервера); сессия psql может жить в UTC
 day_of = lambda off=0: sql(f"SELECT ((now() AT TIME ZONE '{TZ}')::date + {off})::text")  # дата по часам клуба
 hour_now = int(sql(f"SELECT EXTRACT(HOUR FROM now() AT TIME ZONE '{TZ}')"))

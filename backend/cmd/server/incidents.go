@@ -299,7 +299,7 @@ func compCapOK(c *gin.Context, adminID uuid.UUID, cp compensation) bool {
 		Grosz   int64
 		Minutes int64
 	}
-	since := clubDayStart(time.Now()) // Ж3: клубные сутки
+	since := adminSince(adminID.String(), time.Now()) // Ж3, З18-и4г: сутки или смена
 	db.Model(&models.Incident{}).
 		Select("COALESCE(SUM(comp_grosz),0) AS grosz, COALESCE(SUM(comp_minutes),0) AS minutes").
 		Where("resolved_by = ? AND compensated_at >= ?", adminID, since).Scan(&used)
@@ -353,7 +353,7 @@ func handleAdminIncidents(c *gin.Context) {
 	if c.Query("open") == "1" {
 		q = q.Where("i.resolved_at IS NULL")
 	} else if !ownerView {
-		q = q.Where("i.resolved_at IS NULL OR i.created_at >= ?", clubDayStart(time.Now())) // Ж3: клубные сутки
+		q = q.Where("i.resolved_at IS NULL OR i.created_at >= ?", adminSince(c.GetString("user_id"), time.Now())) // Ж3, З18-и4г
 	}
 	var rows []incidentRow
 	if err := q.Scan(&rows).Error; err != nil {

@@ -90,7 +90,7 @@ func giftCapOK(c *gin.Context, adminID uuid.UUID, addGrosz int64) bool {
 	if capPLN <= 0 {
 		return true
 	}
-	since := clubDayStart(time.Now())
+	since := adminSince(adminID.String(), time.Now()) // З18-и4г: сутки или смена
 	var inc int64
 	db.Model(&models.Incident{}).Select("COALESCE(SUM(comp_grosz),0)").
 		Where("resolved_by = ? AND compensated_at >= ?", adminID, since).Scan(&inc)
