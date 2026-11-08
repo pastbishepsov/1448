@@ -7747,10 +7747,11 @@ async function expOpen(id){
   try{ await expRefs(); }catch(e){ toast('⚠ ' + e.message); return; }
   const e = id ? ((expData || {}).expenses || []).find(x => x.id === id) : null;
   if (id && !e) return;
+  // новый — на «сегодня» клубных суток, а не на дату календаря браузера (З18-и4д)
   expForm = e ? {id:e.id, date:ruDate(e.op_date), category:e.category_id, counterparty:e.counterparty || '', amount:String(e.amount_pln),
       vat:e.vat_pln ? String(e.vat_pln) : '', method:e.method, paid:e.paid, doc:e.doc_no || '', note:e.note || '', storno:e.storno_at ? e : null, photo:e.has_photo,
       before:e.explains_closeout || '', before0:e.explains_closeout || '', tplMonth:e.template_month || '', supply:e.supply_id || ''}
-    : {id:'', date:ruDate(isoDate(new Date())), category:'', counterparty:'', amount:'', vat:'', method:expMethodDef(), paid:true, doc:'', note:'', storno:null, photo:false, before:'', before0:''};
+    : {id:'', date:ruDate(clubToday()), category:'', counterparty:'', amount:'', vat:'', method:expMethodDef(), paid:true, doc:'', note:'', storno:null, photo:false, before:'', before0:''};
   expPaint();
 }
 // З9-и5: «Внести» из «Ждут внесения» — новый расход, заполненный по шаблону; дата — срок
@@ -8288,12 +8289,13 @@ async function refTplOpen(id){
     ${t ? '<div class="muted">Правка не трогает уже внесённые расходы — по шаблону заполнится следующий.</div>' : ''}
   </div>`);
 }
-// З9-и5б: «Внести заранее» — новый расход по шаблону за ближайший месяц со сроком впереди; дата — сегодня
+// З9-и5б: «Внести заранее» — новый расход по шаблону за ближайший месяц со сроком впереди; дата — сегодня (клубные
+// сутки, З18-и4д)
 async function expOpenEarly(id){
   const t = ((refsData || {}).tpls || []).find(x => x.id === id);
   if (!t || !t.early) return;
   try{ await expRefs(); }catch(e){ toast('⚠ ' + e.message); return; }
-  expForm = {id:'', date:ruDate(isoDate(new Date())), category:t.category_id, counterparty:t.counterparty || '', amount:String(t.amount_pln),
+  expForm = {id:'', date:ruDate(clubToday()), category:t.category_id, counterparty:t.counterparty || '', amount:String(t.amount_pln),
     vat:t.vat_pln ? String(t.vat_pln) : '', method:t.method, paid:true, doc:'', note:t.note || '', storno:null, photo:false, before:'', before0:'',
     tpl:{id:t.id, month:t.early, name:t.name, early:true, due:t.next_due}};
   expPaint();
@@ -8371,6 +8373,19 @@ function dateOf(id, label){
 }
 function isoDate(d){
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+/* З18-и4д (З-Р38, решение основателя 07.11): «сегодня» форм «Бухгалтерии» — клубные сутки сервера, а не дата календаря
+   браузера: со своим часом границы ночью до него — ещё вчерашняя дата, как у кассы, отчётов и «Ждут внесения»; часы и
+   пояс устройства не мешают. Из сводки (club_today, обновляется каждые 7–30 с); сутки, кончившиеся после неё (day_to), —
+   следующие; сводки ещё нет — календарь браузера. */
+function clubToday(){
+  const ov = ovCache;
+  if (!ov || !ov.club_today) return isoDate(new Date());
+  if (ov.day_to && Date.now() >= Date.parse(ov.day_to)){
+    const [y, m, d] = ov.club_today.split('-').map(Number);
+    return isoDate(new Date(y, m - 1, d + 1));
+  }
+  return ov.club_today;
 }
 function mmHH(min){ return Math.floor(min/60) + ':' + String(min%60).padStart(2, '0'); }
 function mmHH2(min){ return String(Math.floor(min/60)).padStart(2, '0') + ':' + String(min%60).padStart(2, '0'); }

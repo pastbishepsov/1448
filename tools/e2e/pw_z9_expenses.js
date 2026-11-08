@@ -35,8 +35,8 @@ const fs = require('fs'), path = require('path');
   await z.shot(page, 'z9_expenses_empty');
 
   await page.click('#expNewBtn'); await z.sleep(500);
-  const dateVal = await page.inputValue('#efDate'), today = await page.evaluate(() => ruDate(isoDate(new Date())));
-  z.check('шторка «Новый расход»: дата — сегодня дд.мм.гггг', (await z.text(page, '#drawerTitle')) === 'Новый расход' && dateVal === today, `${dateVal} / ${today}`);
+  const dateVal = await page.inputValue('#efDate'), today = await page.evaluate(d => ruDate(d), z.clubDay(0)); // З18-и4д: клубные сутки
+  z.check('шторка «Новый расход»: дата — сегодня (клубные сутки) дд.мм.гггг', (await z.text(page, '#drawerTitle')) === 'Новый расход' && dateVal === today, `${dateVal} / ${today}`);
   await page.click('#efSave'); await z.sleep(700);
   const tCat = (await z.text(page, '#toast')) || '';
   await page.selectOption('#efCat', { label: 'Аренда' });

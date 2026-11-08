@@ -511,10 +511,14 @@ func tillInfo(e *models.Expense) gin.H {
 	return out
 }
 
-func expenseToday() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-}
+// expenseDay — «сегодня» «Бухгалтерии» на миг now (чистая, тест): клубные сутки, а не дата календаря (З18-и4д; З-Р38,
+// решение основателя 07.11). Со своим часом границы ночью до него — ещё вчерашняя дата, как у кассы и отчётов: срок
+// регулярного («срок сегодня» и «срок был», «Ждут внесения», бейдж, напоминание), месяц, с которого ждёт шаблон, и
+// «Внести заранее»; с полуночи (по умолчанию) — дата календаря.
+func expenseDay(now time.Time, reportHour int) time.Time { return clubDayOf(now, reportHour) }
+
+// expenseToday — «сегодня» «Бухгалтерии» сейчас.
+func expenseToday() time.Time { return expenseDay(time.Now(), clubDayHour()) }
 
 // expenseOut — расход в ответ: суммы в злотых, имена категории и контрагента.
 func expenseOut(e *models.Expense, names map[string]string, cps map[string]string, nick map[string]string) gin.H {

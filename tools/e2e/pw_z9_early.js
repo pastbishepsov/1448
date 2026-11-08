@@ -7,7 +7,7 @@
 const z = require('./_z');
 (async () => {
   const TPL = 'z9cp Охрана', MARK = 'z9cp заранее';
-  const cal = await z.sql("SELECT (now() AT TIME ZONE 'Europe/Warsaw')::date::text"), D = +cal.slice(8);
+  const cal = z.clubDay(0), D = +cal.slice(8); // «сегодня» шаблонов — клубные сутки (З18-и4д; с полуночи — календарный день клуба)
   const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
   const ru = iso => iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4), monthRu = iso => MONTHS[+iso.slice(5, 7) - 1] + ' ' + iso.slice(0, 4);
   const month = k => z.sql(`SELECT (date_trunc('month', '${cal}'::date) + interval '${k} month')::date::text`);

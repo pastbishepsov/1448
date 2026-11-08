@@ -17,7 +17,7 @@ NOID = "00000000-0000-0000-0000-000000000000"  # шаблона нет (серв
 ALL = ["till", "bank", "card", "owner"]
 _cats = [c for c in api("GET", "/admin/expense-categories", None, "boss")[1].get("categories", []) if c.get("code")]
 std, RENT = {c.get("code"): c.get("id") for c in _cats}, next((c.get("name") for c in _cats if c.get("code") == "rent"), "")
-CAL = sql(f"SELECT (now() AT TIME ZONE '{TZ}')::date::text")  # «сегодня» шаблонов — календарный день клуба
+CAL = club_day(0)  # «сегодня» шаблонов — клубные сутки (З18-и4д; с полуночи — календарный день клуба)
 D = int(CAL[8:])
 M, PM, PPM, NM, NNM = (sql(f"SELECT (date_trunc('month', '{CAL}'::date) + interval '{k} month')::date::text") for k in (0, -1, -3, 1, 2))
 LAST = sql(f"SELECT (date_trunc('month', '{CAL}'::date) + interval '1 month - 1 day')::date::text")

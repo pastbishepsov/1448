@@ -29,7 +29,7 @@ const z = require('./_z');
   const sid = await receive([{ good_id: ga, qty: 30 }, { good_id: gb, qty: 20 }], `${MARK}: накладная UI`);
   const sale = ((await z.api('POST', '/admin/sales', { good_id: ga, qty: 12, method: 'card' }, 'admin1')).data.sale || {}).id;
   const ov = (await z.api('GET', '/admin/overview', undefined, 'boss')).data, sup0 = ov.supplies_waiting || 0, due0 = ov.expenses_due || 0;
-  const today = z.sql("SELECT to_char((now() AT TIME ZONE 'Europe/Warsaw')::date, 'DD.MM.YYYY')"); // дата документа — сегодня: расход в «Расходах» за этот месяц
+  const today = z.clubDay(0).split('-').reverse().join('.'); // дата документа — сегодня клубных суток (З18-и4д): расход в «Расходах» за этот месяц
   const lots = (gid, s) => z.rows(`SELECT part || ' ' || qty_in || '/' || qty_left || ' @' || COALESCE(price_grosz::text, '-') FROM stock_lots WHERE good_id = '${gid}' AND supply_id = '${s}' ORDER BY part`);
 
   const boss = await z.openAdmin('boss');

@@ -118,10 +118,11 @@ async function done() {
 async function crash(e) { console.error('CRASH', e); await cleanup(); process.exit(2); }
 
 // ── браузер ──
-async function openAdmin(nick = 'boss', { password, viewport = { width: 1440, height: 900 } } = {}) {
+// timezoneId — пояс браузера (З18-и4д: календарь браузера — не клубный); по умолчанию — пояс машины
+async function openAdmin(nick = 'boss', { password, viewport = { width: 1440, height: 900 }, timezoneId } = {}) {
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   browsers.push(browser);
-  const page = await (await browser.newContext({ viewport })).newPage();
+  const page = await (await browser.newContext({ viewport, ...(timezoneId ? { timezoneId } : {}) })).newPage();
   page.on('pageerror', e => jsErrors.push(`${nick}: ${e.message}`));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
   await page.fill('#nick', nick); await page.fill('#pass', password || passwordOf(nick));

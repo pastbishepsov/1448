@@ -10,7 +10,7 @@
 const z = require('./_z');
 (async () => {
   const TPL = 'z9cp Уборка', CP = 'z9cp Клининг', MARK = 'z9cp проверка', ALL = ['till', 'bank', 'card', 'owner'];
-  const cal = await z.sql("SELECT (now() AT TIME ZONE 'Europe/Warsaw')::date::text"), D = +cal.slice(8);
+  const cal = z.clubDay(0), D = +cal.slice(8); // «сегодня» шаблонов — клубные сутки (З18-и4д; с полуночи — календарный день клуба)
   const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
   const monthRu = MONTHS[+cal.slice(5, 7) - 1] + ' ' + cal.slice(0, 4), ruCal = cal.slice(8) + '.' + cal.slice(5, 7) + '.' + cal.slice(0, 4);
   const cats = (await z.api('GET', '/admin/expense-categories', undefined, 'boss')).data.categories || [];

@@ -507,11 +507,11 @@ func dueMessage(t *models.ExpenseTemplate, due, today time.Time) string {
 }
 
 // remindExpensesDue — одно напоминание на срок: включённые шаблоны, у которых
-// срок этого месяца наступил, а расхода нет. Кто первым отметил reminded_for,
+// срок этого месяца наступил (по клубным суткам, З18-и4д), а расхода нет. Кто первым отметил reminded_for,
 // тот и пишет — два прогона разом дважды не напомнят. Внесли раньше срока —
 // месяц отмечается без сообщения.
 func remindExpensesDue(now time.Time) int {
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	today := expenseDay(now, clubDayHour())
 	m := monthOf(today)
 	var ts []models.ExpenseTemplate
 	db.Where("active AND from_month <= ? AND (reminded_for IS NULL OR reminded_for < ?)",
@@ -542,7 +542,7 @@ func handleExpensesDueRemind(c *gin.Context) {
 }
 
 // startExpenseDueJob — фоновый прогон раз в 15 минут, первый через минуту после
-// старта: срок — число месяца, напоминание — в тот же день.
+// старта: срок — число месяца, напоминание — в те же клубные сутки (со своим часом границы — с него, З18-и4д).
 func startExpenseDueJob() {
 	go func() {
 		time.Sleep(time.Minute)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,60 @@ func TestDueDay(t *testing.T) {
 	for _, c := range cases {
 		if got := dueDay(c.month, c.day); !got.Equal(c.want) {
 			t.Errorf("dueDay(%s, %d) = %s, ждали %s", c.month.Format("2006-01"), c.day, got.Format("2006-01-02"), c.want.Format("2006-01-02"))
+		}
+	}
+}
+
+// З18-и4д: «сегодня» «Бухгалтерии» — клубные сутки. Своя граница 8: в 02:00 9 ноября ещё 8-е — шаблон на 8-е, заведённый
+// сейчас, ждёт с ноября со сроком сегодня (а не «срок был»), напоминание — «срок сегодня, 08.11»; шаблон на 9-е — срок
+// завтра, не ждёт, можно внести заранее; с 08:00 — 9-е. С полуночи (по умолчанию) — дата календаря: срок 8-го уже был.
+// Дату календаря как «сегодня» «Бухгалтерия» больше нигде не строит — только через expenseDay.
+func TestExpenseDayClubDay(t *testing.T) {
+	loc, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Skip("нет базы часовых поясов")
+	}
+	at := func(day, h, m int) time.Time { return time.Date(2026, 11, day, h, m, 0, 0, loc) }
+	date := func(d time.Time) string { return d.Format("2006-01-02") }
+	for _, c := range []struct {
+		now  time.Time
+		rh   int
+		want string
+	}{
+		{at(9, 2, 0), 8, "2026-11-08"}, {at(9, 7, 59), 8, "2026-11-08"}, {at(9, 8, 0), 8, "2026-11-09"},
+		{at(9, 2, 0), 0, "2026-11-09"}, {at(9, 0, 0), 0, "2026-11-09"}, {at(1, 3, 0), 8, "2026-10-31"},
+	} {
+		if got := expenseDay(c.now, c.rh); date(got) != c.want || got.Hour() != 0 {
+			t.Errorf("expenseDay(%s, %d) = %s, ждали %s", c.now.Format("02.01 15:04"), c.rh, got, c.want)
+		}
+	}
+	today := expenseDay(at(9, 2, 0), 8)
+	from := firstDueMonth(today, 8)
+	if due := dueMonths(from, today, 8, nil); monthKey(from) != "2026-11" || len(due) != 1 || date(dueDay(due[0], 8)) != "2026-11-08" {
+		t.Errorf("шаблон на 8-е, заведённый в 02:00 9-го при границе 8, — ждёт с ноября, срок сегодня: %s %v", from, due)
+	}
+	tp := &models.ExpenseTemplate{Name: "Аренда", GrossGrosz: 450000, Method: "bank"}
+	if msg := dueMessage(tp, dueDay(from, 8), today); !strings.Contains(msg, "срок сегодня, 08.11") {
+		t.Errorf("напоминание в 02:00 9-го при границе 8 — «срок сегодня, 08.11»: %s", msg)
+	}
+	from9 := firstDueMonth(today, 9)
+	if due := dueMonths(from9, today, 9, nil); len(due) != 0 || date(nextDue(from9, today, 9, nil)) != "2026-11-09" {
+		t.Errorf("шаблон на 9-е — срок завтра, не ждёт: %v, %s", due, nextDue(from9, today, 9, nil))
+	}
+	if m, ok := earlyMonth(from9, today, 9, nil); !ok || monthKey(m) != "2026-11" {
+		t.Errorf("шаблон на 9-е — «Внести заранее» за ноябрь: %s %v", m, ok)
+	}
+	cal := expenseDay(at(9, 2, 0), 0)
+	if msg := dueMessage(tp, dueDay(monthOf(cal), 8), cal); !strings.Contains(msg, "срок был 08.11") || firstDueMonth(cal, 8).Month() != 12 {
+		t.Errorf("с полуночи в 02:00 9-го срок 8-го уже был, новый шаблон на 8-е ждёт с декабря: %s", msg)
+	}
+	for _, f := range []string{"expenses.go", "expense_templates.go", "supplies_pricing.go"} {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(src), "now.Day(), 0, 0, 0, 0") {
+			t.Errorf("%s: «сегодня» «Бухгалтерии» — клубные сутки через expenseDay, не дата календаря", f)
 		}
 	}
 }

@@ -270,6 +270,7 @@ func handleAdminOverview(c *gin.Context) {
 		"revenue_today": gin.H{"deposits_pln": money.DepositsPLN, "goods_pln": money.GoodsPLN,
 			"packs_pln": money.PacksPLN, "deposits": money.Deposits, "sales": money.GoodsSales},
 		"day_from": day.From, "day_to": day.To, "report_hour": reportHour,
+		"club_today":       today.Format("2006-01-02"),                      // З18-и4д: «сегодня» форм «Бухгалтерии» — клубные сутки
 		"ready_wait_min":   settingInt64("ready_wait_min", readyWaitMinDef), // Ж4: форма посадки говорит, сколько ждём ПК без связи
 		"expenses_due":     overviewExpensesDue(c),                          // З9-и5: бейдж «Бухгалтерии» — только владельцу
 		"supplies_waiting": overviewSuppliesWaiting(c),                      // З10-и4: поставки ждут цен — в тот же бейдж
