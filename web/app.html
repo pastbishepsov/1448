@@ -1959,10 +1959,17 @@ function renderClub(){
   document.getElementById('clubTotal').textContent = STR.lbl_of + ' ' + club.computers_total;
   const a = document.getElementById('clubAddr');
   a.textContent = club.address || ''; a.style.display = club.address ? '' : 'none';
-  document.getElementById('clubMeta').innerHTML =
-    T('rate_hour', {n: (+club.base_rate_pln).toLocaleString('ru-RU')}) +
+  document.getElementById('clubMeta').innerHTML = clubRates(club) +
     (club.phone ? ' · <a class="lnk" href="tel:' + esc(club.phone) + '">' + esc(club.phone) + '</a>' : '');
   renderWaitlist();
+}
+
+/* З18-и6 (№34, З-Р23): цена часа — по зонам, как ценник на стене («Standard 20 zł/час · VIP 30 zł/час»); клубный
+   тариф — только когда зон нет (тогда на нём все ПК) */
+function clubRates(c){
+  const zs = (c.zones || []).filter(z => z && +z.rate_pln > 0);
+  return zs.length ? zs.map(z => esc(z.name) + ' ' + esc(T('rate_hour', {n: (+z.rate_pln).toLocaleString('ru-RU')}))).join(' · ')
+    : esc(T('rate_hour', {n: (+c.base_rate_pln).toLocaleString('ru-RU')}));
 }
 
 /* ── вейтлист (Б9, «задел PWA»): сервер пускает в очередь только при 0 свободных ── */
@@ -3290,7 +3297,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-02.1';
+const APP_VER = '2026-11-09.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

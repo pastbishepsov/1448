@@ -527,6 +527,13 @@
   .setcard .input.changed{border-color:var(--acc); box-shadow:0 0 0 1px rgba(255,39,64,.28)}
   /* З18-и4б: поле своего часа границы суток — под выбором «Сутки клуба», тем же шагом */
   .setcard .setsub{display:flex; flex-direction:column; gap:8px}
+  /* З18-и6: карточка клуба — дни недели строками: день, режим, открытие–закрытие; на узком экране переносятся */
+  .setcard .clubDay{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+  .setcard .clubDay b{width:22px; font-size:12px; color:var(--dim)}
+  .setcard .clubDay select.input{flex:0 1 140px; width:auto}
+  .setcard .clubDay .clubTimes{display:inline-flex; gap:4px; align-items:center}
+  .setcard .clubDay .clubTimes.hidden{display:none}
+  .setcard .clubDay .clubTimes .input{width:66px; padding:8px 6px; text-align:center; font-variant-numeric:tabular-nums}
   .setwarn{font-size:12px; line-height:1.4; color:var(--orange); background:rgba(251,146,60,.08);
     border:1px solid rgba(251,146,60,.32); border-radius:9px; padding:8px 10px}
   /* З13-и2: «Бухгалтерия» — что значат выбранные варианты, простыми словами */
@@ -1189,6 +1196,12 @@
           </div>
         </div>
         <div class="muted" style="margin-top:8px">Действует сразу после сохранения; каждая правка попадает в журнал строкой «было → стало». Лимиты персонала владельца не касаются.</div>
+
+        <!-- З18-и6 (№34, З-Р23): карточка клуба — имя, адрес, контакты, часы работы, клубный тариф и «ПК без зоны
+             запрещён»; своя кнопка: карточка — PATCH /admin/clubs/:id, запрет — настройкой pc_zone_required. После
+             карточек настроек (их «Сохранить» — первая такая кнопка раздела) и перед зонами: тариф и запрет — про них -->
+        <div class="sect">Клуб</div>
+        <div id="clubWrap"><div class="skel"></div></div>
 
         <!-- В4-этап 5: зона стала сущностью со своей ценой часа -->
         <div class="sect">Зоны и цена часа</div>
@@ -4540,7 +4553,8 @@ const AUD_GROUPS = {
              'seat_cancel','session_move'], // ревью 26.08
   bookings: ['booking_create','booking_cancel','booking_restore'],
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release', // Ж4-и3
-       'zone_minutes_move','zone_minutes_burn'], // З18-и1
+       'zone_minutes_move','zone_minutes_burn', // З18-и1
+       'club_update'], // З18-и6: карточка клуба
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','sale_paid','settle','debt_write_off','debt_restore','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
@@ -4561,6 +4575,7 @@ const AUD_LABEL = {
   package_create:'пакет заведён', package_update:'пакет: правка', package_delete:'пакет удалён',
   package_issue:'выдан пакет', package_void:'отмена выдачи пакета',
   pc_create:'ПК добавлен', pc_update:'ПК изменён', pc_delete:'ПК удалён', layout_update:'схема зала',
+  club_update:'карточка клуба', // З18-и6
   staff_promote:'персонал: назначен', staff_demote:'персонал: снят',
   shift_tpl_create:'смена: создана', shift_tpl_update:'смена: правка',
   shift_tpl_delete:'смена: удалена', shift_assign:'график: назначен',
@@ -4613,7 +4628,7 @@ const AUD_ICON = {
   catalog_upsert:'edit', catalog_toggle:'apps', catalog_delete:'cross',
   catalog_sort:'apps', catalog_import:'apps', catalog_cover:'apps',
   catalog_config:'wrench', settings_update:'gear',
-  pc_create:'plus', pc_update:'edit', pc_delete:'cross', layout_update:'monitor',
+  pc_create:'plus', pc_update:'edit', pc_delete:'cross', layout_update:'monitor', club_update:'gear',
   staff_promote:'users', staff_demote:'out',
   shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',
   shift_assign:'cal', shift_unassign:'out',
@@ -9391,8 +9406,8 @@ async function renderZones(){
   try{
     const d = await api('/admin/zones');
     zonesCache = d.zones || [];
-    setText('zonesHint', 'Клубный тариф ' + fmtPLN(d.club_rate_pln) + ' zł/ч действует на ПК без зоны'
-      + (d.without_zone ? ' — таких сейчас ' + d.without_zone : ''));
+    zonesData = d; // З18-и6: подсказка — и по запрету «ПК без зоны»
+    paintZonesHint();
     setHTML('zonesTable', zonesCache.length === 0
       ? '<div class="empty"><span data-ic="monitor"></span>Зон нет — все ПК на клубном тарифе</div>'
       : `<table><tr><th>Зона</th><th>Цена часа</th><th>VAT</th><th>Час в монетах</th><th>Компьютеров</th><th>У гостей</th><th></th></tr>
@@ -9786,10 +9801,13 @@ async function renderSettings(){
   renderPackages(); // Е2-и4: и пакеты времени — там же, это тот же прайс
   renderPackSoon(); // З18-и4: и кто вот-вот потеряет минуты пакета
   renderBoardBox(); // Ж8-и3: табло зала — токен и ссылка
+  renderClubCard(); // З18-и6: карточка клуба
   try{
     const [d] = await Promise.all([api('/admin/settings'), vatLoad(), ryLoad()]); // З13-и2: ставки — для «ставки пополнения»; З13-и7 — ryczałtu
     settingsLoaded = d.settings || {};
     paintSettings();
+    clubZoneSync(); // З18-и6: запрет «ПК без зоны» — в карточке клуба и у зон
+    paintZonesHint();
   }catch(e){ toast('⚠ ' + e.message); }
 }
 function paintSettings(){
@@ -9911,6 +9929,181 @@ async function saveSettings(btn){
   if ('report_hour' in ch && btn) armButton(btn, '<span data-ic="save"></span>Ещё раз — сдвинуть границу суток', go);
   else if (vatCalcChanged(ch) && btn) armButton(btn, '<span data-ic="save"></span>Ещё раз — сменить расчёт VAT', go);
   else go();
+}
+
+/* З18-и6 (№34, З-Р23): карточка клуба в «Экономике» — имя, адрес, телефон, соцсети, часы работы и клубный тариф (цена
+   часа ПК без зоны), там же «ПК без зоны запрещён» (pc_zone_required). Своя кнопка сохраняет только изменённое: карточку —
+   PATCH /admin/clubs/:id (Telegram и Instagram сервер приведёт к имени, пустое — сотрёт), запрет — настройкой; каждая
+   правка — строкой журнала «было → стало». Часы — «Круглосуточно» или по дням: выходной, часы (закрытие раньше
+   открытия — после полуночи) или круглые сутки. Запрет включается, только когда зона есть у каждого ПК — иначе сервер
+   называет, у каких её нет. */
+let clubCard = null; // карточка с сервера (GET /clubs, первый клуб: v1 одноклубный) — правка сравнивается с ней
+const CLUB_DAYS = [['mon', 'пн'], ['tue', 'вт'], ['wed', 'ср'], ['thu', 'чт'], ['fri', 'пт'], ['sat', 'сб'], ['sun', 'вс']];
+const CLUB_DAY_MODES = [['off', 'выходной'], ['hours', 'часы'], ['full', 'круглые сутки']];
+const CLUB_FIELD_ID = {name: 'club_name', address: 'club_addr', phone: 'club_phone', telegram: 'club_tg', instagram: 'club_ig',
+  base_rate_pln: 'club_rate', working_hours: 'club_hmode', pc_zone_required: 'club_zonereq'};
+const clubZoneReq = () => Number(settingsLoaded.pc_zone_required || 0);
+async function renderClubCard(){
+  const box = document.getElementById('clubWrap');
+  if (!box) return;
+  try{
+    const d = await api('/clubs');
+    clubCard = (d.clubs || [])[0] || null;
+  }catch(e){ box.innerHTML = '<div class="muted">⚠ ' + esc(e.message) + '</div>'; return; }
+  paintClubCard();
+}
+// закрытие «24:00» у дня с часами — та же полночь, что «00:00» (в поле времени 24:00 не бывает)
+const clubClose = x => x.close === '24:00' && x.open !== '00:00' ? '00:00' : x.close;
+// день недели: режим и время; круглые сутки на сервере — 00:00–24:00
+function clubDayHtml(d, ru, h){
+  const mode = !h ? 'off' : h.open === '00:00' && h.close === '24:00' ? 'full' : 'hours';
+  // время — текстом «ЧЧ:ММ»: поле type=time в браузере с 12-часовым языком показывает «11:00 PM» и не влезает
+  const t = (id, v) => `<input id="${id}" class="input" type="text" inputmode="numeric" maxlength="5" placeholder="10:00" value="${esc(v)}" oninput="clubDirty()">`;
+  return `<div class="clubDay"><b>${ru}</b>
+      <select id="club_dm_${d}" class="input" onchange="clubDayMode('${d}')">${CLUB_DAY_MODES
+        .map(([v, l]) => `<option value="${v}"${v === mode ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <span class="clubTimes${mode === 'hours' ? '' : ' hidden'}" id="club_dt_${d}">${t('club_do_' + d, mode === 'hours' ? h.open : '10:00')}–${
+        t('club_dc_' + d, mode === 'hours' ? clubClose(h) : '23:00')}</span></div>`;
+}
+function paintClubCard(){
+  const box = document.getElementById('clubWrap'), c = clubCard;
+  if (!box) return;
+  if (!c){ box.innerHTML = '<div class="empty">Активный клуб не найден</div>'; return; }
+  const h = c.working_hours, full = {open: '00:00', close: '24:00'};
+  const inp = (id, v, type, ph) => `<input id="${id}" class="input" type="${type || 'text'}" value="${esc(v ?? '')}"${
+    ph ? ` placeholder="${esc(ph)}"` : ''} oninput="clubDirty()">`;
+  box.innerHTML = `<div class="setgrid">
+    <div class="setcard"><h4>Карточка клуба</h4>
+      <div class="why">Это видят гости: имя и адрес — в приложении и на карте клубов, телефон — кнопкой «позвонить».</div>
+      <label for="club_name">Имя клуба</label>${inp('club_name', c.name)}
+      <label for="club_addr">Адрес</label>${inp('club_addr', c.address)}
+      <label for="club_phone">Телефон</label>${inp('club_phone', c.phone, 'tel', '+48 22 123 45 67')}
+      <label for="club_tg">Telegram</label>${inp('club_tg', c.telegram, 'text', '@club или t.me/club')}
+      <label for="club_ig">Instagram</label>${inp('club_ig', c.instagram, 'text', '@club или ссылка')}
+    </div>
+    <div class="setcard"><h4>Часы и клубный тариф</h4>
+      <div class="why">Часы работы — для гостей. Клубный тариф — цена часа ПК без зоны; у ПК в зоне — цена его зоны.</div>
+      <label for="club_hmode">Часы работы</label>
+      <select id="club_hmode" class="input" onchange="clubHoursMode()"><option value="0"${h ? '' : ' selected'}>Круглосуточно</option>
+        <option value="1"${h ? ' selected' : ''}>По дням</option></select>
+      <div class="setsub${h ? '' : ' hidden'}" id="clubDays">${CLUB_DAYS.map(([d, ru]) => clubDayHtml(d, ru, h ? h[d] : full)).join('')}</div>
+      <label for="club_rate">Клубный тариф, zł за час</label>${inp('club_rate', c.base_rate_pln, 'number')}
+      <label for="club_zonereq">ПК без зоны</label>
+      <select id="club_zonereq" class="input" onchange="clubDirty()"><option value="0">Можно — по клубному тарифу</option>
+        <option value="1">Запрещён — у каждого ПК своя зона</option></select>
+      <div class="setnote" id="clubZoneNote"></div>
+    </div></div>
+    <div class="toolrow" id="clubBar">
+      <button class="btn" id="clubSave" onclick="saveClubCard(this)"><span data-ic="save"></span>Сохранить карточку</button>
+      <button class="btn ghost hidden" id="clubUndo" onclick="paintClubCard()">Вернуть как было</button>
+      <span class="muted" id="clubHint">Правок нет</span></div>`;
+  Object.assign(document.getElementById('club_rate'), {min: '0.01', max: '500', step: '0.01'});
+  document.getElementById('club_zonereq').value = String(clubZoneReq());
+  mountIcons(box);
+  clubDirty();
+}
+function clubHoursMode(){
+  document.getElementById('clubDays').classList.toggle('hidden', document.getElementById('club_hmode').value !== '1');
+  clubDirty();
+}
+function clubDayMode(d){
+  document.getElementById('club_dt_' + d).classList.toggle('hidden', document.getElementById('club_dm_' + d).value !== 'hours');
+  clubDirty();
+}
+// «9:00», «9.00» → «09:00»; остальное — как ввели (сервер ответит, что не так)
+function clubHHMM(v){
+  const m = /^(\d{1,2})[:.](\d{2})$/.exec((v || '').trim());
+  return m ? m[1].padStart(2, '0') + ':' + m[2] : (v || '').trim();
+}
+// часы из формы — как их ждёт сервер: null — круглосуточно, иначе {день: {open, close}}, выходных в нём нет
+function clubFormHours(){
+  if (document.getElementById('club_hmode').value !== '1') return null;
+  const out = {}, v = id => clubHHMM(document.getElementById(id).value);
+  for (const [d] of CLUB_DAYS){
+    const m = v('club_dm_' + d);
+    if (m === 'full') out[d] = {open: '00:00', close: '24:00'};
+    else if (m === 'hours') out[d] = {open: v('club_do_' + d), close: v('club_dc_' + d)};
+  }
+  return out;
+}
+const clubHoursKey = h => h ? JSON.stringify(CLUB_DAYS.filter(([d]) => h[d]).map(([d]) => [d, h[d].open, clubClose(h[d])])) : 'null';
+// что изменилось против сервера: поля PATCH — как их ждёт сервер — и pc_zone_required
+function clubChanged(){
+  const c = clubCard || {}, v = id => document.getElementById(id).value.trim(), out = {};
+  for (const [k, id] of [['name', 'club_name'], ['address', 'club_addr'], ['phone', 'club_phone'], ['telegram', 'club_tg'], ['instagram', 'club_ig']])
+    if (v(id) !== (c[k] || '')) out[k] = v(id);
+  const r = v('club_rate');
+  if (r === '' || Number(r) !== Number(c.base_rate_pln)) out.base_rate_pln = r === '' ? NaN : Number(r);
+  const h = clubFormHours();
+  if (clubHoursKey(h) !== clubHoursKey(c.working_hours)) out.working_hours = h;
+  const zr = Number(document.getElementById('club_zonereq').value);
+  if (zr !== clubZoneReq()) out.pc_zone_required = zr;
+  return out;
+}
+function clubDirty(){
+  if (!document.getElementById('club_name')) return;
+  const ch = clubChanged(), n = Object.keys(ch).length;
+  for (const [k, id] of Object.entries(CLUB_FIELD_ID)) document.getElementById(id).classList.toggle('changed', k in ch);
+  setText('clubHint', n ? 'Изменено: ' + n : 'Правок нет');
+  document.getElementById('clubUndo').classList.toggle('hidden', n === 0);
+  setText('clubZoneNote', document.getElementById('club_zonereq').value === '1'
+    ? 'Новый ПК и правка ПК — только с зоной; клубный тариф тогда ни на что не действует.'
+    : 'ПК без зоны считаются по клубному тарифу. Запрет включится, когда зона будет у каждого ПК.');
+}
+// «Экономика» получила настройки — запрет в карточке по серверу, если его не трогали
+function clubZoneSync(){
+  const el = document.getElementById('club_zonereq');
+  if (el && !el.classList.contains('changed')) el.value = String(clubZoneReq());
+  clubDirty();
+}
+async function saveClubCard(btn){
+  const ch = clubChanged(), n = Object.keys(ch).length;
+  if (!n){ toast('Правок нет — сохранять нечего'); return; }
+  if ('base_rate_pln' in ch && !(ch.base_rate_pln >= 0.01 && ch.base_rate_pln <= 500)){
+    toast('⚠ Клубный тариф — от 0,01 до 500 zł за час'); document.getElementById('club_rate').focus(); return;
+  }
+  const {pc_zone_required: zr, ...body} = ch;
+  let saved = false;
+  if (btn) btn.disabled = true;
+  try{
+    if (Object.keys(body).length){
+      const d = await api('/admin/clubs/' + clubCard.id, {method: 'PATCH', body: JSON.stringify(body)});
+      clubCard = Object.assign({}, clubCard, d.club || {});
+      saved = true;
+    }
+    if (zr !== undefined){
+      const d = await api('/admin/settings', {method: 'PUT', body: JSON.stringify({pc_zone_required: zr})});
+      settingsLoaded = d.settings || settingsLoaded;
+    }
+    paintClubCard();
+    renderZones(); // подсказка у зон — по тарифу и запрету
+    toast(`✓ Карточка клуба сохранена (правок: ${n}) — в журнале «было → стало»`);
+  }catch(e){
+    if (saved){ // карточка сохранилась, запрет — нет: поля — с сервера, выбранный запрет остаётся правкой
+      paintClubCard();
+      document.getElementById('club_zonereq').value = String(zr);
+      clubDirty();
+      renderZones();
+    }
+    toast('⚠ ' + e.message);
+  }finally{ if (btn) btn.disabled = false; }
+}
+// подсказка у зон: клубный тариф действует на ПК без зоны — или они запрещены
+let zonesData = null;
+function paintZonesHint(){
+  const d = zonesData;
+  if (!d || !document.getElementById('zonesHint')) return;
+  setText('zonesHint', clubZoneReq() ? 'ПК без зоны запрещены — у каждого ПК своя зона (карточка «Клуб» выше)'
+    : 'Клубный тариф ' + fmtPLN(d.club_rate_pln) + ' zł/ч действует на ПК без зоны' + (d.without_zone ? ' — таких сейчас ' + d.without_zone : ''));
+}
+// палитра: «клуб», «часы работы» … — карточка клуба в «Экономике»
+function palGoClub(){
+  nav('settings');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('club_name');
+    if (el || ++n > 40){ clearInterval(t); if (el){ el.closest('.setgrid').scrollIntoView({block: 'start'}); el.focus(); } }
+  }, 100);
 }
 
 /* Ж8-и3 (Ж-Р12): табло зала. Токен выпускает сервер — «1234» у входа не секрет;
@@ -10197,6 +10390,9 @@ const PAL_WORDS = [
   {who:'owner', words:['выгрузка', 'выгрузка бухгалтеру', 'бухгалтер', 'для бухгалтера', 'файл бухгалтеру', 'экспорт', 'excel', 'xlsx', 'csv',
    'реквизиты', 'nip фирмы', 'raport kasowy'], name:'Выгрузка бухгалтеру', // З13-и7
    sub:'Бухгалтерия → Выгрузка: месяц или свои даты, XLSX или CSV, листы с числом строк, реквизиты фирмы', ic:'save', run:() => accGo('out')},
+  {who:'owner', words:['клуб', 'карточка клуба', 'адрес клуба', 'телефон клуба', 'часы работы', 'режим работы', 'telegram', 'instagram',
+   'соцсети', 'клубный тариф', 'пк без зоны'], name:'Карточка клуба', // З18-и6
+   sub:'Экономика → Клуб: имя, адрес, телефон, соцсети, часы работы, клубный тариф, ПК без зоны', ic:'gear', run:() => palGoClub()},
   {who:'owner', words:['форма учёта', 'kpir', 'księga', 'ryczałt', 'ryczalt', 'ewidencja', 'pełna księgowość', 'полная бухгалтерия'], name:'Форма учёта', // З13-и7
    sub:'Экономика → Бухгалтерия: KPiR, ryczałt или полная бухгалтерия — какие листы выгрузки первыми', ic:'gear', run:() => palGoAccForm()},
   {who:'owner', words:['колонка kpir', 'колонки kpir', 'kpir', 'счёт категории', 'план счетов', 'ставка ryczałtu', 'ставки ryczałtu', 'ryczałt'],
