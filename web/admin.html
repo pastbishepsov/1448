@@ -450,11 +450,19 @@
        background:rgba(255,255,255,.05); color:var(--dim); white-space:nowrap}
   .dlt.up{color:var(--green); background:rgba(52,211,153,.13)}
   .dlt.dn{color:var(--acc3); background:rgba(255,39,64,.13)}
+  /* З18-и4и: на узком экране плитка KPI, которой не хватает ширины, переносится — подпись по словам, число, чип роста и
+     подсказка «куда ›» целиком — и не вылезает за экран (раньше — только «Сейчас» и итоги «Обзора», итоги «Возвратов»);
+     плитка, которая помещается, остаётся в строку, на широком экране — всегда в строку */
+  @media (max-width:640px){
+    .kpi{white-space:normal}
+    .kpi b, .kpi i{white-space:nowrap}
+  }
   /* З10-и8: «Что покупают» и «По категориям» — маржа в минусе красным; на телефоне строки — карточки, у чисел подписи */
   .repNeg, .repNeg b{color:var(--acc3)}
   .repL{display:none}
   @media (max-width:640px){ .repL{display:inline; color:var(--dim); margin-right:4px} }
-  /* З11-и3: «Возвраты за прошлый месяц» — оплачено до этого месяца: дата оранжевым; на телефоне плитки итогов переносятся */
+  /* З11-и3: «Возвраты за прошлый месяц» — оплачено до этого месяца: дата оранжевым (плитки итогов на телефоне
+     переносятся общим правилом плиток, З18-и4и) */
   .retOld{color:var(--orange)}
   /* З12-и1: «Обязательства клуба сейчас» — итоговые строки состава светлее */
   .tablewrap tr.liabSum td{background:rgba(255,255,255,.03)}
@@ -493,10 +501,7 @@
     .ovPnl tr.ovSum{background:var(--card)}
     .ovPnl tr.ovSum td{background:none}
     .ovPnl tr.ovDet td{display:block; width:100%}
-    .ovK .kpi{white-space:normal}
-    .ovK .kpi b, .ovK .kpi > i{white-space:nowrap}
   }
-  @media (max-width:640px){ .retK .kpi{white-space:normal} }
   /* З11-и2: «как вернули» у отмены — выбор на месте кнопки «Отменить», на узком месте переносится */
   .rfPick{display:inline-flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; white-space:normal; max-width:100%}
   .rfPick .btn{white-space:nowrap}
@@ -6189,7 +6194,7 @@ function repPct(v){ return v == null ? '—' : (+v).toLocaleString('ru-RU') + '%
 function dlt(v, invert){
   if (v === null || v === undefined) return '<i class="dlt" title="в прошлом периоде было пусто">—</i>';
   const cls = v === 0 ? '' : ((invert ? v < 0 : v > 0) ? 'up' : 'dn');
-  return `<i class="dlt ${cls}">${v > 0 ? '+' : ''}${v}%</i>`;
+  return `<i class="dlt ${cls}">${v > 0 ? '+' : ''}${(+v).toLocaleString('ru-RU')}%</i>`; // З18-и4и: «+232,2%» — с запятой, как repPct
 }
 function repKpi(label, value, delta, opt){
   const o = opt || {};

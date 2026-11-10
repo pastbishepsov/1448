@@ -24,7 +24,7 @@ const z = require('./_z');
   const sgn = v => (v < 0 ? '−' : '') + num(Math.abs(v || 0)); // как ovMoney: минус длинным знаком
   const G = v => Math.round((v || 0) * 100);
   const hm = m => { m = Math.max(0, Math.round(m || 0)); const h = Math.floor(m / 60), r = m % 60; return !m ? '0 ч' : (h ? h + ' ч' : '') + (r ? (h ? ' ' : '') + r + ' мин' : ''); };
-  const pct = v => v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + v + '%';
+  const pct = v => v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + (+v).toLocaleString('ru-RU').replace(/\s/g, ' ') + '%'; // З18-и4и: с запятой
   const diff = (a, b) => { const v = Math.round(((a || 0) - (b || 0)) * 100) / 100; return (v > 0 ? '+' : v < 0 ? '−' : '') + num(Math.abs(v)) + ' zł'; };
   const MN = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
   const mname = m => { const n = MN[+m.slice(5, 7) - 1]; return n[0].toUpperCase() + n.slice(1) + ' ' + m.slice(0, 4); };
