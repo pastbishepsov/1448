@@ -52,6 +52,9 @@ type Club struct {
 	Phone       *string   `json:"phone,omitempty"     gorm:"size:20"`
 	Telegram    *string   `json:"telegram,omitempty"  gorm:"size:64"`
 	Instagram   *string   `json:"instagram,omitempty" gorm:"size:64"`
+	// Часы работы (колонка с миграции 002; правит владелец с З18-и5): {"mon": {"open": "10:00", "close": "23:00"}, …},
+	// NULL — круглосуточно. Наружу — объектом (clubHoursOut), не строкой.
+	WorkingHours *string `json:"-" gorm:"column:working_hours;type:jsonb"`
 
 	// Тарифы — рынок Польши, PLN
 	// Диапазон: 10–50 zł/час, средний ~23 zł/час

@@ -98,6 +98,7 @@ var settingBounds = map[string][2]int64{
 	"mouse_dpi":                 {0, 32000}, // С2-и1 (SENS.md, Р2): DPI мыши клуба; 0 = не задан, сенсу не пересчитываем
 	"mousepad_cm":               {0, 200},   // С4-и3 (SENS.md, №13): ширина коврика клуба, см — эталон для замера DPI свайпом; 0 = не задана
 	"pack_warn_days":            {0, 30},   // Е2-и5: за сколько дней сказать, что пакет сгорает; 0 = молчать
+	"pc_zone_required":          {0, 1},       // З18-и5 (№34): 1 — ПК без зоны запрещён (hall.go)
 
 	// З13-и1 (решения основателя 04.10): «Бухгалтерия» — VAT; вопросы бухгалтеру — настройки владельца
 	"acc_vat_payer":  {0, 1},    // плательщик VAT — 1, освобождён — 0
@@ -140,6 +141,7 @@ var settingDefaults = map[string]int64{
 	"coin_burn_warn_days":       coinBurnWarnDays,
 	"min_start_minutes":         minStartMinutesDef,
 	"pack_warn_days":            packWarnDaysDef, // Е2-и5
+	"pc_zone_required":          0,               // З18-и5: ПК без зоны можно — клубный тариф
 	"zero_grace_min":            zeroGraceMinDef,
 	"pause_limit_min":           pauseLimitMinDef,
 	"afk_stop_min":              afkStopMinDef,
@@ -226,6 +228,14 @@ func handleAdminSettingsPut(c *gin.Context) {
 		}
 		if ok := settingChoices[key]; ok != nil && !ok(val) { // З13-и1, З13-и6
 			c.JSON(http.StatusBadRequest, gin.H{"code": "bad_value", "message": key + ": " + settingChoiceMsg[key]})
+			return
+		}
+	}
+	// З18-и5: «ПК без зоны запрещён» включается, только когда зона есть у каждого ПК
+	if v, ok := req["pc_zone_required"]; ok && v == 1 && !pcZoneRequired() {
+		if names := pcsWithoutZone(); len(names) > 0 {
+			c.JSON(http.StatusConflict, gin.H{"code": "pcs_without_zone", "names": names,
+				"message": "Сначала дай зону: " + strings.Join(names, ", ") + " — пока у них нет зоны, запрет не включить"})
 			return
 		}
 	}

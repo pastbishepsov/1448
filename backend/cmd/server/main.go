@@ -440,6 +440,7 @@ func main() {
 		own.PATCH("/computers/:id", handleAdminUpdateComputer)
 		own.DELETE("/computers/:id", handleAdminDeleteComputer)
 		own.PATCH("/clubs/:id/layout", handleAdminClubLayout)
+		own.PATCH("/clubs/:id", handleAdminClubUpdate) // З18-и5: карточка клуба
 	}
 
 	// ── Мобильное PWA (трек М, MOBILE.md): раздача статики ────────────────

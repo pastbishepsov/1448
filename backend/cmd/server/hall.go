@@ -44,6 +44,19 @@ func nameTaken(clubID, excludeID, name string) bool {
 	return n > 0
 }
 
+// pcZoneRequired — «ПК без зоны запрещён» (pc_zone_required, З18-и5; №34): ПК заводится и правится только с зоной —
+// цена часа у каждой машины своей зоны, клубный тариф не нужен.
+func pcZoneRequired() bool { return settingInt64("pc_zone_required", 0) == 1 }
+
+const zoneRequiredMsg = "Выбери зону: ПК без зоны в клубе запрещены (настройка «ПК без зоны запрещён»)"
+
+// pcsWithoutZone — имена ПК без зоны по алфавиту: пока они есть, запрет не включается (settings.go).
+func pcsWithoutZone() []string {
+	var names []string
+	db.Model(&models.Computer{}).Where("zone_id IS NULL").Order("name").Pluck("name", &names)
+	return names
+}
+
 type computerCreateRequest struct {
 	Name   string  `json:"name" binding:"required,min=1,max=32"`
 	ZoneID *string `json:"zone_id"` // В4-5: зона теперь сущность с ценой часа
@@ -80,6 +93,10 @@ func handleAdminCreateComputer(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"code": "cell_busy", "message": "Эта клетка уже занята"})
 			return
 		}
+	}
+	if (req.ZoneID == nil || strings.TrimSpace(*req.ZoneID) == "") && pcZoneRequired() { // З18-и5
+		c.JSON(http.StatusBadRequest, gin.H{"code": "zone_required", "message": zoneRequiredMsg})
+		return
 	}
 	pc := models.Computer{
 		ClubID: club.ID, Name: req.Name,
@@ -152,6 +169,10 @@ func handleAdminUpdateComputer(c *gin.Context) {
 		fields, z, ok := zoneFieldsFor(*req.ZoneID)
 		if !ok {
 			c.JSON(http.StatusNotFound, gin.H{"code": "zone_not_found", "message": "Зона не найдена"})
+			return
+		}
+		if z == nil && pcZoneRequired() { // З18-и5: снять зону нельзя
+			c.JSON(http.StatusBadRequest, gin.H{"code": "zone_required", "message": zoneRequiredMsg})
 			return
 		}
 		// З16-и1б: та же зона — не правка; другая — с прежней (кэш имени у ПК пишет только сервер, В4-5)
