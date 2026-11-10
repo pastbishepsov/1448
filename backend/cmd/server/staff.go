@@ -811,7 +811,7 @@ const (
 // leaveShift — открытая смена сотрудника и чем её закроет уход из персонала.
 type leaveShift struct {
 	Entry   *models.WorkEntry // nil — смены нет; имя смены — снимок в записи (З15-и4)
-	SameDay bool              // смена этих клубных суток: уходит посреди неё
+	Ongoing bool              // смена идёт — уходит посреди неё (leaveOngoing, З18-и4з)
 	CloseAt time.Time         // момент закрытия
 }
 
@@ -821,8 +821,7 @@ func leaveShiftOf(userID uuid.UUID, now time.Time) leaveShift {
 	if w == nil {
 		return leaveShift{}
 	}
-	today := clubDayOf(now, clubDayHour())
-	s := leaveShift{Entry: w, SameDay: w.Date.Format("2006-01-02") == today.Format("2006-01-02")}
+	s := leaveShift{Entry: w}
 	var sched *time.Time
 	if w.ShiftID != nil {
 		var sh models.Shift
@@ -831,17 +830,27 @@ func leaveShiftOf(userID uuid.UUID, now time.Time) leaveShift {
 			sched = &end
 		}
 	}
-	s.CloseAt = leaveCloseAt(w.StartedAt, s.SameDay, sched, now)
+	s.Ongoing = leaveOngoing(w.Date, clubDayOf(now, clubDayHour()), sched, now)
+	s.CloseAt = leaveCloseAt(w.StartedAt, s.Ongoing, sched, now)
 	return s
 }
 
-// leaveCloseAt — каким моментом уход закрывает открытую смену (чистая, тест). Смена этих клубных суток — сейчас:
+// leaveOngoing — уходит ли он посреди смены (чистая, тест): запись табеля этих клубных суток (day — её дата, today —
+// клубные сутки) или смена по графику ещё не кончилась (sched — её конец). З18-и4з: с сутками с полуночи (З18-и4б) ночная
+// смена после 00:00 — запись вчерашних суток, но смена идёт: уход закрывает её сейчас и пишет «посреди смены», а не
+// «уход не отмечен» и «по графику»; так же смена, начатая раньше своего часа границы суток. Без графика — по дате, как
+// было: открытая запись без смены могла остаться и с позавчера.
+func leaveOngoing(day, today time.Time, sched *time.Time, now time.Time) bool {
+	return day.Format("2006-01-02") == today.Format("2006-01-02") || (sched != nil && sched.After(now))
+}
+
+// leaveCloseAt — каким моментом уход закрывает открытую смену (чистая, тест). Смена идёт (leaveOngoing) — сейчас:
 // работать он перестал в момент увольнения. Давняя — уход не отметил, а уволили потом — как closeForgotten: конец по
 // графику, но не позже now; без графика — начало, ноль часов. Раньше начала — никогда.
-func leaveCloseAt(start time.Time, sameDay bool, sched *time.Time, now time.Time) time.Time {
+func leaveCloseAt(start time.Time, ongoing bool, sched *time.Time, now time.Time) time.Time {
 	end := start
 	switch {
-	case sameDay:
+	case ongoing:
 		end = now
 	case sched != nil:
 		end = *sched
@@ -891,13 +900,13 @@ func leaveShiftText(w *models.WorkEntry, at time.Time) string {
 
 // leaveOwnerLine — строка владельцу, что осталось за ушедшим (чистая, тест): верб — «уволен» или «снят с прав»; касса
 // не сдана — сколько должно быть в ящике (или что ящика ещё нет); часы — чем закрыта смена и сколько их на проверку.
-func leaveOwnerLine(nick, verb string, w *models.WorkEntry, sameDay bool, at time.Time, drawer bool, expected int64) string {
+func leaveOwnerLine(nick, verb string, w *models.WorkEntry, ongoing bool, at time.Time, drawer bool, expected int64) string {
 	if nick == "" {
 		nick = "Сотрудник"
 	}
 	since := leaveSince(w.StartedAt, at)
 	line := fmt.Sprintf("⚠ %s %s посреди смены (с %s) — осталось за него: ", nick, verb, since)
-	if !sameDay {
+	if !ongoing {
 		line = fmt.Sprintf("⚠ %s %s, а смена с %s осталась незакрытой — осталось за него: ", nick, verb, since)
 	}
 	if drawer {
@@ -907,7 +916,7 @@ func leaveOwnerLine(nick, verb string, w *models.WorkEntry, sameDay bool, at tim
 		line += "касса не сдана — ящик ещё не заведён: пересчитанное станет его начальным остатком"
 	}
 	switch {
-	case sameDay:
+	case ongoing:
 		return line + "; часы — смена " + w.Note + ", " + hoursRU(int64(w.Minutes)) + " в табеле на проверку"
 	case w.Minutes > 0:
 		return line + "; часы — смена закрыта по графику, " + hoursRU(int64(w.Minutes)) + " в табеле на проверку"
@@ -919,7 +928,7 @@ func leaveOwnerLine(nick, verb string, w *models.WorkEntry, sameDay bool, at tim
 // уволил: его собственная вкладка не показывает лишний тост «служебное в канале».
 func leaveNotify(nick, verb string, s leaveShift, by uuid.UUID, now time.Time) {
 	st := drawerAt(db, now)
-	postSystem(leaveOwnerLine(nick, verb, s.Entry, s.SameDay, now, st.Point != nil, st.Expected), true,
+	postSystem(leaveOwnerLine(nick, verb, s.Entry, s.Ongoing, now, st.Point != nil, st.Expected), true,
 		map[string]any{"staff_leave": true, "by": by})
 }
 
@@ -944,7 +953,9 @@ func handleAdminStaffShift(c *gin.Context) {
 	}
 	if s := leaveShiftOf(user.ID, now); s.Entry != nil {
 		row := workOut(s.Entry)
-		row["same_day"], row["close_at"], row["close_minutes"] = s.SameDay, s.CloseAt, workMinutes(s.Entry.StartedAt, s.CloseAt)
+		// З18-и4з: ongoing — смена идёт (уход посреди неё); same_day — прежнее имя того же, для открытых вкладок прошлой версии
+		row["ongoing"], row["same_day"] = s.Ongoing, s.Ongoing
+		row["close_at"], row["close_minutes"] = s.CloseAt, workMinutes(s.Entry.StartedAt, s.CloseAt)
 		out["open_shift"] = row
 		st := drawerAt(db, now) // как «сколько должно быть в ящике» перед уходом (GET /admin/work/closeout)
 		out["cash"] = gin.H{"drawer": st.Point != nil, "expected_pln": models.PLNFromGrosz(st.Expected)}
@@ -1283,7 +1294,7 @@ func finishLeave(p *models.StaffProfile, now time.Time) bool {
 		return false
 	}
 	day, by := *p.LeaveOn, leaveActor(p)
-	shift := leaveShiftOf(user.ID, now) // смена последнего дня — уже не этих суток: закроется по графику
+	shift := leaveShiftOf(user.ID, now) // смена последнего дня: идёт по графику — закроется сейчас, кончилась — по графику
 	done, closed := false, false
 	err := db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.StaffProfile{}).Where("user_id = ? AND leave_on IS NOT NULL", user.ID).Updates(map[string]any{

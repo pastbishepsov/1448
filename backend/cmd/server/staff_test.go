@@ -145,7 +145,7 @@ func TestLeaveCloseAt(t *testing.T) {
 	cases := []struct {
 		name    string
 		start   time.Time
-		sameDay bool
+		ongoing bool
 		sched   *time.Time
 		now     time.Time
 		want    time.Time
@@ -158,9 +158,54 @@ func TestLeaveCloseAt(t *testing.T) {
 		{"график раньше прихода — ноль часов", at(15, 21, 0), false, &sched, at(16, 10, 0), at(15, 21, 0)},
 	}
 	for _, tc := range cases {
-		if got := leaveCloseAt(tc.start, tc.sameDay, tc.sched, tc.now); !got.Equal(tc.want) {
+		if got := leaveCloseAt(tc.start, tc.ongoing, tc.sched, tc.now); !got.Equal(tc.want) {
 			t.Errorf("%s: %v, ждали %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// З18-и4з: уход посреди смены — смена идёт: запись этих клубных суток или по графику ещё не кончилась. С сутками с
+// полуночи ночная смена 20:00–08:00 после 00:00 — запись вчерашних суток, но идёт: «посреди смены», закрыть сейчас;
+// утром после 08:00 — давняя, как было. Смена 06:00–14:00 при своей границе 8 в 07:00 — запись завтрашней даты, идёт.
+func TestLeaveOngoing(t *testing.T) {
+	warsaw, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Skip("нет базы часовых поясов")
+	}
+	old := models.ClubLocation
+	models.ClubLocation = warsaw
+	defer func() { models.ClubLocation = old }()
+	at := func(d, h, m int) time.Time { return time.Date(2026, 11, d, h, m, 0, 0, warsaw) }
+	day := func(d int) time.Time { return time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC) } // дата записи — как из базы
+	night, dayEnd, morning := at(9, 8, 0), at(8, 20, 0), at(9, 14, 0)                    // концы смен по графику
+	cases := []struct {
+		name       string
+		entry      time.Time // дата записи табеля
+		start      time.Time // пришёл
+		now        time.Time
+		reportHour int
+		sched      *time.Time
+		want       bool
+		closeAt    time.Time
+	}{
+		{"ночная 8-го, 02:00 9-го, сутки с полуночи — идёт, закрыть сейчас", day(8), at(8, 20, 0), at(9, 2, 0), 0, &night, true, at(9, 2, 0)},
+		{"ночная 8-го, 09:00 9-го — давняя, по графику", day(8), at(8, 20, 0), at(9, 9, 0), 0, &night, false, night},
+		{"ночная 8-го, 23:00 8-го — этих суток", day(8), at(8, 20, 0), at(8, 23, 0), 0, &night, true, at(8, 23, 0)},
+		{"дневная 8-го, 20:30 8-го — этих суток, как было", day(8), at(8, 8, 0), at(8, 20, 30), 0, &dayEnd, true, at(8, 20, 30)},
+		{"дневная 8-го, 10:00 9-го — давняя", day(8), at(8, 8, 0), at(9, 10, 0), 0, &dayEnd, false, dayEnd},
+		{"утренняя 06–14 9-го при своей границе 8, 07:00 — идёт", day(9), at(9, 6, 0), at(9, 7, 0), 8, &morning, true, at(9, 7, 0)},
+		{"без графика 8-го, 01:00 9-го — давняя, ноль часов, как было", day(8), at(8, 22, 0), at(9, 1, 0), 0, nil, false, at(8, 22, 0)},
+	}
+	for _, c := range cases {
+		got := leaveOngoing(c.entry, clubDayOf(c.now, c.reportHour), c.sched, c.now)
+		if end := leaveCloseAt(c.start, got, c.sched, c.now); got != c.want || !end.Equal(c.closeAt) {
+			t.Errorf("%s: идёт %v (ждали %v), закрыть %v (ждали %v)", c.name, got, c.want, end, c.closeAt)
+		}
+	}
+	w := &models.WorkEntry{StartedAt: at(8, 20, 0), Minutes: 360, Note: dismissNote}
+	if got := leaveOwnerLine("z18n", "уволен", w, true, at(9, 2, 0), true, 0); !strings.HasPrefix(got, "⚠ z18n уволен посреди смены (с 08.11 20:00)") ||
+		!strings.HasSuffix(got, "; часы — смена закрыта увольнением, 6 ч 00 м в табеле на проверку") {
+		t.Errorf("ночная после полуночи — «посреди смены»: %q", got)
 	}
 }
 

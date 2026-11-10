@@ -45,8 +45,8 @@ check("данные: у z14d открыта смена (вход в админк
 
 s, pv = preview(D)
 w, cash = pv.get("open_shift") or {}, pv.get("cash") or {}
-check("шторка увольнения: открыта смена — та же запись, этих суток, сколько часов ляжет (сейчас — ноль-несколько минут)",
-      s == 200 and w.get("id") == entry and w.get("open") is True and w.get("same_day") is True
+check("шторка увольнения: открыта смена — та же запись, идёт (ongoing, З18-и4з), сколько часов ляжет (сейчас — ноль-несколько минут)",
+      s == 200 and w.get("id") == entry and w.get("open") is True and w.get("ongoing") is True
       and 0 <= w.get("close_minutes", -1) <= 5, f"{s} {J(pv, 500)}")
 check("касса не сдана: ящик заведён, «должно быть» — как в «сдаче» у самого z14d; будущих смен — 1",
       cash.get("drawer") is True and near(cash.get("expected_pln", -1), p["expected_pln"]) and pv.get("future_shifts") == 1,
@@ -65,7 +65,8 @@ row = sql(f"SELECT ended_at IS NOT NULL, auto_closed, note, minutes = floor(extr
           f"edited_by = '{boss}', ended_at >= '{t0}'::timestamptz FROM work_entries WHERE id = '{entry}'")
 check("в базе: запись табеля закрыта моментом увольнения, минуты по нему, пометка, правил владелец; открытых у z14d нет",
       row == "t|t|закрыта увольнением|t|t|t" and sql(f"SELECT count(*) FROM work_entries WHERE user_id = '{uid(D)}' AND ended_at IS NULL") == "0", row)
-ts = api("GET", f"/admin/work?from={TODAY}&to={TODAY}", None, "boss")[1]
+edate = sql(f"SELECT date FROM work_entries WHERE id = '{entry}'")  # З18-и4з: ночная смена после 00:00 — запись вчерашних суток
+ts = api("GET", f"/admin/work?from={edate}&to={edate}", None, "boss")[1]
 te = next((e for e in ts.get("entries", []) if e.get("id") == entry), {})
 check("табель: запись не открыта, автозакрытая «закрыта увольнением», сдачи кассы у неё нет",
       te.get("open") is False and te.get("auto_closed") is True and te.get("note") == "закрыта увольнением" and "closeout" not in te, J(te, 300))
@@ -123,8 +124,8 @@ old = sql(f"INSERT INTO work_entries (club_id, user_id, shift_id, date, started_
 mins = int(emin) - int(smin) - 60
 s, pv = preview(S)
 w = pv.get("open_shift") or {}
-check(f"шторка: смена вчерашних суток — не этих, закроется по графику: {mins // 60} ч {mins % 60:02d} м",
-      s == 200 and w.get("id") == old and w.get("same_day") is False and w.get("close_minutes") == mins, J(pv, 400))
+check(f"шторка: смена вчерашних суток, по графику кончилась — не идёт, закроется по графику: {mins // 60} ч {mins % 60:02d} м",
+      s == 200 and w.get("id") == old and w.get("ongoing") is False and w.get("close_minutes") == mins, J(pv, 400))
 seen = {m["id"] for m in chat()}
 s, d = api("POST", f"/admin/staff/{uid(S)}/dismiss", {}, "boss")
 row = sql(f"SELECT ended_at = {at_club(yday, end_hm)}, minutes, auto_closed, note FROM work_entries WHERE id = '{old}'")

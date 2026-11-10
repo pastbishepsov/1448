@@ -91,6 +91,8 @@ const z = require('./_z');
     && !(await boss.evaluate(() => document.getElementById('drawer').classList.contains('open'))), JSON.stringify({ tv, tsv }));
 
   await z.nav(boss, 'stats');
+  // З18-и4з: сводка — за день записи: ночная смена после 00:00 записана вчерашними сутками (день её начала)
+  await boss.evaluate(d => { shiftDate = d; return renderShift(); }, z.sql(`SELECT date FROM work_entries WHERE id = '${entry}'`));
   await boss.waitForSelector('#shWorked tr', { timeout: 20000 }).catch(() => {});
   await z.sleep(800);
   const sw = await boss.evaluate(n => { const rows = [...document.querySelectorAll('#shWorked tr')].filter(x => x.cells[0] && x.cells[0].innerText.trim() === n);

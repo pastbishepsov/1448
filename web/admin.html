@@ -4688,12 +4688,14 @@ async function audMore(btn){
   finally{ audLoading = false; }
 }
 // З18-и4г: «с 20:00 вчера» — начало окна админа, когда его смена началась раньше текущих суток (сервер: shift, from)
-function shiftSince(iso){
+function shiftSince(iso){ return 'с ' + hhmmDay(iso); }
+// «20:00», «20:00 вчера» или «20:00 07.11» — момент относительно сегодня (З18-и4г; З18-и4з — начало идущей смены)
+function hhmmDay(iso){
   const d = new Date(iso), now = new Date(), y = new Date(now);
   y.setDate(now.getDate() - 1);
   const day = d.toDateString() === now.toDateString() ? '' : d.toDateString() === y.toDateString() ? ' вчера'
     : ' ' + String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
-  return 'с ' + hhmm(iso) + day;
+  return hhmm(iso) + day;
 }
 function relTime(iso){
   const s = Math.floor((Date.now() - new Date(iso))/1000);
@@ -9089,14 +9091,15 @@ function leaveShiftHtml(p, kind){
   const w = p && p.open_shift;
   if (!w) return '';
   const [who, note] = LEAVE_HOW[kind];
-  const since = w.same_day ? hhmm(w.started_at) : ruDate(w.date) + ' ' + hhmm(w.started_at);
-  const shift = w.same_day || w.close_minutes > 0
-    ? `${who} закроет смену ${w.same_day ? 'сейчас' : 'по графику'} пометкой «${note}»: ${hm(w.close_minutes)} встанут в табель на проверку.`
+  // З18-и4з: смена идёт (ongoing) — этих клубных суток или по графику ещё не кончилась: ночная после 00:00 — тоже «сейчас»
+  const on = !!w.ongoing, since = on ? hhmmDay(w.started_at) : ruDate(w.date) + ' ' + hhmm(w.started_at);
+  const shift = on || w.close_minutes > 0
+    ? `${who} закроет смену ${on ? 'сейчас' : 'по графику'} пометкой «${note}»: ${hm(w.close_minutes)} встанут в табель на проверку.`
     : `${who} закроет смену пометкой «${note}» без часов — графика у неё нет: поставь их в табеле.`;
   const c = p.cash || {};
   const cash = c.drawer ? 'в ящике должно быть ' + fmtPLN(c.expected_pln) + ' zł — пересчитайте'
     : 'ящик ещё не заведён — пересчитанное станет его начальным остатком';
-  return `<div class="setwarn" id="lvShift"><b>⚠ Открыта смена с ${since}${w.same_day ? '' : ' — уход не отмечен'}, касса не сдана.</b>
+  return `<div class="setwarn" id="lvShift"><b>⚠ Открыта смена с ${since}${on ? '' : ' — уход не отмечен'}, касса не сдана.</b>
     ${shift} Кассу за него никто не сдаст: ${cash}. Что осталось за ним — придёт тебе в канал.</div>`;
 }
 async function dismissDrawer(id, nick){
