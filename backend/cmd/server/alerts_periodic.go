@@ -141,6 +141,14 @@ func alertsCheck(now time.Time) gin.H {
 	if v := settingInt64("alert_revenue_low_pct", alertRevenueLowDef); v > 0 {
 		out["revenue_low"] = alertRevenueLow(now, rh, v)
 	}
+	// З22-и4: напоминания о сменах — тем же прогоном (alerts_shifts.go)
+	out["shift_soon"], out["shift_nobody"] = 0, 0
+	if v := settingInt64("shift_remind_hours", shiftRemindDef); v > 0 {
+		out["shift_soon"] = alertShiftSoon(now, rh, v)
+	}
+	if v := settingInt64("shift_nobody_hour", shiftNobodyDef); v >= 0 {
+		out["shift_nobody"] = alertShiftNobody(now, rh, v)
+	}
 	return out
 }
 
@@ -152,8 +160,11 @@ func startAlertsJob() {
 			safely("alerts", func() {
 				if settingInt64("alerts_on", 1) != 0 {
 					r := alertsCheck(time.Now())
-					if r["debt"] != 0 || r["void_share"] != 0 || r["revenue_low"] != 0 {
-						log.Printf("алерты: %v", r)
+					for _, v := range r {
+						if v != 0 {
+							log.Printf("алерты: %v", r)
+							break
+						}
 					}
 				}
 			})

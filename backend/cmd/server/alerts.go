@@ -28,6 +28,9 @@ var alertKinds = map[string]alertKind{
 	"debt":        {OwnerOnly: true},
 	"void_share":  {OwnerOnly: true},
 	"revenue_low": {OwnerOnly: true},
+	// З22-и4: напоминание о смене — сотруднику по нику, видят все; «завтра никто не назначен» — владельцу
+	"shift_soon":   {},
+	"shift_nobody": {OwnerOnly: true},
 }
 
 // alertsEnabled — алерты вида k присылаются: общий выключатель и, если есть, свой.
