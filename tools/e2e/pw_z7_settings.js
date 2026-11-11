@@ -1,10 +1,10 @@
-// З7-и1 (№41), браузер: «Экономика» — карточки по смыслу (с З13-и2 — и «Бухгалтерия», с З18-и4 — и «Сгорание пакетов»:
-// девять), у каждой строка «на что
+// З7-и1 (№41), браузер: «Экономика» — карточки по смыслу (с З13-и2 — и «Бухгалтерия», с З18-и4 — и «Сгорание пакетов»,
+// с З22-и1 — и «Алерты»: десять), у каждой строка «на что
 // влияет»; «Сохранить» без правок ничего не отправляет; правка одной настройки подсвечена, уходит одна и одной строкой в журнал; у часа
 // границы суток — предупреждение про прошлые отчёты и взвод на «Сохранить» (с З18-и4б поле часа — после «Свой час границы» в
 // «Сутках клуба»; сам выбор — в pw_z18_day). Таблица settings в конце — как была.
 const z = require('./_z');
-const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лимиты персонала', 'Клубные сутки и сегменты', 'Сессия у ПК', 'Брони', 'Стрики и ДР', 'Мышь и коврик', 'Бухгалтерия'];
+const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лимиты персонала', 'Клубные сутки и сегменты', 'Сессия у ПК', 'Брони', 'Стрики и ДР', 'Мышь и коврик', 'Алерты', 'Бухгалтерия'];
 (async () => {
   const orig = z.rows("SELECT key || '|' || value FROM settings").map(r => r.split('|'));
   z.atEnd(() => {
@@ -23,16 +23,16 @@ const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лим�
   const cards = await page.evaluate(() => [...document.querySelectorAll('#setGrid .setcard')].map(c => ({
     t: (c.querySelector('h4') || {}).textContent, why: ((c.querySelector('.why') || {}).textContent || '').trim(),
     ids: [...c.querySelectorAll('input, select')].map(i => i.id) })));
-  z.check('девять карточек: ' + CARDS.join(' · '), JSON.stringify(cards.map(c => c.t)) === JSON.stringify(CARDS), JSON.stringify(cards.map(c => c.t)));
-  z.check('у каждой карточки — строка «на что влияет»', cards.length === 9 && cards.every(c => c.why.length > 20), JSON.stringify(cards.map(c => c.why)));
+  z.check('десять карточек: ' + CARDS.join(' · '), JSON.stringify(cards.map(c => c.t)) === JSON.stringify(CARDS), JSON.stringify(cards.map(c => c.t)));
+  z.check('у каждой карточки — строка «на что влияет»', cards.length === 10 && cards.every(c => c.why.length > 20), JSON.stringify(cards.map(c => c.why)));
   const where = id => (cards.find(c => c.ids.includes(id)) || {}).t;
   z.check('поля на своих местах: час суток — «Клубные сутки», кейсы админа — «Лимиты персонала», DPI — «Мышь и коврик», форма учёта (З13-и7), '
     + 'плательщик VAT, подарки в VAT и ставка ryczałtu времени — «Бухгалтерия»; окно [Готов!] (З18-и4) — «Сессия у ПК»; «Сутки клуба» '
-    + '(З18-и4б) — «Клубные сутки», 40 полей',
+    + '(З18-и4б) — «Клубные сутки»; «Алерты в канал» (З22-и1) — «Алерты», 41 поле',
     where('set_rhour') === 'Клубные сутки и сегменты' && where('set_rmode') === 'Клубные сутки и сегменты' && where('set_casecap') === 'Лимиты персонала' && where('set_mousedpi') === 'Мышь и коврик'
     && where('set_accform') === 'Бухгалтерия' && where('set_vatpayer') === 'Бухгалтерия' && where('set_giftvat') === 'Бухгалтерия'
     && where('set_rytime') === 'Бухгалтерия' && where('set_readywait') === 'Сессия у ПК' && where('set_packwarn') === 'Сгорание пакетов'
-    && cards.reduce((n, c) => n + c.ids.length, 0) === 40,
+    && where('set_alerts') === 'Алерты' && cards.reduce((n, c) => n + c.ids.length, 0) === 41,
     JSON.stringify(cards.map(c => [c.t, c.ids.length])));
   await z.shot(page, 'z7_settings');
 

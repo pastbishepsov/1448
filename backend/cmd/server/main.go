@@ -361,6 +361,8 @@ func main() {
 		own.GET("/reports/pulse", handleReportPulse)
 		// З21-и2а: когорты по месяцу первого визита — вернулись через 1/2/3 месяца — и LTV гостя
 		own.GET("/reports/cohorts", handleReportCohorts)
+		// З22-и1: проверочный алерт — служебное сообщение в канал персонала, владельцу, раз за клубные сутки
+		own.POST("/alerts/test", handleAlertTest)
 		// З13-и4: выгрузка бухгалтеру — XLSX или архив CSV, заголовки PL или RU
 		own.GET("/export", handleExport)
 		// З9-и1: расходы, категории и контрагенты — только владелец (З-Р29)
