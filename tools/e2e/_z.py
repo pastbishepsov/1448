@@ -18,7 +18,7 @@ __all__ = ["API", "BASE", "DB", "SRV_LOG", "TZ", "GUEST_PASS", "STAFF_PASS", "sq
            "tokens", "password_of", "jwt_claims", "api", "J", "check", "near", "section", "at_end", "done", "club_day", "at_club", "settings",
            "set_settings", "restore_settings", "wallet", "topup", "ensure_wallet", "pcs", "seat", "end", "end_all", "free_pcs",
            "hire_temp", "dismiss", "drawer_ready", "audit", "ws_admin", "ws_read", "agent_start", "agent_stop",
-           "drop_good", "stock_to", "pin_shift", "hide_openings", "unhide_openings"]
+           "drop_good", "stock_to", "pin_shift", "hide_openings", "unhide_openings", "fresh_day"]
 
 TZ = "Europe/Warsaw"  # часовой пояс клуба; сессия psql может жить в UTC — время клуба только через AT TIME ZONE
 GUEST_PASS, STAFF_PASS = "Guest12345", "Admin12345"
@@ -158,6 +158,18 @@ def _report_hour():
 def club_day(offset=0):
     """Клубные сутки 'ГГГГ-ММ-ДД' (от report_hour по часам клуба), как их считает сервер; offset — ±дни."""
     return sql(f"SELECT (((now() AT TIME ZONE '{TZ}') - interval '{_report_hour()} hours')::date + {offset})::text")
+
+def fresh_day(minutes):
+    """Сессия проверки сдвинута на minutes назад, а сегодняшние клубные сутки идут меньше (ночной прогон, первые минуты
+    после границы) — она легла бы во вчерашние, и «сегодня» её бы не увидело. Тогда граница суток на время — на два
+    часа раньше «сейчас» (set_settings: в конце — как была), иначе ничего. Звать до первого club_day() и «сегодня»
+    проверки (З19-и9)."""
+    start = at_club(club_day(0), f"{_report_hour():02d}:00")
+    into = int(sql(f"SELECT floor(extract(epoch FROM now() - {start}) / 60)::int"))
+    if into < minutes + 10:
+        h = (int(sql(f"SELECT extract(hour FROM now() AT TIME ZONE '{TZ}')::int")) - 2) % 24
+        set_settings(report_hour=h)
+        print(f"граница суток на время — {h:02d}:00: сутки идут {into} мин, а сессия проверки — {minutes} мин назад")
 
 def at_club(day, hhmm):
     """SQL-выражение timestamptz «день day, чч:мм по часам клуба» — для сдвига created_at и т. п."""

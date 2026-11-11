@@ -31,6 +31,7 @@ def owed_pln_db():
         + COALESCE((SELECT SUM(coin_minutes) FROM users), 0) * (SELECT base_rate_pln FROM clubs ORDER BY created_at LIMIT 1) / 60.0, 2)"""))
 
 section("выдача 60 минут в Standard")
+fresh_day(30)  # З19-и9: ночью игра «30 минут назад» и её монеты — ещё в сегодняшних сутках
 _, b = report()
 s, r = api("POST", f"/admin/users/{g}/redeem", {"zone_id": STD, "minutes": 60}, "admin1")
 check("выдача → 200: 400 монет, 20 zł", s == 200 and r.get("coins") == 400 and near(r.get("value_pln", 0), 20), f"{s} {J(r)}")

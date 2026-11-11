@@ -8,6 +8,7 @@
 import time
 from _z import *
 
+fresh_day(30)  # З19-и9: ночью сессия «30 минут назад» — ещё в сегодняшних сутках
 TODAY = club_day()
 
 def played(day):
