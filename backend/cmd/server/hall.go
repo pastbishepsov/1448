@@ -33,10 +33,11 @@ func cellBusy(clubID, excludeID string, x, y int) bool {
 	return n > 0
 }
 
-// nameTaken — занято ли имя ПК в клубе.
+// nameTaken — занято ли имя ПК в клубе: без пробелов по краям и без учёта регистра (З19-и2, №40: «PC-01 » и «pc-01»
+// при живом PC-01 заводились как разные машины; то же держит индекс миграции 094).
 func nameTaken(clubID, excludeID, name string) bool {
 	var n int64
-	q := db.Model(&models.Computer{}).Where("club_id = ? AND name = ?", clubID, name)
+	q := db.Model(&models.Computer{}).Where("club_id = ? AND lower(name) = lower(?)", clubID, strings.TrimSpace(name))
 	if excludeID != "" {
 		q = q.Where("id <> ?", excludeID)
 	}
@@ -67,10 +68,11 @@ type computerCreateRequest struct {
 // POST /admin/computers — новый ПК (owner). Клуб — первый активный (пилот).
 func handleAdminCreateComputer(c *gin.Context) {
 	var req computerCreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Name) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужно имя ПК (1–32 символа)"})
 		return
 	}
+	req.Name = strings.TrimSpace(req.Name) // З19-и2: «PC-01 » — это PC-01
 	var club models.Club
 	if err := db.First(&club, "is_active = ?", true).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "club_not_found", "message": "Активный клуб не найден"})
@@ -112,6 +114,10 @@ func handleAdminCreateComputer(c *gin.Context) {
 		pc.ZoneID, pc.Zone = &z.ID, z.Name
 	}
 	if err := db.Create(&pc).Error; err != nil {
+		if isDuplicate(err) { // З19-и2: одновременно завели то же имя — индекс 094
+			c.JSON(http.StatusConflict, gin.H{"code": "name_taken", "message": "ПК с таким именем уже есть"})
+			return
+		}
 		respondDBError(c, err)
 		return
 	}
@@ -157,6 +163,14 @@ func handleAdminUpdateComputer(c *gin.Context) {
 	}
 	updates := map[string]any{}
 	changes, zoneChange := "", ""
+	if req.Name != nil { // З19-и2: без пробелов по краям; пустое — не имя
+		n := strings.TrimSpace(*req.Name)
+		if n == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "Нужно имя ПК (1–32 символа)"})
+			return
+		}
+		req.Name = &n
+	}
 	if req.Name != nil && *req.Name != pc.Name {
 		if nameTaken(pc.ClubID.String(), pc.ID.String(), *req.Name) {
 			c.JSON(http.StatusConflict, gin.H{"code": "name_taken", "message": "ПК с таким именем уже есть"})
@@ -235,6 +249,10 @@ func handleAdminUpdateComputer(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&pc).Updates(updates).Error; err != nil {
+		if isDuplicate(err) { // З19-и2: индекс 094
+			c.JSON(http.StatusConflict, gin.H{"code": "name_taken", "message": "ПК с таким именем уже есть"})
+			return
+		}
 		respondDBError(c, err)
 		return
 	}
