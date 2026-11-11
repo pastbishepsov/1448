@@ -99,7 +99,7 @@ type period struct {
 	From    time.Time // начало окна: FromDay + report_hour
 	To      time.Time // конец окна, исключительно
 	Preset  string
-	Until   time.Time // З19-и1: прошлый период обрезан «до того же часа» (у «сегодня»); нулевое — не обрезан
+	Until   time.Time // З19-и1, З19-и8: прошлый период обрезан «до того же момента»; нулевое — не обрезан
 }
 
 func (p period) out() gin.H {
@@ -109,7 +109,7 @@ func (p period) out() gin.H {
 		"days":   p.Days,
 		"preset": p.Preset,
 	}
-	if !p.Until.IsZero() { // З19-и1: «вчера до 17:20» — у «сегодня»
+	if !p.Until.IsZero() { // З19-и1: «вчера до 17:20»; З19-и8 — и «1 окт — 10 окт до 10:15»
 		out["until"] = p.Until.Format("15:04")
 	}
 	return out
@@ -244,6 +244,30 @@ func cutPrevAt(prev period, at time.Time) period {
 	return prev
 }
 
+// prevSameMoment — момент прошлого периода, соответствующий «сейчас» (З19-и8, решение основателя 10.11): период, который
+// кончается сегодняшними (неполными) сутками, сравнивается с прошлым до того же момента — «сегодня» со «вчера до того же
+// часа» (З19-и1), «7 дней», «30 дней», «90 дней» и свои даты по сегодня — с прошлым окном до того же часа его последнего
+// дня, «Этот месяц» — с прошлым до того же числа и часа, год — до того же дня и часа. Сдвиг — целыми днями по стенным
+// часам (перевод часов не сдвигает час). Нулевое время — не обрезать: период кончился раньше сегодняшних суток или в
+// прошлом нет такого дня (31 марта против февраля — тогда на среднедневных, deltaScale). Чистая функция (тест).
+func prevSameMoment(p, prev period, reportHour int, now time.Time) time.Time {
+	cur := clubDayOf(now, reportHour)
+	if !p.ToDay.Equal(cur) {
+		return time.Time{}
+	}
+	corr := prev.ToDay // примыкающее окно той же длины: сегодня ↔ его последний день
+	switch p.Preset {
+	case "month":
+		corr = prev.FromDay.AddDate(0, 0, cur.Day()-1)
+	case "year":
+		corr = cur.AddDate(-1, 0, 0)
+	}
+	if corr.Before(prev.FromDay) || corr.After(prev.ToDay) {
+		return time.Time{}
+	}
+	return now.AddDate(0, 0, -(daysBetween(corr, cur) - 1))
+}
+
 // deltaScale — периоды разной длины сравниваются на среднедневных (З19-и1, №40): во сколько раз текущий длиннее
 // прошлого — сумма прошлого периода умножается на это, прежде чем считать рост. Октябрь (31 день) против сентября (30),
 // «этот месяц» 31 марта против обрезанного февраля; одинаковой длины — 1. Средние и доли (средний чек, занятость, средняя
@@ -300,9 +324,8 @@ func periodFromQuery(c *gin.Context) (period, period, int, bool) {
 		return period{}, period{}, 0, false
 	}
 	prev := prevPeriod(p, reportHour)
-	if p.Preset == "today" { // З19-и1: вчера до того же часа
-		prev = cutPrevAt(prev, now.AddDate(0, 0, -1))
-	}
+	// З19-и1: «сегодня» — со «вчера до того же часа»; З19-и8 — так же любой период по сегодняшние сутки
+	prev = cutPrevAt(prev, prevSameMoment(p, prev, reportHour, now))
 	return p, prev, reportHour, true
 }
 

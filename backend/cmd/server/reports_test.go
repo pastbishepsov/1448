@@ -485,3 +485,52 @@ func TestDeltaScale(t *testing.T) {
 		t.Errorf("пустой прошлый: %v", sc)
 	}
 }
+
+// З19-и8 (решение основателя 10.11): «до того же момента» — у любого периода по сегодняшние сутки.
+func TestPrevSameMoment(t *testing.T) {
+	loc := time.UTC
+	now := time.Date(2026, 11, 10, 10, 15, 0, 0, loc)
+	at := func(y int, m time.Month, d, h, mi int) time.Time { return time.Date(y, m, d, h, mi, 0, 0, loc) }
+	cases := []struct {
+		name string
+		p    period
+		rh   int
+		now  time.Time
+		want time.Time // нулевое — не обрезать
+	}{
+		{"сегодня — вчера до 10:15", makePeriod(day(2026, 11, 10), day(2026, 11, 10), 0, "today"), 0, now, at(2026, 11, 9, 10, 15)},
+		{"7 дней — прошлые 7 до 10:15 их последнего дня", makePeriod(day(2026, 11, 4), day(2026, 11, 10), 0, "d7"), 0, now,
+			at(2026, 11, 3, 10, 15)},
+		{"30 дней", makePeriod(day(2026, 10, 12), day(2026, 11, 10), 0, "d30"), 0, now, at(2026, 10, 11, 10, 15)},
+		{"этот месяц — 1–10 октября до 10:15", makePeriod(day(2026, 11, 1), day(2026, 11, 10), 0, "month"), 0, now,
+			at(2026, 10, 10, 10, 15)},
+		{"год — до 10 ноября 2025, 10:15", makePeriod(day(2026, 1, 1), day(2026, 11, 10), 0, "year"), 0, now,
+			at(2025, 11, 10, 10, 15)},
+		{"свои даты по сегодня — как примыкающее окно", makePeriod(day(2026, 11, 8), day(2026, 11, 10), 0, "custom"), 0, now,
+			at(2026, 11, 7, 10, 15)},
+		{"свои даты по вчера — полные сутки", makePeriod(day(2026, 11, 8), day(2026, 11, 9), 0, "custom"), 0, now, time.Time{}},
+		{"вчера — целиком", makePeriod(day(2026, 11, 9), day(2026, 11, 9), 0, "yesterday"), 0, now, time.Time{}},
+		{"прошлый месяц — целиком", makePeriod(day(2026, 10, 1), day(2026, 10, 31), 0, "prev_month"), 0, now, time.Time{}},
+		{"31 марта — в феврале такого дня нет: на среднедневных", makePeriod(day(2026, 3, 1), day(2026, 3, 31), 0, "month"), 0,
+			at(2026, 3, 31, 12, 0), time.Time{}},
+		{"28 марта — февраль до 28-го, 12:00", makePeriod(day(2026, 3, 1), day(2026, 3, 28), 0, "month"), 0, at(2026, 3, 28, 12, 0),
+			at(2026, 2, 28, 12, 0)},
+		{"год в високосный: 10 марта 2028 — 10 марта 2027", makePeriod(day(2028, 1, 1), day(2028, 3, 10), 0, "year"), 0,
+			at(2028, 3, 10, 9, 0), at(2027, 3, 10, 9, 0)},
+		{"граница 8, 03:00 ночи — сутки 9 ноября, прошлые 7 — до 3 ноября, 03:00 следующего утра",
+			makePeriod(day(2026, 11, 3), day(2026, 11, 9), 8, "d7"), 8, at(2026, 11, 10, 3, 0), at(2026, 11, 3, 3, 0)},
+	}
+	for _, c := range cases {
+		prev := prevPeriod(c.p, c.rh)
+		got := prevSameMoment(c.p, prev, c.rh, c.now)
+		if !got.Equal(c.want) {
+			t.Errorf("%s: %v, ждали %v (прошлый %v — %v)", c.name, got, c.want, prev.FromDay.Format("2006-01-02"),
+				prev.ToDay.Format("2006-01-02"))
+			continue
+		}
+		cut := cutPrevAt(prev, got)
+		if c.want.IsZero() != cut.Until.IsZero() || (!c.want.IsZero() && (!cut.To.Equal(c.want) || cut.Days != prev.Days)) {
+			t.Errorf("%s: обрезка %+v", c.name, cut)
+		}
+	}
+}
