@@ -39,6 +39,10 @@ const (
 	// sens_apply на ПК гостя; агент отвечает sens_result → уведомление гостю.
 	MsgSensApply  MessageType = "sens_apply"  // сервер → shell: {dpi, games, rescaled_from?} — подставить в конфиги игр
 	MsgSensResult MessageType = "sens_result" // shell → сервер: {applied, skipped, dry_run, running}
+	// З20-и1 (OWNER.md, №57 «Где не установлено»): снимок доступности приложений каталога на этом ПК — как у
+	// GET /apps-status агента; шлёт агент с З20-и2 (при изменении и раз в 10 минут). Сервер без этого типа его
+	// пропускает (строка в лог, сокет жив) — порядок выкатки: сервер, потом агенты.
+	MsgAppsStatus MessageType = "apps_status" // shell → сервер: {apps: {id: {available, reason}}}
 	// force_unlock удалён (Б7-и3): сервер его никогда не слал — мёртвый тип.
 )
 
@@ -146,6 +150,9 @@ type Hub struct {
 	// OnSensResult — агент применил сенсу по sens_apply (С2-и4): payload
 	// {applied, skipped, dry_run, running} → уведомление гостю за этим ПК.
 	OnSensResult func(computerID string, payload json.RawMessage)
+	// OnAppsStatus — снимок доступности приложений от агента (З20-и1): payload как у его GET /apps-status →
+	// pc_app_status. Вызывается из горутины чтения этого ПК — цикл хаба базу не ждёт.
+	OnAppsStatus func(computerID string, payload json.RawMessage)
 }
 
 func NewHub() *Hub {
@@ -413,6 +420,10 @@ func (h *Hub) handleMessage(c *Client, msg Message) {
 	case MsgSensResult: // С2-и4: ответ агента на sens_apply
 		if h.OnSensResult != nil {
 			h.OnSensResult(c.ComputerID, msg.Payload)
+		}
+	case MsgAppsStatus: // З20-и1: снимок доступности приложений → pc_app_status
+		if h.OnAppsStatus != nil {
+			h.OnAppsStatus(c.ComputerID, msg.Payload)
 		}
 	default:
 		log.Printf("Неизвестный тип сообщения: %s от computer=%s", msg.Type, c.ComputerID)

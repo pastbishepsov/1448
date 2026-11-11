@@ -111,6 +111,7 @@ func main() {
 	hub.OnShellOffline = agentLostOpen     // К8-и2: обрыв агента во время сессии → автозапись в журнал проблем
 	hub.OnShellOnline = onShellOnline      // К8-и2: агент вернулся → длительность обрыва; Ж4: посадка ждала шелл → окно [Готов!]
 	hub.OnSensResult = sensResultFromShell // С2-и4: агент применил сенсу → уведомление гостю
+	hub.OnAppsStatus = appsStatusFromShell // З20-и1: снимок доступности приложений агента → pc_app_status
 	go hub.Run()
 
 	// ── Роуты ───────────────────────────────────────────────────────────────

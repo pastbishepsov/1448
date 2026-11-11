@@ -373,15 +373,16 @@ def audit(who="boss", **params):
 
 _agents = {}
 
-def agent_start(pc, name=None):
-    """Мок агента ПК на /ws/shell (mock_agent.js); остановится сам в конце."""
+def agent_start(pc, name=None, send=None):
+    """Мок агента ПК на /ws/shell (mock_agent.js); остановится сам в конце. send — файл с сообщением агента (JSON
+    целиком): мок шлёт его после подключения и при каждой смене файла (З20-и1)."""
     name = name or f"z_{pc}"
     log = agent_log(name)
     try:
         open(log, "w").close()
     except OSError:
         pass
-    p = subprocess.Popen(["node", MOCK_AGENT, pcs()[pc]["id"], log], stdout=subprocess.DEVNULL,
+    p = subprocess.Popen(["node", MOCK_AGENT, pcs()[pc]["id"], log] + ([send] if send else []), stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
     if not _agents:
         at_end(lambda: [agent_stop(n) for n in list(_agents)])

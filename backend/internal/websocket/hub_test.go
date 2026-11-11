@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -276,5 +277,41 @@ func TestAdminBroadcastToOnlyListed(t *testing.T) {
 	}
 	if got := read(admin); !strings.Contains(got, `"public"`) {
 		t.Fatalf("админ получил %s — событие не из его списка", got)
+	}
+}
+
+// З20-и1 (№57): apps_status агента доходит до OnAppsStatus как есть; незнакомый тип и битый JSON цикл чтения
+// пропускает — следующее сообщение того же сокета обрабатывается, агент остаётся на связи (порядок выкатки: сервер,
+// потом агенты; старый сервер с новым агентом только пишет строку в лог).
+func TestAppsStatusReachesCallbackUnknownSkipped(t *testing.T) {
+	h := NewHub()
+	go h.Run()
+	got := make(chan string, 4)
+	h.OnAppsStatus = func(computerID string, payload json.RawMessage) { got <- computerID + " " + string(payload) }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = h.ServeShell(w, r, "pc-z20", "club-1")
+	}))
+	defer srv.Close()
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/", nil)
+	if err != nil {
+		t.Fatalf("сокет агента: %v", err)
+	}
+	defer c.Close()
+	for _, m := range []string{`{"type": "z20_unknown", "payload": {"x": 1}}`, `не JSON`,
+		`{"type": "apps_status", "payload": {"apps": {"cs2": {"available": true}}}}`} {
+		if err := c.WriteMessage(websocket.TextMessage, []byte(m)); err != nil {
+			t.Fatalf("запись %s: %v", m, err)
+		}
+	}
+	select {
+	case s := <-got:
+		if s != `pc-z20 {"apps": {"cs2": {"available": true}}}` {
+			t.Fatalf("колбэк получил %q", s)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("apps_status после незнакомого типа и битого JSON не дошёл до колбэка")
+	}
+	if !h.IsConnected("pc-z20") {
+		t.Fatal("после незнакомого типа агент отключён")
 	}
 }
