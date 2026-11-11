@@ -994,6 +994,11 @@
           <button class="btn ghost mini ownerOnly hidden" onclick="openCatalogImport()"><span data-ic="apps"></span>Импорт JSON</button>
           <button class="btn ghost mini ownerOnly hidden" onclick="exportCatalog()"><span data-ic="save"></span>Экспорт</button>
           <button class="btn ghost mini ownerOnly hidden" onclick="openGamesRoot()"><span data-ic="wrench"></span>Корень игр</button>
+          <!-- З20-и3 (№57): где приложение не запустится — по снимкам агентов ПК -->
+          <div class="segs" id="catFilter" title="По снимкам агентов ПК: где приложение не запустится">
+            <button class="on" data-f="" onclick="catFilterSet('',this)">Все</button>
+            <button data-f="bad" onclick="catFilterSet('bad',this)">Проблемные</button>
+          </div>
           <span class="muted" id="catHint">Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)</span>
         </div>
         <div class="tablewrap" id="catalogTable"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -2673,6 +2678,17 @@ function openPCDrawer(id){
   if (pc) palPush({t:'pc', id:id, name:pc.name}); // Б9-и3: недавнее
   renderPCDrawer(id);
 }
+/* З20-и3 (№57): что на этом ПК не запустится — по последнему снимку его агента */
+const APP_OFF_WHY = {target_missing: 'файла нет', path_unreachable: 'путь недостижим', no_target: 'в каталоге нет пути'};
+function appsOffHtml(pc){
+  if (!pc.apps_at) return '';
+  const off = pc.apps_off || [], at = fmtTime(pc.apps_at);
+  return off.length
+    ? `<div class="dsub">Не установлено здесь</div><div id="pcAppsOff">${off.map(a => `<b>${esc(a.name)}</b> — ${
+        esc(APP_OFF_WHY[a.reason] || a.reason || 'не запустится')}`).join('<br>')}</div>
+      <div class="muted" style="margin-top:4px">по снимку агента ${at}</div>`
+    : `<div class="muted" id="pcAppsOff" style="margin-top:8px">Всё из каталога запустится — по снимку агента ${at}</div>`;
+}
 function renderPCDrawer(id){
   const pc = hallData.find(p => p.id === id);
   if (!pc){ drawerPCId = null; closeDrawer(); return; }
@@ -2683,7 +2699,7 @@ function renderPCDrawer(id){
     <tr><td class="muted">Shell</td><td>${pc.shell_online
       ? '<span class="dot" style="background:var(--green)"></span>online'
       : '<span class="dot" style="background:var(--card2)"></span><span class="muted">offline</span>'}</td></tr>
-  </table>`;
+  </table>` + appsOffHtml(pc); // З20-и3
   if (pc.session){
     const ss = pc.session;
     body += `<div class="dsub">Сессия</div>
@@ -4137,7 +4153,11 @@ async function renderCatalogTab(){
     const d = await api('/admin/catalog');
     catApps = d.apps || [];
     catGamesRoot = d.games_root || '';
+    catInstall = d.install || {}; // З20-и3: где не установлено
   }catch(e){ toast('⚠ ' + e.message); return; }
+  const bad = catApps.filter(a => instBad(a.id)), shown = catFilter === 'bad' ? bad : catApps; // З20-и3
+  const fb = document.querySelector('#catFilter button[data-f="bad"]');
+  if (fb) fb.textContent = 'Проблемные' + (bad.length ? ' · ' + bad.length : '');
   // Б0-и3: admin — тумблер и порядок; формы правки/удаления — owner
   const needRoot = !catGamesRoot && catApps.some(a => (a.target||'').includes('{GAMES}'));
   const hint = document.getElementById('catHint');
@@ -4146,17 +4166,19 @@ async function renderCatalogTab(){
                 : (catGamesRoot ? '{GAMES} → ' + catGamesRoot + '. ' : ''))
     + 'Изменения видны на гостевых экранах при следующей загрузке (агент подтянет за ≤5 мин)';
   const cat = {game:'игра', platform:'платформа', app:'приложение', system:'система'};
-  setHTML('catalogTable', catApps.length === 0
+  setHTML('catalogTable', catFilter === 'bad' && !shown.length && catApps.length
+    ? '<div class="empty"><span data-ic="apps"></span>Проблемных нет — по снимкам агентов всё запустится</div>'
+    : catApps.length === 0
     ? (isOwner()
       ? `<div class="empty"><span data-ic="apps"></span>Каталог пуст<br>
          <button class="btn mini" onclick="editApp('')"><span data-ic="plus"></span>Добавить приложение</button></div>`
       : '<div class="empty"><span data-ic="apps"></span>Каталог пуст — наполняет владелец</div>')
     : `
   <table><tr><th>#</th><th>id</th><th>Название</th><th>Категория</th><th>Запуск (target)</th><th>Вкл</th><th></th></tr>
-  ${catApps.map(a => `<tr style="${a.enabled?'':'opacity:.45'}${isOwner()?';cursor:pointer':''}"${isOwner()?` onclick="editApp('${a.id}')"`:''}>
+  ${shown.map(a => `<tr style="${a.enabled?'':'opacity:.45'}${isOwner()?';cursor:pointer':''}"${isOwner()?` onclick="editApp('${a.id}')"`:''}>
     <td class="muted">${a.sort}</td>
     <td><b>${esc(a.id)}</b></td>
-    <td>${a.cover ? `<img src="${esc(coverSrc(a.cover))}" alt="" loading="lazy" style="width:22px; height:33px; object-fit:cover; border-radius:4px; vertical-align:-11px; margin-right:7px">` : ''}${a.tag?'['+esc(a.tag)+'] ':''}${esc(a.name)}</td>
+    <td>${a.cover ? `<img src="${esc(coverSrc(a.cover))}" alt="" loading="lazy" style="width:22px; height:33px; object-fit:cover; border-radius:4px; vertical-align:-11px; margin-right:7px">` : ''}${a.tag?'['+esc(a.tag)+'] ':''}${esc(a.name)}${instBadge(a.id)}</td>
     <td>${cat[a.category]||a.category}</td>
     <td class="muted" style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${esc(catTargetHint(a.target))}">${esc(a.target||'—')}</td>
     <td><span class="switch ${a.enabled?'on':''}" onclick="event.stopPropagation(); toggleApp('${a.id}')" title="${a.enabled?'Выключить':'Включить'}"><span class="knob"></span></span></td>
@@ -4169,6 +4191,30 @@ async function renderCatalogTab(){
   </tr>`).join('')}</table>`);
 }
 
+/* З20-и3 (№57 «Где не установлено»): по последним снимкам агентов ПК (агент шлёт при изменении и не реже раза в 10
+   минут) — у записи бейдж «нет на PC-03, PC-07» / «путь недостижим на всех (5)», фильтр «Проблемные»; «checking» (агент
+   ещё не проверял) не в счёт */
+let catInstall = {}, catFilter = '';
+const instBad = id => { const i = catInstall[id]; return !!i && i.missing.length + i.unreachable.length > 0; };
+function instText(i){
+  const pcs = (list, what) => list.length <= 3 ? what + ' на ' + list.join(', ') : `${what} на ${list.length} ПК`;
+  if (i.unreachable.length === i.reported) return `путь недостижим на всех (${i.reported})`;
+  if (i.missing.length === i.reported) return `нет ни на одном ПК (${i.reported})`;
+  return [i.missing.length ? pcs(i.missing, 'нет') : '', i.unreachable.length ? pcs(i.unreachable, 'путь недостижим') : '']
+    .filter(Boolean).join(' · ');
+}
+function instBadge(id){
+  if (!instBad(id)) return '';
+  const i = catInstall[id];
+  const title = [i.missing.length ? 'Файла нет: ' + i.missing.join(', ') : '', i.unreachable.length ? 'Путь недостижим: '
+    + i.unreachable.join(', ') : '', `По снимкам агентов: ${i.reported} ПК`].filter(Boolean).join('\n');
+  return ` <span class="st maintenance instbad" title="${esc(title)}">⚠ ${esc(instText(i))}</span>`;
+}
+function catFilterSet(f, btn){
+  catFilter = f;
+  document.querySelectorAll('#catFilter button').forEach(b => b.classList.toggle('on', b === btn));
+  renderCatalogTab();
+}
 /* порядок ↑↓: обмен sort с соседом внутри категории.
    Б0-и3: через /catalog/:id/sort — доступно admin'у, upsert больше не нужен */
 function setAppSort(id, sort){

@@ -685,6 +685,7 @@ func handleAdminComputers(c *gin.Context) {
 	}
 
 	now := time.Now()
+	appsOff, appsAt := pcAppsOff() // З20-и3 (№57): что на ПК не запустится — по последнему снимку его агента
 	out := make([]gin.H, 0, len(computers))
 	for _, pc := range computers {
 		row := gin.H{
@@ -698,6 +699,10 @@ func handleAdminComputers(c *gin.Context) {
 			"pos_x": pc.PosX, "pos_y": pc.PosY, // схема зала (спринт А8)
 			"mac":  pc.MAC,                     // WoL (Б8, редактор зала)
 			"shell_online": hub.IsConnected(pc.ID.String()),
+		}
+		if t, ok := appsAt[pc.ID.String()]; ok { // З20-и3: шторка ПК — «Не установлено здесь»
+			row["apps_at"] = t
+			row["apps_off"] = append([]appOff{}, appsOff[pc.ID.String()]...)
 		}
 		// Е1-и5: придержан под регистрацию — в зале это отдельная пометка,
 		// а не «занят»: машина свободна, просто её не надо перехватывать.

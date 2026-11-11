@@ -4,7 +4,8 @@ package main
 // тип apps_status, payload как у его GET /apps-status: {"apps": {"cs2": {"available": true}, "gta5": {"available":
 // false, "reason": "path_unreachable"}}}; остальное (running, kind, checked_at) серверу не нужно. Сервер хранит
 // последний снимок по каждому ПК (pc_app_status, миграция 096): новый заменяет прежний целиком, приложения не из
-// каталога пропускаются. Битый снимок — строка в лог, прежний остаётся. Показывать — З20-и3.
+// каталога пропускаются. Битый снимок — строка в лог, прежний остаётся. Показывать — З20-и3 (ниже): каталог — где
+// приложение не запустится, шторка ПК — что не запустится на нём.
 
 import (
 	"encoding/json"
@@ -136,4 +137,103 @@ func appsStatusFromShell(computerID string, payload json.RawMessage) {
 	} else if skipped > 0 {
 		log.Printf("apps_status от computer=%s: не из каталога — %d, пропущены", computerID, skipped)
 	}
+}
+
+// ── З20-и3 (№57): «где не установлено» — каталогу и шторке ПК, по последним снимкам агентов ──────────────────────────
+
+// appInstall — где приложение каталога не запустится. Reported — сколько ПК прислали проверенный ответ («checking» —
+// агент ещё не проверял — не в счёт); Missing — ПК, где файла нет (target_missing, no_target); Unreachable — где путь
+// недостижим (path_unreachable: шара или том не отвечают). ПК — по имени, по порядку.
+type appInstall struct {
+	Reported    int      `json:"reported"`
+	Missing     []string `json:"missing"`
+	Unreachable []string `json:"unreachable"`
+}
+
+// appsInstallByApp — appInstall по id записи каталога; записей без снимков в карте нет.
+func appsInstallByApp(gdb *gorm.DB) (map[string]*appInstall, error) {
+	var rows []struct {
+		AppID     string
+		Name      string
+		Available bool
+		Reason    string
+	}
+	if err := gdb.Raw(`SELECT s.app_id, c.name, s.available, s.reason FROM pc_app_status s
+		JOIN computers c ON c.id = s.computer_id ORDER BY c.name`).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := map[string]*appInstall{}
+	for _, r := range rows {
+		if r.Available && r.Reason == "checking" {
+			continue
+		}
+		in := out[r.AppID]
+		if in == nil {
+			in = &appInstall{Missing: []string{}, Unreachable: []string{}}
+			out[r.AppID] = in
+		}
+		in.Reported++
+		switch {
+		case r.Available:
+		case r.Reason == "path_unreachable":
+			in.Unreachable = append(in.Unreachable, r.Name)
+		default:
+			in.Missing = append(in.Missing, r.Name)
+		}
+	}
+	return out, nil
+}
+
+// appOff — приложение, которое на этом ПК не запустится (шторка ПК).
+type appOff struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+// appsOffByPC — по ПК: что у него не запустится и когда пришёл его последний снимок (apps_at). ПК без снимков в картах
+// нет.
+func appsOffByPC(gdb *gorm.DB) (off map[string][]appOff, at map[string]time.Time, err error) {
+	var rows []struct {
+		ComputerID string
+		AppID      string
+		Name       string
+		Available  bool
+		Reason     string
+		ReportedAt time.Time
+	}
+	if err := gdb.Raw(`SELECT s.computer_id::text AS computer_id, s.app_id, a.name, s.available, s.reason, s.reported_at
+		FROM pc_app_status s JOIN catalog_apps a ON a.id = s.app_id ORDER BY a.name, s.app_id`).Scan(&rows).Error; err != nil {
+		return nil, nil, err
+	}
+	off, at = map[string][]appOff{}, map[string]time.Time{}
+	for _, r := range rows {
+		if r.ReportedAt.After(at[r.ComputerID]) {
+			at[r.ComputerID] = r.ReportedAt
+		}
+		if !r.Available {
+			off[r.ComputerID] = append(off[r.ComputerID], appOff{ID: r.AppID, Name: r.Name, Reason: r.Reason})
+		}
+	}
+	return off, at, nil
+}
+
+// catalogInstall — appsInstallByApp для GET /admin/catalog; база не ответила — строка в лог и пустая карта.
+func catalogInstall() map[string]*appInstall {
+	m, err := appsInstallByApp(db)
+	if err != nil {
+		log.Printf("каталог: снимки агентов не прочитались: %v", err)
+		return map[string]*appInstall{}
+	}
+	return m
+}
+
+// pcAppsOff — appsOffByPC для GET /admin/computers; база не ответила — строка в лог и пустые карты.
+func pcAppsOff() (map[string][]appOff, map[string]time.Time) {
+	off, at, err := appsOffByPC(db)
+	if err != nil {
+		log.Printf("ПК: снимки агентов не прочитались: %v", err)
+		return map[string][]appOff{}, map[string]time.Time{}
+	}
+	return off, at
 }

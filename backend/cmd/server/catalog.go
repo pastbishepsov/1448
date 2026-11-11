@@ -382,7 +382,8 @@ func handleAdminCatalog(c *gin.Context) {
 	for i := range apps {
 		decorateCatalogApp(&apps[i], root, false)
 	}
-	c.JSON(http.StatusOK, gin.H{"count": len(apps), "apps": apps, "games_root": root})
+	// З20-и3 (№57): install — где запись не запустится, по последним снимкам агентов ПК (apps_status.go)
+	c.JSON(http.StatusOK, gin.H{"count": len(apps), "apps": apps, "games_root": root, "install": catalogInstall()})
 }
 
 // POST /admin/catalog — создать или обновить приложение (upsert по id).
