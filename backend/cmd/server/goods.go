@@ -100,7 +100,21 @@ func goodOut(g *models.Good) gin.H {
 		"description": g.Description, "photo": goodPhotoURL(g),
 		"vat_pct":      g.VatPct,      // З13-и1
 		"ryczalt_rate": g.RyczaltRate, // З13-и6
+		"barcode":      g.Barcode,     // З23-и5а: штрихкод, null — нет
 	}
+}
+
+// barcodeTakenFail — 409: штрихкод уже у другой позиции, с её именем (З23-и5а).
+func barcodeTakenFail(c *gin.Context, other string) {
+	c.JSON(http.StatusConflict, gin.H{"code": "barcode_taken", "good": other, "message": "Этот штрихкод уже у «" + other + "»"})
+}
+
+// dupCode — нарушение уникальности при записи позиции: штрихкод (гонка двух записей одного кода) или имя (З19-и2).
+func dupCode(err error) string {
+	if strings.Contains(err.Error(), "idx_goods_barcode") {
+		return "barcode_taken"
+	}
+	return "already_exists"
 }
 
 // GET /admin/goods — ценник целиком (staff): продавать и видеть остатки нужно
@@ -138,6 +152,8 @@ type goodRequest struct {
 	Active      *bool    `json:"active"`
 	VatPct      *int     `json:"vat_pct"`      // З13-и1: ставка VAT позиции; не прислана — 23 у новой, прежняя у старой
 	RyczaltRate *int     `json:"ryczalt_rate"` // З13-и6: ставка ryczałtu, десятые доли процента; не прислана — 3 % у новой
+	// З23-и5а: штрихкод — EAN-13 или EAN-8; "" убирает, не прислан — как был
+	Barcode *string `json:"barcode"`
 }
 
 const maxGoodDescription = 500 // символов; описание — пара строк на плитке, не статья
@@ -176,6 +192,18 @@ func handleAdminGoodCreate(c *gin.Context) {
 		goodFail(c, http.StatusConflict, "no_club")
 		return
 	}
+	barcode, bok := "", true // З23-и5а
+	if req.Barcode != nil {
+		barcode, bok = barcodeNorm(*req.Barcode)
+	}
+	if !bok {
+		goodFail(c, http.StatusBadRequest, "bad_barcode")
+		return
+	}
+	if other := barcodeOwner(club.ID, barcode, uuid.Nil); barcode != "" && other != "" {
+		barcodeTakenFail(c, other)
+		return
+	}
 	stock := 0
 	if req.Stock != nil {
 		stock = *req.Stock
@@ -201,7 +229,7 @@ func handleAdminGoodCreate(c *gin.Context) {
 	g := models.Good{ // остаток — движением «начальный остаток» ниже (З10-и1)
 		ClubID: club.ID, Name: strings.TrimSpace(req.Name),
 		Category: category, PricePLN: price,
-		LowStock: low, Active: true, VatPct: vat, RyczaltRate: ry,
+		LowStock: low, Active: true, VatPct: vat, RyczaltRate: ry, Barcode: barcodePtr(barcode),
 	}
 	if req.Description != nil {
 		d := strings.TrimSpace(*req.Description)
@@ -227,14 +255,18 @@ func handleAdminGoodCreate(c *gin.Context) {
 	})
 	if err != nil {
 		if isDuplicate(err) {
-			goodFail(c, http.StatusConflict, "already_exists")
+			goodFail(c, http.StatusConflict, dupCode(err))
 			return
 		}
 		goodFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
 	g.Stock = stock
-	logAdminAction(c, "good_create", nil, fmt.Sprintf("%s · %.2f zł · остаток %d", g.Name, g.PricePLN, g.Stock))
+	text := fmt.Sprintf("%s · %.2f zł · остаток %d", g.Name, g.PricePLN, g.Stock)
+	if barcode != "" {
+		text += " · штрихкод " + barcode
+	}
+	logAdminAction(c, "good_create", nil, text)
 	c.JSON(http.StatusCreated, gin.H{"good": goodOut(&g)})
 }
 
@@ -283,6 +315,22 @@ func handleAdminGoodUpdate(c *gin.Context) {
 		goodFail(c, http.StatusBadRequest, "bad_ryczalt")
 		return
 	}
+	barcode := "" // З23-и5а: "" — убрать; не прислан — как был
+	if g.Barcode != nil {
+		barcode = *g.Barcode
+	}
+	if req.Barcode != nil {
+		b, bok := barcodeNorm(*req.Barcode)
+		if !bok {
+			goodFail(c, http.StatusBadRequest, "bad_barcode")
+			return
+		}
+		barcode = b
+	}
+	if other := barcodeOwner(g.ClubID, barcode, g.ID); barcode != "" && other != "" {
+		barcodeTakenFail(c, other)
+		return
+	}
 	changes := []string{}
 	if name != g.Name {
 		changes = append(changes, g.Name+" → "+name)
@@ -303,6 +351,10 @@ func handleAdminGoodUpdate(c *gin.Context) {
 	}
 	if low != g.LowStock {
 		changes = append(changes, fmt.Sprintf("порог %d → %d", g.LowStock, low))
+	}
+	if ch := barcodeChange(g.Barcode, barcode); ch != "" {
+		changes = append(changes, ch)
+		g.Barcode = barcodePtr(barcode)
 	}
 	g.Name, g.Category, g.PricePLN, g.LowStock, g.VatPct, g.RyczaltRate = name, category, price, low, vat, ry
 	if req.Description != nil { // Г7: описание для плитки кухни
@@ -325,7 +377,7 @@ func handleAdminGoodUpdate(c *gin.Context) {
 	}
 	if err := db.Save(&g).Error; err != nil {
 		if isDuplicate(err) {
-			goodFail(c, http.StatusConflict, "already_exists")
+			goodFail(c, http.StatusConflict, dupCode(err))
 			return
 		}
 		goodFail(c, http.StatusInternalServerError, "db_error")

@@ -35,6 +35,9 @@ type Good struct {
 	// З13-и6 (миграция 084): ставка ryczałtu позиции в десятых долях процента (30 — 3 %, 85 — 8,5 %); 0 при
 	// создании — ставка по умолчанию (0 % ставкой не бывает).
 	RyczaltRate int `json:"ryczalt_rate" gorm:"column:ryczalt_rate;not null"`
+
+	// З23-и5а (миграция 099): штрихкод — EAN-13 или EAN-8 цифрами, уникален в клубе; nil — штрихкода нет.
+	Barcode *string `json:"barcode" gorm:"size:13"`
 }
 
 func (g *Good) BeforeCreate(tx *gorm.DB) error {
