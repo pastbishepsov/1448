@@ -293,6 +293,10 @@ func main() {
 		adm.POST("/user-packages/:id/void", handleAdminPackageVoid) // отмена ошибочной выдачи (Е2-и2)
 		adm.GET("/goods", handleAdminGoods)
 		adm.POST("/goods/:id/stock", handleAdminGoodStock)
+		// З23-и3: инвентаризация — провести акт пересчёта (разницы — корректировки с номером акта), акты, акт
+		adm.POST("/goods/inventory", handleInventoryCreate)
+		adm.GET("/goods/inventories", handleInventories)
+		adm.GET("/goods/inventories/:id", handleInventory)
 		adm.GET("/supplies", handleSupplies)                 // З10-и4: поставки — ждут цен
 		adm.POST("/supplies", handleSupplyCreate)            // приёмка строками «позиция × штук»
 		adm.PATCH("/supplies/:id", handleSupplyUpdate)       // правка штук, пока ждёт цен (с пометкой)
@@ -343,6 +347,8 @@ func main() {
 		own.PUT("/lots/:id/price", handleLotPrice)               // цена начального остатка и «нашлось»
 		own.PUT("/goods/:id/photo", handleAdminGoodPhotoPut)     // фото позиции (Г7)
 		own.DELETE("/goods/:id/photo", handleAdminGoodPhotoDelete)
+		// З23-и3: файл акта инвентаризации — движком выгрузки (З13)
+		own.GET("/goods/inventories/:id/export", handleInventoryExport)
 		own.GET("/reports/coins", handleReportCoins)  // В4-2: эмиссия и обязательства
 		own.GET("/coins/burn", handleCoinBurnPreview) // В4-3: кто потеряет монеты сейчас
 		own.POST("/coins/burn", handleCoinBurnRun)

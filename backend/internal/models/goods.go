@@ -121,6 +121,8 @@ type StockMove struct {
 	PricePLN float64 `json:"price_pln" gorm:"type:decimal(8,2);not null;default:0"`
 	// З10-и1 (миграция 075): заказ кухни, чьё это движение, — заказ и его отмена.
 	KitchenOrderID *uuid.UUID `json:"kitchen_order_id,omitempty" gorm:"column:kitchen_order_id;type:uuid"`
+	// З23-и3 (миграция 098): акт инвентаризации, чья это разница, — корректировка с номером акта.
+	InventoryID *uuid.UUID `json:"inventory_id,omitempty" gorm:"type:uuid"`
 }
 
 func (m *StockMove) BeforeCreate(tx *gorm.DB) error {

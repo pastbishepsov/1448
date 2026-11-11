@@ -667,7 +667,9 @@ func handleReportMoney(c *gin.Context) {
 			"cost_pln": models.PLNFromGrosz(lossCost), "no_cost_units": loss.Units - lossCosted, // З10-и7
 			// Ж1: отменённые депозиты за период и «отыграно по ошибочному депозиту»
 			"deposit_voids": depVoid.Cnt, "deposit_void_pln": math.Round(depVoid.Pln*100) / 100,
-			"unrecovered_pln": math.Round(depVoid.Unrecovered*100) / 100},
+			"unrecovered_pln": math.Round(depVoid.Unrecovered*100) / 100,
+			// З23-и3: «по инвентаризациям» — акты периода; их недостачи — корректировки, они уже в «Потерях» склада выше
+			"inventories": inventoryLossesIn(p.From, p.To)},
 		// К8 (Р4/Р7): компенсации за проблемы с ПК — рост обязательства клуба,
 		// не выручка и не выручка со знаком минус; отдельной строкой.
 		"incidents": incidentsReport(p.From, p.To),

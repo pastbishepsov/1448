@@ -516,6 +516,8 @@ type stockOp struct {
 	SupplyID *uuid.UUID
 	// З10-и4: правка приёмки — в эту партию: «пришло» и остаток меняются вместе.
 	Lot *uuid.UUID
+	// З23-и3: разница акта инвентаризации — движение с номером акта (stock_moves.inventory_id).
+	InventoryID *uuid.UUID
 }
 
 // stockMove — единственное место, где меняется остаток позиции (З10-и1):
@@ -548,7 +550,8 @@ func stockMove(tx *gorm.DB, op stockOp) error {
 		return gorm.ErrRecordNotFound // позиции нет
 	}
 	mv := models.StockMove{ClubID: op.ClubID, GoodID: op.GoodID, Delta: op.Delta, Reason: op.Reason,
-		Note: op.Note, SaleID: op.SaleID, KitchenOrderID: op.OrderID, CreatedBy: op.By, PricePLN: op.Price}
+		Note: op.Note, SaleID: op.SaleID, KitchenOrderID: op.OrderID, CreatedBy: op.By, PricePLN: op.Price,
+		InventoryID: op.InventoryID}
 	if err := tx.Create(&mv).Error; err != nil {
 		return err
 	}
