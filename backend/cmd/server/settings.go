@@ -129,6 +129,11 @@ var settingBounds = map[string][2]int64{
 	// З22-и4: напоминание о смене за N часов (0 — нет); «завтра никто не назначен» — с этого часа клуба (−1 — нет)
 	"shift_remind_hours": {0, 24},
 	"shift_nobody_hour":  {-1, 23},
+
+	// З22-и2: выключатели событийных алертов (1 — присылать)
+	"alert_forgot_on":      {0, 1},
+	"alert_void_denied_on": {0, 1},
+	"alert_low_stock_on":   {0, 1},
 }
 
 // settingDefaults — значение каждой числовой настройки, пока у неё нет строки
@@ -193,6 +198,10 @@ var settingDefaults = map[string]int64{
 
 	"shift_remind_hours": shiftRemindDef, // З22-и4
 	"shift_nobody_hour":  shiftNobodyDef,
+
+	"alert_forgot_on":      1, // З22-и2
+	"alert_void_denied_on": 1,
+	"alert_low_stock_on":   1,
 }
 
 // settingChoices — настройки, у которых не диапазон, а список (З13-и1): ставка пополнения — только из ставок VAT,

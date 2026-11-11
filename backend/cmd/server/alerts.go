@@ -31,6 +31,10 @@ var alertKinds = map[string]alertKind{
 	// З22-и4: напоминание о смене — сотруднику по нику, видят все; «завтра никто не назначен» — владельцу
 	"shift_soon":   {},
 	"shift_nobody": {OwnerOnly: true},
+	// З22-и2: событийные — сразу, раз на событие; у каждого свой выключатель (alerts_events.go)
+	"shift_forgot": {OwnerOnly: true, Setting: "alert_forgot_on"},
+	"void_denied":  {OwnerOnly: true, Setting: "alert_void_denied_on"},
+	"low_stock":    {Setting: "alert_low_stock_on"},
 }
 
 // alertsEnabled — алерты вида k присылаются: общий выключатель и, если есть, свой.

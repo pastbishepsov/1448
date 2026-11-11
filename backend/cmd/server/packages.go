@@ -708,6 +708,7 @@ func handleAdminPackageVoid(c *gin.Context) {
 	}
 	if ok, code := canVoidSale(c.GetString("user_role"), createdBy,
 		c.GetString("user_id"), up.CreatedAt, from, to); !ok {
+		alertVoidDenied(c, packageWhat(&up), "package/"+up.ID.String(), createdBy, up.CreatedAt, code) // З22-и2
 		c.JSON(http.StatusForbidden, gin.H{"code": code, "message": goodErrors[code]})
 		return
 	}

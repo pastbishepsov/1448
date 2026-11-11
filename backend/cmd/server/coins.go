@@ -245,6 +245,7 @@ func handleCoinRedeemVoid(c *gin.Context) {
 	}
 	if ok, code := canVoidSale(c.GetString("user_role"), createdBy,
 		c.GetString("user_id"), rec.CreatedAt, from, to); !ok {
+		alertVoidDenied(c, redeemWhat(&rec), "redeem/"+rec.ID.String(), createdBy, rec.CreatedAt, code) // З22-и2
 		c.JSON(http.StatusForbidden, gin.H{"code": code, "message": goodErrors[code]})
 		return
 	}

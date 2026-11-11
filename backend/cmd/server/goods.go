@@ -552,7 +552,21 @@ func stockMove(tx *gorm.DB, op stockOp) error {
 	if err := tx.Create(&mv).Error; err != nil {
 		return err
 	}
-	return lotsApply(tx, op, mv.ID) // З10-и3: из каких партий взяло, в какие положило
+	if err := lotsApply(tx, op, mv.ID); err != nil { // З10-и3: из каких партий взяло, в какие положило
+		return err
+	}
+	if op.Delta < 0 { // З22-и2: остаток дошёл до порога «заканчивается» — алерт, когда транзакция запишется
+		var g struct {
+			Stock, LowStock int
+			Active          bool
+		}
+		if tx.Model(&models.Good{}).Select("stock, low_stock, active").Where("id = ?", op.GoodID).Scan(&g).Error == nil &&
+			g.Active && lowStockCrossed(g.Stock, op.Delta, g.LowStock) {
+			goodID, moveID := op.GoodID, mv.ID
+			go safely("low_stock", func() { lowStockWatch(goodID, moveID) })
+		}
+	}
+	return nil
 }
 
 func noteSuffix(note string) string {
@@ -1067,6 +1081,7 @@ func saleVoidAllowed(c *gin.Context, sale *models.Sale) bool {
 	from, to, _, _ := staffDay(c, time.Now()) // З18-и4г: у админа — и его смена, если она началась раньше суток
 	at, by := saleVoidMoment(sale)
 	if ok, code := canVoidSale(c.GetString("user_role"), by, c.GetString("user_id"), at, from, to); !ok {
+		alertVoidDenied(c, saleWhat(sale), "sale/"+sale.ID.String(), by, at, code) // З22-и2: попытка — владельцу
 		goodFail(c, http.StatusForbidden, code)
 		return false
 	}

@@ -95,6 +95,7 @@ func handleAdminDepositVoid(c *gin.Context) {
 	}
 	if ok, code := canVoidSale(c.GetString("user_role"), createdBy,
 		c.GetString("user_id"), dep.CreatedAt, from, to); !ok {
+		alertVoidDenied(c, depositWhat(&dep), "deposit/"+dep.ID.String(), createdBy, dep.CreatedAt, code) // З22-и2
 		depositVoidFail(c, http.StatusForbidden, code)
 		return
 	}

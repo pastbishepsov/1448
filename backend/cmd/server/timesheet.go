@@ -200,6 +200,7 @@ func closeForgotten(w *models.WorkEntry) {
 		"ended_at": end, "minutes": workMinutes(w.StartedAt, end),
 		"auto_closed": true, "note": "не отметил уход", "updated_at": time.Now(),
 	})
+	alertForgot(w, end) // З22-и2: касса по ней не сдана — владельцу
 }
 
 // POST /admin/work/start — «пришёл» (staff, за себя).

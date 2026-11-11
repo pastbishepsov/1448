@@ -27,13 +27,15 @@ const was = z.sql("SELECT value FROM settings WHERE key = 'alerts_on'");
     && card.btn.includes('Прислать проверочный'), JSON.stringify(card));
   // З22-и3: пороги периодических алертов — в той же карточке, значения — как у сервера
   const srv = (await z.api('GET', '/admin/settings', undefined, 'boss')).data.settings || {};
-  const th = await boss.evaluate(() => ['set_alertdebt', 'set_alertvoid', 'set_alertrev', 'set_shiftremind', 'set_shiftnobody'].map(id => {
+  const th = await boss.evaluate(() => ['set_alertdebt', 'set_alertvoid', 'set_alertrev', 'set_shiftremind', 'set_shiftnobody',
+    'set_alertforgot', 'set_alertvoiddeny', 'set_alertlow'].map(id => {
     const e = document.getElementById(id);
     return e ? [e.closest('.setcard').querySelector('h4').textContent, e.value, document.querySelector(`label[for="${id}"]`).textContent] : null;
   }));
-  z.check('пороги в «Алертах»: долг, доля отмен, выручка ниже нормы, напоминание о смене и «завтра никто не назначен» — как у сервера',
+  z.check('пороги и выключатели в «Алертах»: долг, доля отмен, выручка, смены, события (З22-и2) — как у сервера',
     th.every(x => x && x[0] === 'Алерты') && th.map(x => x && +x[1]).join() === [srv.alert_debt_pln, srv.alert_void_share_pct,
-      srv.alert_revenue_low_pct, srv.shift_remind_hours, srv.shift_nobody_hour].join()
+      srv.alert_revenue_low_pct, srv.shift_remind_hours, srv.shift_nobody_hour, srv.alert_forgot_on, srv.alert_void_denied_on,
+      srv.alert_low_stock_on].join()
     && /^Гость должен клубу дольше суток/.test(th[0][2]), JSON.stringify({ th, srv: [srv.alert_debt_pln, srv.alert_void_share_pct, srv.alert_revenue_low_pct] }));
   if (!card) { // карточки нет (админка до З22-и1) — FAIL по каждой проверке, а не обрыв
     for (const n of ['проверочный: ушёл, второй — «уже уходил»', '«Молчать» — не уходит']) z.check(n + ': карточки «Алерты» нет', false);

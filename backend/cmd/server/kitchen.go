@@ -587,6 +587,7 @@ func handleAdminKitchenCancel(c *gin.Context) {
 			from, to, _, _ := staffDay(c, time.Now()) // З18-и4г
 			if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
 				c.GetString("user_id"), sale.CreatedAt, from, to); !ok {
+				alertVoidDenied(c, saleWhat(&sale), "sale/"+sale.ID.String(), sale.CreatedBy.String(), sale.CreatedAt, code) // З22-и2
 				c.JSON(http.StatusForbidden, gin.H{"code": code, "message": kitchenRefundErrors[code]})
 				return
 			}
