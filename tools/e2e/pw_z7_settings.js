@@ -28,11 +28,11 @@ const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лим�
   const where = id => (cards.find(c => c.ids.includes(id)) || {}).t;
   z.check('поля на своих местах: час суток — «Клубные сутки», кейсы админа — «Лимиты персонала», DPI — «Мышь и коврик», форма учёта (З13-и7), '
     + 'плательщик VAT, подарки в VAT и ставка ryczałtu времени — «Бухгалтерия»; окно [Готов!] (З18-и4) — «Сессия у ПК»; «Сутки клуба» '
-    + '(З18-и4б) — «Клубные сутки»; «Алерты в канал» (З22-и1) — «Алерты», 41 поле',
+    + '(З18-и4б) — «Клубные сутки»; «Алерты в канал» (З22-и1) и пороги (З22-и3) — «Алерты», 44 поля',
     where('set_rhour') === 'Клубные сутки и сегменты' && where('set_rmode') === 'Клубные сутки и сегменты' && where('set_casecap') === 'Лимиты персонала' && where('set_mousedpi') === 'Мышь и коврик'
     && where('set_accform') === 'Бухгалтерия' && where('set_vatpayer') === 'Бухгалтерия' && where('set_giftvat') === 'Бухгалтерия'
     && where('set_rytime') === 'Бухгалтерия' && where('set_readywait') === 'Сессия у ПК' && where('set_packwarn') === 'Сгорание пакетов'
-    && where('set_alerts') === 'Алерты' && cards.reduce((n, c) => n + c.ids.length, 0) === 41,
+    && where('set_alerts') === 'Алерты' && where('set_alertdebt') === 'Алерты' && cards.reduce((n, c) => n + c.ids.length, 0) === 44,
     JSON.stringify(cards.map(c => [c.t, c.ids.length])));
   await z.shot(page, 'z7_settings');
 

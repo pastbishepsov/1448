@@ -120,6 +120,11 @@ var settingBounds = map[string][2]int64{
 
 	// З22-и1 (№59): алерты в канал персонала — 1 присылать (по умолчанию), 0 молчать; выключатели видов — рядом
 	"alerts_on": {0, 1},
+
+	// З22-и3: пороги периодических алертов, 0 — вид выключен
+	"alert_debt_pln":        {0, 100000}, // долг гостя дольше суток — от N zł
+	"alert_void_share_pct":  {0, 100},    // доля отмен у админа за 7 дней — от N %
+	"alert_revenue_low_pct": {0, 100},    // выручка до этого часа ниже нормы — на N % и больше
 }
 
 // settingDefaults — значение каждой числовой настройки, пока у неё нет строки
@@ -177,6 +182,10 @@ var settingDefaults = map[string]int64{
 	"acc_ryczalt_time": models.RyczaltTimeDefault,
 
 	"alerts_on": 1, // З22-и1: алерты по умолчанию присылаются
+
+	"alert_debt_pln":        alertDebtDef, // З22-и3
+	"alert_void_share_pct":  alertVoidShareDef,
+	"alert_revenue_low_pct": alertRevenueLowDef,
 }
 
 // settingChoices — настройки, у которых не диапазон, а список (З13-и1): ставка пополнения — только из ставок VAT,

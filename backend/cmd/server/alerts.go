@@ -24,6 +24,10 @@ type alertKind struct {
 // alertKinds — все виды алертов.
 var alertKinds = map[string]alertKind{
 	"test": {OwnerOnly: true}, // проверочный — кнопкой из «Экономики»
+	// З22-и3: периодические — деньги и люди, владельцу; вид включает его порог (0 — выкл, alerts_periodic.go)
+	"debt":        {OwnerOnly: true},
+	"void_share":  {OwnerOnly: true},
+	"revenue_low": {OwnerOnly: true},
 }
 
 // alertsEnabled — алерты вида k присылаются: общий выключатель и, если есть, свой.
