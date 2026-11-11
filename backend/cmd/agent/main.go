@@ -401,6 +401,7 @@ func (a *agent) runWS() {
 
 		stop := make(chan struct{})
 		go a.heartbeat(stop)
+		go a.appsReport(stop) // З20-и2: снимок доступности приложений — серверу (appsreport.go)
 		for {
 			var msg wsMessage
 			if err := conn.ReadJSON(&msg); err != nil {
