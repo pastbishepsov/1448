@@ -62,7 +62,9 @@ const z = require('./_z');
 
   const boss = await z.openAdmin('boss');
   await z.nav(boss, 'stats');
-  await boss.evaluate(() => renderShift());
+  // З19-и7: сдача — в сводке дня своей записи табеля (ночью по графику — день начала ночной смены): листаем к нему
+  const coDay = z.sql("SELECT date FROM shift_closeouts WHERE user_id = (SELECT id FROM users WHERE nickname = 'z8w') ORDER BY created_at DESC LIMIT 1");
+  await boss.evaluate(d => { if (d) shiftDate = d; renderShift(); }, coDay);
   await z.sleep(1500);
   const co = await z.text(boss, '#shCloseouts');
   z.check('сводка смены владельца: у сдачи z8w — «начальный остаток»', /z8w/.test(co || '') && /начальный остаток/.test(co || ''), (co || '').slice(0, 260));

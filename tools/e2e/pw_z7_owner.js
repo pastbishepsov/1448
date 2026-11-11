@@ -41,7 +41,9 @@ const z = require('./_z');
   await pal('сдачи');
   await owner.screenshot({ path: `${z.OUT}/z_z7_owner_palette.png`, clip: { x: 320, y: 60, width: 800, height: 300 } });
   await owner.keyboard.press('Enter');
-  await z.sleep(1500);
+  // З19-и7: сводка прокручивается, когда сойдут скелетоны (palGoShift ждёт до 4 с), — ждём её, а не ровно 1,5 с
+  await owner.waitForFunction(() => { const k = document.getElementById('shiftKpis'), r = k && k.getBoundingClientRect();
+    return curTab === 'stats' && !!r && r.height > 0 && r.top >= 0 && r.top < innerHeight; }, null, { timeout: 6000 }).catch(() => {});
   const cash = await owner.evaluate(() => { const k = document.getElementById('shiftKpis'); const r = k && k.getBoundingClientRect();
     return { tab: curTab, pal: document.getElementById('pal').classList.contains('hidden'), inView: !!r && r.height > 0 && r.top >= 0 && r.top < innerHeight }; });
   z.check('«сдачи» + Enter → «Отчёты», сводка смены с кассой на экране', cash.tab === 'stats' && cash.pal && cash.inView, JSON.stringify(cash));

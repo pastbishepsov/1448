@@ -279,10 +279,11 @@ new_msgs = fresh(staff1, staff0)
 check("владельцу в канал персонала: служебная строка «admin2 … расхождение −20.00 zł» и заметка admin2 «Передал смену: сдал Ане»",
       any(m.get("kind") == "system" and m.get("visible_to") == "owner" and "admin2" in m["text"] and "расхождение −20.00 zł" in m["text"] for m in new_msgs)
       and any(m.get("nickname") == "admin2" and m["text"] == "Передал смену: сдал Ане" for m in new_msgs), json.dumps([m['text'] for m in new_msgs], ensure_ascii=False)[:300])
-sh = api("GET", "/admin/stats/shift", None, ot)[1]
+# трек З, З19-и7: сдача — в сводке дня своей записи табеля; ночью по графику это день начала ночной смены, а не «сегодня»
+sh = api("GET", f"/admin/stats/shift?date={co.get('date', '')}", None, ot)[1]
 co_sh = [c for c in sh.get("closeouts", []) if c["nickname"] == "admin2"]
 check("сводка смены: closeouts содержит admin2 с diff_pln −20", co_sh and near(co_sh[-1]["diff_pln"], -20) and near(co_sh[-1]["counted_pln"], pv2["expected_pln"] - 20), json.dumps(co_sh[-1] if co_sh else sh.get('closeouts'), ensure_ascii=False)[:200])
-ts = api("GET", "/admin/work?preset=today", None, ot)[1]
+ts = api("GET", f"/admin/work?from={co['date']}&to={co['date']}" if co.get("date") else "/admin/work?preset=today", None, ot)[1]
 ent = [e for e in ts["entries"] if e["nickname"] == "admin2" and e.get("closeout")]
 check("табель: у записи admin2 closeout с diff_pln −20", ent and near(ent[0]["closeout"]["diff_pln"], -20), str(len(ent)))
 aud = api("GET", "/admin/audit?kind=shift_close&limit=5", None, ot)[1]["items"]

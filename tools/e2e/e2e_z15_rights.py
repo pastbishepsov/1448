@@ -53,6 +53,11 @@ check("владелец: карточка admin2 и его пакеты — ка
 
 section("журнал: правки табеля — только владельцу")
 day = club_day(-3)
+# З19-и7: вход z15h в админку открывает ему смену — прошлые прогоны оставляют записи табеля; такая в 10:00–12:00 дня
+# проверки давала владельцу 409 overlap (весь день 10.11). Свои записи z15h в этом окне — убрать (до снимка журнала)
+for e in rows(f"SELECT id FROM work_entries WHERE user_id = '{zid}' AND started_at < {at_club(day, '13:00')} "
+              f"AND COALESCE(ended_at, now()) > {at_club(day, '10:00')}"):
+    api("DELETE", f"/admin/work/{e}", None, "boss")
 seen_o = {x.get("id") for x in audit(limit=60)}
 s, c = api("POST", "/admin/work", {"nickname": Z, "date": day, "start": "10:00", "end": "12:00", "note": NOTE}, "boss")
 eid = ((c or {}).get("entry") or {}).get("id") or sql(f"SELECT id FROM work_entries WHERE user_id = '{zid}' AND note = '{NOTE}'")

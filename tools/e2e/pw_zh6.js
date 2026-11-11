@@ -164,7 +164,9 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page2.evaluate(() => nav('stats'));
   await sleep(1500);
   const hasShiftTab = await page2.evaluate(() => typeof renderShift === 'function');
-  if (hasShiftTab){ await page2.evaluate(() => renderShift()); await sleep(1500); }
+  // трек З, З19-и7: сдача — в сводке дня своей записи табеля (ночью по графику — день начала ночной смены): листаем к нему
+  const coDay = psql(`SELECT date FROM shift_closeouts WHERE user_id = (SELECT id FROM users WHERE nickname = 'admin1') ORDER BY created_at DESC LIMIT 1`);
+  if (hasShiftTab){ await page2.evaluate(d => { if (d) shiftDate = d; renderShift(); }, coDay); await sleep(1500); }
   const sh = await page2.evaluate(() => ({ co: (document.getElementById('shCloseouts') || {}).textContent, hidden: (document.getElementById('shCloseouts') || {classList:{contains:()=>true}}).classList.contains('hidden') }));
   check('сводка смены владельца: блок касс — admin1 с недостачей −20,00 zł и заметкой', !sh.hidden && /admin1/.test(sh.co || '') && /−20,00 zł/.test(sh.co || '') && /сдал смену Ане/.test(sh.co || ''), (sh.co || '').replace(/\s+/g, ' ').slice(0, 220));
   await page2.evaluate(() => nav('staff'));

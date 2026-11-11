@@ -24,6 +24,25 @@ STD = sql("SELECT id FROM zones WHERE name = 'Standard'")
 LEFT = 20  # минут пакета остаётся к сессии
 
 
+def minutes_into_day():
+    """Сколько минут идут сегодняшние клубные сутки."""
+    rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0')"))
+    return int(sql(f"SELECT floor(extract(epoch FROM now() - {at_club(club_day(0), f'{rh:02d}:00')}) / 60)::int"))
+
+
+# З19-и7: сессия проверки сдвинута на час назад — в первый час клубных суток (ночной прогон, 00:00–01:00) она начиналась
+# во вчерашних, и её частей «за сегодня» не было. Тогда граница суток на время — на два часа раньше «сейчас», в конце —
+# как была.
+RH0 = rows("SELECT value FROM settings WHERE key = 'report_hour'")
+if minutes_into_day() < 70:
+    h = (int(sql(f"SELECT extract(hour FROM now() AT TIME ZONE '{TZ}')::int")) - 2) % 24
+    sql(f"INSERT INTO settings (key, value, updated_at) VALUES ('report_hour', '{h}', now()) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
+    at_end(lambda: sql(f"UPDATE settings SET value = '{RH0[0]}' WHERE key = 'report_hour'") if RH0
+           else sql("DELETE FROM settings WHERE key = 'report_hour'"))
+    print(f"граница суток на время — {h:02d}:00: сегодняшние клубные сутки идут меньше 70 минут")
+
+
 def gone():
     end_all("Guest44")
     for sid in rows(f"SELECT id FROM sales WHERE name = '{NAME}' AND voided_at IS NULL AND id NOT IN (SELECT sale_id FROM kitchen_orders WHERE sale_id IS NOT NULL)"):

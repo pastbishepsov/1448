@@ -40,7 +40,7 @@ sql(f"DELETE FROM sales WHERE name = '{STUB}'")  # хвост упавшего �
 pin_shift("admin1")  # З18-и4г: лента admin1 — сами клубные сутки, его смена не раздвигает окно
 section("итог ленты — по всему окну клубных суток")
 s, d0 = sales()
-t0 = truth(club_day(0))
+t0 = truth(d0.get("date") or club_day(0))  # З19-и7: те же сутки, что назвал сервер, — на стыке полуночи не съедут
 check("admin1 → 200: оплачено, кошельком, в долг, отменено и число строк — как в базе за сутки", s == 200 and same(d0, t0),
       J({"лента": shown(d0), "база": t0}, 500))
 check("в списке — не больше 300 последних строк", d0.get("count") == min(t0["total_count"], 300) == len(d0.get("sales", [])),
@@ -53,7 +53,7 @@ sql(f"INSERT INTO sales (club_id, name, qty, price_pln, total_pln, method, creat
     f"SELECT (SELECT id FROM clubs ORDER BY created_at LIMIT 1), '{STUB}', 1, 1, 1, 'card', '{boss}', now(), '{boss}', "
     f"now() + g * interval '1 millisecond' FROM generate_series(1, 300) AS g")
 s, d1 = sales()
-t1 = truth(club_day(0))
+t1 = truth(d1.get("date") or club_day(0))
 check("в списке 300 строк — все заглушки", d1.get("count") == 300 and all(x.get("name") == STUB for x in d1.get("sales", [])),
       f"{d1.get('count')} · {sorted({x.get('name') for x in d1.get('sales', [])})[:3]}")
 check("итог — как в базе: оплачено, кошельком и в долг — прежние, отменено +300, строк суток +300",
@@ -61,11 +61,13 @@ check("итог — как в базе: оплачено, кошельком и 
       and d1.get("unpaid") == d0.get("unpaid") and d1.get("voided") == (d0.get("voided") or 0) + 300
       and d1.get("total_count") == (d0.get("total_count") or 0) + 300, J({"до": shown(d0), "после": shown(d1)}, 500))
 s, d2 = sales("boss")
-check("владелец видит те же итоги", s == 200 and same(d2, t1), J(shown(d2)))
+check("владелец видит те же итоги", s == 200 and same(d2, t1 if d2.get("date") == d1.get("date") else truth(d2.get("date"))),
+      J(shown(d2)))
 
 section("владелец листает любой день")
-s, d3 = sales("boss", f"?date={club_day(-1)}")
-t3 = truth(club_day(-1))
-check(f"вчера ({club_day(-1)}): итог — как в базе за те сутки", s == 200 and d3.get("date") == club_day(-1) and same(d3, t3),
+y = club_day(-1)  # З19-и7: «вчера» — один раз; в 00:00 три вызова давали два разных дня
+s, d3 = sales("boss", f"?date={y}")
+t3 = truth(y)
+check(f"вчера ({y}): итог — как в базе за те сутки", s == 200 and d3.get("date") == y and same(d3, t3),
       J({"лента": shown(d3), "база": t3}, 500))
 done()
