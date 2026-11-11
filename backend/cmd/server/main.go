@@ -359,6 +359,8 @@ func main() {
 		own.GET("/reports/vat", handleReportVat)
 		// З21-и1а: пульс дня — сегодня до этого часа против нормы того же дня недели за 8 недель — и прогноз месяца
 		own.GET("/reports/pulse", handleReportPulse)
+		// З21-и2а: когорты по месяцу первого визита — вернулись через 1/2/3 месяца — и LTV гостя
+		own.GET("/reports/cohorts", handleReportCohorts)
 		// З13-и4: выгрузка бухгалтеру — XLSX или архив CSV, заголовки PL или RU
 		own.GET("/export", handleExport)
 		// З9-и1: расходы, категории и контрагенты — только владелец (З-Р29)
