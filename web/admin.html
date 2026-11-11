@@ -459,6 +459,9 @@
   }
   /* З21-и1б: пульс дня — плитки-кнопки (открывают отчёт за сегодня); у числа — отклонение от нормы и сама норма */
   .pulse .kpi{font-family:inherit; text-align:left}
+  /* З21-и2б: когорты в «Гостях» — пустая когорта бледная, идущий месяц — с «…» */
+  .cohTable tr.cohEmpty td{color:var(--dim)}
+  .cohTable td.n{font-variant-numeric:tabular-nums}
   .pulse .pN{font-weight:600; font-size:11.5px; color:var(--dim); margin-left:8px; white-space:nowrap}
   #pulseFc{font-size:12px; margin:-6px 2px 18px}
   /* З10-и8: «Что покупают» и «По категориям» — маржа в минусе красным; на телефоне строки — карточки, у чисел подписи */
@@ -6377,9 +6380,11 @@ async function renderReports(){
   if (!body) return;
   body.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try{
-    // З17-и3: «Загрузке» — и шаблоны смен для карты (не загрузились — карта без скобок)
+    // З17-и3: «Загрузке» — и шаблоны смен для карты (не загрузились — карта без скобок); З21-и2б: «Гостям» — когорты
+    // (не загрузились — блока нет)
     const [d, sh] = await Promise.all([api('/admin/reports/' + repTab + '?' + repQuery()),
-      repTab === 'load' ? api('/admin/shifts').catch(() => null) : null]);
+      repTab === 'load' ? api('/admin/shifts').catch(() => null)
+        : repTab === 'guests' ? api('/admin/reports/cohorts').catch(() => null) : null]);
     const p = d.period, pv = d.prev_period;
     document.getElementById('repLabel').textContent =
       repDate(p.from) + ' — ' + repDate(p.to) + ' · ' + repPlural(p.days, 'день', 'дня', 'дней') +
@@ -6687,7 +6692,51 @@ async function loadReturns(){
   mountIcons(box);
 }
 
-function paintGuests(d){
+/* ── З21-и2б (№47, З-Р28): когорты — гости по месяцу первого визита (клубных суток первой сессии): сколько их, какая
+   доля вернулась через 1, 2, 3 месяца и LTV — живые деньги гостя за всё время на гостя когорты. Числа — с сервера
+   (GET /admin/reports/cohorts, cohorts.go); от периода отчёта блок не зависит — последние 12 месяцев, старый сверху.
+   Месяц возврата идёт — число с «…» (ещё растёт), не начался — «—». Пустые месяцы в начале (клуб моложе года или новых
+   не было) — одной строкой, а не десятком пустых. ── */
+function cohBack(b, size){
+  if (!b || b.state === 'future' || b.n === null || b.n === undefined) return '<span class="muted" title="этот месяц ещё не начался">—</span>';
+  if (!size) return '—';
+  return repPct(b.pct) + ' <span class="muted">· ' + b.n + '</span>'
+    + (b.state === 'going' ? '<span class="muted" title="месяц ещё идёт — число растёт"> …</span>' : '');
+}
+/* итоги за 12 месяцев: новых, вернулись через месяц — по когортам, чей следующий месяц уже прошёл, LTV — на гостя */
+function cohTotals(cs){
+  let size = 0, rev = 0, n1 = 0, s1 = 0;
+  for (const c of cs){
+    size += c.size; rev += c.revenue_pln || 0;
+    const b = (c.back || [])[0];
+    if (b && b.state === 'done' && c.size){ n1 += b.n; s1 += c.size; }
+  }
+  return {size, ltv: size ? Math.round(rev / size * 100) / 100 : null, back1: s1 ? Math.round(n1 / s1 * 1000) / 10 : null, s1};
+}
+function cohortsHtml(co){
+  if (!co || !co.cohorts) return '';
+  const cs = co.cohorts, t = cohTotals(cs), L = x => `<span class="repL">${x}</span>`;
+  const lead = cs.findIndex(c => c.size > 0), skip = lead === -1 ? cs.length : lead, fold = skip >= 2;
+  const first = fold ? [`<tr class="cohEmpty" data-m="${cs[0].month}…${cs[skip - 1].month}"><td colspan="6">${tplMonth(cs[0].month)} — `
+    + `${tplMonth(cs[skip - 1].month)}: новых гостей не было</td></tr>`] : [];
+  return `<div class="sect" id="repCohorts">Когорты · гости по месяцу первого визита</div>
+     <div class="muted" style="margin:-4px 0 10px">Последние 12 месяцев — от периода выше не зависит. «Через 1 мес» — доля
+       гостей когорты, пришедших снова в следующем месяце; «…» — месяц ещё идёт. LTV — живые деньги гостя за всё время
+       (пополнения, товары, пакеты); у старых когорт он больше и потому, что у них было больше времени.</div>
+     <div class="kpis">
+       ${repKpi('Новых за 12 месяцев', t.size)}
+       ${repKpi('Вернулись через месяц', t.back1 === null ? '—' : repPct(t.back1), undefined,
+                {title:'по когортам, чей следующий месяц уже прошёл: ' + repPlural(t.s1, 'гость', 'гостя', 'гостей')})}
+       ${repKpi('LTV гостя', t.ltv === null ? '—' : fmtPLN(t.ltv) + ' zł', undefined, {title:'все новые за 12 месяцев'})}
+     </div>
+     <div class="cohTable">${repTable(['Когорта', 'Новых', 'Через 1 мес', 'Через 2 мес', 'Через 3 мес', 'LTV на гостя'], first.concat((fold ? cs.slice(skip) : cs).map(c =>
+       `<tr data-m="${c.month}"${c.size ? '' : ' class="cohEmpty"'}><td><b>${tplMonth(c.month)}</b></td>
+         <td class="n">${L('новых')}${c.size}</td>
+         ${(c.back || []).map((b, i) => `<td class="n">${L('через ' + (i + 1) + ' мес')}${cohBack(b, c.size)}</td>`).join('')}
+         <td class="n">${L('LTV')}${c.ltv_pln === null || c.ltv_pln === undefined ? '—' : fmtPLN(c.ltv_pln) + ' zł'}</td></tr>`)), '')}</div>`;
+}
+
+function paintGuests(d, co){
   const t = d.totals, k = d.delta, w = d.prev || {}, th = d.thresholds || {}, lost = d.lost || {count:0, items:[]};
   const row = u => `<tr onclick="openUserDrawer('${u.user_id}')" style="cursor:pointer">`;
   document.getElementById('repBody').innerHTML =
@@ -6723,7 +6772,8 @@ function paintGuests(d){
      <div class="sect">Пропали за период · к его концу нет визитов ${th.lost_days} дн и дольше</div>
      ${repTable(['Гость','Последний визит'], (lost.items||[]).map(u =>
         `${row(u)}<td><b>${esc(u.nickname||'—')}</b></td><td class="muted">${fmtTime(u.last_visit)}</td></tr>`),
-        'Никто не пропал — все возвращаются')}`;
+        'Никто не пропал — все возвращаются')}
+     ${cohortsHtml(co)}`;
 }
 
 /* З17-и3 (№13 «б», З-Р6): карта загрузки «час × день недели» по heat[7][24] (З17-и2). Строка — клубные сутки дня
