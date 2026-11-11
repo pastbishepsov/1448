@@ -9808,7 +9808,8 @@ async function renderSettings(){
   renderBoardBox(); // Ж8-и3: табло зала — токен и ссылка
   renderClubCard(); // З18-и6: карточка клуба
   try{
-    const [d] = await Promise.all([api('/admin/settings'), vatLoad(), ryLoad()]); // З13-и2: ставки — для «ставки пополнения»; З13-и7 — ryczałtu
+    const [d, sh] = await Promise.all([api('/admin/settings'), api('/admin/shifts').catch(() => null), vatLoad(), ryLoad()]); // З13-и2: ставки — для «ставки пополнения»; З13-и7 — ryczałtu
+    setShiftTpls = (sh && sh.shifts) || []; // З19-и6: начала смен — для предупреждения у своего часа границы
     settingsLoaded = d.settings || {};
     paintSettings();
     clubZoneSync(); // З18-и6: запрет «ПК без зоны» — в карточке клуба и у зон
@@ -9821,7 +9822,8 @@ function paintSettings(){
     ${g.f.map(([key, id, label, min, max, step, opts]) => rhourWrap(key, `<label for="${id}">${esc(label)}</label>
       ${opts ? `<select id="${id}" class="input" onchange="settingsDirty()">${settingOptions(opts, settingsLoaded[key])}</select>`
         : `<input id="${id}" class="input" type="number" min="${min}" max="${max}"${step ? ` step="${step}"` : ''} value="${esc(settingsLoaded[key] ?? '')}" oninput="settingsDirty()">`}`) + `
-      ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>` : ''}${
+      ${key === 'report_hour' ? `<div class="setwarn hidden" id="setRhourWarn">⚠ Меняет границу суток и в прошлых отчётах: отчёты и сводки смен за прошлые дни пересчитаются по новому часу, а даты в табеле и в сдачах кассы останутся прежними. «Сохранить» переспросит.</div>
+      <div class="setwarn hidden" id="setRhourShift"></div>` : ''}${
         key === 'acc_vat_moment' ? `<div class="setwarn hidden" id="setVatWarn">⚠ Меняет расчёт VAT и за прошлые месяцы: продажи по ставкам и выгрузка за них посчитаются по-новому. Меняйте вместе с бухгалтером, лучше с первого числа. «Сохранить» переспросит.</div>` : ''}${
         key === 'acc_gift_vat' ? '<div class="setnote" id="setVatNote"></div>' : ''}${
         key === 'acc_ryczalt_time' ? '<div class="setnote" id="setFormNote"></div>' : ''}${
@@ -9834,6 +9836,22 @@ function paintSettings(){
    границы — опция. «Сутки клуба» — не отдельная настройка: «С полуночи» — report_hour 0, «Свой час границы» открывает поле
    часа; 0 и в нём — та же полночь. Свой час был сохранён — возвращается при обратном переключении */
 const rhourOwn = () => Number(settingsLoaded.report_hour || 0) !== 0;
+/* З19-и6 (из «Найдено по дороге» З18-и4з): свой час границы позже начала смены — запись такой смены ложится в табель днём
+   её начала по графику, а для клубных суток это уже следующие сутки: до границы её в табеле нет. Предупреждение — по
+   выбранному сейчас (до «Сохранить»), по активным шаблонам смен; «С полуночи» — без него */
+let setShiftTpls = [];
+function paintRhourShift(){
+  const el = document.getElementById('setRhourShift'), mode = document.getElementById('set_rmode'), hour = document.getElementById('set_rhour');
+  if (!el) return;
+  const rh = mode && mode.value === '1' && hour ? Number(hour.value) : 0;
+  const early = rh > 0 && rh < 24 ? setShiftTpls.filter(t => t.active !== false && t.start_min < rh * 60) : [];
+  el.classList.toggle('hidden', !early.length);
+  if (!early.length){ el.textContent = ''; return; }
+  const one = early.length === 1, b = mmHH2(rh * 60);
+  el.textContent = `⚠ Граница суток ${b} позже начала ${one ? 'смены' : 'смен'} ${early.map(t => '«' + t.name + '» (' + mmHH2(t.start_min) + ')').join(', ')}: `
+    + `${one ? 'её запись ложится' : 'их записи ложатся'} в табель следующими клубными сутками и до ${b} там ${one ? 'не видна' : 'не видны'}. `
+    + 'Этого не будет при границе не позже начала смен или сутках с полуночи.';
+}
 const RHOUR_MODES = [[0, 'С полуночи — 00:00–24:00'], [1, 'Свой час границы']];
 function rhourWrap(key, field){
   if (key !== 'report_hour') return field;
@@ -9898,6 +9916,7 @@ function settingsDirty(){
   document.getElementById('setBar').classList.toggle('dirty', n > 0);
   document.getElementById('setUndo').classList.toggle('hidden', n === 0);
   document.getElementById('setRhourWarn')?.classList.toggle('hidden', !('report_hour' in ch));
+  paintRhourShift(); // З19-и6
   const rm = document.getElementById('set_rmode'); // З18-и4б: выбор «Сутки клуба» подсвечен, если он не как на сервере
   rm?.classList.toggle('changed', (rm.value === '1') !== rhourOwn());
   document.getElementById('setVatWarn')?.classList.toggle('hidden', !vatCalcChanged(ch)); // З13-и2
