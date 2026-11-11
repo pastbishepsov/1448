@@ -462,6 +462,15 @@
   /* З21-и2б: когорты в «Гостях» — пустая когорта бледная, идущий месяц — с «…» */
   .cohTable tr.cohEmpty td{color:var(--dim)}
   .cohTable td.n{font-variant-numeric:tabular-nums}
+  /* З23-и1б: «Товары» — значок класса ABC; без продаж — бледной строкой */
+  .abc{display:inline-block; min-width:22px; padding:1px 6px; border-radius:6px; font-weight:700; text-align:center;
+       font-size:12px; border:1px solid var(--hair)}
+  .abcA{color:var(--green); border-color:rgba(52,211,153,.4)}
+  .abcB{color:var(--gold); border-color:rgba(251,191,36,.4)}
+  .abcC{color:var(--dim)}
+  .abcTable tr.abcNone td{color:var(--dim)}
+  .abcTable td{font-variant-numeric:tabular-nums}
+  #repAbcSegs{margin:4px 0 12px}
   .pulse .pN{font-weight:600; font-size:11.5px; color:var(--dim); margin-left:8px; white-space:nowrap}
   #pulseFc{font-size:12px; margin:-6px 2px 18px}
   /* З10-и8: «Что покупают» и «По категориям» — маржа в минусе красным; на телефоне строки — карточки, у чисел подписи */
@@ -1131,6 +1140,7 @@
             <button data-t="load" onclick="repTabSet('load',this)">Загрузка</button>
             <button data-t="staff" onclick="repTabSet('staff',this)">Персонал</button>
             <button data-t="coins" onclick="repTabSet('coins',this)">Монеты</button>
+            <button data-t="goods" onclick="repTabSet('goods',this)">Товары</button>
           </div>
         </div>
         <div id="repBody"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -6388,12 +6398,12 @@ async function renderReports(){
     const p = d.period, pv = d.prev_period;
     document.getElementById('repLabel').textContent =
       repDate(p.from) + ' — ' + repDate(p.to) + ' · ' + repPlural(p.days, 'день', 'дня', 'дней') +
-      ' · сравнение с ' + repDate(pv.from) + ' — ' + repDate(pv.to) + repCmpNote(p, pv);
+      (pv ? ' · сравнение с ' + repDate(pv.from) + ' — ' + repDate(pv.to) + repCmpNote(p, pv) : ''); // З23-и1б: у «Товаров» его нет
     for (const [id, v] of [['repFrom', p.from], ['repTo', p.to]]){
       const el = document.getElementById(id);
       el.value = ruDate(v); el.classList.remove('bad');
     }
-    ({money:paintMoney, guests:paintGuests, load:paintLoad, staff:paintStaff, coins:paintCoins})[repTab](d, sh);
+    ({money:paintMoney, guests:paintGuests, load:paintLoad, staff:paintStaff, coins:paintCoins, goods:paintGoodsRep})[repTab](d, sh);
     if (repTab === 'coins') loadBurnPreview();
     mountIcons(body);
   }catch(e){
@@ -6734,6 +6744,52 @@ function cohortsHtml(co){
          <td class="n">${L('новых')}${c.size}</td>
          ${(c.back || []).map((b, i) => `<td class="n">${L('через ' + (i + 1) + ' мес')}${cohBack(b, c.size)}</td>`).join('')}
          <td class="n">${L('LTV')}${c.ltv_pln === null || c.ltv_pln === undefined ? '—' : fmtPLN(c.ltv_pln) + ' zł'}</td></tr>`)), '')}</div>`;
+}
+
+/* З23-и1б (№48): «Товары» — по позиции за период, с сервера (GET /admin/reports/goods, goods_reports.go): класс ABC по
+   продажам (A — позиции, которые вместе дают первые 80 % продаж, B — до 95 %, C — остальные, без продаж — без класса),
+   доля в продажах и в штуках, в скольких днях периода продажи были, сколько дней без продаж, склад и на сколько дней
+   его хватит, маржа по партиям. Сравнения с прошлым периодом нет. Фильтр по классу перерисовывает без запроса; на
+   телефоне строка — карточка, у чисел подписи (.repL) */
+let repGoodsData = null, repGoodsCls = '';
+function paintGoodsRep(d){
+  repGoodsData = d;
+  const c = d.classes || {}, t = d.totals || {}, rows = d.rows || [], L = x => `<span class="repL">${x}</span>`;
+  const cl = k => c[k] || {count:0, share_pct:0};
+  const shown = rows.filter(r => repGoodsCls === '' || (repGoodsCls === '-' ? !r.abc : r.abc === repGoodsCls));
+  const chip = (k, label) => `<button type="button" data-c="${k}"${repGoodsCls === k ? ' class="on"' : ''} onclick="repGoodsFilter('${k}')">${label}</button>`;
+  const since = r => r.days_since == null ? '—' : r.days_since === 0 ? 'сегодня' : repPlural(r.days_since, 'день', 'дня', 'дней');
+  const cover = r => r.cover_days == null ? 'продаж не было' : 'хватит на ' + (+r.cover_days).toLocaleString('ru-RU') + ' дн';
+  const pos = n => repPlural(n, 'позиция', 'позиции', 'позиций');
+  document.getElementById('repBody').innerHTML =
+    `<div class="kpis" id="repAbc">
+       ${repKpi('A — основа продаж', pos(cl('A').count), undefined, {title:'вместе дают первые 80 % продаж за период: ' + repPct(cl('A').share_pct)})}
+       ${repKpi('B — середина', pos(cl('B').count), undefined, {title:'следующие до 95 % продаж: ' + repPct(cl('B').share_pct)})}
+       ${repKpi('C — хвост', pos(cl('C').count), undefined, {title:'остальные продажи: ' + repPct(cl('C').share_pct)})}
+       ${repKpi('Без продаж', pos(cl('none').count), undefined, {title:'живые позиции, которые за период ни разу не продали'})}
+     </div>
+     <div class="kpis">
+       ${repKpi('Продано товаров на', fmtPLN(t.sold_pln || 0) + ' zł', undefined,
+                {title:(t.items || 0) + ' шт, все способы — и кухня с кошелька, и в долг; подарки не в счёт'})}
+       ${repKpi('Маржа товаров', repMarginTxt(t), undefined, {title:'продано на − себестоимость — по штукам с известной себестоимостью'})}
+     </div>
+     <div class="muted" style="margin:-4px 0 8px">Класс — по продажам в zł за период. «Продажи» — в скольких днях периода
+       позицию покупали; «без продаж» — дней с последней продажи; «хватит на» — склад сейчас при темпе этого периода.</div>
+     <div class="segs" id="repAbcSegs">${chip('', 'Все')}${chip('A', 'A')}${chip('B', 'B')}${chip('C', 'C')}${chip('-', 'Без продаж')}</div>
+     <div class="abcTable">${repTable(['Позиция', 'Класс', 'Продано', 'Доля', 'Продажи', 'Без продаж', 'Склад', 'Маржа'], shown.map(r =>
+       `<tr data-g="${r.id}"${r.abc ? '' : ' class="abcNone"'}><td><b>${esc(r.name)}</b>${r.category ? `<span class="muted"> · ${esc(r.category)}</span>` : ''}${r.active ? '' : '<span class="muted"> · выключена</span>'}</td>
+         <td>${L('класс')}${r.abc ? `<span class="abc abc${r.abc}">${r.abc}</span>` : '—'}</td>
+         <td>${L('продано')}${r.items} шт · ${fmtPLN(r.sold_pln || 0)} zł</td>
+         <td>${L('доля')}${repPct(r.share_pct)}<span class="muted"> · штук ${repPct(r.units_share_pct)}</span></td>
+         <td>${L('продажи')}${r.days_sold} из ${repPlural(r.days, 'дня', 'дней', 'дней')}</td>
+         <td>${L('без продаж')}${since(r)}</td>
+         <td>${L('склад')}${r.stock} шт<span class="muted"> · ${cover(r)}</span></td>
+         <td class="${r.margin_pln != null && r.margin_pln < 0 ? 'repNeg' : ''}">${L('маржа')}${repMarginTxt(r)}</td></tr>`),
+       repGoodsCls === '' ? 'Товаров нет' : 'В этом классе позиций нет')}</div>`;
+}
+function repGoodsFilter(k){
+  repGoodsCls = k;
+  if (repGoodsData) paintGoodsRep(repGoodsData);
 }
 
 function paintGuests(d, co){
@@ -10596,6 +10652,8 @@ const PAL_WORDS = [
    sub:'Отчёты → Персонал', ic:'coins', run:() => palGoReport('staff')},
   {who:'owner', words:['выручка', 'деньги', 'доход', 'оборот'], name:'Выручка',
    sub:'Отчёты → Деньги', ic:'chart', run:() => palGoReport('money')},
+  {who:'owner', words:['abc', 'абс', 'товары по классам', 'какие товары', 'залежалые', 'без продаж', 'оборачиваемость', 'хватит склада'],
+   name:'Товары: ABC', sub:'Отчёты → Товары: классы, доли, дни без продаж, склад в днях, маржа', ic:'chart', run:() => palGoReport('goods')}, // З23-и1б
   {who:'owner', words:['маржа', 'наценка', 'себестоимость проданного', 'стоимость склада', 'склад в деньгах', 'что покупают'], name:'Маржа и склад', // З10-и8
    sub:'Отчёты → Деньги: себестоимость проданного, маржа, склад сейчас', ic:'chart', run:() => palGoMargin()},
   {who:'owner', words:['возврат', 'возвраты', 'вернули деньги', 'вернули гостю'], name:'Возвраты', // З11-и3
