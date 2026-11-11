@@ -470,6 +470,9 @@
   .abcC{color:var(--dim)}
   .abcTable tr.abcNone td{color:var(--dim)}
   .abcTable td{font-variant-numeric:tabular-nums}
+  /* З23-и2: «Заказать» — остаток на пороге «заканчивается» и ниже — оранжевым */
+  #ordBox tr.ordLow td:nth-child(2){color:var(--orange)}
+  #ordBox td{font-variant-numeric:tabular-nums}
   #repAbcSegs{margin:4px 0 12px}
   .pulse .pN{font-weight:600; font-size:11.5px; color:var(--dim); margin-left:8px; white-space:nowrap}
   #pulseFc{font-size:12px; margin:-6px 2px 18px}
@@ -1067,6 +1070,16 @@
         <div class="toolrow"><button class="btn mini" id="supNewBtn" onclick="supOpen('')"><span data-ic="plus"></span>Принять поставку</button>
           <span class="muted">Остаток вырастет сразу; цены закупки поставит владелец</span></div>
         <div class="tablewrap" id="suppliesBox"><div class="skel"></div></div>
+        <!-- З23-и2: «Заказать» — владельцу: остаток, продано за 7 дней, хватит на, к заказу; «В приёмку» — форма поставки -->
+        <div class="sect ownerOnly hidden" id="ordHead">Заказать</div>
+        <div class="toolrow ownerOnly hidden" id="ordBar">
+          <label class="muted" for="ordDays">Чтобы хватило на</label>
+          <input id="ordDays" class="input" type="number" min="1" max="60" step="1" value="14" style="width:76px"
+                 aria-label="на сколько дней заказать" oninput="ordDaysSet(this.value)">
+          <span class="muted">дней — по продажам последних 7 дней</span>
+          <button class="btn mini" id="ordToSup" onclick="ordToSupply()"><span data-ic="box"></span>В приёмку</button>
+        </div>
+        <div class="tablewrap ownerOnly hidden" id="ordBox"><div class="skel"></div></div>
         <div class="sect">Ценник и остатки</div>
         <div class="tablewrap" id="goodsTable"><div class="skel"></div><div class="skel"></div></div>
       </section>
@@ -1792,7 +1805,7 @@ function nav(t){
     document.getElementById('s-' + x).classList.toggle('hidden', x !== t);
   });
   if (t === 'catalog') renderCatalogTab();
-  else if (t === 'goods') renderGoods();
+  else if (t === 'goods'){ renderGoods(); loadOrder(); } // З23-и2: «Заказать» — при входе
   else if (t === 'kitchen') renderKitchen();
   else if (t === 'stats') renderStats();
   else if (t === 'staff') renderStaff();
@@ -5435,6 +5448,52 @@ async function renderGoods(){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* З23-и2 (№48): «Заказать» — владельцу. По продажам последних 7 клубных суток (GET /admin/reports/goods?preset=d7 — тот
+   же отчёт, что «Отчёты» → «Товары», З23-и1а): остаток, продано за 7 дней, на сколько дней хватит, сколько заказать,
+   чтобы хватило на N дней при том же темпе и остаток был выше порога «заканчивается». Сверху — что кончится раньше; не
+   продававшиеся и выше порога — внизу, «—». «В приёмку» — форма поставки с этими строками: штуки поправишь по
+   накладной. Список — при входе в «Товары» и после приёмки, не на каждую продажу. */
+let ordRows = [], ordDays = 14;
+function ordNeed(r, days){
+  const rate = (r.items || 0) / 7, target = Math.max(Math.ceil(rate * days), r.low_stock > 0 ? r.low_stock + 1 : 0);
+  return Math.max(0, target - (r.stock || 0));
+}
+async function loadOrder(){
+  if (!isOwner()) return;
+  try{ ordRows = ((await api('/admin/reports/goods?preset=d7')).rows || []).filter(r => r.active); }
+  catch(e){ ordRows = null; }
+  paintOrder();
+}
+function paintOrder(){
+  if (!document.getElementById('ordBox')) return;
+  if (ordRows === null){ setHTML('ordBox', repEmpty('Список не загрузился — открой «Товары» ещё раз')); return; }
+  const L = x => `<span class="repL">${x}</span>`;
+  const rows = ordRows.map(r => ({r, k: ordNeed(r, ordDays)})).sort((a, b) =>
+    (a.r.cover_days == null) - (b.r.cover_days == null) || (a.r.cover_days || 0) - (b.r.cover_days || 0) || b.k - a.k
+    || a.r.name.localeCompare(b.r.name, 'ru'));
+  setHTML('ordBox', rows.length === 0 ? repEmpty('Живых позиций нет')
+    : `<table><tr><th>Позиция</th><th>Склад</th><th>Продано за 7 дней</th><th>Хватит на</th><th>К заказу</th></tr>
+      ${rows.map(({r, k}) => `<tr data-g="${r.id}"${r.low_stock > 0 && r.stock <= r.low_stock ? ' class="ordLow"' : ''}>
+        <td><b>${esc(r.name)}</b>${r.category ? `<span class="muted"> · ${esc(r.category)}</span>` : ''}</td>
+        <td>${L('склад')}${r.stock} шт${r.low_stock > 0 ? `<span class="muted"> · порог ${r.low_stock}</span>` : ''}</td>
+        <td>${L('за 7 дней')}${r.items} шт</td>
+        <td>${L('хватит на')}${r.cover_days == null ? '<span class="muted">не продавали</span>' : (+r.cover_days).toLocaleString('ru-RU') + ' дн'}</td>
+        <td>${L('к заказу')}${k > 0 ? `<b>${k} шт</b>` : '—'}</td></tr>`).join('')}</table>`);
+}
+function ordDaysSet(v){
+  const n = parseInt(v, 10);
+  if (String(n) !== String(v).trim() || n < 1 || n > 60) return; // 1…60 дней; пока набирают — не трогаем
+  ordDays = n;
+  paintOrder();
+}
+function ordToSupply(){
+  const lines = (ordRows || []).map(r => ({r, k: ordNeed(r, ordDays)})).filter(x => x.k > 0)
+    .map(x => ({good: x.r.id, qty: String(x.k)}));
+  if (!lines.length){ toast('Заказывать нечего: на ' + repPlural(ordDays, 'день', 'дня', 'дней') + ' хватает всего'); return; }
+  supForm = {id: '', note: 'по списку «Заказать» на ' + repPlural(ordDays, 'день', 'дня', 'дней'), lines};
+  supPaint();
+}
+
 function goodsBadgeSet(n){
   const b = document.getElementById('goodsBadge');
   if (!b) return;
@@ -6003,6 +6062,7 @@ async function supSave(){
     const d = f.id ? await api('/admin/supplies/' + f.id, {method:'PATCH', body}) : await api('/admin/supplies', {method:'POST', body});
     const txt = ((d.supply || {}).lines || []).filter(l => l.qty > 0).map(l => l.name + ' ×' + l.qty).join(', ');
     toast(f.id ? (d.changed ? '✓ Поставка исправлена — ' + txt : 'Изменений нет') : '✓ Поставка принята: ' + txt);
+    loadOrder(); // З23-и2: остатки выросли — «Заказать» заново
     closeDrawer(); renderGoods();
   }catch(e){ toast('⚠ ' + e.message); }
   finally{ if (btn.isConnected) btn.disabled = false; }
@@ -10652,6 +10712,8 @@ const PAL_WORDS = [
    sub:'Отчёты → Персонал', ic:'coins', run:() => palGoReport('staff')},
   {who:'owner', words:['выручка', 'деньги', 'доход', 'оборот'], name:'Выручка',
    sub:'Отчёты → Деньги', ic:'chart', run:() => palGoReport('money')},
+  {who:'owner', words:['заказать', 'что заказать', 'заказ поставщику', 'закупить', 'дозаказ', 'кончится'], name:'Заказать',
+   sub:'Товары: что кончится раньше и сколько заказать', ic:'box', run:() => palGoOrder()}, // З23-и2
   {who:'owner', words:['abc', 'абс', 'товары по классам', 'какие товары', 'залежалые', 'без продаж', 'оборачиваемость', 'хватит склада'],
    name:'Товары: ABC', sub:'Отчёты → Товары: классы, доли, дни без продаж, склад в днях, маржа', ic:'chart', run:() => palGoReport('goods')}, // З23-и1б
   {who:'owner', words:['маржа', 'наценка', 'себестоимость проданного', 'стоимость склада', 'склад в деньгах', 'что покупают'], name:'Маржа и склад', // З10-и8
@@ -10694,6 +10756,15 @@ const PAL_WORDS = [
   {who:'admin', words:['касса', 'сдача кассы', 'сдать смену', 'уход'], name:'Сдать смену и кассу',
    sub:'Моя смена', ic:'coins', run:() => openMyShift()},
 ];
+// З23-и2: «Заказать» — блок в «Товарах»: ждём, пока список встанет, и показываем его
+function palGoOrder(){
+  nav('goods');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('ordHead');
+    if ((el && !document.querySelector('#ordBox .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block: 'start'}); }
+  }, 100);
+}
 function palGoReport(tab){
   repTab = tab;
   document.querySelectorAll('#repTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
