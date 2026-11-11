@@ -773,6 +773,38 @@
   .uform .supLine .input{flex:none; width:96px}
   .uform .supLine select.input,.supLine .supName{flex:1; min-width:0; width:auto}
   .supEdited{color:var(--orange); font-size:12px; margin-top:2px}
+  /* З23-и4: инвентаризация — строка пересчёта: позиция, «в системе», «насчитали», разница, партия (владелец) */
+  .invLine{display:grid; grid-template-columns:minmax(0,1fr) 62px 80px 66px; gap:8px; align-items:center; padding:6px 0;
+           border-bottom:1px solid var(--hair)}
+  .invLine .invName{min-width:0; overflow-wrap:anywhere}
+  .invLine .invCat{display:block; color:var(--dim); font-size:12px}
+  .invLine .invExp{text-align:right; font-variant-numeric:tabular-nums; color:var(--dim)}
+  .invLine .invDiff{font-variant-numeric:tabular-nums; white-space:nowrap}
+  .invLine .invLot{grid-column:1 / -1}
+  .invLine .invLot:empty{display:none}
+  .invLine .invLot select{width:100%}
+  .invHeadRow{font-size:11.5px; line-height:1.2; color:var(--dim); border-bottom:0; padding-bottom:0}
+  .invHeadRow .invExp{white-space:nowrap}
+  /* на телефоне имя — строкой над числами: «в системе», «насчитали», разница */
+  @media (max-width:640px){
+    .invLine{grid-template-columns:72px minmax(0,1fr) 64px}
+    .invLine .invName{grid-column:1 / -1}
+    .invHeadRow .invName{display:none}
+  }
+  .invMoved{display:block; color:var(--orange); font-size:12px; margin-top:2px}
+  .invMovedRow .invExp{color:var(--orange); font-weight:700}
+  .invShort{color:var(--acc3)}
+  .invPlus{color:var(--green)}
+  .invOk{color:var(--dim)}
+  .invBad{color:var(--orange)}
+  .invSum{font-size:13px; line-height:1.45}
+  #invActs td .invNote{white-space:normal; font-size:12px; max-width:260px}
+  /* акт в шторке — строки карточками: имя, числа, у владельца — себестоимость и партии */
+  .invActLine{padding:8px 0; border-bottom:1px solid var(--hair)}
+  .invActLine .iaNums{display:flex; flex-wrap:wrap; gap:2px 14px; margin-top:2px; font-variant-numeric:tabular-nums; color:var(--dim)}
+  .invActLine .iaNums b{color:var(--txt)}
+  .invActLine .iaMore{color:var(--dim); font-size:12px; margin-top:2px}
+  .invActLine.iaSame{opacity:.62}
   #suppliesBox td.supWhat{white-space:normal}
   #accTabs button[data-n]::after{content:attr(data-n); margin-left:6px; background:rgba(255,39,64,.22); color:var(--acc3); border-radius:8px;
                                  padding:0 6px; font-size:11px; font-variant-numeric:tabular-nums}
@@ -1080,6 +1112,11 @@
           <button class="btn mini" id="ordToSup" onclick="ordToSupply()"><span data-ic="box"></span>В приёмку</button>
         </div>
         <div class="tablewrap ownerOnly hidden" id="ordBox"><div class="skel"></div></div>
+        <!-- З23-и4: инвентаризация — «насчитали» против «в системе», разница — корректировкой с номером акта; акты ниже -->
+        <div class="sect" id="invHead">Инвентаризация</div>
+        <div class="toolrow"><button class="btn mini" id="invNewBtn" onclick="invOpen()"><span data-ic="scroll"></span>Пересчитать склад</button>
+          <span class="muted" id="invHint">Впиши, сколько насчитал, — разница уйдёт корректировкой с номером акта</span></div>
+        <div class="tablewrap" id="invBox"><div class="skel"></div></div>
         <div class="sect">Ценник и остатки</div>
         <div class="tablewrap" id="goodsTable"><div class="skel"></div><div class="skel"></div></div>
       </section>
@@ -4628,7 +4665,8 @@ const AUD_GROUPS = {
           'expense_category_create','expense_category_update','counterparty_update','expense_methods', // З9-и4: справочники
           'expense_template_create','expense_template_update', // З9-и5: регулярные расходы (всё это видит только владелец)
           'supply_price', 'lot_price', // З10-и6, З10-и7: цены поставки и партий без поставки — только владелец
-          'export', 'requisites'], // З13-и4: выгрузка бухгалтеру — только владелец; З13-и7 — и реквизиты фирмы
+          'export', 'requisites', // З13-и4: выгрузка бухгалтеру — только владелец; З13-и7 — и реквизиты фирмы
+          'inventory_export'], // З23-и4: файл акта инвентаризации — только владелец
   grant: ['grant'],
   users: ['ban','unban','guest_update','password_reset'], // ревью 26.08
   sessions: ['session_end','session_start','waitlist_add','waitlist_remove','waitlist_seat',
@@ -4641,6 +4679,7 @@ const AUD_GROUPS = {
             'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','sale_paid','settle','debt_write_off','debt_restore','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
           'supply_receive','supply_edit','supply_cancel', // З10-и4: приёмка
+          'inventory', // З23-и4: акт инвентаризации
           'goods_vat', 'goods_ryczalt'], // З13-и2: ставка VAT всей категории; З13-и7 — ставка ryczałtu
   staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','staff_leave','staff_leave_cancel','staff_password_reset','staff_password_change','staff_erase','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close','login_failed'], // ревью 26.08; Ж6-и4: сдача кассы
 };
@@ -4690,6 +4729,7 @@ const AUD_LABEL = {
   goods_vat:'товары: ставка VAT категории', // З13-и2
   goods_ryczalt:'товары: ставка ryczałtu категории', requisites:'реквизиты фирмы', // З13-и7
   export:'выгрузка бухгалтеру', // З13-и4
+  inventory:'склад: инвентаризация', inventory_export:'акт инвентаризации: файл', // З23-и4
   // Эти виды сервер писал давно, а журнал печатал их сырым английским
   // идентификатором (ревью 26.08).
   guest_update:'гость: правка данных', password_reset:'сброс пароля',
@@ -4739,6 +4779,7 @@ const AUD_ICON = {
   goods_vat:'edit', // З13-и2
   goods_ryczalt:'edit', requisites:'scroll', // З13-и7
   export:'save', // З13-и4
+  inventory:'scroll', inventory_export:'save', // З23-и4
   guest_update:'edit', password_reset:'users', // ревью 26.08
   pc_hold:'clock', pc_unhold:'check', pc_release:'check', // Ж4-и3
   seat_cancel:'cross', session_move:'monitor',
@@ -5435,11 +5476,14 @@ function saleMethod(m, btn){
 async function renderGoods(){
   vatLoad(); // З13-и2: ставки VAT для шторки позиции — владельцу, не дожидаясь (до ответа — тот же список на месте)
   try{
-    const [g, sl, sp] = await Promise.all([api('/admin/goods'), api('/admin/sales'),
-      api('/admin/supplies').catch(() => ({supplies: []}))]); // З10-и4
+    const [g, sl, sp, inv] = await Promise.all([api('/admin/goods'), api('/admin/sales'),
+      api('/admin/supplies').catch(() => ({supplies: []})), // З10-и4
+      api('/admin/goods/inventories').catch(() => null)]); // З23-и4: акты инвентаризации
     goodsData = g.goods || [];
     supData = sp.supplies || [];
+    invActs = inv ? inv.inventories || [] : null;
     paintSupplies();
+    paintInvActs();
     paintGoodsCats(g.categories || []);
     paintGoodsTiles();
     paintGoodsTable();
@@ -5492,6 +5536,240 @@ function ordToSupply(){
   if (!lines.length){ toast('Заказывать нечего: на ' + repPlural(ordDays, 'день', 'дня', 'дней') + ' хватает всего'); return; }
   supForm = {id: '', note: 'по списку «Заказать» на ' + repPlural(ordDays, 'день', 'дня', 'дней'), lines};
   supPaint();
+}
+
+/* ── З23-и4 (№54 «в»): инвентаризация. «Пересчитать склад» — шторка: позиции ценника (живые и выключенные с остатком)
+   с «в системе» на момент начала пересчёта и полем «насчитали»; пустое поле — позицию не считали, в акт она не пойдёт.
+   Разница — на лету; у владельца при недостаче — партия (по умолчанию — со старых первыми, З10-и7). «Провести акт» —
+   POST /admin/goods/inventory (З23-и3): если остаток с начала пересчёта изменился (продали, приняли поставку), сервер
+   ничего не пишет — строки подсвечиваются «было → стало», «в системе» обновляется, насчитанное остаётся: пересчитай их
+   и проведи ещё раз. Черновик живёт, пока открыта вкладка: закрыл шторку — «Пересчитать склад» вернёт цифры. Акты —
+   списком под кнопкой (10 последних); акт — шторкой: строки и итоги, у владельца — себестоимость недостачи, партии и
+   «Скачать» (XLSX или CSV, по-польски или по-русски — движок выгрузки З13). ── */
+let invForm = null, invActs = [], invLots = {}, invAct = null, invFileLang = 'pl', invBusy = false;
+const invSigned = n => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n);
+// «насчитали»: целое от нуля; пусто — не считали (null); не целое — NaN
+function invNum(v){
+  const raw = String(v == null ? '' : v).trim();
+  if (raw === '') return null;
+  const n = parseInt(raw, 10);
+  return String(n) === raw && n >= 0 ? n : NaN;
+}
+// итоги черновика: посчитано, сошлось, недостача и излишек — позициями, штуками и по цене продажи
+function invTally(f){
+  const t = {counted: 0, matched: 0, sp: 0, su: 0, spln: 0, pp: 0, pu: 0, ppln: 0, bad: 0};
+  for (const r of f.rows){
+    const n = invNum(r.counted);
+    if (n === null) continue;
+    if (isNaN(n)){ t.bad++; continue; }
+    const d = n - r.expected;
+    t.counted++;
+    if (d === 0) t.matched++;
+    else if (d < 0){ t.sp++; t.su -= d; t.spln -= d * r.price; }
+    else { t.pp++; t.pu += d; t.ppln += d * r.price; }
+  }
+  return t;
+}
+function invSumHTML(f){
+  const t = invTally(f);
+  return `Посчитано <b>${t.counted}</b> из ${f.rows.length}${t.matched ? ' · сошлось ' + t.matched : ''}`
+    + (t.sp ? ` · <span class="invShort">недостача — ${repPlural(t.sp, 'позиция', 'позиции', 'позиций')}, ${t.su} шт (−${fmtPLN(t.spln)} zł)</span>` : '')
+    + (t.pp ? ` · <span class="invPlus">излишек — ${repPlural(t.pp, 'позиция', 'позиции', 'позиций')}, ${t.pu} шт (+${fmtPLN(t.ppln)} zł)</span>` : '')
+    + (t.bad ? ` · <span class="invBad">не число — ${t.bad}</span>` : '');
+}
+function invDiffHTML(r){
+  const n = invNum(r.counted);
+  if (n === null) return '<span class="muted">—</span>';
+  if (isNaN(n)) return '<span class="invBad">целое ≥ 0</span>';
+  const d = n - r.expected;
+  return d === 0 ? '<span class="invOk">сошлось</span>' : `<span class="${d < 0 ? 'invShort' : 'invPlus'}">${invSigned(d)}</span>`;
+}
+// партия недостачи — только у владельца и только когда насчитали меньше
+function invLotHTML(r, i){
+  const n = invNum(r.counted);
+  if (!isOwner() || n === null || isNaN(n) || n >= r.expected) return '';
+  const lots = invLots[r.id];
+  if (lots === undefined){ invLoadLots(r.id); return '<span class="muted">партии…</span>'; }
+  if (lots === 'loading') return '<span class="muted">партии…</span>';
+  return `<select class="input" aria-label="партия — ${esc(r.name)}" onchange="invLotSet(${i}, this.value)">
+    <option value="">со старых партий первыми</option>${lots.map(l => `<option value="${l.id}"${r.lot === l.id ? ' selected' : ''}>${
+      esc(l.title)} · осталось ${l.qty_left} · ${l.price_pln == null ? 'без цены' : fmtPLN(l.price_pln) + ' zł'}</option>`).join('')}</select>`;
+}
+async function invLoadLots(id){
+  invLots[id] = 'loading';
+  try{ invLots[id] = (await api('/admin/goods/' + id + '/lots')).lots || []; }catch(e){ invLots[id] = []; }
+  if (!invForm) return;
+  invForm.rows.forEach((r, i) => { if (r.id === id){ const el = document.getElementById('invL' + i); if (el) el.innerHTML = invLotHTML(r, i); } });
+}
+function invLotSet(i, v){ if (invForm && invForm.rows[i]) invForm.rows[i].lot = v; }
+function invLineHTML(r, i){
+  return `<div class="invLine${r.moved ? ' invMovedRow' : ''}" data-g="${r.id}">
+    <span class="invName">${esc(r.name)}${r.category ? '<span class="invCat">' + esc(r.category) + '</span>' : ''}${
+      r.moved ? `<span class="invMoved">пока считали: было ${r.moved.was}, стало ${r.moved.now} — пересчитай</span>` : ''}</span>
+    <span class="invExp" title="в системе">${r.expected}</span>
+    <input class="input" type="number" min="0" step="1" inputmode="numeric" placeholder="шт" value="${esc(r.counted)}"
+           aria-label="насчитали — ${esc(r.name)}" oninput="invSet(${i}, this.value)">
+    <span class="invDiff" id="invD${i}">${invDiffHTML(r)}</span>
+    <span class="invLot" id="invL${i}">${invLotHTML(r, i)}</span>
+  </div>`;
+}
+async function invOpen(){
+  if (invForm){ invPaint(); return; }
+  let goods = goodsData;
+  try{ goods = (await api('/admin/goods')).goods || goodsData; }catch(e){ /* сеть мигнула — по последнему списку */ }
+  const rows = goods.filter(g => g.active || g.stock > 0).map(g => ({id: g.id, name: g.name, category: g.category || '',
+    expected: g.stock, price: +g.price_pln || 0, counted: '', lot: '', moved: null}));
+  if (!rows.length){ toast('В ценнике нет позиций — считать нечего'); return; }
+  invLots = {};
+  invForm = {at: new Date().toISOString(), note: '', cat: -1, cats: [...new Set(rows.map(r => r.category))].sort((a, b) => a.localeCompare(b, 'ru')), rows};
+  invPaint();
+}
+function invPaint(){
+  const f = invForm;
+  if (!f) return;
+  drawerUserId = null; drawerPCId = null; // шторка склада — живые обновления её не перерисуют
+  const seg = (k, label) => `<button class="${f.cat === k ? 'on' : ''}" onclick="invCat(${k})">${esc(label)}</button>`;
+  const shown = f.rows.map((r, i) => ({r, i})).filter(({r}) => f.cat < 0 || r.category === f.cats[f.cat]);
+  const moved = f.rows.filter(r => r.moved).length;
+  openDrawer('Инвентаризация', `<div class="uform" id="invForm">
+    <div class="muted">Начали ${supWhen(f.at)}. Впиши, сколько насчитал; пустое поле — позицию не считали, в акт она не пойдёт.
+      Разница уйдёт корректировкой с номером акта: недостача — ${isOwner() ? 'со старых партий первыми или из выбранной' : 'со старых партий первыми'},
+      излишек — партией «нашлось»${isOwner() ? ' (цену ей поставишь в «Закупках»)' : ''}.</div>
+    ${moved ? `<div class="invMoved" id="invMovedNote">Пока считали, остаток изменился у ${repPlural(moved, 'позиции', 'позиций', 'позиций')} — они подсвечены: пересчитай и проведи ещё раз</div>` : ''}
+    ${f.cats.length > 1 ? `<div class="segs" id="invCats">${seg(-1, 'Все')}${f.cats.map((c, k) => seg(k, c || 'без категории')).join('')}</div>` : ''}
+    <div id="invLines"><div class="invLine invHeadRow"><span class="invName">Позиция</span><span class="invExp">в системе</span><span>насчитали</span><span>разница</span></div>
+      ${shown.map(({r, i}) => invLineHTML(r, i)).join('')}</div>
+    <div class="invSum" id="invSum">${invSumHTML(f)}</div>
+    <input id="invNote" class="input" maxlength="200" placeholder="Заметка — что считали, кто помогал" value="${esc(f.note)}" oninput="invForm.note=this.value">
+    <button class="btn" style="width:100%; justify-content:center" id="invSave" onclick="armButton(this, 'Ещё раз — провести акт', () => invSave())"><span data-ic="check"></span>Провести акт</button>
+    <button class="btn ghost" style="width:100%; justify-content:center" id="invReset" onclick="armButton(this, 'Ещё раз — начать заново', () => invRestart())"><span data-ic="cross"></span>Начать заново</button>
+    <div class="muted">Акт не правится и не отменяется, как бумажный: ошибку исправит корректировка или новый акт.</div>
+  </div>`);
+}
+function invCat(k){ if (invForm){ invForm.cat = k; invPaint(); } }
+function invSet(i, v){
+  const r = invForm && invForm.rows[i];
+  if (!r) return;
+  r.counted = v;
+  const d = document.getElementById('invD' + i), s = document.getElementById('invSum'), l = document.getElementById('invL' + i);
+  if (d) d.innerHTML = invDiffHTML(r);
+  if (s) s.innerHTML = invSumHTML(invForm);
+  if (l){ // партия: появилась недостача — список; ушла — убрать (выбор не сбрасываем, пока недостача есть)
+    const n = invNum(v), short = isOwner() && n !== null && !isNaN(n) && n < r.expected;
+    if (!short){ l.innerHTML = ''; r.lot = ''; } else if (!l.querySelector('select')) l.innerHTML = invLotHTML(r, i);
+  }
+}
+function invRestart(){ invForm = null; invLots = {}; invOpen(); }
+function invTotText(t){
+  const p = [t.matched ? 'сошлось ' + t.matched : '', t.short_units ? 'недостача ' + t.short_units + ' шт' : '',
+    t.surplus_units ? 'излишек ' + t.surplus_units + ' шт' : ''].filter(Boolean);
+  return repPlural(t.positions || 0, 'позиция', 'позиции', 'позиций') + (p.length ? ': ' + p.join(', ') : '');
+}
+async function invSave(){
+  const f = invForm, btn = document.getElementById('invSave'), lines = [];
+  if (!f || invBusy) return;
+  for (const r of f.rows){
+    const n = invNum(r.counted);
+    if (n === null) continue;
+    if (isNaN(n)){ toast('⚠ «' + r.name + '»: насчитали — целое число от нуля'); return; }
+    lines.push(Object.assign({good_id: r.id, expected: r.expected, counted: n}, r.lot && n < r.expected ? {lot_id: r.lot} : {}));
+  }
+  if (!lines.length){ toast('⚠ Впиши «насчитали» хотя бы у одной позиции'); return; }
+  invBusy = true;
+  if (btn) btn.disabled = true;
+  try{
+    const d = await api('/admin/goods/inventory', {method:'POST', body: JSON.stringify({note: String(f.note).trim(), lines})});
+    const a = d.inventory || {};
+    invForm = null; invLots = {};
+    toast('✓ Акт №' + a.no + ' проведён — ' + invTotText(a.totals || {}));
+    renderGoods(); loadOrder(); // остатки, акты и «Заказать» — заново
+    invShow(a);
+  }catch(e){
+    if (e.code === 'stock_moved' && invForm){
+      const moved = (e.data || {}).lines || [];
+      for (const m of moved){
+        const r = invForm.rows.find(x => x.id === m.good_id);
+        if (r){ r.moved = {was: r.expected, now: m.stock}; r.expected = m.stock; r.lot = ''; }
+      }
+      invLots = {};
+      toast('⚠ Пока считали, остаток изменился у ' + repPlural(moved.length, 'позиции', 'позиций', 'позиций') + ' — пересчитай их и проведи ещё раз');
+      invPaint();
+      return;
+    }
+    toast('⚠ ' + e.message);
+  }finally{ invBusy = false; if (btn && btn.isConnected) btn.disabled = false; }
+}
+function paintInvActs(){
+  if (!document.getElementById('invBox')) return;
+  if (invActs === null){ setHTML('invBox', repEmpty('Акты не загрузились — открой «Товары» ещё раз')); return; }
+  const L = x => `<span class="repL">${x}</span>`, list = invActs.slice(0, 10);
+  setHTML('invBox', list.length === 0
+    ? '<div class="empty"><span data-ic="scroll"></span>Актов пока нет — «Пересчитать склад» заведёт первый</div>'
+    : `<table id="invActs"><tr><th>Акт</th><th>Когда</th><th>Кто</th><th>Позиций</th><th>Недостача</th><th>Излишек</th><th></th></tr>
+      ${list.map(a => { const t = a.totals || {}; return `<tr data-inv="${a.id}">
+        <td><b>№${a.no}</b>${a.note ? '<div class="muted invNote">' + esc(a.note) + '</div>' : ''}</td>
+        <td class="muted">${supWhen(a.created_at)}</td>
+        <td class="muted">${esc(a.by || '—')}</td>
+        <td>${L('позиций')}${t.positions || 0}${t.matched ? '<span class="muted"> · сошлось ' + t.matched + '</span>' : ''}</td>
+        <td>${L('недостача')}${t.short_units ? `<span class="invShort">${t.short_units} шт · −${fmtPLN(t.short_pln)} zł</span>` : '—'}</td>
+        <td>${L('излишек')}${t.surplus_units ? `<span class="invPlus">${t.surplus_units} шт · +${fmtPLN(t.surplus_pln)} zł</span>` : '—'}</td>
+        <td><button class="btn ghost mini" onclick="invOpenAct('${a.id}')"><span data-ic="scroll"></span>Акт</button></td></tr>`; }).join('')}</table>`
+      + (invActs.length > 10 ? `<div class="muted" style="margin-top:6px">Показаны 10 последних из ${invActs.length}</div>` : ''));
+}
+async function invOpenAct(id){
+  try{ invShow((await api('/admin/goods/inventories/' + id)).inventory || {}); }
+  catch(e){ toast('⚠ ' + e.message); }
+}
+function invShow(a){
+  invAct = a;
+  drawerUserId = null; drawerPCId = null;
+  const t = a.totals || {}, own = isOwner();
+  const lots = x => (x.lots || []).map(l => esc(l.title) + ': ' + l.qty + ' × ' + (l.price_pln == null ? 'без цены' : fmtPLN(l.price_pln))).join('; ');
+  openDrawer('Акт №' + a.no, `<div class="uform" id="invAct">
+    <div class="muted" id="invActWho">${supWhen(a.created_at)} · провёл ${esc(a.by || '—')}${a.note ? ' · ' + esc(a.note) : ''}</div>
+    <div class="kpis">
+      ${repKpi('Позиций', t.positions || 0, undefined, {title: 'сошлось: ' + (t.matched || 0)})}
+      ${repKpi('Недостача', (t.short_units || 0) + ' шт', undefined, {title: 'по цене продажи: ' + fmtPLN(t.short_pln) + ' zł'
+        + (own ? ' · по себестоимости: ' + fmtPLN(t.cost_pln) + ' zł' + (t.no_cost_units ? ', без цены закупки — ' + t.no_cost_units + ' шт' : '') : '')})}
+      ${repKpi('Излишек', (t.surplus_units || 0) + ' шт', undefined, {title: 'по цене продажи: ' + fmtPLN(t.surplus_pln) + ' zł · лёг партией «нашлось»'})}
+      ${own ? repKpi('По себестоимости', fmtPLN(t.cost_pln) + ' zł', undefined, {title: 'недостача — по цене партий, из которых ушла'
+        + (t.no_cost_units ? '; без цены закупки — ' + t.no_cost_units + ' шт' : '')}) : ''}
+    </div>
+    <div id="invActLines">${(a.lines || []).map(x => `<div class="invActLine${x.delta === 0 ? ' iaSame' : ''}">
+      <div class="iaName"><b>${esc(x.name)}</b>${x.category ? '<span class="muted"> · ' + esc(x.category) + '</span>' : ''}</div>
+      <div class="iaNums"><span>в системе <b class="iaExp">${x.expected}</b></span><span>насчитали <b class="iaCnt">${x.counted}</b></span>
+        <span class="iaDiff">${x.delta === 0 ? 'сошлось' : `<span class="${x.delta < 0 ? 'invShort' : 'invPlus'}">${invSigned(x.delta)} шт · ${
+          x.delta < 0 ? '−' : '+'}${fmtPLN(Math.abs(x.delta_pln))} zł</span>`}</span></div>${own && x.delta !== 0 ? `
+      <div class="iaMore">${x.delta < 0 ? 'себестоимость <span class="iaCost">' + (x.cost_pln == null ? 'без цены закупки' : fmtPLN(x.cost_pln) + ' zł')
+        + '</span> · ' : 'лёг партией: '}<span class="iaLots">${lots(x) || '—'}</span></div>` : ''}
+    </div>`).join('')}</div>
+    ${own ? `<div class="dsub">Файл акта</div>
+    <div class="toolrow" id="invFileBar"><div class="segs" id="invLang">${['pl', 'ru'].map(l => `<button class="${invFileLang === l ? 'on' : ''}" onclick="invLangSet('${l}')">${l === 'pl' ? 'По-польски' : 'По-русски'}</button>`).join('')}</div>
+      <button class="btn mini" id="invXlsx" onclick="invDownload(this, 'xlsx')"><span data-ic="save"></span>Скачать XLSX</button>
+      <button class="btn ghost mini" id="invCsv" onclick="invDownload(this, 'csv')"><span data-ic="save"></span>CSV</button></div>
+    <div class="muted">Как выгрузка бухгалтеру: лист «Акт» — реквизиты, номер, кто и когда, итоги; «Позиции» — в системе, насчитали, разница, по цене продажи и по себестоимости.</div>` : ''}
+  </div>`);
+}
+function invLangSet(l){ invFileLang = l; if (invAct) invShow(invAct); }
+// «Скачать»: файл — по токену, имя — из ответа сервера (как выгрузка бухгалтеру, З13-и7)
+async function invDownload(btn, fmt){
+  if (!invAct || btn.disabled) return;
+  const html = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span data-ic="clock"></span>Собираю файл…'; mountIcons(btn);
+  try{
+    const url = API + '/admin/goods/inventories/' + invAct.id + '/export?format=' + fmt + '&lang=' + invFileLang;
+    const get = () => fetch(url, {headers:{Authorization:'Bearer ' + tokens().a}});
+    let r = await get();
+    if (r.status === 401 && tokens().r && await tryRefresh() === 'ok') r = await get();
+    if (!r.ok){ const e = await r.json().catch(() => ({})); throw new Error(e.message || 'сервер ответил ' + r.status); }
+    const name = ((r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'akt-' + invAct.no;
+    const blob = await r.blob(), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('✓ Файл «' + name + '» скачан');
+  }catch(e){ toast('⚠ Файл не собрался: ' + e.message); }
+  finally{ if (btn.isConnected){ btn.disabled = false; btn.innerHTML = html; mountIcons(btn); } }
 }
 
 function goodsBadgeSet(n){
@@ -6512,6 +6790,12 @@ function paintMoney(d){
                        + (loss.no_cost_units ? ' · без себестоимости: ' + loss.no_cost_units + ' шт' : '')})}
        ${loss.no_cost_units > 0 ? repKpi('— без себестоимости', loss.no_cost_units + ' шт', undefined,
                 {title:'ушло корректировкой из партий без цены (или до партий) — цену начальному остатку и «нашлось» ставишь в «Бухгалтерия» → «Закупки»'}) : ''}
+       ${(loss.inventories || {}).acts > 0 ? repKpi('— по инвентаризациям', fmtPLN(loss.inventories.short_pln) + ' zł', undefined, // З23-и4
+                {title:'акты пересчёта за период: ' + repPlural(loss.inventories.acts, 'акт', 'акта', 'актов') + ' — недостача ' + loss.inventories.short_units
+                       + ' шт: по цене продажи ' + fmtPLN(loss.inventories.short_pln) + ' zł, по себестоимости ' + fmtPLN(loss.inventories.cost_pln) + ' zł'
+                       + (loss.inventories.no_cost_units ? ' (без цены закупки — ' + loss.inventories.no_cost_units + ' шт)' : '')
+                       + (loss.inventories.surplus_units ? ' · излишек ' + loss.inventories.surplus_units + ' шт на ' + fmtPLN(loss.inventories.surplus_pln) + ' zł' : '')
+                       + '. Недостачи актов уже в «Потерях» склада — это корректировки'}) : ''}
        ${lostDep > 0 || loss.deposit_voids > 0 ? repKpi('— по ошибочным депозитам', fmtPLN(lostDep) + ' zł', undefined,
                 {title:'гость успел потратить до отмены депозита — долгом не стало (Ж-Р4), с кошелька снят только остаток · '
                        + (loss.deposit_voids || 0) + ' отмен на ' + fmtPLN(loss.deposit_void_pln || 0) + ' zł за период'}) : ''}
@@ -10714,6 +10998,8 @@ const PAL_WORDS = [
    sub:'Отчёты → Деньги', ic:'chart', run:() => palGoReport('money')},
   {who:'owner', words:['заказать', 'что заказать', 'заказ поставщику', 'закупить', 'дозаказ', 'кончится'], name:'Заказать',
    sub:'Товары: что кончится раньше и сколько заказать', ic:'box', run:() => palGoOrder()}, // З23-и2
+  {words:['инвентаризация', 'пересчёт', 'пересчитать склад', 'ревизия', 'акт инвентаризации', 'недостача на складе', 'остатки на полках'], name:'Инвентаризация',
+   sub:'Товары: пересчитать склад, акты', ic:'scroll', run:() => palGoInventory()}, // З23-и4
   {who:'owner', words:['abc', 'абс', 'товары по классам', 'какие товары', 'залежалые', 'без продаж', 'оборачиваемость', 'хватит склада'],
    name:'Товары: ABC', sub:'Отчёты → Товары: классы, доли, дни без продаж, склад в днях, маржа', ic:'chart', run:() => palGoReport('goods')}, // З23-и1б
   {who:'owner', words:['маржа', 'наценка', 'себестоимость проданного', 'стоимость склада', 'склад в деньгах', 'что покупают'], name:'Маржа и склад', // З10-и8
@@ -10763,6 +11049,14 @@ function palGoOrder(){
   const t = setInterval(() => {
     const el = document.getElementById('ordHead');
     if ((el && !document.querySelector('#ordBox .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block: 'start'}); }
+  }, 100);
+}
+function palGoInventory(){
+  nav('goods');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('invHead');
+    if ((el && !document.querySelector('#invBox .skel')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block: 'start'}); }
   }, 100);
 }
 function palGoReport(tab){
