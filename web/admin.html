@@ -457,6 +457,10 @@
     .kpi{white-space:normal}
     .kpi b, .kpi i{white-space:nowrap}
   }
+  /* З21-и1б: пульс дня — плитки-кнопки (открывают отчёт за сегодня); у числа — отклонение от нормы и сама норма */
+  .pulse .kpi{font-family:inherit; text-align:left}
+  .pulse .pN{font-weight:600; font-size:11.5px; color:var(--dim); margin-left:8px; white-space:nowrap}
+  #pulseFc{font-size:12px; margin:-6px 2px 18px}
   /* З10-и8: «Что покупают» и «По категориям» — маржа в минусе красным; на телефоне строки — карточки, у чисел подписи */
   .repNeg, .repNeg b{color:var(--acc3)}
   .repL{display:none}
@@ -1087,6 +1091,11 @@
         <!-- Спринт В1: отчёты за период. Пресеты + произвольный диапазон,
              четыре разреза, сравнение с предыдущим периодом. Окна считаются
              клубными сутками от report_hour («Экономика»). -->
+        <!-- З21-и1б (№46): пульс дня — сегодня до этого часа против нормы того же дня недели за 8 недель и прогноз
+             месяца (GET /admin/reports/pulse); от периода ниже не зависит -->
+        <div class="sect" id="pulseHead">Сегодня</div>
+        <div class="kpis pulse" id="pulseKpis"><div class="skel"></div></div>
+        <div class="muted" id="pulseFc"></div>
         <div class="toolrow">
           <div class="segs" id="repPresets">
             <button data-p="today" onclick="repPreset('today',this)">Сегодня</button>
@@ -1838,6 +1847,7 @@ setInterval(() => {
   // своим счётчиком: «секунды с последнего синка» сбрасываются каждый обмен,
   // и по ним вышло бы обращение к серверу почти каждую секунду.
   if (++shiftTick >= 60){ shiftTick = 0; loadMyShift(); loadStaffChat(); }
+  if (curTab === 'stats' && ++pulseTick >= 300){ pulseTick = 0; renderPulse(); } // З21-и1б: пульс дня — раз в 5 минут
   // живой таймер сессии в открытом drawer ПК
   const el = document.getElementById('dElapsed');
   if (el && drawerPCId){
@@ -6964,7 +6974,70 @@ async function burnRunNow(btn){
   });
 }
 
+/* ── З21-и1б (№46, З-Р28): пульс дня сверху «Отчётов». Сегодня до этого часа против нормы — медианы того же дня
+   недели за 8 недель до того же часа (выручка, сессии, новые гости) — и «ожидаем к концу месяца» с разбросом. Числа —
+   с сервера (GET /admin/reports/pulse, pulse.go); от периода ниже блок не зависит. Плитка открывает отчёт за сегодня;
+   блок обновляется при входе в «Отчёты» и раз в 5 минут, пока они открыты. ── */
+const WD_NOM = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота']; // как weekday сервера: 0 — вс
+const WD_GEN = ['воскресенья','понедельника','вторника','среды','четверга','пятницы','субботы'];
+const WD_GEN_PL = ['воскресений','понедельников','вторников','сред','четвергов','пятниц','суббот'];
+const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+let pulseData = null, pulseTick = 0;
+/* отклонение от нормы словами: null с сервера — норма 0, а сегодня не 0 (процент бессмыслен); недель нет — нормы нет */
+function pulseChip(pct, weeks){
+  if (!weeks) return '<i class="dlt" title="прошлых таких же дней в истории клуба ещё нет">нормы пока нет</i>';
+  if (pct === null || pct === undefined) return '<i class="dlt up" title="в эти часы обычно было пусто">обычно 0</i>';
+  if (pct === 0) return '<i class="dlt">как обычно</i>';
+  const v = Math.abs(pct).toLocaleString('ru-RU') + '%';
+  return pct > 0 ? `<i class="dlt up">выше нормы на ${v}</i>` : `<i class="dlt dn">ниже нормы на ${v}</i>`;
+}
+function pulseTile(label, m, fmt, tab, d){
+  const n = d.weeks || 0, ws = m.weeks || [];
+  const hist = (d.week_dates || []).map((x, i) => repDate(x) + ' — ' + fmt(ws[i])).join(' · ');
+  const title = (n ? 'норма — медиана того же дня недели до того же часа: ' + hist : 'прошлых таких же дней ещё нет')
+    + ' · нажми — отчёт за сегодня';
+  return `<button class="kpi" data-k="${tab}" onclick="pulseOpen('${tab}')" title="${esc(title)}">${label} <b>${fmt(m.today)}</b>`
+    + pulseChip(m.pct, n) + (n ? `<span class="pN">норма ${fmt(m.norm)}</span>` : '') + '</button>';
+}
+/* строка под плитками: на чём норма и прогноз месяца (целыми злотыми — это оценка) */
+function pulseNote(d){
+  const n = d.weeks || 0, f = d.forecast, wd = d.weekday;
+  const zl = v => Math.round(+v || 0).toLocaleString('ru-RU');
+  if (!n) return 'Нормы пока нет: прошлых ' + WD_GEN_PL[wd] + ' в истории клуба ещё нет — прогноз месяца появится вместе с ней.';
+  let s = 'Норма — медиана ' + (n === 1 ? '1 прошлого ' + WD_GEN[wd] : n + ' прошлых ' + WD_GEN_PL[wd]) + ' до того же часа.';
+  if (f){
+    const left = f.days_left ? 'впереди ' + repPlural(f.days_left, 'день', 'дня', 'дней') : 'сегодня последний день месяца';
+    s += ' Ожидаем к концу ' + MONTHS_GEN[+f.month.slice(5, 7) - 1] + ' ≈ ' + zl(f.pln) + ' zł (от ' + zl(f.low_pln) + ' до '
+      + zl(f.high_pln) + ') — уже есть ' + zl(f.so_far_pln) + ' zł, ' + left + '.';
+  }
+  return s;
+}
+async function renderPulse(){
+  const box = document.getElementById('pulseKpis');
+  if (!box || !isOwner()) return;
+  try{
+    const d = await api('/admin/reports/pulse');
+    pulseData = d;
+    document.getElementById('pulseHead').textContent = 'Сегодня до ' + d.at + ' · ' + (WD_NOM[d.weekday] || '');
+    const pln = v => fmtPLN(v) + ' zł', num = v => (+v || 0).toLocaleString('ru-RU');
+    box.innerHTML = pulseTile('Выручка', d.revenue, pln, 'money', d) + pulseTile('Сессии', d.sessions, num, 'load', d)
+      + pulseTile('Новые гости', d.new, num, 'guests', d);
+    document.getElementById('pulseFc').textContent = pulseNote(d);
+  }catch(e){
+    box.innerHTML = '<div class="muted">Пульс не загрузился: ' + esc(e.message) + '</div>';
+    document.getElementById('pulseFc').textContent = '';
+  }
+}
+/* плитка пульса → отчёт этого разреза за сегодня */
+function pulseOpen(tab){
+  repPeriod = {preset:'today'}; repTab = tab;
+  document.querySelectorAll('#repPresets button').forEach(b => b.classList.toggle('on', b.dataset.p === 'today'));
+  document.querySelectorAll('#repTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  renderReports();
+}
+
 async function renderStats(){
+  renderPulse();   // З21-и1б: пульс дня — свой try
   renderShift();   // Б10-и1: сводка смены — свой try, не роняет отчёты
   renderReports(); // В1: отчёты за период
 }
