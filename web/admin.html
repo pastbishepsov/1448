@@ -561,6 +561,24 @@
   .setnote b{color:var(--txt)}
   /* З13-и2: ставка VAT в шторке позиции и «ко всей категории» рядом; на телефоне кнопка уходит строкой ниже */
   .uform .vatrow{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  /* З24-и2: расписание цен зоны — правила в шторке зоны, цена сейчас в списке зон и на плитке свободного ПК */
+  .zrList{display:flex; flex-direction:column; gap:6px}
+  .zrRow{display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 10px; border:1px solid var(--hair);
+         border-radius:10px; background:var(--card2)}
+  .zrRow .zrTxt{flex:1 1 200px; min-width:0; font-size:13.5px; line-height:1.35}
+  .zrRow.zrOn{border-color:rgba(52,211,153,.5)}
+  .zrRow.zrOld{opacity:.55}
+  .zrBadge{display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:7px;
+           background:rgba(52,211,153,.14); color:var(--green)}
+  .zrNow{font-size:13px}
+  .zrNow b{color:var(--txt)}
+  .zrForm{display:flex; flex-direction:column; gap:9px; border-top:1px solid var(--hair); padding-top:10px}
+  .zrRow .zrBtns{display:flex; gap:6px; margin-left:auto}
+  .zrPair{display:flex; gap:6px; align-items:center; flex:1 1 150px; min-width:0} /* телефон — пара на строку, поле не режется */
+  .zrPair .input{flex:1 1 auto; width:auto; min-width:0}
+  .zrCell{font-size:12px; margin-top:2px}
+  .hpc .inf2 .pr.up,.pc .pr.up{color:var(--gold)}
+  .hpc .inf2 .pr.down,.pc .pr.down{color:var(--green)}
   .uform .vatrow .input{flex:1 1 120px; width:auto; min-width:0}
   /* З13-и2: в списках на телефоне шапки нет — у ставки своя подпись */
   .vatL{display:none}
@@ -1285,7 +1303,7 @@
         <div id="clubWrap"><div class="skel"></div></div>
 
         <!-- В4-этап 5: зона стала сущностью со своей ценой часа -->
-        <div class="sect">Зоны и цена часа</div>
+        <div class="sect" id="zonesHead">Зоны и цена часа</div>
         <div class="toolrow">
           <button class="btn mini" onclick="zoneEdit('')"><span data-ic="plus"></span>Зона</button>
           <span class="muted" id="zonesHint"></span>
@@ -2425,7 +2443,7 @@ let hallEdit = false, selPCId = null, newPCPos = null;
 
 async function renderHall(){
   const [pcs, bk, wl, osn] = await Promise.all([api('/admin/computers'), api('/admin/bookings'), api('/admin/waitlist'),
-    api('/admin/shifts/now').catch(() => ({items: []}))]);
+    api('/admin/shifts/now').catch(() => ({items: []})), zonesFresh()]); // З24-и2: цены зон «сейчас» — для плиток
   hallData = pcs.computers;
   pcCache = hallData; // глобальный поиск ПК ест свежие данные зала (Б1)
   hallClub = (pcs.clubs || [])[0] || null;
@@ -2512,6 +2530,7 @@ function hallPCCell(pc, edit){
   else if (!edit && hallSoon[pc.id]){ inf = 'бронь ' + hhmm(hallSoon[pc.id]); }
   else if (off){ inf = 'offline'; }
   if (!edit && callPCs.has(pc.id)){ cls += ' call'; inf = '<span data-ic="bell"></span> зовёт'; } // Б2; Ж4-и4: по ПК, где гость сидит сейчас
+  if (!edit){ const pr = pcPriceTag(pc); if (pr && !inf2) inf2 = pr; } // З24-и2: свободный — цена посадки сейчас
   const sel = edit && selPCId === pc.id ? ' sel' : '';
   const click = edit ? `hallPCClick('${pc.id}')` : `openPCDrawer('${pc.id}')`;
   return `<div class="hpc${cls}${off ? ' off' : ''}${sel}" onclick="${click}">
@@ -2692,11 +2711,12 @@ function pcTile(pc, soonAt){
   else if (pc.status === 'reserved'){ info = '<span class="pcdot" style="background:var(--neu)"></span>резерв'; }
   else if (off){ info = '<span class="muted">offline</span>'; }
   if (callPCs.has(pc.id)){ cls += ' call'; info = '<span data-ic="bell"></span> зовёт'; } // Б2
+  const prTag = pcPriceTag(pc); // З24-и2: свободный — цена посадки сейчас
   const soonHtml = (!pc.session && soonAt)
     ? `<div class="soon"><span data-ic="clock"></span>бронь ${hhmm(soonAt)}</div>` : '';
   return `<div class="pc ${cls}${off?' off':''}" onclick="openPCDrawer('${pc.id}')">
     <div class="nm">${esc(pc.name)}</div>
-    <div class="info">${info}</div>${soonHtml}</div>`;
+    <div class="info">${info}${prTag ? ' · ' + prTag : ''}</div>${soonHtml}</div>`;
 }
 function hhmm(iso){ const d = new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
@@ -2772,6 +2792,7 @@ function renderPCDrawer(id){
   let body = `<table class="kv">
     <tr><td class="muted">Клуб</td><td>${esc(pc.club)}</td></tr>
     <tr><td class="muted">Зона</td><td>${esc(pc.zone||'—')}</td></tr>
+    ${pcSellable(pc) && pcPriceLine(pc) ? `<tr><td class="muted">Цена часа</td><td id="dPrice">${esc(pcPriceLine(pc))}</td></tr>` : ''}
     <tr><td class="muted">Статус</td><td><span class="st ${pc.status}">${pc.status}</span></td></tr>
     <tr><td class="muted">Shell</td><td>${pc.shell_online
       ? '<span class="dot" style="background:var(--green)"></span>online'
@@ -4012,7 +4033,8 @@ async function submitDeposit(){
       const hh = d.hours_hint;
       toast('💰 +' + fmtPLN(d.amount_pln) + ' zł · +' + d.coins_granted + ' монет'
         + (d.bonus_coins > 0 ? ' (+' + d.bonus_coins + ' бонус таланта)' : '')
-        + (hh && hh.minutes > 0 ? ' · хватит ещё на ' + minsHuman(hh.minutes) + (hh.session ? '' : (hh.zone ? ' в ' + hh.zone : ' по клубному тарифу')) : ''),
+        + (hh && hh.minutes > 0 ? ' · хватит ещё на ' + minsHuman(hh.minutes) + (hh.session ? '' : (hh.zone ? ' в ' + hh.zone : ' по клубному тарифу')
+          + (hh.rate_pln ? ' (по ' + fmtPLN(hh.rate_pln) + ' zł/ч)' : '')) : ''), // З24-и2: без сессии — по цене зоны, не по расписанию
         () => voidDeposit(d.deposit_id));
       uForm = null;
       await loadUserDrawer();
@@ -4678,6 +4700,7 @@ const AUD_GROUPS = {
   bookings: ['booking_create','booking_cancel','booking_restore'],
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release', // Ж4-и3
        'zone_minutes_move','zone_minutes_burn', // З18-и1
+       'zone_rule_create','zone_rule_update','zone_rule_delete', // З24-и2: расписание цен зоны
        'club_update'], // З18-и6: карточка клуба
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
@@ -4722,6 +4745,7 @@ const AUD_LABEL = {
   login_failed:'вход: неверный пароль', // З0-и3: серия неудач входа персонала — только владельцу
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   zone_minutes_move:'зона: минуты перенесены', zone_minutes_burn:'зона: минуты сожжены', // З18-и1
+  zone_rule_create:'зона: правило цены', zone_rule_update:'зона: правило цены — правка', zone_rule_delete:'зона: правило цены убрано', // З24-и2
   coin_redeem:'монеты: время за монеты',
   coin_burn:'монеты: сгорание',
   coin_redeem_void:'монеты: отмена выдачи',
@@ -4772,6 +4796,7 @@ const AUD_ICON = {
   work_start:'clock', work_stop:'check', work_edit:'edit',
   zone_create:'plus', zone_update:'edit', zone_delete:'cross',
   zone_minutes_move:'clock', zone_minutes_burn:'cross', // З18-и1
+  zone_rule_create:'plus', zone_rule_update:'edit', zone_rule_delete:'cross', // З24-и2
   coin_redeem:'clock',
   coin_burn:'clock',
   coin_redeem_void:'cross',
@@ -10095,13 +10120,14 @@ async function renderZones(){
     const d = await api('/admin/zones');
     zonesCache = d.zones || [];
     zonesData = d; // З18-и6: подсказка — и по запрету «ПК без зоны»
+    zonesAt = Date.now(); // З24-и2: свежесть цен «сейчас» для зала
     paintZonesHint();
     setHTML('zonesTable', zonesCache.length === 0
       ? '<div class="empty"><span data-ic="monitor"></span>Зон нет — все ПК на клубном тарифе</div>'
       : `<table><tr><th>Зона</th><th>Цена часа</th><th>VAT</th><th>Час в монетах</th><th>Компьютеров</th><th>У гостей</th><th></th></tr>
       ${zonesCache.map(z => `<tr>
         <td><b>${esc(z.name)}</b></td>
-        <td>${fmtPLN(z.rate_pln)} zł</td>
+        <td>${fmtPLN(z.rate_pln)} zł${zoneRulesCell(z)}</td>
         <td class="muted"><span class="vatL">VAT</span>${esc(vatLabel(z.vat_pct))}</td>
         <td class="muted" title="цена часа × курс погашения — считает конвертер">${z.coins_per_hour}</td>
         <td class="muted">${z.computers}</td>
@@ -10306,6 +10332,173 @@ async function deletePack(id){
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
+/* ── З24-и2 (№53 «в»): расписание цен зоны. Правила живут на сервере (З24-и1): дни недели, окно по часам клуба, цена
+   часа, срок; вне правил — цена зоны, правила одной зоны не накладываются (409 rule_overlap — с каким). Цена «сейчас» и
+   следующая — из GET /admin/zones (rate_now_pln, next_at, next_rate_pln). Граница прошла, а список старый — следующая
+   цена уже «сейчас», а зоны тянем заново (не чаще раза в 20 с; и раз в 5 минут — правило могли завести в другой
+   вкладке). На плитке свободного ПК — цена посадки сейчас: выше цены зоны — золотом, ниже — зелёным. ── */
+let zonesAt = 0, zonesPull = 0, zrEditId = '';
+function zonePriceNow(z){
+  if (!z) return null;
+  const at = z.next_at ? new Date(z.next_at).getTime() : 0;
+  if (at && at <= Date.now()) return {rate: +z.next_rate_pln, base: +z.rate_pln, at: 0, next: null, stale: true};
+  return {rate: +(z.rate_now_pln ?? z.rate_pln), base: +z.rate_pln, at, next: z.next_rate_pln ?? null, stale: false};
+}
+async function zonesFresh(){
+  const now = Date.now();
+  const stale = !zonesAt || now - zonesAt > 300000 || zonesCache.some(z => z.next_at && new Date(z.next_at).getTime() <= now);
+  if (!stale || now - zonesPull < 20000) return;
+  zonesPull = now;
+  try{ const d = await api('/admin/zones'); zonesCache = d.zones || []; zonesData = d; zonesAt = Date.now(); }catch(e){}
+}
+function zlShort(v){ v = +v || 0; return (Number.isInteger(v) ? String(v) : fmtPLN(v)) + ' zł'; }
+// когда сменится цена: «с 18:00», «завтра с 10:00», «с пт 10:00» — сервер отдаёт смену в ближайшие 7 дней
+function whenShort(t){
+  const d = new Date(t), n = new Date();
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dd = Math.round((day(d) - day(n)) / 86400000);
+  return (dd <= 0 ? 'с ' : dd === 1 ? 'завтра с ' : 'с ' + DAYS_RU[(d.getDay() + 6) % 7] + ' ') + hhmm(d.toISOString());
+}
+// «сейчас 25,00 zł/ч · с 18:00 — 10,00 zł/ч»
+function zonePriceLine(z){
+  const p = zonePriceNow(z);
+  if (!p) return '';
+  return 'сейчас ' + fmtPLN(p.rate) + ' zł/ч' + (p.at && p.next != null ? ' · ' + whenShort(p.at) + ' — ' + fmtPLN(p.next) + ' zł/ч' : '');
+}
+function zoneRulesCell(z){
+  const n = (z.rules || []).length;
+  if (!n) return '';
+  const p = zonePriceNow(z);
+  const now = p && p.rate !== p.base ? 'сейчас ' + fmtPLN(p.rate) : 'сейчас — цена зоны';
+  const nx = p && p.at && p.next != null ? ' · ' + whenShort(p.at) + ' — ' + fmtPLN(p.next) : '';
+  return `<div class="muted zrCell">${now}${nx} · ${repPlural(n, 'правило', 'правила', 'правил')}</div>`;
+}
+// цена посадки на ПК сейчас: зона — по расписанию, без зоны — клубный тариф; нет данных зон — null
+function pcPriceNow(pc){
+  if (pc.zone_id){
+    const z = zonesCache.find(x => x.id === pc.zone_id);
+    return z ? zonePriceNow(z) : null;
+  }
+  const r = zonesData && +zonesData.club_rate_pln;
+  return r > 0 ? {rate: r, base: r, at: 0, next: null} : null;
+}
+function pcSellable(pc){ return !pc.session && !pc.stuck && pc.status === 'available' && !pcHeld(pc); }
+function pcPriceTag(pc){
+  const p = pcSellable(pc) ? pcPriceNow(pc) : null;
+  return p ? `<span class="pr${p.rate > p.base ? ' up' : p.rate < p.base ? ' down' : ''}" title="цена часа посадки сейчас">${zlShort(p.rate)}</span>` : '';
+}
+function pcPriceLine(pc){
+  if (pc.zone_id) return zonePriceLine(zonesCache.find(x => x.id === pc.zone_id));
+  const p = pcPriceNow(pc);
+  return p ? 'клубный тариф ' + fmtPLN(p.rate) + ' zł/ч' : '';
+}
+function ymdLocal(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+// идёт ли правило сейчас — как ruleAt на сервере: окно начинается в отмеченный день (сегодня или вчера — через полночь),
+// срок — по дню начала окна
+function zrActive(r, t){
+  t = t || new Date();
+  for (const back of [0, 1]){
+    const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - back);
+    if (!(r.days_mask & (1 << ((d.getDay() + 6) % 7)))) continue;
+    const ds = ymdLocal(d);
+    if ((r.valid_from && ds < r.valid_from) || (r.valid_to && ds > r.valid_to)) continue;
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, r.start_min);
+    const e = new Date(d.getFullYear(), d.getMonth(), d.getDate() + (r.end_min <= r.start_min ? 1 : 0), 0, r.end_min);
+    if (t >= s && t < e) return true;
+  }
+  return false;
+}
+function zrBoxHtml(z){
+  const rules = z.rules || [], today = ymdLocal(new Date());
+  const rows = rules.map(r => {
+    const on = zrActive(r), old = !!r.valid_to && r.valid_to < today;
+    return `<div class="zrRow${on ? ' zrOn' : ''}${old ? ' zrOld' : ''}" data-r="${r.id}">
+      <div class="zrTxt"><b>${esc(r.text)}</b>${on ? ' <span class="zrBadge">идёт сейчас</span>' : old ? ' <span class="muted">· срок вышел</span>' : ''}${
+        r.note ? '<div class="muted">' + esc(r.note) + '</div>' : ''}</div>
+      <div class="zrBtns"><button class="btn ghost mini" onclick="zrForm('${z.id}', '${r.id}')"><span data-ic="edit"></span>Правка</button>
+        <button class="btn ghost mini danger" title="убрать правило" onclick="zrDelete(this, '${z.id}', '${r.id}')">✕</button></div>
+    </div>`;
+  }).join('');
+  return `<div class="muted">Вне правил — цена зоны ${fmtPLN(z.rate_pln)} zł/ч. Правило ставит свою цену на свои дни и часы: вечер
+      дороже, утро и выходные дешевле. Цена берётся при посадке — начатые сессии досчитываются по своей.</div>
+    ${rules.length ? `<div class="zrNow" id="zr_now">${esc(zonePriceLine(z))}</div><div class="zrList" id="zr_list">${rows}</div>`
+      : '<div class="muted" id="zr_now">Правил нет — зона всегда стоит своей ценой.</div>'}
+    <div id="zr_form"></div>
+    ${rules.length < 20 ? `<div><button class="btn ghost mini" id="zr_add" onclick="zrForm('${z.id}', '')"><span data-ic="plus"></span>Правило</button></div>`
+      : '<div class="muted" id="zr_add">У зоны 20 правил — больше нельзя: убери ненужное.</div>'}`;
+}
+function zrPaint(zid){
+  const z = zonesCache.find(x => x.id === zid), box = document.getElementById('zr_box');
+  if (z && box){ zrEditId = ''; box.innerHTML = zrBoxHtml(z); mountIcons(box); }
+}
+function zrForm(zid, rid){
+  const z = zonesCache.find(x => x.id === zid), box = document.getElementById('zr_form');
+  if (!z || !box) return;
+  const r = (z.rules || []).find(x => x.id === rid) || {days_mask: 31, start_min: 1080, end_min: 1320, rate_pln: '', valid_from: '', valid_to: '', note: ''};
+  zrEditId = rid || '';
+  const days = DAYS_RU.map((d, i) =>
+    `<label><input type="checkbox" class="zrDay" data-b="${i}"${(r.days_mask & (1 << i)) ? ' checked' : ''}>${d}</label>`).join('');
+  box.innerHTML = `<div class="zrForm" id="zr_f">
+    <div class="muted"><b>${rid ? 'Правка правила' : 'Новое правило'}</b></div>
+    <div class="dayscol" id="zr_days">${days}</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap">
+      <button class="btn ghost mini" onclick="zrDays(127)">каждый день</button>
+      <button class="btn ghost mini" onclick="zrDays(31)">будни</button>
+      <button class="btn ghost mini" onclick="zrDays(96)">выходные</button></div>
+    <div class="vatrow"><span class="zrPair"><label class="muted" for="zr_start">с</label><input id="zr_start" class="input" type="time" value="${mmHH2(r.start_min)}"></span>
+      <span class="zrPair"><label class="muted" for="zr_end">до</label><input id="zr_end" class="input" type="time" value="${mmHH2(r.end_min % 1440)}"></span></div>
+    <div class="muted">Конец раньше начала — окно через полночь: ночь пятницы — это «пт 22:00–06:00». 00:00 в конце — до полуночи.</div>
+    <input id="zr_rate" class="input" type="number" step="0.01" min="0.01" placeholder="Цена часа в эти часы, zł" aria-label="цена часа" value="${r.rate_pln ?? ''}">
+    <label class="muted" style="margin-bottom:-6px">Срок — пусто, если всегда</label>
+    <div class="vatrow"><span class="zrPair"><label class="muted" for="zr_from">с</label><input id="zr_from" class="input" type="date" value="${r.valid_from || ''}"></span>
+      <span class="zrPair"><label class="muted" for="zr_to">по</label><input id="zr_to" class="input" type="date" value="${r.valid_to || ''}"></span></div>
+    <input id="zr_note" class="input" maxlength="64" placeholder="Заметка — «вечер», «happy hours»" aria-label="заметка" value="${esc(r.note || '')}">
+    <div class="setwarn hidden" id="zr_err"></div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+      <button class="btn mini" id="zr_save" onclick="zrSave('${zid}', '${rid || ''}')"><span data-ic="save"></span>${rid ? 'Сохранить правило' : 'Добавить правило'}</button>
+      <button class="btn ghost mini" onclick="zrPaint('${zid}')">Отмена</button>
+    </div></div>`;
+  mountIcons(box);
+  const add = document.getElementById('zr_add');
+  if (add) add.classList.add('hidden');
+  box.scrollIntoView({block: 'nearest'});
+}
+function zrDays(mask){ document.querySelectorAll('.zrDay').forEach(ch => { ch.checked = !!(mask & (1 << (+ch.dataset.b))); }); }
+async function zrSave(zid, rid){
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  const box = document.getElementById('zr_err');
+  const err = m => { if (box){ box.textContent = '⚠ ' + m; box.classList.remove('hidden'); } };
+  let mask = 0;
+  document.querySelectorAll('.zrDay:checked').forEach(ch => { mask |= 1 << (+ch.dataset.b); });
+  const start = hhmmToMin(v('zr_start')), end0 = hhmmToMin(v('zr_end')), rate = parseFloat(v('zr_rate'));
+  if (!mask){ err('Отметь хотя бы один день'); return; }
+  if (start < 0 || end0 < 0){ err('Заполни время: с и до'); return; }
+  const end = end0 === 0 ? 1440 : end0; // 00:00 в конце — до полуночи
+  if (start === end){ err('Начало и конец совпадают — окно пустое'); return; }
+  if (!(rate > 0)){ err('Нужна цена часа больше нуля'); return; }
+  const body = {days_mask: mask, start_min: start, end_min: end, rate_pln: rate, valid_from: v('zr_from'), valid_to: v('zr_to'), note: v('zr_note')};
+  const btn = document.getElementById('zr_save');
+  if (btn) btn.disabled = true;
+  try{
+    const r = await api(rid ? '/admin/zone-rules/' + rid : '/admin/zones/' + zid + '/rules',
+      {method: rid ? 'PATCH' : 'POST', body: JSON.stringify(body)});
+    toast('✓ ' + (rid ? 'Правило сохранено' : 'Правило добавлено') + ': ' + ((r.rule || {}).text || ''));
+    await renderZones();
+    zrPaint(zid);
+  }catch(e){ err(e.message); }
+  finally{ if (btn && btn.isConnected) btn.disabled = false; }
+}
+function zrDelete(btn, zid, rid){
+  armButton(btn, 'Убрать? Ещё раз', async () => {
+    try{
+      await api('/admin/zone-rules/' + rid, {method: 'DELETE'});
+      toast('✓ Правило убрано');
+    }catch(e){ toast('⚠ ' + e.message); }
+    await renderZones();
+    zrPaint(zid);
+  });
+}
+
 function zoneEdit(id, del){
   const z = zonesCache.find(x => x.id === id) || {sort:0};
   const isNew = !z.id;
@@ -10324,7 +10517,9 @@ function zoneEdit(id, del){
       <button class="btn mini" onclick="zoneSave('${z.id||''}')"><span data-ic="save"></span>Сохранить</button>
       <button class="btn ghost mini" onclick="closeDrawer()">Отмена</button>
     </div>
-  </div>${isNew ? '' : `<div class="dsub" id="zn_delh">Удалить зону</div>
+  </div>${isNew ? '<div class="muted" style="margin-top:10px">Расписание цен — после «Сохранить»: правила живут у зоны.</div>'
+    : `<div class="dsub" id="zr_head">Расписание цен</div>
+  <div class="uform" id="zr_box" style="margin-top:0">${zrBoxHtml(z)}</div>`}${isNew ? '' : `<div class="dsub" id="zn_delh">Удалить зону</div>
   <div class="uform" id="zn_del" style="margin-top:0">${zoneDelHtml(z)}</div>`}`);
   if (del){ const h = document.getElementById('zn_delh'); if (h) h.scrollIntoView({block:'start'}); } // ✕ в списке — сразу к мастеру
 }
@@ -10397,6 +10592,8 @@ async function zoneSave(id){
   const sort = parseInt(document.getElementById('zn_sort').value || '0', 10);
   if (!name){ toast('⚠ Нужно название зоны'); return; }
   if (!(rate > 0)){ toast('⚠ Нужна цена часа больше нуля'); return; }
+  const zr = document.getElementById('zr_rate'); // З24-и2: набранное правило не теряем молча
+  if (zr && zr.value.trim()){ toast('⚠ Правило не добавлено — нажми «' + (zrEditId ? 'Сохранить правило' : 'Добавить правило') + '» или «Отмена»'); return; }
   const body = {name, rate_pln: rate, sort};
   vatPut(body, 'zn_vat', zonesCache.find(x => x.id === id)); // З13-и2
   try{
@@ -10833,6 +11030,15 @@ function paintZonesHint(){
   setText('zonesHint', clubZoneReq() ? 'ПК без зоны запрещены — у каждого ПК своя зона (карточка «Клуб» выше)'
     : 'Клубный тариф ' + fmtPLN(d.club_rate_pln) + ' zł/ч действует на ПК без зоны' + (d.without_zone ? ' — таких сейчас ' + d.without_zone : ''));
 }
+// З24-и2: палитра «расписание цен» — «Экономика» → «Зоны и цена часа», когда список встал
+function palGoZones(){
+  nav('settings');
+  let n = 0;
+  const t = setInterval(() => {
+    const el = document.getElementById('zonesHead');
+    if ((el && document.querySelector('#zonesTable table, #zonesTable .empty')) || ++n > 40){ clearInterval(t); if (el) el.scrollIntoView({block: 'start'}); }
+  }, 100);
+}
 // палитра: «клуб», «часы работы» … — карточка клуба в «Экономике»
 /* З22-и3: ждём свежей отрисовки карточки клуба, как «Форма учёта» (З13-и7): старая, с прошлого захода в «Экономику», ещё в
    разметке — курсор вставал в неё, её тут же заменяли, и курсор терялся */
@@ -11140,6 +11346,9 @@ const PAL_WORDS = [
   {who:'owner', words:['клуб', 'карточка клуба', 'адрес клуба', 'телефон клуба', 'часы работы', 'режим работы', 'telegram', 'instagram',
    'соцсети', 'клубный тариф', 'пк без зоны'], name:'Карточка клуба', // З18-и6
    sub:'Экономика → Клуб: имя, адрес, телефон, соцсети, часы работы, клубный тариф, ПК без зоны', ic:'gear', run:() => palGoClub()},
+  {who:'owner', words:['расписание цен', 'цена по часам', 'цены по времени', 'вечерняя цена', 'ночной тариф', 'happy hours',
+   'счастливые часы', 'цены зон', 'цена зоны', 'зоны'], name:'Расписание цен', // З24-и2
+   sub:'Экономика → Зоны и цена часа: правила «дни, часы, цена, срок» — в шторке зоны', ic:'clock', run:() => palGoZones()},
   {who:'owner', words:['форма учёта', 'kpir', 'księga', 'ryczałt', 'ryczalt', 'ewidencja', 'pełna księgowość', 'полная бухгалтерия'], name:'Форма учёта', // З13-и7
    sub:'Экономика → Бухгалтерия: KPiR, ryczałt или полная бухгалтерия — какие листы выгрузки первыми', ic:'gear', run:() => palGoAccForm()},
   {who:'owner', words:['колонка kpir', 'колонки kpir', 'kpir', 'счёт категории', 'план счетов', 'ставка ryczałtu', 'ставки ryczałtu', 'ryczałt'],

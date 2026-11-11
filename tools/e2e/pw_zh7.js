@@ -70,7 +70,9 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   const cheapest = +psql(`SELECT rate_pln FROM zones WHERE rate_pln > 0 ORDER BY rate_pln, sort, name LIMIT 1`);
   const expMin = Math.floor(5000 * 60 / Math.round(cheapest * 100));
   const expTxt = (Math.floor(expMin / 60) ? Math.floor(expMin / 60) + ' ч' + (expMin % 60 ? ' ' + (expMin % 60) + ' мин' : '') : expMin + ' мин');
-  check('тост депозита: «+50,00 zł · +N монет · хватит ещё на 2 ч 30 мин в Standard» (без сессии — по дешёвой зоне)', /\+50,00 zł/.test(depToast) && depToast.includes('хватит ещё на ' + expTxt) && /в Standard/.test(depToast), depToast + ` (ожидалось «${expTxt}»)`);
+  const rateTxt = cheapest.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // З24-и2: цена, по которой считали
+  check('тост депозита: «+50,00 zł · +N монет · хватит ещё на 2 ч 30 мин в Standard (по 20,00 zł/ч)» (без сессии — по цене дешёвой зоны, не по расписанию)', /\+50,00 zł/.test(depToast) && depToast.includes('хватит ещё на ' + expTxt) && /в Standard/.test(depToast)
+    && depToast.includes(`(по ${rateTxt} zł/ч)`), depToast + ` (ожидалось «${expTxt}», «по ${rateTxt} zł/ч»)`);
   const depId = psql(`SELECT id FROM deposits WHERE user_id='${g}' ORDER BY created_at DESC LIMIT 1`);
   await j(API + '/admin/deposits/' + depId + '/void', { method: 'POST', headers: h, body: '{}' });
   // и3: виджет даты-времени брони

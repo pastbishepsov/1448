@@ -39,7 +39,11 @@
   .zone{margin-top:18px}
   .zone .zh{display:flex; align-items:baseline; gap:12px; margin-bottom:10px}
   .zone .zh .nm{font-size:24px; font-weight:800}
+  .zone .zh{flex-wrap:wrap}
   .zone .zh .rate{color:var(--dim); font-size:18px}
+  .zone .zh .rate b{color:var(--txt); font-weight:800}
+  .zone .zh .rate .up{color:var(--orange)}
+  .zone .zh .rate .down{color:var(--green)}
   .zone .zh .cnt{margin-left:auto; font-size:24px; font-weight:800; font-variant-numeric:tabular-nums}
   .zone .zh .cnt em{color:var(--green); font-style:normal}
   .pcs{display:flex; flex-wrap:wrap; gap:10px}
@@ -110,6 +114,20 @@ const API = '/api/v1/board/state';
 let refreshSec = 10, lastOk = 0, timer = null;
 const esc = s => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
 const hhmm = iso => { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+/* З24-и2 (№53 «в»): у зоны — цена сейчас (сервер считает по расписанию цен, З24-и1) и когда сменится: сегодня —
+   «с 18:00», завтра — «завтра с 10:00»; дальше табло не заглядывает. Дешевле — зелёным, дороже — оранжевым. */
+const zl = v => (+v || 0).toLocaleString('ru-RU', {minimumFractionDigits: 0, maximumFractionDigits: 2});
+function soonTxt(iso){
+  const d = new Date(iso), n = new Date();
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dd = Math.round((day(d) - day(n)) / 86400000);
+  return dd <= 0 ? 'с ' + hhmm(iso) : dd === 1 ? 'завтра с ' + hhmm(iso) : '';
+}
+function zoneRate(z){
+  const nx = z.next_at && z.next_rate_pln != null ? soonTxt(z.next_at) : '';
+  if (!nx) return zl(z.rate_pln) + ' zł/ч';
+  return `сейчас <b>${zl(z.rate_pln)} zł/ч</b> · <span class="${+z.next_rate_pln < +z.rate_pln ? 'down' : 'up'}">${nx} — ${zl(z.next_rate_pln)} zł/ч</span>`;
+}
 const plural = (n, one, few, many) => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? one : (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? few : many); };
 
 function paint(d){
@@ -120,7 +138,7 @@ function paint(d){
   document.getElementById('freeTxt').textContent = free === 0 ? 'свободных ПК нет — становитесь в очередь' : plural(free, 'свободный ПК из ' + d.total, 'свободных ПК из ' + d.total, 'свободных ПК из ' + d.total);
   document.getElementById('zones').innerHTML = (d.zones || []).map(z => `
     <div class="zone">
-      <div class="zh"><span class="nm">${esc(z.name)}</span><span class="rate">${(+z.rate_pln || 0).toLocaleString('ru-RU', {minimumFractionDigits: 0, maximumFractionDigits: 2})} zł/ч</span>
+      <div class="zh"><span class="nm">${esc(z.name)}</span><span class="rate">${zoneRate(z)}</span>
         <span class="cnt"><em>${z.free}</em> / ${z.total}</span></div>
       <div class="pcs">${[...(z.free_list || []).map(n => ({n, free: true})), ...(z.busy_list || []).map(n => ({n, free: false}))]
         .sort((a, b) => a.n.localeCompare(b.n, undefined, {numeric: true})) // по номеру, как стоят в зале: гость ищет «свою» машину глазами
