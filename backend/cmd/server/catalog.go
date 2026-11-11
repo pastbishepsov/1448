@@ -520,19 +520,48 @@ func handleAdminCatalogSort(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": app.ID, "sort": *req.Sort})
 }
 
-// DELETE /admin/catalog/:id — удалить приложение из каталога (owner).
+// DELETE /admin/catalog/:id — удалить приложение из каталога (owner). З19-и3 (№40): платформу, у которой в каталоге
+// есть игры (их подпись — имя платформы, по ней киоск собирает папку), не удалить — 409 с числом игр: игры остались бы
+// без папки; удалённая игра уходит из избранного гостей (favorite_games) — профиль не показывает пустую карточку.
 func handleAdminCatalogDelete(c *gin.Context) {
-	res := db.Delete(&models.CatalogApp{}, "id = ?", c.Param("id"))
-	if res.Error != nil {
-		respondDBError(c, res.Error)
-		return
-	}
-	if res.RowsAffected == 0 {
+	var app models.CatalogApp
+	if err := db.First(&app, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "app_not_found", "message": "Приложение не найдено"})
 		return
 	}
-	logAdminAction(c, "catalog_delete", nil, c.Param("id"))
-	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "deleted": true})
+	if app.Category == "platform" {
+		var games int64
+		db.Model(&models.CatalogApp{}).Where("category = ? AND subtitle = ?", "game", app.Name).Count(&games)
+		if games > 0 {
+			c.JSON(http.StatusConflict, gin.H{"code": "platform_has_games", "games": games,
+				"message": fmt.Sprintf("В папке «%s» игр: %d — сначала удали их или перенеси в другую платформу", app.Name, games)})
+			return
+		}
+	}
+	var favs int64
+	err := db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Delete(&models.CatalogApp{}, "id = ?", app.ID)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		res = tx.Exec("UPDATE users SET favorite_games = favorite_games - CAST(? AS text) "+
+			"WHERE favorite_games @> jsonb_build_array(CAST(? AS text))", app.ID, app.ID)
+		favs = res.RowsAffected
+		return res.Error
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"code": "app_not_found", "message": "Приложение не найдено"})
+		return
+	}
+	if err != nil {
+		respondDBError(c, err)
+		return
+	}
+	logAdminAction(c, "catalog_delete", nil, app.ID)
+	c.JSON(http.StatusOK, gin.H{"id": app.ID, "deleted": true, "unfavorited": favs})
 }
 
 // ── Обложка: BYTEA в БД, байты живут только в этих трёх ручках ──────────────

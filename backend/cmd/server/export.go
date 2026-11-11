@@ -533,7 +533,7 @@ func ta(lang int, key string) string { return exportAboutWords[key][lang] }
 func exportAbout(p period, reportHour int, cfg vatConfig, a vatAgg, pd profileData, data []xsheet, made, end time.Time, scheme int,
 	noCost int64, by, format string, lang int) xsheet {
 	var club models.Club
-	db.First(&club, "is_active = ?", true)
+	db.Where("is_active = ?", true).Order("name").First(&club) // З19-и3: тот же «первый активный клуб», что defaultClub()
 	req := requisitesNow()
 	firm, address := firmOf(req, club) // З13-и6: реквизиты фирмы; не заданы — название и адрес клуба
 	sh := xsheet{name: tr(lang, "sheet_about"), file: []string{"o_vygruzke", "o_eksporcie"}[lang],

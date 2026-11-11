@@ -117,7 +117,8 @@ func main() {
 	// Ж0-и5: логгер не пишет строки /ws/* — там в query живут тикет админки и
 	// (у старых агентов) AGENT_TOKEN; gin.Default() писал их в лог целиком.
 	r := gin.New()
-	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/api/v1/ws/admin", "/api/v1/ws/shell"}}))
+	// З19-и3 (№40): и опрос табло — раз в 10 с с каждого ТВ, у вкладок прошлой версии с токеном в адресе
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/api/v1/ws/admin", "/api/v1/ws/shell", "/api/v1/board/state"}}))
 	r.Use(gin.Recovery())
 	// К0-и5: кому верить про адрес клиента. gin по умолчанию доверяет ЛЮБОМУ
 	// прокси, и X-Forwarded-For от самого клиента обходил лимитер по IP. Пусто

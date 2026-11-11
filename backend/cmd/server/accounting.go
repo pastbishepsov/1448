@@ -171,7 +171,7 @@ func firmOf(r requisites, club models.Club) (name, address string) {
 func requisitesOut() gin.H {
 	r := requisitesNow()
 	var club models.Club
-	db.First(&club, "is_active = ?", true)
+	db.Where("is_active = ?", true).Order("name").First(&club) // З19-и3: тот же «первый активный клуб», что defaultClub()
 	return gin.H{"name": r.Name, "nip": r.NIP, "address": r.Address, "club_name": club.Name, "club_address": club.Address}
 }
 

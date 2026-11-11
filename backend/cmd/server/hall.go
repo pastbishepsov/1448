@@ -73,8 +73,9 @@ func handleAdminCreateComputer(c *gin.Context) {
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name) // З19-и2: «PC-01 » — это PC-01
-	var club models.Club
-	if err := db.First(&club, "is_active = ?", true).Error; err != nil {
+	// З19-и3: тот же «первый активный клуб», что у очереди и зон (раньше — без порядка)
+	club, ok := defaultClub()
+	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"code": "club_not_found", "message": "Активный клуб не найден"})
 		return
 	}
@@ -162,7 +163,7 @@ func handleAdminUpdateComputer(c *gin.Context) {
 		return
 	}
 	updates := map[string]any{}
-	changes, zoneChange := "", ""
+	changes, zoneChange, extra := "", "", []string{}
 	if req.Name != nil { // З19-и2: без пробелов по краям; пустое — не имя
 		n := strings.TrimSpace(*req.Name)
 		if n == "" {
@@ -244,6 +245,22 @@ func handleAdminUpdateComputer(c *gin.Context) {
 		updates["pos_x"] = *req.PosX
 		updates["pos_y"] = *req.PosY
 	}
+	// З19-и3 (№40): MAC и клетка схемы — тоже в строку журнала, «было → стало»
+	if m, ok := updates["mac"]; ok {
+		was, now := "—", "—"
+		if pc.MAC != nil && *pc.MAC != "" {
+			was = strings.ToUpper(*pc.MAC)
+		}
+		if s, isStr := m.(string); isStr {
+			now = s
+		}
+		extra = append(extra, "MAC "+was+" → "+now)
+	}
+	if _, ok := updates["pos_x"]; ok {
+		if cell, was := pcCellText(updates["pos_x"], updates["pos_y"]), pcCellText(pc.PosX, pc.PosY); cell != was {
+			extra = append(extra, "клетка "+was+" → "+cell)
+		}
+	}
 	if len(updates) == 0 {
 		c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID, "unchanged": true})
 		return
@@ -263,6 +280,13 @@ func handleAdminUpdateComputer(c *gin.Context) {
 			changes += " · " + zoneChange
 		}
 	}
+	if len(extra) > 0 { // З19-и3: MAC и клетка
+		if changes == "" {
+			changes = pc.Name + ": " + strings.Join(extra, " · ")
+		} else {
+			changes += " · " + strings.Join(extra, " · ")
+		}
+	}
 	if changes == "" {
 		changes = pc.Name
 	}
@@ -270,13 +294,48 @@ func handleAdminUpdateComputer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"computer_id": pc.ID})
 }
 
+// pcCellText — клетка схемы словами для журнала: «3,4» (столбец и строка с единицы), вне схемы — «—». Значения —
+// *int модели или int и nil из правки. Чистая функция (тест).
+func pcCellText(x, y any) string {
+	num := func(v any) (int, bool) {
+		switch t := v.(type) {
+		case int:
+			return t, true
+		case *int:
+			if t != nil {
+				return *t, true
+			}
+		}
+		return 0, false
+	}
+	cx, okx := num(x)
+	cy, oky := num(y)
+	if !okx || !oky {
+		return "—"
+	}
+	return fmt.Sprintf("%d,%d", cx+1, cy+1)
+}
+
 // DELETE /admin/computers/:id — удалить ПК без истории (owner).
 // С историей сессий/броней удалять нельзя — начисления и аудит должны жить;
-// такой ПК оставляют в ремонте.
+// такой ПК оставляют в ремонте. З19-и3 (№40): и пока киоск ПК на связи (удалённая машина продолжала бы работать без
+// записи) или по нему открыта проблема (её не закрыть и не компенсировать) — 409.
 func handleAdminDeleteComputer(c *gin.Context) {
 	var pc models.Computer
 	if err := db.First(&pc, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": "computer_not_found", "message": "ПК не найден"})
+		return
+	}
+	if hub.IsConnected(pc.ID.String()) {
+		c.JSON(http.StatusConflict, gin.H{"code": "pc_online",
+			"message": fmt.Sprintf("Киоск «%s» на связи — выключи ПК (или останови агент) и удаляй", pc.Name)})
+		return
+	}
+	var openInc int64
+	db.Model(&models.Incident{}).Where("computer_id = ? AND resolved_at IS NULL", pc.ID).Count(&openInc)
+	if openInc > 0 {
+		c.JSON(http.StatusConflict, gin.H{"code": "has_incidents",
+			"message": fmt.Sprintf("По «%s» открыта проблема (%d) — сначала закрой её в «Проблемах»", pc.Name, openInc)})
 		return
 	}
 	var sessions, bookings int64

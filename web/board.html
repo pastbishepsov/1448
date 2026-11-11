@@ -103,9 +103,10 @@
   <p id="offTxt">Владелец выпускает ссылку с токеном в «Экономике» админки. Открой табло по этой ссылке.</p>
 </div>
 <script>
-/* Табло только читает: одна ручка, один токен из URL, никаких действий. */
+/* Табло только читает: одна ручка, один токен из URL, никаких действий. З19-и3 (№40): токен из адреса страницы уходит
+   заголовком X-Board-Token, а не в адресе запроса — в журнале запросов сервера и истории прокси его нет. */
 const token = new URLSearchParams(location.search).get('token') || '';
-const API = '/api/v1/board/state?token=' + encodeURIComponent(token);
+const API = '/api/v1/board/state';
 let refreshSec = 10, lastOk = 0, timer = null;
 const esc = s => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
 const hhmm = iso => { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
@@ -141,7 +142,7 @@ function paint(d){
 
 async function tick(){
   try{
-    const r = await fetch(API, {cache: 'no-store'});
+    const r = await fetch(API, {cache: 'no-store', headers: {'X-Board-Token': token}});
     if (r.status === 401){ showOff('Табло выключено', 'Ссылка устарела или табло выключено в «Экономике». Владелец выпускает новую ссылку с токеном.'); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();

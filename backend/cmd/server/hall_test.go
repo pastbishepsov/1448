@@ -36,3 +36,17 @@ func TestZoneMoveText(t *testing.T) {
 		}
 	}
 }
+
+// З19-и3 (№40): клетка схемы словами для журнала правки ПК — столбец и строка с единицы; вне схемы — «—».
+func TestPCCellText(t *testing.T) {
+	x, y := 2, 7
+	cases := []struct {
+		x, y any
+		want string
+	}{{&x, &y, "3,8"}, {0, 0, "1,1"}, {nil, nil, "—"}, {(*int)(nil), (*int)(nil), "—"}, {2, nil, "—"}}
+	for _, c := range cases {
+		if got := pcCellText(c.x, c.y); got != c.want {
+			t.Errorf("%v,%v: %q, ждали %q", c.x, c.y, got, c.want)
+		}
+	}
+}

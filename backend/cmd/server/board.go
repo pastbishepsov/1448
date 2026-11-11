@@ -97,9 +97,18 @@ type boardZone struct {
 	Busy     []string `json:"busy_list"` // занятые — без ников
 }
 
-// GET /board/state?token=… — состояние зала для табло (без логина, по токену).
+// boardTokenOf — токен запроса табло (З19-и3, №40): заголовок X-Board-Token; в адресе (?token=…) — только у вкладок
+// прошлой версии, открытых на ТВ до обновления. Заголовок не оседает в журнале запросов и в истории прокси.
+func boardTokenOf(c *gin.Context) string {
+	if t := c.GetHeader("X-Board-Token"); t != "" {
+		return t
+	}
+	return c.Query("token")
+}
+
+// GET /board/state — состояние зала для табло (без логина, по токену в заголовке X-Board-Token).
 func handleBoardState(c *gin.Context) {
-	if !boardTokenOK(settingString(boardTokenKey, ""), c.Query("token")) {
+	if !boardTokenOK(settingString(boardTokenKey, ""), boardTokenOf(c)) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "board_token", "message": "Табло выключено или токен не подходит"})
 		return
 	}
