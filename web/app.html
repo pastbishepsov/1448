@@ -699,6 +699,7 @@ const STR_RU = {
   /* М1 — клуб и брони */
   lbl_free: 'Свободно', lbl_of: 'из',
   rate_hour: '{n} zł/час',
+  rate_next: '({w} — {n} zł)', rate_from: 'с {t}', rate_from_tmrw: 'завтра с {t}', // З24-и3: «VIP 25 zł/час (с 18:00 — 30 zł)»
   btn_book: 'Забронировать место',
   book_title: 'Бронь ПК',
   book_time: 'Время — шаг 30 минут',
@@ -985,6 +986,7 @@ const STR_EN = {
   logout: 'Sign out',
   lbl_free: 'Free', lbl_of: 'of',
   rate_hour: '{n} zł/hour',
+  rate_next: '({w} — {n} zł)', rate_from: 'from {t}', rate_from_tmrw: 'tomorrow from {t}', // З24-и3
   btn_book: 'Book a seat',
   book_title: 'Book a PC',
   book_time: 'Time — 30-minute steps',
@@ -1265,6 +1267,7 @@ const STR_PL = {
   logout: 'Wyloguj się',
   lbl_free: 'Wolne', lbl_of: 'z',
   rate_hour: '{n} zł/godz.',
+  rate_next: '({w} — {n} zł)', rate_from: 'od {t}', rate_from_tmrw: 'jutro od {t}', // З24-и3
   btn_book: 'Zarezerwuj miejsce',
   book_title: 'Rezerwacja PC',
   book_time: 'Czas — co 30 minut',
@@ -1965,11 +1968,27 @@ function renderClub(){
 }
 
 /* З18-и6 (№34, З-Р23): цена часа — по зонам, как ценник на стене («Standard 20 zł/час · VIP 30 zł/час»); клубный
-   тариф — только когда зон нет (тогда на нём все ПК) */
+   тариф — только когда зон нет (тогда на нём все ПК). З24-и3: rate_pln — цена сейчас (расписание цен, З24-и1);
+   сменится сегодня или завтра — «VIP 25 zł/час (с 18:00 — 30 zł)»; граница прошла, а /clubs ещё старый (опрос — раз
+   в 15 с) — следующая цена уже «сейчас». */
+function zoneNowNext(z){
+  const at = z.next_at ? new Date(z.next_at) : null, nr = z.next_rate_pln;
+  if (!at || nr == null) return {r: +z.rate_pln, w: ''};
+  const now = new Date();
+  if (at <= now) return {r: +nr, w: ''};
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dd = Math.round((day(at) - day(now)) / 864e5);
+  const t = String(at.getHours()).padStart(2, '0') + ':' + String(at.getMinutes()).padStart(2, '0');
+  return {r: +z.rate_pln, w: dd <= 0 ? T('rate_from', {t}) : dd === 1 ? T('rate_from_tmrw', {t}) : '', nr: +nr};
+}
 function clubRates(c){
   const zs = (c.zones || []).filter(z => z && +z.rate_pln > 0);
-  return zs.length ? zs.map(z => esc(z.name) + ' ' + esc(T('rate_hour', {n: (+z.rate_pln).toLocaleString('ru-RU')}))).join(' · ')
-    : esc(T('rate_hour', {n: (+c.base_rate_pln).toLocaleString('ru-RU')}));
+  const n = v => (+v).toLocaleString('ru-RU');
+  return zs.length ? zs.map(z => {
+    const p = zoneNowNext(z);
+    return esc(z.name) + ' ' + esc(T('rate_hour', {n: n(p.r)})) + (p.w ? ' ' + esc(T('rate_next', {w: p.w, n: n(p.nr)})) : '');
+  }).join(' · ')
+    : esc(T('rate_hour', {n: n(c.base_rate_pln)}));
 }
 
 /* ── вейтлист (Б9, «задел PWA»): сервер пускает в очередь только при 0 свободных ── */
@@ -3297,7 +3316,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-09.1';
+const APP_VER = '2026-11-11.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

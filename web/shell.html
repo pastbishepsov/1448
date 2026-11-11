@@ -724,6 +724,7 @@
   /* и5: тарифы на заставке (Р8) */
   .att-rates{color:var(--dim); font-size:15px; letter-spacing:.3px}
   .att-rates b{color:var(--txt); font-weight:700}
+  .att-rates .nx{color:var(--dim); opacity:.85} /* З24-и3: когда сменится цена */
 </style>
 </head>
 <body>
@@ -1646,6 +1647,7 @@ const SH_RU = {
   cat_more: "Показать ещё ({n})",
   prof_fav_search: "Найти игру…",
   att_rate: "{z} <b>{r} zł</b>/ч",
+  att_next: "({w} — {r} zł)", att_from: "с {t}", att_from_tmrw: "завтра с {t}", // З24-и3: «VIP 25 zł/ч (с 18:00 — 30 zł)»
   /* К3-и2: уведомления, которых шелл не знал */
   ntf_burn_soon: "⏳ Через {d} дн монеты начнут таять: −{p}% в неделю от {c}. Зайди поиграть — таймер сбросится",
   ntf_burned: "🔥 Сгорело {c} монет за {d} дн простоя — осталось {l}",
@@ -2197,6 +2199,7 @@ const SH_EN = {
   cat_more: "Show more ({n})",
   prof_fav_search: "Find a game…",
   att_rate: "{z} <b>{r} zł</b>/h",
+  att_next: "({w} — {r} zł)", att_from: "from {t}", att_from_tmrw: "tomorrow from {t}", // З24-и3
   /* К3-и2 */
   ntf_burn_soon: "⏳ In {d} d your coins start melting: −{p}% a week of {c}. Come play — the timer resets",
   ntf_burned: "🔥 {c} coins burned after {d} idle days — {l} left",
@@ -2748,6 +2751,7 @@ const SH_PL = {
   cat_more: "Pokaż więcej ({n})",
   prof_fav_search: "Znajdź grę…",
   att_rate: "{z} <b>{r} zł</b>/h",
+  att_next: "({w} — {r} zł)", att_from: "od {t}", att_from_tmrw: "jutro od {t}", // З24-и3
   /* К3-и2 */
   ntf_burn_soon: "⏳ Za {d} dni coiny zaczną topnieć: −{p}% tygodniowo z {c}. Wpadnij pograć — licznik się wyzeruje",
   ntf_burned: "🔥 Spłonęło {c} coinów po {d} dniach przerwy — zostało {l}",
@@ -4794,10 +4798,25 @@ function attractFreeText(){
   return total ? T('attract_free', {f: free, t: total}) : '';
 }
 /* К2-и5 (Р8): тарифы зон на заставке — как ценник на стене; данные из
-   публичного /clubs (zones[{name, rate_pln}]). */
+   публичного /clubs (zones[{name, rate_pln}]). З24-и3: rate_pln — цена сейчас (расписание цен, З24-и1); сменится
+   сегодня или завтра (next_at, next_rate_pln) — «VIP 25 zł/ч (с 18:00 — 30 zł)»; граница прошла, а /clubs ещё старый
+   (заставка тянет его раз в минуту) — следующая цена уже «сейчас». */
+function zoneNowNext(z){
+  const at = z.next_at ? new Date(z.next_at) : null, nr = z.next_rate_pln;
+  if (!at || nr == null) return {r: z.rate_pln, w: ''};
+  const now = new Date();
+  if (at <= now) return {r: nr, w: ''};
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dd = Math.round((day(at) - day(now)) / 864e5);
+  const t = String(at.getHours()).padStart(2, '0') + ':' + String(at.getMinutes()).padStart(2, '0');
+  return {r: z.rate_pln, w: dd <= 0 ? T('att_from', {t}) : dd === 1 ? T('att_from_tmrw', {t}) : '', nr};
+}
 function attractRatesText(){
   const zones = (clubs[0] && clubs[0].zones) || [];
-  return zones.map(z => T('att_rate', {z: esc(z.name), r: fmtNum(z.rate_pln)})).join(' · ');
+  return zones.map(z => {
+    const p = zoneNowNext(z);
+    return T('att_rate', {z: esc(z.name), r: fmtNum(p.r)}) + (p.w ? ' <span class="nx">' + T('att_next', {w: p.w, r: fmtNum(p.nr)}) + '</span>' : '');
+  }).join(' · ');
 }
 function attractShow(){
   const lockOn = document.getElementById('lockOverlay').classList.contains('show');
