@@ -18,7 +18,7 @@ __all__ = ["API", "BASE", "DB", "SRV_LOG", "TZ", "GUEST_PASS", "STAFF_PASS", "sq
            "tokens", "password_of", "jwt_claims", "api", "J", "check", "near", "section", "at_end", "done", "club_day", "at_club", "settings",
            "set_settings", "restore_settings", "wallet", "topup", "ensure_wallet", "pcs", "seat", "end", "end_all", "free_pcs",
            "hire_temp", "dismiss", "drawer_ready", "audit", "ws_admin", "ws_read", "agent_start", "agent_stop",
-           "drop_good", "stock_to", "pin_shift"]
+           "drop_good", "stock_to", "pin_shift", "hide_openings", "unhide_openings"]
 
 TZ = "Europe/Warsaw"  # часовой пояс клуба; сессия psql может жить в UTC — время клуба только через AT TIME ZONE
 GUEST_PASS, STAFF_PASS = "Guest12345", "Admin12345"
@@ -299,6 +299,25 @@ def drawer_ready(who, floor=0):
                                            "note": f"проверка: ящик стенда до {floor} zł"}, "boss")
         p = api("GET", "/admin/work/closeout", None, who)[1]
     return p
+
+def unhide_openings():
+    """Вернуть остатки на начало сдач, спрятанные hide_openings (копия — в e2e_hidden_openings); нечего — ничего."""
+    if sql("SELECT to_regclass('e2e_hidden_openings') IS NOT NULL") == "t":
+        sql("UPDATE shift_closeouts s SET opening_grosz = h.opening_grosz FROM e2e_hidden_openings h "
+            "WHERE s.id = h.id; DROP TABLE e2e_hidden_openings")
+
+def hide_openings():
+    """Остатки на начало у всех сдач — на время «ящика ещё не было» (первая сдача после обновления, З8-и1).
+    Копия — в таблице e2e_hidden_openings в самой базе, а не в памяти проверки и не одной строкой psql: у стенда
+    тысячи сдач, и строка возврата перерастала предел аргумента (128 КБ) — проверка падала, остатки оставались
+    спрятанными (З21-и3). Вернёт unhide_openings — сама в конце, и при падении; хвост упавшей раньше проверки
+    возвращается первым."""
+    unhide_openings()
+    sql("CREATE TABLE e2e_hidden_openings (id uuid PRIMARY KEY, opening_grosz bigint NOT NULL); "
+        "INSERT INTO e2e_hidden_openings SELECT id, opening_grosz FROM shift_closeouts "
+        "WHERE opening_grosz IS NOT NULL; "
+        "UPDATE shift_closeouts SET opening_grosz = NULL WHERE id IN (SELECT id FROM e2e_hidden_openings)")
+    at_end(unhide_openings)
 
 def pin_shift(nick):
     """Открытая смена nick — «с сейчас» на время проверки, в конце — как была (З18-и4г): «сегодня» админа раздвигает его

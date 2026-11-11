@@ -4,10 +4,18 @@
 // начала твоей смены, с 20:00 вчера: она началась раньше текущих суток»; «Продажи смены» — «с 20:00 вчера · …» вместо
 // даты суток, продажа «z18p Сок» той же смены — в итогах ленты (и в списке, если он не обрезан). Не на смене — подписи
 // нет, лента — с даты суток. Телефон 360 — подпись без прокрутки вбок. В конце пополнение и продажа отменены, позиция
-// удалена, записи табеля z18p — тоже, z18p уволен.
+// удалена, записи табеля z18p — тоже, z18p уволен. Гость — z18jg, свой у проверок журнала (и у `e2e_z18_journal`,
+// З21-и3): отменённые пополнения проверок больше не копятся у общего Guest49; свои отменённые удаляются в начале и в
+// конце.
 const z = require('./_z');
 (async () => {
-  const NICK = 'z18p', G = z.uid('Guest49'), GOOD = 'z18p Сок';
+  const NICK = 'z18p', GN = 'z18jg', GOOD = 'z18p Сок';
+  if (!z.uid(GN)) await z.call('POST', '/auth/register', { nickname: GN, password: z.GUEST_PASS });
+  const G = z.uid(GN);
+  // З21-и3: в конце — уже после отмены пополнения (уборка идёт в обратном порядке)
+  const mine = `DELETE FROM deposits WHERE user_id = '${G}' AND voided_at IS NOT NULL`;
+  z.sql(mine);
+  z.atEnd(() => z.sql(mine));
   const entries = `DELETE FROM work_entries WHERE user_id = (SELECT id FROM users WHERE nickname = '${NICK}')`;
   z.sql(entries);
   z.atEnd(() => z.sql(entries)); // уборка — в обратном порядке: записи табеля — уже после увольнения
@@ -48,10 +56,10 @@ const z = require('./_z');
     return has();
   };
   const found = await find();
-  const j = await page.evaluate(id => {
-    const n = document.getElementById('audShiftNote'), row = [...document.querySelectorAll('#auditTable tr')].find(r => /6 zł/.test(r.textContent) && /Guest49/.test(r.textContent) && /z18p/.test(r.textContent));
+  const j = await page.evaluate(gn => {
+    const n = document.getElementById('audShiftNote'), row = [...document.querySelectorAll('#auditTable tr')].find(r => /6 zł/.test(r.textContent) && r.textContent.includes(gn) && /z18p/.test(r.textContent));
     return { note: n ? n.textContent.replace(/\s+/g, ' ').trim() : null, row: row ? row.textContent.replace(/\s+/g, ' ').trim() : null };
-  }, dep);
+  }, GN);
   z.check(`над журналом — «Журнал — с начала твоей смены, ${since}: она началась раньше текущих суток»; пополнение 6 zł от z18p до начала суток — в журнале`,
     j.note === `Журнал — с начала твоей смены, ${since}: она началась раньше текущих суток` && found && !!j.row, JSON.stringify({ found, ...j }));
   await page.locator('#auditTable').scrollIntoViewIfNeeded();

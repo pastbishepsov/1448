@@ -103,21 +103,11 @@ check("итог периода: пришло — сумма дней, на ко�
       near(d.get("totals", {}).get("in_pln", -1), sum(x.get("in_pln", 0) for x in days)) and near(d.get("closing_pln", -1), days[-1].get("closing_pln", -2)))
 
 section("день нулевой точки: «ящика ещё не было» и начальный остаток")
-hidden = [r for r in rows("WITH old AS (SELECT id, opening_grosz FROM shift_closeouts WHERE opening_grosz IS NOT NULL) "
-                          "UPDATE shift_closeouts s SET opening_grosz = NULL FROM old WHERE s.id = old.id "
-                          "RETURNING s.id || '|' || old.opening_grosz") if "|" in r]
-
-
-def unhide():
-    if hidden:
-        vals = ",".join(f"('{i}'::uuid, {v}::bigint)" for i, v in (h.split("|") for h in hidden))
-        sql(f"UPDATE shift_closeouts s SET opening_grosz = v.o FROM (VALUES {vals}) AS v(id, o) WHERE s.id = v.id")
-        hidden.clear()
-at_end(unhide)
+hide_openings()  # З21-и3: копия — в базе (e2e_hidden_openings), вернётся и при падении
 api("POST", "/admin/work/start", {}, "z8bk")
 s, _ = api("POST", "/admin/work/stop", {"counted_pln": 350}, "z8bk")
 t3 = book()[1].get("days", [{}])[0]
-unhide()
+unhide_openings()
 b = t3.get("baseline") or {}
 check("сегодня: на начало — ящика ещё не было, начальный остаток 350 (z8bk), на конец 350", t3.get("opening_pln") is None
       and near(b.get("pln", -1), 350) and b.get("by") == "z8bk" and near(t3.get("closing_pln", -1), 350), J({k: t3.get(k) for k in ("opening_pln", "baseline", "closing_pln")}, 300))

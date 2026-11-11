@@ -33,6 +33,15 @@ const dropGood = gid => gid && sql(`CREATE TEMP TABLE _dg AS SELECT DISTINCT sup
   DELETE FROM supplies s WHERE s.id IN (SELECT supply_id FROM _dg) AND NOT EXISTS (SELECT 1 FROM stock_lots l WHERE l.supply_id = s.id);
   DELETE FROM goods WHERE id = '${gid}'`);
 
+// З21-и3: остатки на начало у всех сдач — на время «ящика ещё не было» (как hide_openings в _z.py): копия — в таблице
+// e2e_hidden_openings в самой базе, а не в памяти проверки и не одной строкой psql (у стенда тысячи сдач — строка
+// возврата перерастала 128 КБ); вернёт unhideOpenings — сама в конце; хвост упавшей раньше проверки возвращается первым
+function unhideOpenings() {
+  if (sql(`SELECT to_regclass('e2e_hidden_openings') IS NOT NULL`) !== 't') return;
+  sql(`UPDATE shift_closeouts s SET opening_grosz = h.opening_grosz FROM e2e_hidden_openings h WHERE s.id = h.id;
+    DROP TABLE e2e_hidden_openings`);
+}
+
 // ── API ──
 async function call(method, path, body, token) {
   const headers = { 'Content-Type': 'application/json' };
@@ -104,6 +113,14 @@ function check(name, cond, detail) {
   return !!cond;
 }
 const atEnd = fn => { cleanups.push(fn); return fn; };
+function hideOpenings() {
+  unhideOpenings();
+  sql(`CREATE TABLE e2e_hidden_openings (id uuid PRIMARY KEY, opening_grosz bigint NOT NULL);
+    INSERT INTO e2e_hidden_openings SELECT id, opening_grosz FROM shift_closeouts
+      WHERE opening_grosz IS NOT NULL;
+    UPDATE shift_closeouts SET opening_grosz = NULL WHERE id IN (SELECT id FROM e2e_hidden_openings)`);
+  atEnd(unhideOpenings);
+}
 async function cleanup() {
   for (const b of browsers.splice(0)) { try { await b.close(); } catch (e) {} }
   while (cleanups.length) { const fn = cleanups.pop(); try { await fn(); } catch (e) { console.log('уборка:', e.message); } }
@@ -137,4 +154,5 @@ const shot = (page, name, fullPage = false) => page.screenshot({ path: `${OUT}/z
 const text = (page, sel) => page.evaluate(s => { const e = document.querySelector(s); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; }, sel);
 
 module.exports = { API, BASE, DB, OUT, WEB_DIR, GUEST_PASS, STAFF_PASS, passwordOf, sleep, rows, sql, uid, dropGood, call, login, tok, api,
-  clubDay, hireTemp, dismiss, pinShift, check, atEnd, done, crash, jsErrors, openAdmin, nav, shot, text };
+  clubDay, hireTemp, dismiss, pinShift, hideOpenings, unhideOpenings, check, atEnd, done, crash, jsErrors, openAdmin,
+  nav, shot, text };

@@ -34,15 +34,7 @@ has = sql("SELECT count(*) FROM information_schema.columns WHERE table_name='shi
           "AND column_name='opening_grosz'") == "1"
 check("у сдачи есть «остаток на начало» (миграция 070)", has)
 if has:
-    hidden = [r for r in rows("WITH old AS (SELECT id, opening_grosz FROM shift_closeouts WHERE opening_grosz IS NOT NULL) "
-                              "UPDATE shift_closeouts s SET opening_grosz = NULL FROM old WHERE s.id = old.id "
-                              "RETURNING s.id || '|' || old.opening_grosz") if "|" in r]
-
-    def unhide():
-        if hidden:
-            vals = ",".join(f"('{i}'::uuid, {v}::bigint)" for i, v in (h.split("|") for h in hidden))
-            sql(f"UPDATE shift_closeouts s SET opening_grosz = v.o FROM (VALUES {vals}) AS v(id, o) WHERE s.id = v.id")
-    at_end(unhide)
+    hide_openings()  # З21-и3: копия — в базе (e2e_hidden_openings), вернётся и при падении
 
 section("нулевая точка: первая сдача после обновления")
 tok("z8box")  # вход в админку открывает смену

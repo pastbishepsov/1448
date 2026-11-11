@@ -83,17 +83,8 @@ check("z8col сдал столько, сколько должно быть → �
       and near(co.get("collections_pln", -1), 0), J(co, 300))
 
 section("ящика ещё нет — коррекции не к чему")
-hidden = [r for r in rows("WITH old AS (SELECT id, opening_grosz FROM shift_closeouts WHERE opening_grosz IS NOT NULL) "
-                          "UPDATE shift_closeouts s SET opening_grosz = NULL FROM old WHERE s.id = old.id "
-                          "RETURNING s.id || '|' || old.opening_grosz") if "|" in r]
-
-def unhide():
-    if hidden:
-        vals = ",".join(f"('{i}'::uuid, {v}::bigint)" for i, v in (h.split("|") for h in hidden))
-        sql(f"UPDATE shift_closeouts s SET opening_grosz = v.o FROM (VALUES {vals}) AS v(id, o) WHERE s.id = v.id")
-        hidden.clear()
-at_end(unhide)
+hide_openings()  # З21-и3: копия — в базе (e2e_hidden_openings), вернётся и при падении
 s, d = ev({"kind": "correct", "stated_pln": 250, "note": "пересчитал"}, "boss")
-unhide()
+unhide_openings()
 check("коррекция без заведённого ящика → 409 no_drawer", s == 409 and d.get("code") == "no_drawer", f"{s} {J(d)}")
 done()

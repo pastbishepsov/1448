@@ -12,12 +12,7 @@ const z = require('./_z');
   const deps = [];
   z.atEnd(async () => { for (const d of deps.reverse()) await z.api('POST', `/admin/deposits/${d}/void`, {}, 'boss'); });
   // стенд без истории ящика: у прошлых сдач прячется остаток на начало, в конце — возвращается
-  const hidden = z.rows(`WITH old AS (SELECT id, opening_grosz FROM shift_closeouts WHERE opening_grosz IS NOT NULL)
-    UPDATE shift_closeouts s SET opening_grosz = NULL FROM old WHERE s.id = old.id RETURNING s.id || '|' || old.opening_grosz`).filter(r => r.includes('|'));
-  z.atEnd(() => {
-    if (hidden.length) z.sql(`UPDATE shift_closeouts s SET opening_grosz = v.o FROM (VALUES ${hidden.map(h => { const [i, v] = h.split('|');
-      return `('${i}'::uuid, ${v}::bigint)`; }).join(',')}) AS v(id, o) WHERE s.id = v.id`);
-  });
+  z.hideOpenings(); // З21-и3: копия — в базе (e2e_hidden_openings), вернётся в конце
   const page = await z.openAdmin('z8w'); // вход в админку открывает смену
   const body = () => z.text(page, '#drawerBody');
   const shift = async () => { await page.evaluate(() => loadMyShift()); await page.evaluate(() => openMyShift()); await z.sleep(1200); return body(); };
