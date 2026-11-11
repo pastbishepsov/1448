@@ -357,6 +357,8 @@ func main() {
 		own.GET("/reports/profit", handleReportProfit)
 		// З13-и3: продажи по ставкам VAT за период — по настройкам «Бухгалтерии», по дням — для сверки с фискальной кассой
 		own.GET("/reports/vat", handleReportVat)
+		// З21-и1а: пульс дня — сегодня до этого часа против нормы того же дня недели за 8 недель — и прогноз месяца
+		own.GET("/reports/pulse", handleReportPulse)
 		// З13-и4: выгрузка бухгалтеру — XLSX или архив CSV, заголовки PL или RU
 		own.GET("/export", handleExport)
 		// З9-и1: расходы, категории и контрагенты — только владелец (З-Р29)
