@@ -95,6 +95,10 @@ type boardZone struct {
 	Total    int      `json:"total"`
 	FreeList []string `json:"free_list"` // имена свободных ПК — гость с очереди ищет свою машину
 	Busy     []string `json:"busy_list"` // занятые — без ников
+
+	// З24-и1: когда цена зоны сменится (в ближайшие 7 дней) и на какую — для «с 18:00 — 20 zł»; rate_pln — цена сейчас
+	NextAt      *time.Time `json:"next_at,omitempty"`
+	NextRatePLN *float64   `json:"next_rate_pln,omitempty"`
 }
 
 // boardTokenOf — токен запроса табло (З19-и3, №40): заголовок X-Board-Token; в адресе (?token=…) — только у вкладок
@@ -130,8 +134,12 @@ func handleBoardState(c *gin.Context) {
 		order = append(order, key)
 		return z
 	}
+	rules := zoneRulesOf(zoneIDs(zones)) // З24-и1: цена сейчас и следующая
 	for _, z := range zones {
-		get(z.ID.String(), z.Name, z.RatePLN)
+		bz := get(z.ID.String(), z.Name, priceAt(rules[z.ID], z.RatePLN, now))
+		if at, p, ok := nextPriceChange(rules[z.ID], z.RatePLN, now); ok {
+			bz.NextAt, bz.NextRatePLN = &at, &p
+		}
 	}
 	clubRate := 0.0
 	if club != nil {

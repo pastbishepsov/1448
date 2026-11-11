@@ -345,7 +345,7 @@ func handleAdminMoveSession(c *gin.Context) {
 		db.Select("id", "payment_increase_pct").First(&guest, "id = ?", session.UserID)
 		var club models.Club
 		db.First(&club, "id = ?", session.ClubID)
-		newBase := rateForComputer(zoneRateOf(&target), club.BaseRatePLN)
+		newBase := rateForComputer(zoneRateAt(&target, now), club.BaseRatePLN) // З24-и1: цена новой зоны сейчас
 		newRate := effectiveRate(newBase, guestDiscountPct(session.UserID, guest.PaymentIncreasePct, now))
 		switch req.Tariff {
 		case "":

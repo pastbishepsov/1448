@@ -74,17 +74,7 @@ func rateForComputer(zoneRate *float64, clubRate float64) float64 {
 	return clubRate
 }
 
-// zoneRateOf — тариф зоны компьютера из базы (nil, если зоны нет).
-func zoneRateOf(pc *models.Computer) *float64 {
-	if pc.ZoneID == nil {
-		return nil
-	}
-	var z models.Zone
-	if err := db.First(&z, "id = ?", *pc.ZoneID).Error; err != nil {
-		return nil
-	}
-	return &z.RatePLN
-}
+// Цена зоны ПК в момент посадки — zoneRateAt (zone_rules.go, З24-и1): по расписанию цен зоны, вне правил — её цена.
 
 // zoneSnapshotOf — зона ПК снимком в сессию (З16-и1): id и имя; ПК без зоны — nil и пусто. Имя — из зоны (кэш имени у
 // ПК — запасной): в сессии оно остаётся и после переименования или удаления зоны.
@@ -140,6 +130,7 @@ func handleAdminZones(c *gin.Context) {
 	holds := zoneHolds()
 	var loose int64
 	db.Model(&models.Computer{}).Where("zone_id IS NULL").Count(&loose)
+	rules := zoneRulesOf(zoneIDs(zones)) // З24-и1: правила цены, цена сейчас и следующая
 
 	out := make([]gin.H, 0, len(zones))
 	for i := range zones {
@@ -151,6 +142,9 @@ func handleAdminZones(c *gin.Context) {
 			"vat_pct":        z.VatPct,                   // З13-и1
 			"live_minutes":   h.Minutes, "live_guests": h.Guests, "packages": h.Packages, "package_sales": h.Sales,
 			"delete_block": zoneDeleteBlock(h)})
+		for k, v := range zoneAdminPrices(rules[z.ID], z.RatePLN) {
+			out[len(out)-1][k] = v
+		}
 	}
 	club, _ := defaultClub()
 	base := 0.0

@@ -270,7 +270,8 @@ func startSessionFor(userID uuid.UUID, computerID *string, plannedMin *int, read
 	discountPct := guestDiscountPct(userID, user.PaymentIncreasePct, now)
 	// В4-5: час стоит столько, сколько стоит ЗОНА этого ПК; клубный тариф
 	// остаётся запасным вариантом для машин без зоны.
-	baseRate := rateForComputer(zoneRateOf(&computer), club.BaseRatePLN)
+	// З24-и1: цена зоны — в момент посадки, по расписанию цен зоны; дальше она снимком в сессии.
+	baseRate := rateForComputer(zoneRateAt(&computer, now), club.BaseRatePLN)
 	rate := effectiveRate(baseRate, discountPct)
 
 	// Г1-и3 (Р8 GUEST.md): порог старта — кошелёк + минутный запас монет

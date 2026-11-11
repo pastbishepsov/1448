@@ -51,12 +51,14 @@ func handleGetClubs(c *gin.Context) {
 	// К2-и5 (KIOSK.md, Р8): тарифы зон — публично, как ценник на стене клуба.
 	// Заставка киоска показывает «Standard 23 zł/ч · VIP 30 zł/ч»; только
 	// имя и цена часа, без id и служебных полей.
+	// З24-и1: цена часа — сейчас, по расписанию цен зоны; следующая (next_at, next_rate_pln) — если сменится скоро.
 	var zones []models.Zone
 	db.Order("club_id, sort, name").Find(&zones)
+	pub := publicZonePrices(zones)
 	zonesBy := map[string][]gin.H{}
 	for _, z := range zones {
 		k := z.ClubID.String()
-		zonesBy[k] = append(zonesBy[k], gin.H{"name": z.Name, "rate_pln": z.RatePLN})
+		zonesBy[k] = append(zonesBy[k], pub[z.ID])
 	}
 
 	out := make([]gin.H, 0, len(clubs))
@@ -84,8 +86,9 @@ func handleGetClub(c *gin.Context) {
 	var zones []models.Zone
 	db.Where("club_id = ?", club.ID).Order("sort, name").Find(&zones)
 	zs := make([]gin.H, 0, len(zones))
+	pub := publicZonePrices(zones) // З24-и1: цена сейчас и следующая
 	for _, z := range zones {
-		zs = append(zs, gin.H{"name": z.Name, "rate_pln": z.RatePLN})
+		zs = append(zs, pub[z.ID])
 	}
 	var total, free int64
 	db.Model(&models.Computer{}).Where("club_id = ?", club.ID).Count(&total)
