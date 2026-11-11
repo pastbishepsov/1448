@@ -21,6 +21,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -98,15 +99,20 @@ type period struct {
 	From    time.Time // начало окна: FromDay + report_hour
 	To      time.Time // конец окна, исключительно
 	Preset  string
+	Until   time.Time // З19-и1: прошлый период обрезан «до того же часа» (у «сегодня»); нулевое — не обрезан
 }
 
 func (p period) out() gin.H {
-	return gin.H{
+	out := gin.H{
 		"from":   p.FromDay.Format("2006-01-02"),
 		"to":     p.ToDay.Format("2006-01-02"),
 		"days":   p.Days,
 		"preset": p.Preset,
 	}
+	if !p.Until.IsZero() { // З19-и1: «вчера до 17:20» — у «сегодня»
+		out["until"] = p.Until.Format("15:04")
+	}
+	return out
 }
 
 // clubDayOf — клубные сутки, которым принадлежит момент t при границе reportHour.
@@ -228,6 +234,27 @@ func prevPeriod(p period, reportHour int) period {
 	return makePeriod(to.AddDate(0, 0, -(p.Days-1)), to, reportHour, "prev")
 }
 
+// cutPrevAt — «сегодня» сравнивается со «вчера до того же часа» (З19-и1, №40): прошлый период кончается моментом at
+// (сейчас минус сутки по стенным часам), если он внутри окна. Раньше «сегодня» до вечера сравнивалось с полными
+// вчерашними сутками, и рост почти всегда был минусом. Чистая функция (тест).
+func cutPrevAt(prev period, at time.Time) period {
+	if at.After(prev.From) && at.Before(prev.To) {
+		prev.To, prev.Until = at, at
+	}
+	return prev
+}
+
+// deltaScale — периоды разной длины сравниваются на среднедневных (З19-и1, №40): во сколько раз текущий длиннее
+// прошлого — сумма прошлого периода умножается на это, прежде чем считать рост. Октябрь (31 день) против сентября (30),
+// «этот месяц» 31 марта против обрезанного февраля; одинаковой длины — 1. Средние и доли (средний чек, занятость, средняя
+// сессия) не масштабируются — они уже на единицу. Чистая функция (тест).
+func deltaScale(p, prev period) float64 {
+	if prev.Days <= 0 || p.Days == prev.Days {
+		return 1
+	}
+	return float64(p.Days) / float64(prev.Days)
+}
+
 var periodErrors = map[string]string{
 	"bad_from":   "Дата начала — в формате ГГГГ-ММ-ДД",
 	"bad_to":     "Дата конца — в формате ГГГГ-ММ-ДД",
@@ -260,19 +287,23 @@ func monthPeriod(m string, reportHour int, now time.Time) (period, string) {
 // periodFromQuery — общий разбор для всех отчётов: период, предыдущий период
 // и граница клубных суток. При ошибке сам отвечает 400 и возвращает false.
 func periodFromQuery(c *gin.Context) (period, period, int, bool) {
-	reportHour := clubDayHour()
+	reportHour, now := clubDayHour(), time.Now()
 	var p period
 	var code string
 	if m := c.Query("month"); m != "" { // З12-и4а: календарный месяц — главнее пресета и дат
-		p, code = monthPeriod(m, reportHour, time.Now())
+		p, code = monthPeriod(m, reportHour, now)
 	} else {
-		p, code = resolvePeriod(c.Query("preset"), c.Query("from"), c.Query("to"), reportHour, time.Now())
+		p, code = resolvePeriod(c.Query("preset"), c.Query("from"), c.Query("to"), reportHour, now)
 	}
 	if code != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": code, "message": periodErrors[code]})
 		return period{}, period{}, 0, false
 	}
-	return p, prevPeriod(p, reportHour), reportHour, true
+	prev := prevPeriod(p, reportHour)
+	if p.Preset == "today" { // З19-и1: вчера до того же часа
+		prev = cutPrevAt(prev, now.AddDate(0, 0, -1))
+	}
+	return p, prev, reportHour, true
 }
 
 // pctDelta — рост в процентах к предыдущему периоду. nil (JSON null) означает
@@ -442,8 +473,15 @@ func aggMoney(p period) moneyAgg {
 	if a.Deposits > 0 {
 		a.AvgCheck = math.Round(a.DepositsPLN/float64(a.Deposits)*100) / 100
 	}
-	// кто платил и сколько штук и минут продано
-	moneySources[moneyDeposit].in(p.From, p.To).Select("COUNT(DISTINCT user_id)").Scan(&a.Guests)
+	// кто платил: З19-и1 (№40) — живыми деньгами в окне, пополнением, товаром или пакетом (раньше — только пополнением),
+	// один гость — один раз; продажа без гостя — не в счёт
+	parts, args := make([]string, 0, len(moneySources)), make([]any, 0, 2*len(moneySources))
+	for _, s := range moneySources {
+		parts = append(parts, "SELECT user_id FROM "+s.table+" WHERE "+s.at+" >= ? AND "+s.at+" < ? AND "+s.filter+" AND user_id IS NOT NULL")
+		args = append(args, p.From, p.To)
+	}
+	db.Raw("SELECT COUNT(DISTINCT user_id) FROM ("+strings.Join(parts, " UNION ALL ")+") payers", args...).Scan(&a.Guests)
+	// сколько штук и минут продано
 	moneySources[moneyGood].in(p.From, p.To).Select("COALESCE(SUM(qty),0)").Scan(&a.GoodsItems)
 	moneySources[moneyPack].in(p.From, p.To).Select("COALESCE(SUM(minutes_total),0)").Scan(&a.PackMin)
 	return a
@@ -456,6 +494,7 @@ func handleReportMoney(c *gin.Context) {
 		return
 	}
 	cur, old := aggMoney(p), aggMoney(prev)
+	sc := deltaScale(p, prev) // З19-и1
 
 	// ряд по дням: столбик — выручка дня, в подсказке — из чего она (З4-и2: и пакеты)
 	perDay := moneyBy(p.From, p.To, func(s moneySource) string {
@@ -535,14 +574,19 @@ func handleReportMoney(c *gin.Context) {
 	// кошельков — деньги, которые клуб ещё должен временем/кухней. Списания
 	// за период появятся со спринтов Г1 (session_spend) и Г7 (kitchen_spend) —
 	// они тоже НЕ выручка, иначе пополнение посчиталось бы дважды.
+	// З19-и1 (№40): «Списано с кошельков» — траты: время и кухня. Отмена ошибочного депозита (денег не было) и покупка
+	// пакета с кошелька (минуты ещё впереди) — не трата; операций — сессий и заказов, а не строк: время списывается
+	// поминутно, у одной сессии их десятки
 	wal := walletsNow()
 	var walSpent struct {
 		Grosz int64
 		Cnt   int64
 	}
+	spendKinds := []string{string(models.WalletTxSessionSpend), string(models.WalletTxKitchenSpend)}
 	db.Model(&models.WalletTransaction{}).
-		Select("COALESCE(-SUM(amount_grosz),0) AS grosz, COUNT(*) AS cnt").
-		Where("created_at >= ? AND created_at < ? AND amount_grosz < 0", p.From, p.To).
+		Select("COALESCE(-SUM(amount_grosz),0) AS grosz, "+
+			"COUNT(DISTINCT COALESCE(ref_type, '') || ':' || COALESCE(CAST(ref_id AS text), CAST(id AS text))) AS cnt").
+		Where("created_at >= ? AND created_at < ? AND amount_grosz < 0 AND kind IN ?", p.From, p.To, spendKinds).
 		Scan(&walSpent)
 	// Г7: разрез списаний — время отдельно, кухня отдельно (Р7-строка в UI)
 	var walKinds []struct {
@@ -551,7 +595,7 @@ func handleReportMoney(c *gin.Context) {
 	}
 	db.Model(&models.WalletTransaction{}).
 		Select("kind, COALESCE(-SUM(amount_grosz),0) AS grosz").
-		Where("created_at >= ? AND created_at < ? AND amount_grosz < 0", p.From, p.To).
+		Where("created_at >= ? AND created_at < ? AND amount_grosz < 0 AND kind IN ?", p.From, p.To, spendKinds).
 		Group("kind").Scan(&walKinds)
 	spentSession, spentKitchen := int64(0), int64(0)
 	for _, k := range walKinds {
@@ -584,13 +628,13 @@ func handleReportMoney(c *gin.Context) {
 		},
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
-		"delta": gin.H{
-			"revenue_pln":   pctDelta(cur.Revenue, old.Revenue),
-			"deposits_pln":  pctDelta(cur.DepositsPLN, old.DepositsPLN),
-			"goods_pln":     pctDelta(cur.GoodsPLN, old.GoodsPLN),
-			"packs_pln":     pctDelta(cur.PacksPLN, old.PacksPLN), // Е2-и6
-			"deposits":      pctDelta(float64(cur.Deposits), float64(old.Deposits)),
-			"guests":        pctDelta(float64(cur.Guests), float64(old.Guests)),
+		"delta": gin.H{ // З19-и1: суммы и счёты — на среднедневных (deltaScale), средний чек — как есть
+			"revenue_pln":   pctDelta(cur.Revenue, old.Revenue*sc),
+			"deposits_pln":  pctDelta(cur.DepositsPLN, old.DepositsPLN*sc),
+			"goods_pln":     pctDelta(cur.GoodsPLN, old.GoodsPLN*sc),
+			"packs_pln":     pctDelta(cur.PacksPLN, old.PacksPLN*sc), // Е2-и6
+			"deposits":      pctDelta(float64(cur.Deposits), float64(old.Deposits)*sc),
+			"guests":        pctDelta(float64(cur.Guests), float64(old.Guests)*sc),
 			"avg_check_pln": pctDelta(cur.AvgCheck, old.AvgCheck),
 			"margin_pln":    marginDelta, // З10-и8
 		},
@@ -700,17 +744,18 @@ func handleReportGuests(c *gin.Context) {
 		retention = &v
 	}
 
-	// пропавшие — состояние НА КОНЕЦ периода: визиты были, но последний
-	// раньше, чем lost_days до конца окна. Забаненных не считаем: они не
-	// «пропали», их увели (открытый вопрос QA Б9–Б11 закрыт здесь).
+	// пропавшие — НА КОНЕЦ периода и ЗА период (З19-и1, №40): последний визит до конца окна был lost_days суток и
+	// больше назад, а за lost_days до начала окна гость ещё ходил — пропал в этом периоде. Раньше в «последний визит»
+	// шли и визиты после конца периода (список жил «на сейчас»), а без нижней границы в нём копились все, кто ушёл
+	// когда-либо. Забаненных не считаем: они не «пропали», их увели (открытый вопрос QA Б9–Б11 закрыт здесь).
 	var lostRows []struct {
 		UserID string
 		LastAt time.Time
 	}
 	guestSessions().Select("sessions.user_id, MAX(sessions.started_at) AS last_at").
-		Where("users.status <> ?", models.UserStatusBanned).
+		Where("users.status <> ? AND sessions.started_at < ?", models.UserStatusBanned, p.To).
 		Group("sessions.user_id").
-		Having("MAX(sessions.started_at) < ?", p.To.Add(-time.Duration(lostDays)*24*time.Hour)).
+		Having("MAX(sessions.started_at) >= ? AND MAX(sessions.started_at) < ?", p.From.AddDate(0, 0, -lostDays), p.To.AddDate(0, 0, -lostDays)).
 		Scan(&lostRows)
 
 	ids := make([]string, 0, len(act)+len(lostRows))
@@ -777,17 +822,18 @@ func handleReportGuests(c *gin.Context) {
 	// использования AI-калибратора (синтетические прогоны стенда не в счёт)
 	aimN, aimU := aimReportCounts(p.From, p.To)
 	aimPrevN, _ := aimReportCounts(prev.From, prev.To)
+	sc := deltaScale(p, prev) // З19-и1: на среднедневных
 
 	c.JSON(http.StatusOK, gin.H{
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
-		"aim": gin.H{"sessions": aimN, "guests": aimU, "prev_sessions": aimPrevN, "delta": pctDelta(float64(aimN), float64(aimPrevN))},
+		"aim": gin.H{"sessions": aimN, "guests": aimU, "prev_sessions": aimPrevN, "delta": pctDelta(float64(aimN), float64(aimPrevN)*sc)},
 		"delta": gin.H{
-			"unique":    pctDelta(float64(cur.Unique), float64(old.Unique)),
-			"sessions":  pctDelta(float64(cur.Sessions), float64(old.Sessions)),
-			"hours":     pctDelta(cur.Hours, old.Hours),
-			"new":       pctDelta(float64(cur.New), float64(old.New)),
-			"returning": pctDelta(float64(cur.Returning), float64(old.Returning)),
+			"unique":    pctDelta(float64(cur.Unique), float64(old.Unique)*sc),
+			"sessions":  pctDelta(float64(cur.Sessions), float64(old.Sessions)*sc),
+			"hours":     pctDelta(cur.Hours, old.Hours*sc),
+			"new":       pctDelta(float64(cur.New), float64(old.New)*sc),
+			"returning": pctDelta(float64(cur.Returning), float64(old.Returning)*sc),
 		},
 		"retention_pct": retention,
 		"thresholds":    gin.H{"new_days": newDays, "lost_days": lostDays},
@@ -1221,9 +1267,9 @@ func handleReportLoad(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
-		"delta": gin.H{
-			"hours":         pctDelta(cur.Hours, old.Hours),
-			"sessions":      pctDelta(float64(cur.Sessions), float64(old.Sessions)),
+		"delta": gin.H{ // З19-и1: часы и сессии — на среднедневных, занятость и средняя сессия — как есть
+			"hours":         pctDelta(cur.Hours, old.Hours*deltaScale(p, prev)),
+			"sessions":      pctDelta(float64(cur.Sessions), float64(old.Sessions)*deltaScale(p, prev)),
 			"occupancy_pct": pctDelta(cur.Occupancy, old.Occupancy),
 			"avg_minutes":   pctDelta(cur.AvgMin, old.AvgMin),
 		},
@@ -1512,7 +1558,7 @@ func handleReportStaff(c *gin.Context) {
 			"people": len(people), "assignments": len(asg)},
 		"prev": gin.H{"revenue_pln": oldMoney.Revenue, "deposits": oldMoney.Deposits, "goods_pln": oldMoney.GoodsPLN,
 			"packs_pln": oldMoney.PacksPLN},
-		"delta":     gin.H{"revenue_pln": pctDelta(curMoney.Revenue, oldMoney.Revenue)},
+		"delta":     gin.H{"revenue_pln": pctDelta(curMoney.Revenue, oldMoney.Revenue*deltaScale(p, prev))}, // З19-и1
 		"by_shift":  byShift,
 		"by_person": byPerson,
 	})

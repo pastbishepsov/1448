@@ -6327,7 +6327,7 @@ async function renderReports(){
     const p = d.period, pv = d.prev_period;
     document.getElementById('repLabel').textContent =
       repDate(p.from) + ' — ' + repDate(p.to) + ' · ' + repPlural(p.days, 'день', 'дня', 'дней') +
-      ' · сравнение с ' + repDate(pv.from) + ' — ' + repDate(pv.to);
+      ' · сравнение с ' + repDate(pv.from) + ' — ' + repDate(pv.to) + repCmpNote(p, pv);
     for (const [id, v] of [['repFrom', p.from], ['repTo', p.to]]){
       const el = document.getElementById(id);
       el.value = ruDate(v); el.classList.remove('bad');
@@ -6646,8 +6646,9 @@ function paintGuests(d){
        ${repKpi('Вернувшиеся', t.returning, k.returning, {title:'пришли после паузы ' + th.lost_days + ' дн и дольше', was:w.returning})}
        ${repKpi('Удержание', (d.retention_pct === null || d.retention_pct === undefined ? '—' : d.retention_pct + '%'), undefined,
                 {title:'доля гостей прошлого периода, пришедших и в этом'})}
-       ${repKpi('Пропали', lost.count, undefined,
-                {title:'не были ' + th.lost_days + ' дн и дольше на конец периода; забаненные не в счёт'})}
+       ${repKpi('Пропали', lost.count, undefined, // З19-и1: за период — на его конец и с нижней границей
+                {title:'пропали за этот период: к его концу не были ' + th.lost_days + ' дн и дольше, а за ' + th.lost_days
+                       + ' дн до его начала ещё ходили; забаненные не в счёт'})}
      </div>
      <div class="kpis">
        ${repKpi('Калибровок сенсы', (d.aim || {}).sessions || 0, (d.aim || {}).delta,
@@ -6663,7 +6664,7 @@ function paintGuests(d){
      ${repTable(['Гость','Наиграно','Сессий'], (d.top_hours||[]).map(u =>
         `${row(u)}<td><b>${esc(u.nickname||'—')}</b></td><td>${repHours(u.hours)}</td><td>${u.sessions}</td></tr>`),
         'Сессий за период не было')}
-     <div class="sect">Пропавшие · нет визитов ${th.lost_days} дн и дольше</div>
+     <div class="sect">Пропали за период · к его концу нет визитов ${th.lost_days} дн и дольше</div>
      ${repTable(['Гость','Последний визит'], (lost.items||[]).map(u =>
         `${row(u)}<td><b>${esc(u.nickname||'—')}</b></td><td class="muted">${fmtTime(u.last_visit)}</td></tr>`),
         'Никто не пропал — все возвращаются')}`;
@@ -7032,7 +7033,11 @@ function paintOv(){
 }
 function ovLabel(p, pv){
   const span = x => x.from ? repDate(x.from) + (x.to !== x.from ? ' — ' + repDate(x.to) : '') : '';
-  return span(p) + ' · ' + repPlural(p.days || 0, 'день', 'дня', 'дней') + ' · сравнение с ' + span(pv) + ' · клубные сутки';
+  return span(p) + ' · ' + repPlural(p.days || 0, 'день', 'дня', 'дней') + ' · сравнение с ' + span(pv) + repCmpNote(p, pv) + ' · клубные сутки';
+}
+// З19-и1 (№40): как сравниваем — «сегодня» со «вчера до того же часа», периоды разной длины — на среднедневных
+function repCmpNote(p, pv){
+  return (pv && pv.until ? ' до ' + pv.until : '') + (p && pv && pv.days && p.days !== pv.days ? ' · рост на среднедневных' : '');
 }
 // рост у результата и валовой — в злотых: они бывают меньше нуля, процент от них врёт
 function ovDiff(cur, was){

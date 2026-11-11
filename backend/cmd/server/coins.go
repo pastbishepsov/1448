@@ -396,6 +396,7 @@ func handleReportCoins(c *gin.Context) {
 	}
 	sr := spendRate()
 	cur, old := aggCoins(p), aggCoins(prev)
+	sc := deltaScale(p, prev)
 
 	onHand, _ := coinsOnHandNow()
 	mo := minutesOwedNow()
@@ -443,10 +444,10 @@ func handleReportCoins(c *gin.Context) {
 		"period": p.out(), "prev_period": prev.out(),
 		"totals": cur, "prev": old,
 		"delta": gin.H{
-			"issued":    pctDelta(float64(cur.Issued), float64(old.Issued)),
-			"redeemed":  pctDelta(float64(cur.Redeemed), float64(old.Redeemed)),
-			"given_pln": pctDelta(cur.GivenPLN, old.GivenPLN),
-			"burned":    pctDelta(float64(cur.Burned), float64(old.Burned)),
+			"issued":    pctDelta(float64(cur.Issued), float64(old.Issued)*sc), // З19-и1: на среднедневных
+			"redeemed":  pctDelta(float64(cur.Redeemed), float64(old.Redeemed)*sc),
+			"given_pln": pctDelta(cur.GivenPLN, old.GivenPLN*sc),
+			"burned":    pctDelta(float64(cur.Burned), float64(old.Burned)*sc),
 		},
 		"on_hand": gin.H{
 			"coins":     onHand,

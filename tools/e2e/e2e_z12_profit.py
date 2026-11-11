@@ -99,11 +99,11 @@ check("строки сходятся: доходы = пополнения + то
 ok, bad = same_as_sql(N0)
 check("доходы по видам, возвраты живыми деньгами, расходы и закупки — как прямой SQL до гроша; себестоимость проданного и "
       "подаренного и потери склада — как в «Деньгах»", ok, J(bad))
-Y = nums(profit("yesterday"))
-pv = P0.get("prev") or {}
-check("«прошлый период» у сегодня — это вчера: доходы, возвраты, себестоимость, потери, валовая, расходы, результат",
-      bool(pv) and [g(pv.get(k + "_pln")) for k in ("income", "returns", "cogs", "losses", "gross", "expenses", "result")]
-      == [Y[k] for k in ("income", "returns", "cogs", "losses", "gross", "expenses", "result")], J([pv, Y]))
+# З19-и1: «прошлый период» у сегодня — вчера до того же часа (суммы — в e2e_z19_reports); у «вчера» — позавчера целиком
+pp, yp = P0.get("prev_period") or {}, profit("yesterday").get("prev_period") or {}
+check("«прошлый период» у сегодня — вчерашние сутки до того же часа (until «ЧЧ:ММ»); у «вчера» — позавчера целиком",
+      pp.get("from") == pp.get("to") == club_day(-1) and len(pp.get("until") or "") == 5
+      and yp.get("from") == yp.get("to") == club_day(-2) and "until" not in yp, J([pp, yp]))
 adm = api("GET", "/admin/reports/profit?preset=today", None, "admin1")[0]
 check("админу — 403: «Прибыль» видит только владелец", adm == 403, adm)
 

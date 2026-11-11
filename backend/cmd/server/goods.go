@@ -1047,11 +1047,26 @@ func isKitchenSale(saleID uuid.UUID) bool {
 	return n > 0
 }
 
+// saleVoidMoment — чью и когда отменяем (З19-и1, №40): рассчитанная постоплата (в долг, Ж6) — оплату: момент и
+// автор расчёта; иначе — продажу: когда и кто оформил (у долга без расчёта — тоже). Раньше постоплату админ отменял
+// по дате продажи — вчерашний долг, рассчитанный сегодня в его смену, был «слишком старым», а расчёт — «не его».
+// Чистая функция (тест).
+func saleVoidMoment(sale *models.Sale) (time.Time, string) {
+	if sale.Postpaid && sale.PaidAt != nil {
+		by := sale.CreatedBy.String()
+		if sale.PaidBy != nil {
+			by = sale.PaidBy.String()
+		}
+		return *sale.PaidAt, by
+	}
+	return sale.CreatedAt, sale.CreatedBy.String()
+}
+
 // saleVoidAllowed — права на отмену (canVoidSale) с ответом 403; вернул false — выходить.
 func saleVoidAllowed(c *gin.Context, sale *models.Sale) bool {
 	from, to, _, _ := staffDay(c, time.Now()) // З18-и4г: у админа — и его смена, если она началась раньше суток
-	if ok, code := canVoidSale(c.GetString("user_role"), sale.CreatedBy.String(),
-		c.GetString("user_id"), sale.CreatedAt, from, to); !ok {
+	at, by := saleVoidMoment(sale)
+	if ok, code := canVoidSale(c.GetString("user_role"), by, c.GetString("user_id"), at, from, to); !ok {
 		goodFail(c, http.StatusForbidden, code)
 		return false
 	}

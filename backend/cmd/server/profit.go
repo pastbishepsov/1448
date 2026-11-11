@@ -201,7 +201,8 @@ func handleReportProfit(c *gin.Context) {
 		cats = append(cats, gin.H{"category_id": x.ID, "category": x.Name, "pln": pln(x.Grosz), "count": x.Count})
 	}
 	r := cur.Returns
-	pct := func(a, b int64) *float64 { return pctDelta(float64(a), float64(b)) }
+	sc := deltaScale(p, prev) // З19-и1: периоды разной длины — на среднедневных
+	pct := func(a, b int64) *float64 { return pctDelta(float64(a), float64(b)*sc) }
 	c.JSON(http.StatusOK, gin.H{
 		"period": p.out(), "prev_period": prev.out(),
 		"income": gin.H{"pln": pln(income), "deposits_pln": pln(cur.Deposits), "deposits": cur.DepositsN,

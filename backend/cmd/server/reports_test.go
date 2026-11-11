@@ -446,3 +446,42 @@ func TestShiftByTimesheet(t *testing.T) {
 		}
 	}
 }
+
+// З19-и1 (№40): «сегодня» — со «вчера до того же часа»; момент вне окна — период как был.
+func TestCutPrevAt(t *testing.T) {
+	prev := makePeriod(day(2026, 11, 8), day(2026, 11, 8), 0, "prev")
+	at := time.Date(2026, 11, 8, 17, 20, 0, 0, time.UTC)
+	if got := cutPrevAt(prev, at); !got.To.Equal(at) || !got.Until.Equal(at) || got.out()["until"] != "17:20" || got.Days != 1 {
+		t.Errorf("до 17:20: %+v", got)
+	}
+	// своя граница суток 8: вчерашние сутки 08:00–08:00, «сейчас минус сутки» в 03:00 — внутри них
+	prev8 := makePeriod(day(2026, 11, 8), day(2026, 11, 8), 8, "prev")
+	at8 := time.Date(2026, 11, 9, 3, 0, 0, 0, time.UTC)
+	if got := cutPrevAt(prev8, at8); !got.To.Equal(at8) || got.out()["until"] != "03:00" {
+		t.Errorf("граница 8, 03:00: %+v", got)
+	}
+	for _, out := range []time.Time{time.Date(2026, 11, 7, 23, 0, 0, 0, time.UTC), prev.To, prev.From} {
+		if got := cutPrevAt(prev, out); !got.To.Equal(prev.To) || !got.Until.IsZero() || got.out()["until"] != nil {
+			t.Errorf("вне окна %v: %+v", out, got)
+		}
+	}
+}
+
+// З19-и1 (№40): периоды разной длины — на среднедневных; одинаковой — как есть.
+func TestDeltaScale(t *testing.T) {
+	oct := makePeriod(day(2026, 10, 1), day(2026, 10, 31), 0, "cal_month")
+	sep := prevPeriod(oct, 0)
+	if sc := deltaScale(oct, sep); sep.Days != 30 || math.Abs(sc-31.0/30) > 1e-12 {
+		t.Errorf("октябрь к сентябрю: %d дн, %v", sep.Days, sc)
+	}
+	if d := pctDelta(310, 300*deltaScale(oct, sep)); d == nil || *d != 0 {
+		t.Errorf("310 zł за 31 день против 300 за 30 — тот же день: %v", d)
+	}
+	wk := makePeriod(day(2026, 11, 3), day(2026, 11, 9), 0, "d7")
+	if sc := deltaScale(wk, prevPeriod(wk, 0)); sc != 1 {
+		t.Errorf("неделя к неделе: %v", sc)
+	}
+	if sc := deltaScale(oct, period{}); sc != 1 {
+		t.Errorf("пустой прошлый: %v", sc)
+	}
+}

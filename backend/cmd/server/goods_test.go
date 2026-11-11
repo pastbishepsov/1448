@@ -3,6 +3,10 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/pastbishepsov/1448/backend/internal/models"
 )
 
 func TestValidateGood(t *testing.T) {
@@ -79,6 +83,30 @@ func TestRoundPLN(t *testing.T) {
 	for _, tc := range cases {
 		if got := roundPLN(tc.in); got != tc.want {
 			t.Errorf("roundPLN(%v) = %v, ожидалось %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// З19-и1 (№40): рассчитанная постоплата отменяется по моменту и автору расчёта; обычная продажа и долг без расчёта —
+// по продаже.
+func TestSaleVoidMoment(t *testing.T) {
+	seller, payer := uuid.New(), uuid.New()
+	sold := time.Date(2026, 11, 8, 21, 0, 0, 0, time.UTC)
+	paid := sold.Add(14 * time.Hour)
+	cases := []struct {
+		name string
+		sale models.Sale
+		at   time.Time
+		by   uuid.UUID
+	}{
+		{"обычная", models.Sale{CreatedAt: sold, CreatedBy: seller, PaidAt: &sold}, sold, seller},
+		{"долг без расчёта", models.Sale{CreatedAt: sold, CreatedBy: seller, Postpaid: true}, sold, seller},
+		{"рассчитан другим", models.Sale{CreatedAt: sold, CreatedBy: seller, Postpaid: true, PaidAt: &paid, PaidBy: &payer}, paid, payer},
+		{"рассчитан, автор не записан", models.Sale{CreatedAt: sold, CreatedBy: seller, Postpaid: true, PaidAt: &paid}, paid, seller},
+	}
+	for _, c := range cases {
+		if at, by := saleVoidMoment(&c.sale); !at.Equal(c.at) || by != c.by.String() {
+			t.Errorf("%s: %v %s, ждали %v %s", c.name, at, by, c.at, c.by)
 		}
 	}
 }

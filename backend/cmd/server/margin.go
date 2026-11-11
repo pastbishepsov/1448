@@ -174,7 +174,7 @@ func goodsReport(p, prev period) (top, cats []gin.H, total gin.H, delta *float64
 	if old.Costed > 0 {
 		total["prev_margin_pln"] = models.PLNFromGrosz(old.SoldCost - old.Cost)
 		if cur.Costed > 0 && old.SoldCost > old.Cost { // от нуля и минуса процент роста бессмыслен
-			delta = pctDelta(float64(cur.SoldCost-cur.Cost), float64(old.SoldCost-old.Cost))
+			delta = pctDelta(float64(cur.SoldCost-cur.Cost), float64(old.SoldCost-old.Cost)*deltaScale(p, prev)) // З19-и1
 		}
 	}
 	return top, cats, total, delta
