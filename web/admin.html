@@ -793,6 +793,9 @@
   }
   .invMoved{display:block; color:var(--orange); font-size:12px; margin-top:2px}
   .invMovedRow .invExp{color:var(--orange); font-weight:700}
+  /* З23-и5б: строка, которую только что посчитал сканер, — вспышкой */
+  .invLine{transition:background .4s}
+  .invLine.invScanned{background:rgba(52,211,153,.14)}
   .invShort{color:var(--acc3)}
   .invPlus{color:var(--green)}
   .invOk{color:var(--dim)}
@@ -1082,7 +1085,8 @@
           <button class="btn mini ownerOnly hidden" onclick="editGood('')"><span data-ic="plus"></span>Позиция</button>
         </div>
         <div id="saleCands"></div><!-- Ж5-и4 (№15): выбор из кандидатов при 409, как в посадке -->
-        <div class="toolrow"><div class="segs" id="goodsCats"></div></div>
+        <div class="toolrow"><div class="segs" id="goodsCats"></div>
+          <span class="muted" id="scanHint">Сканер штрихкодов кладёт позицию в чек</span></div><!-- З23-и5б -->
         <div id="goodsTiles"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
         <!-- Ж6-и2: корзина — плитки складывают позиции, одна кнопка «Продать» → чек -->
         <div class="cart hidden" id="cartBox">
@@ -5637,6 +5641,7 @@ function invPaint(){
       излишек — партией «нашлось»${isOwner() ? ' (цену ей поставишь в «Закупках»)' : ''}.</div>
     ${moved ? `<div class="invMoved" id="invMovedNote">Пока считали, остаток изменился у ${repPlural(moved, 'позиции', 'позиций', 'позиций')} — они подсвечены: пересчитай и проведи ещё раз</div>` : ''}
     ${f.cats.length > 1 ? `<div class="segs" id="invCats">${seg(-1, 'Все')}${f.cats.map((c, k) => seg(k, c || 'без категории')).join('')}</div>` : ''}
+    <div class="muted" id="invScanHint">Сканер: наведи на штрихкод — «насчитали» у позиции +1.</div>
     <div id="invLines"><div class="invLine invHeadRow"><span class="invName">Позиция</span><span class="invExp">в системе</span><span>насчитали</span><span>разница</span></div>
       ${shown.map(({r, i}) => invLineHTML(r, i)).join('')}</div>
     <div class="invSum" id="invSum">${invSumHTML(f)}</div>
@@ -5770,6 +5775,107 @@ async function invDownload(btn, fmt){
     toast('✓ Файл «' + name + '» скачан');
   }catch(e){ toast('⚠ Файл не собрался: ' + e.message); }
   finally{ if (btn.isConnected){ btn.disabled = false; btn.innerHTML = html; mountIcons(btn); } }
+}
+
+/* ── З23-и5б (№54 «в»): сканер штрихкодов. Сканер — та же клавиатура: цифры очень быстро подряд (меньше 70 мс между ними)
+   и Enter. Такой набор из 8–14 цифр — скан: в поле, где стоял курсор, он не остаётся (поле возвращается как было), а идёт
+   туда, где нужен: открыта шторка пересчёта — +1 «насчитали» у позиции; шторка приёмки — +1 штука в строке позиции (нет
+   строки — новая); поле штрихкода в карточке позиции (data-scan="keep") — код остаётся в нём; на «Товарах» — в чек.
+   Позицию ищем по ценнику (goods.barcode, З23-и5а); UPC-A из 12 цифр — как EAN-13 с ведущим нулём. Вне «Товаров» и их
+   шторок сканер не слушаем; цифры там, как и были, открывают разделы. На «Товарах» цифра-раздел срабатывает через 80 мс:
+   успела прийти следующая цифра — это сканер, раздел не открываем. ── */
+let scanBuf = '', scanAt = 0, scanEl = null, scanVal = null, scanNavT = null;
+function scanNorm(code){ const c = String(code || '').replace(/\s+/g, ''); return c.length === 12 ? '0' + c : c; }
+function scanGood(code){ const c = scanNorm(code); return goodsData.find(g => g.barcode === c) || null; }
+function scanCtx(){
+  if (document.getElementById('drawer').classList.contains('open'))
+    return document.getElementById('invForm') ? 'inv' : document.getElementById('supLines') ? 'sup' : document.getElementById('gd_barcode') ? 'card' : '';
+  return curTab === 'goods' ? 'sale' : '';
+}
+document.addEventListener('keydown', e => {
+  if (!me || e.ctrlKey || e.metaKey || e.altKey) return;
+  const ctx = scanCtx();
+  if (!ctx) return;
+  const t = e.target, field = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+  const typing = field || (!!t && (t.tagName === 'SELECT' || t.isContentEditable));
+  const now = Date.now();
+  if (/^[0-9]$/.test(e.key)){
+    if (now - scanAt > 70){ scanBuf = ''; scanEl = field ? t : null; scanVal = field ? t.value : null; }
+    scanBuf += e.key; scanAt = now;
+    if (!typing){ // цифра вне поля — раздел (как было), но через 80 мс: пошли ещё цифры — это сканер
+      e.stopImmediatePropagation();
+      clearTimeout(scanNavT); scanNavT = null;
+      if (scanBuf.length === 1){
+        const k = e.key;
+        scanNavT = setTimeout(() => {
+          if (scanBuf !== k) return;
+          scanBuf = '';
+          const i = parseInt(k, 10) - 1;
+          if (i >= 0 && i < SECTIONS.length) nav(SECTIONS[i]);
+        }, 80);
+      }
+    }
+    return;
+  }
+  if (e.key === 'Enter' && scanBuf.length >= 8 && scanBuf.length <= 14 && now - scanAt < 150){
+    const code = scanNorm(scanBuf), el = scanEl, was = scanVal;
+    scanBuf = ''; clearTimeout(scanNavT); scanNavT = null;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (el && el.dataset.scan === 'keep'){ el.value = code; toast('Штрихкод ' + code + ' считан — «Сохранить»'); return; }
+    if (el && el.isConnected && was !== null && el.value !== was){ el.value = was; el.dispatchEvent(new Event('input', {bubbles: true})); }
+    scanTo(ctx, code);
+    return;
+  }
+  if (e.key !== 'Shift') scanBuf = '';
+}, true);
+function scanTo(ctx, code){
+  const g = scanGood(code);
+  if (!g){
+    toast('⚠ Код ' + code + ' не привязан ни к одной позиции' + (isOwner() ? ' — привяжи его в карточке позиции: «Привязать сканом»' : ' — скажи владельцу'));
+    return;
+  }
+  if (ctx === 'inv') invScan(g);
+  else if (ctx === 'sup') supScan(g);
+  else if (ctx === 'sale') saleScan(g);
+  else toast('Это «' + g.name + '»');
+}
+function saleScan(g){
+  if (!g.active){ toast('⚠ «' + g.name + '» выключена — включи её в ценнике'); return; }
+  if (g.stock <= (cart[g.id] || 0)){ toast('⚠ «' + g.name + '»: на складе ' + g.stock); return; }
+  cartAdd(g.id);
+  toast('✓ «' + g.name + '» — в чек: ' + cart[g.id] + ' шт');
+}
+function supScan(g){
+  const f = supForm;
+  if (!f) return;
+  let l = f.lines.find(x => x.good === g.id);
+  if (!l && f.id){ toast('⚠ «' + g.name + '» в этой поставке нет — новые строки — новой поставкой'); return; }
+  if (l) l.qty = String((parseInt(l.qty, 10) || 0) + 1);
+  else {
+    l = f.lines.find(x => !x.good && !String(x.qty).trim());
+    if (l){ l.good = g.id; l.qty = '1'; } else { l = {good: g.id, qty: '1'}; f.lines.push(l); }
+  }
+  supPaint();
+  toast('✓ «' + g.name + '»: ' + l.qty + ' шт');
+}
+function invScan(g){
+  const f = invForm;
+  if (!f) return;
+  const r = f.rows.find(x => x.id === g.id);
+  if (!r){ toast('⚠ «' + g.name + '» нет в пересчёте — она выключена и без остатка'); return; }
+  const n = invNum(r.counted);
+  r.counted = String((n === null || isNaN(n) ? 0 : n) + 1);
+  if (f.cat >= 0 && r.category !== f.cats[f.cat]) f.cat = -1;
+  invPaint();
+  const row = document.querySelector(`#invLines .invLine[data-g="${g.id}"]`);
+  if (row){ row.scrollIntoView({block: 'center'}); row.classList.add('invScanned'); setTimeout(() => row.classList.remove('invScanned'), 900); }
+  toast('✓ «' + r.name + '»: насчитали ' + r.counted);
+}
+function gdScanArm(){
+  const i = document.getElementById('gd_barcode');
+  if (!i) return;
+  i.value = ''; i.focus();
+  toast('Наведи сканер на штрихкод — код впишется в поле');
 }
 
 function goodsBadgeSet(n){
@@ -6089,6 +6195,12 @@ function editGood(id){
     <input id="gd_cat" class="input" placeholder="Категория (Напитки)" value="${esc(g.category||'')}" oninput="goodVatCatSync()">
     <textarea id="gd_desc" class="input" rows="2" placeholder="Описание для плитки кухни (гость видит его под названием)">${esc(g.description||'')}</textarea>
     <input id="gd_price" class="input" type="number" step="0.01" min="0.01" placeholder="Цена, zł" value="${g.price_pln ?? ''}">
+    <div class="vatrow"><!-- З23-и5б: штрихкод — EAN-13 или EAN-8; сканер в этом поле код оставляет в нём -->
+      <input id="gd_barcode" class="input" inputmode="numeric" maxlength="20" data-scan="keep" placeholder="Штрихкод — EAN-13 или EAN-8"
+             aria-label="штрихкод" value="${esc(g.barcode || '')}">
+      <button class="btn ghost mini" id="gd_scan" onclick="gdScanArm()"><span data-ic="search"></span>Привязать сканом</button>
+    </div>
+    <div class="muted" style="margin-top:-4px">«Привязать сканом» — и наведи сканер на код: он впишется сам. Пусто — штрихкода нет.</div>
     <label class="muted" style="margin-bottom:-6px" for="gd_vat">Ставка VAT — уточните у своего бухгалтера</label>
     <div class="vatrow">
       <select id="gd_vat" class="input"${isNew ? ' data-auto="1"' : ''} onchange="delete this.dataset.auto">${vatOptions(isNew ? goodCatVat(g.category) : g.vat_pct)}</select>
@@ -6127,6 +6239,7 @@ async function saveGood(id){
     low_stock: parseInt(v('gd_low') || '0', 10),
     sort: parseInt(v('gd_sort') || '100', 10),
     description: v('gd_desc'),
+    barcode: v('gd_barcode'), // З23-и5б: "" — убрать штрихкод
     active: document.getElementById('gd_active').checked,
   };
   if (!body.name){ toast('⚠ Нужно название'); return; }
@@ -6310,6 +6423,7 @@ function supPaint(){
     ${s ? `<div class="muted" id="supWho">Принята ${supWhen(s.created_at)} · ${esc(s.received_by || '—')}${s.edited_at ? ' · <span style="color:var(--orange)">исправлено ' + supWhen(s.edited_at) + ' · ' + esc(s.edited_by || '—') + '</span>' : ''}</div>` : ''}
     <div id="supLines" style="display:flex; flex-direction:column; gap:8px">${rows}</div>
     ${f.id ? '' : '<button class="btn ghost mini" id="supAddLine" style="align-self:flex-start" onclick="supLineAdd()"><span data-ic="plus"></span>Строка</button>'}
+    <div class="muted" id="supScanHint">Сканер: наведи на штрихкод — строка позиции +1 штука${f.id ? '' : ' (нет строки — появится)'}.</div>
     <input id="supNote" class="input" maxlength="200" placeholder="Заметка — от кого, номер накладной" value="${esc(f.note)}" oninput="supForm.note=this.value">
     <div class="muted">${f.id ? 'Пока поставка ждёт цен, штуки можно исправить — у неё останется пометка «исправлено», что было и что стало — в журнале.'
       : 'Остаток вырастет сразу; цены закупки поставит владелец — до этого поставка «ждёт цен». Одна позиция в двух строках сложится.'}</div>
