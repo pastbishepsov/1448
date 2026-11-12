@@ -6,6 +6,7 @@
 //     await z.nav(page, 'stats');
 //     z.check('…', cond, detail);
 //     await z.shot(page, 'z0_stats');                    // скриншот в E2E_OUT
+//     const t = await z.toastAfter(page, () => page.click('#save'), 'сохранён'); // тост этого действия, не прошлый
 //     await z.done();                                    // браузеры закрыть, уборка, «ошибок JS нет», итог
 //   })().catch(z.crash);
 //
@@ -153,6 +154,50 @@ async function nav(page, screen) { await page.evaluate(s => nav(s), screen); awa
 const shot = (page, name, fullPage = false) => page.screenshot({ path: `${OUT}/z_${name}.png`, fullPage });
 const text = (page, sel) => page.evaluate(s => { const e = document.querySelector(s); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; }, sel);
 
+// ── тост после действия (З19-и11) ──
+// Тост читается после действия, а не через паузу: ответ сервера бывает дольше паузы, и тогда на экране — прошлый тост
+// (pw_z9_debt, полный прогон З22-и3: возврат записался за 2,2 с при паузе 1,8 с). toastAfter(page, act, want) делает
+// act() и ждёт (до timeout мс) первый тост с want среди показанных после начала act, потом — idle: перерисовка после
+// тоста (список, KPI, книга) к следующему шагу проверки уже на экране. Возвращает текст тоста, как на экране (как text
+// у '#toast'); не дождался — последний из новых тостов или ''.
+const nets = new WeakMap();
+function net(page) { // запросы страницы в полёте — по событиям браузера, сама страница не меняется
+  let n = nets.get(page);
+  if (n) return n;
+  n = { open: new Set(), at: Date.now() };
+  const end = r => { n.open.delete(r); n.at = Date.now(); };
+  page.on('request', r => { n.open.add(r); n.at = Date.now(); });
+  page.on('requestfinished', end); page.on('requestfailed', end);
+  nets.set(page, n);
+  return n;
+}
+// страница дописала своё: quiet мс без запросов в полёте — и от последнего запроса, и от вызова; не затихла за timeout — false
+async function idle(page, { quiet = 300, timeout = 10000 } = {}) {
+  const n = net(page), t0 = Date.now();
+  while (Date.now() - t0 < timeout) {
+    if (!n.open.size && Date.now() - Math.max(n.at, t0) >= quiet) return true;
+    await sleep(50);
+  }
+  return false;
+}
+async function toastAfter(page, act, want, { timeout = 15000 } = {}) {
+  net(page);
+  const n0 = await page.evaluate(() => { // обёртка над toast страницы — одна на страницу (как в pw_z16_notify; свой список — __zToasts)
+    if (!window.__zToasts) {
+      window.__zToasts = [];
+      const orig = toast;
+      toast = (...a) => { const r = orig(...a), t = document.getElementById('toast');
+        window.__zToasts.push((t ? t.textContent : String(a[0])).replace(/\s+/g, ' ').trim()); return r; };
+    }
+    return window.__zToasts.length;
+  });
+  await act();
+  const got = await page.waitForFunction(([n, w]) => (window.__zToasts || []).slice(n).find(x => x.includes(w)) || null, [n0, want],
+    { timeout, polling: 100 }).then(h => h.jsonValue()).catch(() => null);
+  await idle(page);
+  return got || await page.evaluate(n => (window.__zToasts || []).slice(n).pop() || '', n0);
+}
+
 module.exports = { API, BASE, DB, OUT, WEB_DIR, GUEST_PASS, STAFF_PASS, passwordOf, sleep, rows, sql, uid, dropGood, call, login, tok, api,
   clubDay, hireTemp, dismiss, pinShift, hideOpenings, unhideOpenings, check, atEnd, done, crash, jsErrors, openAdmin,
-  nav, shot, text };
+  nav, shot, text, toastAfter, idle };

@@ -6,7 +6,8 @@
 // строка зачёркнута, кто отменил. Больше долга — отказ с остатком, шторка со свежей суммой. Долг погашен — шторка
 // «ничего не должен», история с отменённым. Журнал — «долг владельцу: возврат / отмена возврата»; палитра «долг».
 // Временный z9dp на смене; расходы и возвраты с заметкой «z9dp проверка …» (у прогона — своя метка) в конце сторнируются и
-// отменяются — долг как был.
+// отменяются — долг как был. З19-и11: тост — тот, что показан после действия (z.toastAfter), а не #toast через 1,8 с:
+// возврат на стенде записывался и за 2,2 с — читался прошлый тост; шаг после тоста — когда страница дописала своё.
 const z = require('./_z');
 (async () => {
   const MARK = 'z9dp проверка', TAG = MARK + ' ' + Date.now().toString(36).slice(-5); // TAG — строки этого прогона
@@ -28,7 +29,7 @@ const z = require('./_z');
   }
   const boss = await z.openAdmin('boss');
   const F = v => boss.evaluate(x => fmtPLN(x).replace(/\s+/g, ' '), v); // деньги так, как их пишет страница
-  const toast = async () => { await z.sleep(1800); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // тост этого действия, перерисовка после него — на экране
   const arm = async sel => { await boss.click(sel); await z.sleep(250); await boss.click(sel); };
   await boss.evaluate(() => { try{ localStorage.removeItem('1448a_acctab'); }catch(e){} });
   await z.nav(boss, 'acc');
@@ -44,9 +45,7 @@ const z = require('./_z');
   await boss.fill('#efAmount', '120');
   await boss.fill('#efNote', TAG + ': мышки');
   await z.shot(boss, 'z9_debt_form');
-  await boss.click('#efSave');
-  const t1 = await toast(), d1 = await debt();
-  await z.sleep(600);
+  const t1 = await after(() => boss.click('#efSave'), 'Расход 120,00 zł внесён'), d1 = await debt();
   const kpi1 = await z.text(boss, '#expDebtKpi');
   z.check(`шторка расхода: у «Банка» подсказки про долг нет, у «Личных денег владельца» — есть (про кассу — нет); тост «… · клуб должен владельцу ${await F(d1)} zł»; KPI — та же сумма`,
     !h0 && h1 && !ht && Math.abs(d1 - d0 - 120) < 0.005 && t1.includes(`Расход 120,00 zł внесён — Оборудование и ремонт · клуб должен владельцу ${await F(d1)} zł`)
@@ -64,8 +63,7 @@ const z = require('./_z');
   const x0 = (await pv()).expected_pln;
   await boss.fill('#odAmount', '45'); await boss.fill('#odNote', TAG + ': из ящика');
   await z.shot(boss, 'z9_debt_drawer');
-  await arm('#odSubmit');
-  const t2 = await toast(), d2 = await debt(), p2 = await pv();
+  const t2 = await after(() => arm('#odSubmit'), 'Вернули владельцу 45,00 zł'), d2 = await debt(), p2 = await pv();
   z.check(`возврат 45 из кассы: тост «✓ Вернули владельцу 45,00 zł из кассы · клуб должен владельцу ${await F(d2)} zł · в ящике должно быть ${await F(p2.expected_pln)} zł»; «должно быть» −45`,
     Math.abs(d2 - (d1 - 45)) < 0.005 && Math.abs(p2.expected_pln - (x0 - 45)) < 0.005
     && t2.includes(`Вернули владельцу 45,00 zł из кассы · клуб должен владельцу ${await F(d2)} zł · в ящике должно быть ${await F(p2.expected_pln)} zł`), JSON.stringify({ t2, d2, x0, p2: p2.expected_pln }));
@@ -91,8 +89,8 @@ const z = require('./_z');
   await boss.evaluate(m => { const d = [...document.querySelectorAll('#accBody tr.accDet div')].find(e => e.textContent.includes(m + ': из ящика')); if (d) d.scrollIntoView({ block: 'center' }); }, MARK);
   await z.shot(boss, 'z9_debt_book');
   const vb = await boss.$$(`#accBody tr.accDet div:has-text("${TAG}: из ящика") button:has-text("Отменить")`);
-  if (vb.length) { await vb[0].click(); await z.sleep(250); await vb[0].click(); }
-  const t3 = await toast(), d3 = await debt(), p3 = await pv();
+  const t3 = await after(async () => { if (vb.length) { await vb[0].click(); await z.sleep(250); await vb[0].click(); } }, 'Возврат отменён');
+  const d3 = await debt(), p3 = await pv();
   const row3 = await own();
   z.check(`отмена в книге: тост «✓ Возврат отменён · клуб должен владельцу ${await F(d3)} zł · в ящике должно быть …», долг и ящик вернулись; строка зачёркнута — «отменил boss»`,
     vb.length === 1 && Math.abs(d3 - d1) < 0.005 && Math.abs(p3.expected_pln - x0) < 0.005
@@ -103,8 +101,7 @@ const z = require('./_z');
   await boss.click('#accOwnBtn'); await z.sleep(900);
   const on2 = await z.text(boss, '#odMethod button.on');
   await boss.fill('#odAmount', String(Math.round((d3 + 10) * 100) / 100)); await boss.fill('#odNote', TAG + ': лишнее');
-  await arm('#odSubmit');
-  const t4 = await toast(), a4 = await boss.evaluate(() => (document.getElementById('odAmount') || {}).value);
+  const t4 = await after(() => arm('#odSubmit'), 'больше вернуть нельзя'), a4 = await boss.evaluate(() => (document.getElementById('odAmount') || {}).value);
   z.check(`из «Кассы» способ — «Из кассы»; на 10 больше долга — «⚠ Клуб должен владельцу ${await F(d3)} zł — больше вернуть нельзя», сумма — снова весь долг`,
     on2 === 'Из кассы' && t4.includes(`Клуб должен владельцу ${await F(d3)} zł — больше вернуть нельзя`) && Math.abs(parseFloat(a4) - d3) < 0.005 && Math.abs(await debt() - d3) < 0.005,
     JSON.stringify({ on2, t4, a4 }));
@@ -112,8 +109,7 @@ const z = require('./_z');
   // весь долг — с банка: «ничего не должен», шторка без формы, история с отменённым
   await boss.click('#odMethod button:has-text("С банка")'); await z.sleep(200);
   await boss.fill('#odNote', TAG + ': остаток');
-  await arm('#odSubmit');
-  const t5 = await toast(), d5 = await debt();
+  const t5 = await after(() => arm('#odSubmit'), 'zł с банка'), d5 = await debt();
   await boss.click('#accTabs button[data-t="exp"]'); await z.sleep(1500);
   const kpi5 = await z.text(boss, '#expDebtKpi');
   await boss.click('#expDebtKpi'); await z.sleep(900);
