@@ -189,9 +189,19 @@ const vis = (p, id) => p.evaluate(id => { const e = document.getElementById(id);
   await p.click('.topbar button[onclick^="logoutClick"]');
   await p.waitForFunction(() => document.getElementById('endOverlay').classList.contains('show'), null, {timeout: 8000});
   await p.waitForTimeout(600);
-  await L.esc(p); if (await vis(p, 'lvlOverlay')) await L.esc(p);
-  await p.waitForTimeout(300);
-  L.check('итоги: Esc = «Ок» → выход из аккаунта (своё завершение)', !await vis(p, 'endOverlay') && await p.evaluate(() => !document.getElementById('authView').classList.contains('hidden')));
+  // З19-и10: окно уровня может встать поверх итогов и до первого Esc, и после — тогда Esc закрывал его, а итоги
+  // оставались (полный прогон, раз в несколько запусков). Ждём выхода до 8 с; Esc повторяем, только пока на экране
+  // итоги или уровень и не чаще раза в секунду.
+  let out = false, lastEsc = Date.now();
+  await L.esc(p);
+  for (let i = 0; i < 40 && !out; i++) {
+    out = !await vis(p, 'endOverlay') && !await vis(p, 'lvlOverlay')
+      && await p.evaluate(() => !document.getElementById('authView').classList.contains('hidden'));
+    if (out) break;
+    if ((await vis(p, 'lvlOverlay') || await vis(p, 'endOverlay')) && Date.now() - lastEsc > 1000) { await L.esc(p); lastEsc = Date.now(); }
+    else await p.waitForTimeout(200);
+  }
+  L.check('итоги: Esc = «Ок» → выход из аккаунта (своё завершение)', out);
 
   console.log('— заставка');
   await p.fill('#nick', G); await p.fill('#pass', 'Guest12345'); await p.click('#authBtn');

@@ -4,7 +4,9 @@
 в отчёте «Гости», конец смены в сводке, «сейчас» в фильтре «новые» у стойки. Раньше определений было три
 (первая сессия в окне отчёта, регистрация за смену, «аккаунт моложе недели»), а seg_new_days ни на что не
 влиял. Guest36: первая сессия за 5 суток до дня D и сессия в D; Guest37: первая сессия в D; D — пустые сутки
-прошлого. Идемпотентен: сессии удаляются, регистрация Guest36 и настройки — как были."""
+прошлого. Идемпотентен: сессии удаляются, регистрация Guest36 и настройки — как были.
+З19-и10: D ищется от 3 до 300 суток назад (было до 25): стенд живёт с 18.10, и с 12.11 каждое окно «D и 6 суток до
+него» в пределах 25 суток задевало чьи-то сессии — проверка падала каждый день, не только ночью."""
 from _z import *
 
 g36, g37 = uid("Guest36"), uid("Guest37")
@@ -27,7 +29,7 @@ sql(f"UPDATE users SET registered_at='{reg36}' WHERE id='{g36}'")
 
 section("в отчёте и сводке — первая сессия не раньше seg_new_days до конца суток")
 rh = int(sql("SELECT COALESCE((SELECT value FROM settings WHERE key='report_hour'), '0')"))
-D = sql(f"""SELECT g::date FROM generate_series(((now() AT TIME ZONE '{TZ}')::date - 25)::timestamp,
+D = sql(f"""SELECT g::date FROM generate_series(((now() AT TIME ZONE '{TZ}')::date - 300)::timestamp,
     ((now() AT TIME ZONE '{TZ}')::date - 3)::timestamp, interval '1 day') AS g
     WHERE NOT EXISTS (SELECT 1 FROM sessions WHERE started_at >= ((g - interval '6 days' + interval '{rh} hours') AT TIME ZONE '{TZ}')
       AND started_at < ((g + interval '1 day {rh} hours') AT TIME ZONE '{TZ}')) ORDER BY g DESC LIMIT 1""")

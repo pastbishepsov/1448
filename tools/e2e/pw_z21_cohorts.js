@@ -2,7 +2,9 @@
 // визита» — итоги за 12 месяцев (новых, вернулись через месяц, LTV гостя) и таблица: 12 месяцев, старый сверху, новых,
 // через 1/2/3 мес — доля и число («…» — месяц ещё идёт, «—» — не начался), LTV на гостя; пустые месяцы в начале — одной
 // строкой «… — …: новых гостей не было». Строки — как в ответе сервера; от периода не зависит; телефон 360 — карточки в
-// экране. Данных не заводит.
+// экране. Данных не заводит. З19-и10: экран сверяется с тем ответом, который страница сама получила (между двумя
+// запросами деньги когорты могли сдвинуться — чужая продажа или пополнение в полном прогоне), а каждая когорта —
+// размер, вернувшиеся, выручка и LTV — с прямым SQL на момент этого ответа (as_of): деньги считаются заново, мимо сервера.
 const z = require('./_z');
 (async () => {
   const norm = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
@@ -10,8 +12,11 @@ const z = require('./_z');
   await z.nav(boss, 'stats');
   const settle = () => boss.waitForFunction(() => { const b = document.getElementById('repBody'); return b && !b.querySelector('.skel'); }, null,
     { timeout: 20000 }).catch(() => {}).then(() => z.sleep(500));
+  const cohResp = () => boss.waitForResponse(r => /\/admin\/reports\/cohorts(\?|$)/.test(r.url()) && r.request().method() === 'GET',
+    { timeout: 20000 }).then(r => r.json()).catch(() => null);
+  const r1 = cohResp();
   await boss.evaluate(() => repTabSet('guests', document.querySelector('#repTabs button[data-t="guests"]'))); await settle();
-  const co = (await z.api('GET', '/admin/reports/cohorts', undefined, 'boss')).data || {};
+  const co = (await r1) || (await z.api('GET', '/admin/reports/cohorts', undefined, 'boss')).data || {};
   const read = page => page.evaluate(() => {
     const t = document.querySelector('#repBody .cohTable');
     if (!t) return null;
@@ -38,6 +43,10 @@ const z = require('./_z');
   const want = (fold ? [{ m: `${cs[0].month}…${cs[skip - 1].month}`, empty: true, td: [`${mon(cs[0].month)} — ${mon(cs[skip - 1].month)}: новых гостей не было`] }] : [])
     .concat((fold ? cs.slice(skip) : cs).map(c => ({ m: c.month, empty: !c.size, td: [mon(c.month), String(c.size),
       ...(c.back || []).map(b => cell(b, c.size)), c.ltv_pln == null ? '—' : norm(pln(c.ltv_pln) + ' zł')] })));
+  const wantOf = cc => { const l = cc.findIndex(c => c.size > 0), sk = l === -1 ? cc.length : l, fd = sk >= 2; // то же — для любого ответа
+    return (fd ? [{ m: `${cc[0].month}…${cc[sk - 1].month}`, empty: true, td: [`${mon(cc[0].month)} — ${mon(cc[sk - 1].month)}: новых гостей не было`] }] : [])
+      .concat((fd ? cc.slice(sk) : cc).map(c => ({ m: c.month, empty: !c.size, td: [mon(c.month), String(c.size),
+        ...(c.back || []).map(b => cell(b, c.size)), c.ltv_pln == null ? '—' : norm(pln(c.ltv_pln) + ' zł')] }))); };
   z.check(`шапка блока — «${norm(v.head)}»; ${cs.length} месяцев, старый сверху, этот (${co.month}) — последним`
     + (fold ? `; пустые в начале (${skip}) — одной строкой` : ''),
     norm(v.head) === 'Когорты · гости по месяцу первого визита' && cs.length === 12 && v.rows.length === want.length
@@ -52,6 +61,27 @@ const z = require('./_z');
   z.check(`итоги: «${v.kpis.join(' · ')}» — сумма когорт, через месяц — по когортам с прошедшим следующим месяцем`,
     JSON.stringify(v.kpis.map(norm)) === JSON.stringify(k.map(norm)), JSON.stringify({ got: v.kpis, want: k }));
 
+  // деньги и состав когорт — прямым SQL на момент ответа (as_of), теми же правилами, что e2e_z21_cohorts
+  const RH = +(z.sql("SELECT COALESCE((SELECT value FROM settings WHERE key = 'report_hour'), '0')") || 0);
+  const NOW = `'${co.as_of}'::timestamptz`;
+  const cm = col => `to_char((${col} AT TIME ZONE 'Europe/Warsaw' - interval '${RH} hours')::date, 'YYYY-MM')`;
+  const sqlC = {};
+  if (co.as_of) for (const r of z.rows(`WITH f AS (SELECT s.user_id, ${cm('MIN(s.started_at)')} AS m FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.status <> 'cancelled' AND u.role = 'player' AND s.started_at < ${NOW} GROUP BY s.user_id),
+    mo AS (SELECT user_id, SUM(pln) AS pln FROM (
+      SELECT user_id, amount_pln AS pln FROM deposits WHERE voided_at IS NULL AND created_at < ${NOW}
+      UNION ALL SELECT user_id, total_pln FROM sales WHERE voided_at IS NULL AND method NOT IN ('wallet', 'comp') AND paid_at < ${NOW} AND user_id IS NOT NULL
+      UNION ALL SELECT user_id, price_pln FROM user_packages WHERE voided_at IS NULL AND method NOT IN ('wallet', 'comp') AND created_at < ${NOW}) x GROUP BY user_id)
+    SELECT f.m || '|' || COUNT(*) || '|' || ROUND(COALESCE(SUM(mo.pln), 0), 2) FROM f LEFT JOIN mo ON mo.user_id = f.user_id GROUP BY f.m`)) {
+    const [m, n, rev] = r.split('|'); sqlC[m] = { size: +n, rev: +rev };
+  }
+  const moneyBad = cs.filter(c => { const w = sqlC[c.month] || { size: 0, rev: 0 };
+    const ltv = w.size ? Math.round(w.rev / w.size * 100) / 100 : null;
+    return c.size !== w.size || Math.abs((c.revenue_pln || 0) - w.rev) > 0.005 || (ltv === null ? c.ltv_pln != null : Math.abs((c.ltv_pln || 0) - ltv) > 0.011); });
+  z.check(`деньги когорт — как прямой SQL на момент ответа (${co.as_of || '—'}): размер, выручка (пополнения, товары и пакеты живыми деньгами `
+    + 'без отменённых) и LTV каждой из 12 когорт', !!co.as_of && cs.length === 12 && moneyBad.length === 0,
+    JSON.stringify(moneyBad.slice(0, 3).map(c => [c.month, c.size, c.revenue_pln, c.ltv_pln, sqlC[c.month]])));
+
   // ячейка и итоги — во всех случаях (функции страницы на подставленных когортах)
   const f = await boss.evaluate(() => {
     const txt = h => { const e = document.createElement('div'); e.innerHTML = h; return e.textContent.replace(/\s+/g, ' ').trim(); };
@@ -65,9 +95,16 @@ const z = require('./_z');
     && JSON.stringify(f.tot) === JSON.stringify({ size: 4, ltv: 14.9, back1: 33.3, s1: 3 }), JSON.stringify(f));
 
   // от периода не зависит
+  const r2 = cohResp();
   await boss.evaluate(() => repPreset('yesterday', document.querySelector('#repPresets button[data-p="yesterday"]'))); await settle();
-  const v2 = await read(boss);
-  z.check('«Вчера» вместо «7 дней» — когорты те же', !!v2 && JSON.stringify(v2.rows) === JSON.stringify(v.rows), JSON.stringify((v2 || {}).rows || null).slice(0, 300));
+  const v2 = await read(boss), co2 = await r2;
+  // когорты — без периода в запросе; если деньги между двумя ответами сдвинулись, строки сверяются со своим ответом
+  const same2 = !!co2 && JSON.stringify(co2.cohorts) === JSON.stringify(co.cohorts);
+  const shape = rs => JSON.stringify((rs || []).map(r => [r.m, r.empty, r.td.slice(0, -1)]));
+  const asResp = JSON.stringify(((v2 || {}).rows || []).map(x => ({ ...x, td: x.td.map(norm) }))) === JSON.stringify(wantOf((co2 || {}).cohorts || []));
+  z.check('«Вчера» вместо «7 дней» — когорты те же (запрос без периода; строки — как в его ответе)',
+    !!v2 && !!co2 && asResp && (same2 ? JSON.stringify(v2.rows) === JSON.stringify(v.rows) : shape(v2.rows) === shape(v.rows)),
+    JSON.stringify({ same2, rows: ((v2 || {}).rows || []).slice(-2) }).slice(0, 300));
   await boss.evaluate(() => { const e = document.getElementById('repCohorts'); if (e) e.scrollIntoView(); });
   await z.shot(boss, 'z21_cohorts_desktop');
 
