@@ -1,6 +1,7 @@
 // Ж1-и3: playwright — тост «Вернуть» после депозита, вкладка «Депозиты» с пометкой и
 // arm-отменой, журнал с deposit_void, отчёт «Деньги» (владелец) — потери по депозитам.
 const { chromium } = require('playwright-core');
+const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const out = [];
@@ -23,15 +24,11 @@ const check = (name, cond, detail) => out.push((cond ? 'ok   ' : 'FAIL ') + name
   await sleep(800);
   const before = await page.evaluate(() => ({ w: uData.user.wallet_grosz, c: uData.user.coins_balance }));
   await page.fill('#d_sum', '70');
-  await page.click('text=Оформить депозит');
-  await sleep(900);
-  const toast1 = await page.evaluate(() => document.getElementById('toast').textContent);
+  const toast1 = await toastAfter(page, () => page.click('text=Оформить депозит'), '70,00 zł');
   const hasUndo = await page.locator('#toast button:has-text("Вернуть")').count();
   check('тост после депозита с кнопкой «Вернуть»', hasUndo === 1 && /70,00 zł/.test(toast1), toast1);
   await page.screenshot({ path: OUT + '/zh1_toast.png' });
-  await page.click('#toast button:has-text("Вернуть")');
-  await sleep(1200);
-  const toast2 = await page.evaluate(() => document.getElementById('toast').textContent);
+  const toast2 = await toastAfter(page, () => page.click('#toast button:has-text("Вернуть")'), 'отменён');
   check('после «Вернуть» — тост об отмене со снятой суммой', /отменён/.test(toast2) && /снято 70,00 zł/.test(toast2), toast2);
   const after = await page.evaluate(() => ({ w: uData.user.wallet_grosz, c: uData.user.coins_balance }));
   check('карточка обновилась: кошелёк и монеты как до депозита', after.w === before.w && after.c === before.c, JSON.stringify({ before, after }));

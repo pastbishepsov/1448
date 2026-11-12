@@ -23,8 +23,8 @@ const z = require('./_z');
       .filter({ has: page.locator('button:has-text("Отменить")') }).last();
     await card.locator('button:has-text("Отменить")').click(); await z.sleep(200);
     // З11-и2: выбор открыт один — в нём «Вернуть 4,00 zł …» как платили (карточка уже без «Отменить» — ищем выбор на доске)
-    await page.locator(`#kitBoard .rfPick button[data-rf="${method}"]`).click(); await z.sleep(1500);
-    return { status: o.status, toast: (await z.text(page, '#toast')) || '' };
+    const toast = await z.toastAfter(page, () => page.locator(`#kitBoard .rfPick button[data-rf="${method}"]`).click(), 'Заказ отменён'); // З19-и13: тост этого действия, а не #toast через паузу
+    return { status: o.status, toast };
   };
   const w = await cancelInUI('wallet');
   z.check('кошелёк: «✓ Заказ отменён — 4,00 zł вернулись на кошелёк гостя, товар — на склад»',

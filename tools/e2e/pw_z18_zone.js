@@ -65,9 +65,7 @@ const { CHROME } = require('./_env');
     && d1.move.trim() === 'Перенести 45 мин' && d1.burn.trim() === 'Сжечь 45 мин' && !d1.drop, JSON.stringify(d1));
   await z.shot(page, 'z18_zone_wizard');
   if (await page.$('#zn_to')) await page.selectOption('#zn_to', STD);
-  await click('#zn_move');
-  await z.sleep(1500);
-  const t1 = await z.text(page, '#toast'), d2 = await del(), r2 = await row(ZN);
+  const t1 = await z.toastAfter(page, () => click('#zn_move'), 'перенесены'), d2 = await del(), r2 = await row(ZN);
   z.check('«Перенести» в Standard: тост «45 мин перенесены в «Standard» — гостям ушло уведомление»; в шторке — «Зону ничто '
     + 'не держит» и «Удалить зону»; в списке — «—»; у гостей — Standard:30 и Standard:15',
     /45 мин перенесены в «Standard» — гостям ушло уведомление/.test(t1 || '') && !!d2 && d2.text.startsWith('Зону ничто не держит')
@@ -75,8 +73,7 @@ const { CHROME } = require('./_env');
     JSON.stringify({ t1, d2: d2 && d2.text, r2, g: [grants(U1), grants(U2)] }));
   await click('#zn_drop'); await z.sleep(300);
   const armed = await page.evaluate(() => (document.getElementById('zn_drop') || {}).textContent || '');
-  await click('#zn_drop'); await z.sleep(1500);
-  const t2 = await z.text(page, '#toast'), open = await page.evaluate(() => document.getElementById('drawer').classList.contains('open'));
+  const t2 = await z.toastAfter(page, () => click('#zn_drop'), 'Зона удалена'), open = await page.evaluate(() => document.getElementById('drawer').classList.contains('open'));
   z.check('«Удалить зону» — с подтверждением («Удалить? Ещё раз»), второе нажатие — «Зона удалена», шторка закрыта, в списке зоны нет',
     /Удалить\? Ещё раз/.test(armed) && /Зона удалена/.test(t2 || '') && !open && (await row(ZN)) === null
     && z.sql(`SELECT count(*) FROM zones WHERE name = '${ZN}'`) === '0', JSON.stringify({ armed, t2, open }));
@@ -87,8 +84,7 @@ const { CHROME } = require('./_env');
   const d3 = await del();
   await click('#zn_burn'); await z.sleep(300);
   const armB = await page.evaluate(() => (document.getElementById('zn_burn') || {}).textContent || '');
-  await click('#zn_burn'); await z.sleep(1500);
-  const t3 = await z.text(page, '#toast'), d4 = await del();
+  const t3 = await z.toastAfter(page, () => click('#zn_burn'), 'Сожжено'), d4 = await del();
   z.check('снова «z18 Окно» с 20 мин Guest49: «Сжечь 20 мин» — с подтверждением, тост «Сожжено 20 мин у 1 гостя — гостям ушло '
     + 'уведомление», остаток 0, в шторке — «Удалить зону»',
     !!d3 && d3.text.startsWith('У 1 гостя 20 мин этой зоны') && /Сжечь 20 мин\? Ещё раз/.test(armB)

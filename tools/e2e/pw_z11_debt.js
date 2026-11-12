@@ -47,8 +47,7 @@ const z = require('./_z');
   if (b0.has) { await wbtn.click(); await z.sleep(300); }
   const armed = await wbtn.count() ? norm(await wbtn.innerText()) : '';
   await z.shot(boss, 'z11_debt_form');
-  if (b0.has) { await wbtn.click(); await z.sleep(2000); }
-  const toast1 = norm(await z.text(boss, '#toast')), k1 = await kv(boss);
+  const toast1 = norm(await z.toastAfter(boss, async () => { if (b0.has) await wbtn.click(); }, 'списан:')), k1 = await kv(boss);
   z.check('владелец: в форме долга — «Списать долг 14,00 zł»; первое нажатие — «Ещё раз — списать 14,00 zł», второе — списано, без причины: '
     + 'тост «Долг Guest41 списан: 14,00 zł — в «Потерях → долги»…»; в карточке вместо «Должен» — «Долг списан 14,00 zł — кухня 7,00 (1) · бар 7,00 (1) · … · boss» с «Вернуть долг»',
     b0.has === 1 && b0.text === 'Списать долг 14,00 zł' && armed === 'Ещё раз — списать 14,00 zł' && toast1.startsWith('Долг Guest41 списан: 14,00 zł — в «Потерях → долги»')
@@ -94,8 +93,7 @@ const z = require('./_z');
   const rb = boss.locator('#drawer tr.woRow button'), rbn = await rb.count();
   if (rbn) { await rb.click(); await z.sleep(300); }
   const rarmed = rbn ? norm(await rb.innerText()) : '';
-  if (rbn) { await rb.click(); await z.sleep(2000); }
-  const toast2 = norm(await z.text(boss, '#toast')), k2 = await kv(boss);
+  const toast2 = norm(await z.toastAfter(boss, async () => { if (rbn) await rb.click(); }, 'вернули:')), k2 = await kv(boss);
   z.check('админ видит «Долг списан» без «Вернуть долг»; владелец: «Вернуть долг» → «Ещё раз — вернуть 14,00 zł в долг» → долг снова в карточке: «Должен 14,00»',
     ka['Долг списан'] && !ka['Долг списан'].btn && rarmed === 'Ещё раз — вернуть 14,00 zł в долг' && toast2.startsWith('Долг Guest41 вернули: 14,00 zł')
     && !k2['Долг списан'] && k2['Должен'] && k2['Должен'].text.startsWith('🧾 14,00 zł') && await debtOf() === 14,

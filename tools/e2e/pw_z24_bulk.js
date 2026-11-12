@@ -56,7 +56,7 @@ const z = require('./_z');
   await boss.click('#bk_apply'); await z.sleep(200);
   const armed = await boss.evaluate(() => (document.getElementById('bk_apply') || {}).textContent || '');
   const before = price('Cola');
-  await boss.click('#bk_apply'); await z.sleep(1200);
+  await z.toastAfter(boss, () => boss.click('#bk_apply'), 'Цены обновлены'); // З19-и13: тост этого действия, а не #toast через паузу
   const t1 = await boss.evaluate(() => ({ toast: document.getElementById('toast').textContent, open: document.getElementById('drawer').classList.contains('open') }));
   z.check('«Применить к 2» — первое нажатие «Применить к 2? Ещё раз» (ничего не записано), второе — тост, шторка закрыта: Cola 5,50, Woda 3,50, Lays — 6,20',
     /Применить к 2\? Ещё раз/.test(armed) && before === 5 && /Цены обновлены: 2 — \+10 %, до 0,50/.test(t1.toast) && !t1.open

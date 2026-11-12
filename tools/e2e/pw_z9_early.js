@@ -30,7 +30,7 @@ const z = require('./_z');
     template_id: id, template_month: M }, 'boss'); // этот месяц внесён — «заранее» — следующий
 
   const boss = await z.openAdmin('boss');
-  const toast = async (ms = 2000) => { await z.sleep(ms); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const row = () => boss.evaluate(i => { const r = document.querySelector(`#refTpls tr.refRow[data-id="${i}"]`);
     if (!r) return null; const b = [...r.querySelectorAll('button')].find(x => x.textContent === 'Внести заранее');
     return { cells: [...r.cells].map(x => x.innerText.replace(/\s+/g, ' ').trim()), early: b ? b.title : null }; }, id);
@@ -50,8 +50,7 @@ const z = require('./_z');
     f.title === 'Расход по шаблону' && f.line.includes(`Регулярный «${TPL}» за ${monthRu(NM)} — заранее, срок ${ru(dueNM)}: в срок он уже не будет ждать и не напомнит`)
     && f.date === ru(cal) && f.amount === '150' && f.method === 'Банк', JSON.stringify(f));
   await z.shot(boss, 'z9_early_enter');
-  await boss.click('#efSave');
-  const t1 = await toast(), r1 = await row(), where = await boss.evaluate(() => ({ acc: accTab, refs: !!document.getElementById('refTpls') }));
+  const t1 = await after(() => boss.click('#efSave'), 'Расход 150,00 zł внесён'), r1 = await row(), where = await boss.evaluate(() => ({ acc: accTab, refs: !!document.getElementById('refTpls') }));
   z.check(`«Внести расход» → тост «регулярный «${TPL}» за ${monthRu(NM)} — заранее»; остались в «Справочниках»; кнопки нет, срок «дальше ${ru(dueNNM)}»`,
     t1.includes(`Расход 150,00 zł внесён — Прочее · регулярный «${TPL}» за ${monthRu(NM)} — заранее`) && where.acc === 'refs' && where.refs
     && r1 && r1.early === null && r1.cells[5] === `дальше ${ru(dueNNM)}`, JSON.stringify({ t1, where, r1 }));

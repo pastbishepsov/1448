@@ -26,7 +26,7 @@ const z = require('./_z');
   const coId = (st.closeout || {}).id, p0 = await pv();
 
   const boss = await z.openAdmin('boss');
-  const toast = async () => { await z.sleep(1800); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const F = v => boss.evaluate(x => fmtPLN(x).replace(/\s+/g, ' '), v);
   await boss.evaluate(() => { try{ localStorage.removeItem('1448a_acctab'); }catch(e){} });
   await z.nav(boss, 'acc');
@@ -46,8 +46,7 @@ const z = require('./_z');
   await boss.fill('#efAmount', '9');
   await boss.fill('#efNote', MARK + ': курьер до сдачи');
   await z.shot(boss, 'z9_before_form');
-  await boss.click('#efSave');
-  const t1 = await toast(), p1 = await pv();
+  const t1 = await after(() => boss.click('#efSave'), 'Расход 9,00 zł внесён'), p1 = await pv();
   const coTxt = await boss.evaluate(id => { const c = (expTodayCos.list || []).find(x => x.id === id); return c ? ruDate(c.created_at.slice(0, 10)) + ' ' + hhmm(c.created_at) : '?'; }, coId);
   z.check(`«до сдачи» → тост «… · объясняет сдачу ${coTxt} (z9bp)», «должно быть в ящике» не изменилось`,
     t1.includes(`Расход 9,00 zł внесён — Прочее · объясняет сдачу ${coTxt} (z9bp)`) && Math.abs(p1.expected_pln - p0.expected_pln) < 0.005,
@@ -57,8 +56,7 @@ const z = require('./_z');
   await boss.click(`#accBody tr.expRow[data-id="${id}"]`); await z.sleep(1800);
   const sel = await boss.evaluate(() => { const s = document.getElementById('efBefore'); return s ? s.value : null; });
   await boss.selectOption('#efBefore', '');
-  await boss.click('#efSave');
-  const t2 = await toast(), p2 = await pv();
+  const t2 = await after(() => boss.click('#efSave'), 'Расход поправлен'), p2 = await pv();
   z.check(`открыли снова — выбрана та сдача; «после сдачи» → тост «Расход поправлен · „должно быть в ящике“ меньше на 9,00 zł», ящик −9`,
     sel === coId && t2.includes('Расход поправлен · «должно быть в ящике» меньше на 9,00 zł') && Math.abs(p2.expected_pln - (p1.expected_pln - 9)) < 0.005,
     JSON.stringify({ sel, t2, p1: p1.expected_pln, p2: p2.expected_pln }));

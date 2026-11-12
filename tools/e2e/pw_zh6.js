@@ -3,6 +3,7 @@
 // «Рассчитать», заказ кухни от стойки, сдача кассы при уходе (ожидаемая сумма, расхождение,
 // без пересчёта), сводка смены и табель владельца с кассой.
 const { chromium } = require('playwright-core');
+const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { spawn, execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -58,8 +59,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   const cart2 = await page.evaluate(() => [...document.querySelectorAll('.cartrow')].map(r => r.textContent.replace(/\s+/g, ' ').trim()));
   check('«−» в корзине: Woda ×1', /Woda 0.5.*·.*1/.test(cart2[0]) && !/2 /.test(cart2[0]), cart2.join(' | '));
   await page.click('.cartrow:has-text("Woda") .qty button:last-child'); await sleep(200); // +1 → 2
-  await page.click('#cartSellBtn');
-  await sleep(1500);
+  await toastAfter(page, () => page.click('#cartSellBtn'), 'чек из 2 позиций'); // снимок ниже — с этим тостом
   const afterSell = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, cartHidden: document.getElementById('cartBox').classList.contains('hidden'), rows: [...document.querySelectorAll('#salesTable tr')].slice(1).map(r => r.textContent.replace(/\s+/g, ' ').trim()) }));
   check('«Продать» → тост «✓ чек из 2 позиций — сумма», корзина скрыта, склад Woda −2, Lay\'s −1', /чек из 2 позиций/.test(afterSell.toast) && afterSell.cartHidden && stock('Woda 0.5') === woda0 - 2 && stock(`Lay''s`) === lays0 - 1, afterSell.toast);
   check('«Продажи смены»: чек одной строкой «▸ Чек · 2 позиции Woda 0.5 ×2, Lay\'s» с «Вернуть чек»', afterSell.rows.some(r => /▸ Чек · 2 позиции/.test(r) && /Woda 0.5 ×2, Lay's/.test(r) && /Вернуть чек/.test(r)), afterSell.rows.slice(0, 2).join(' | '));
@@ -86,8 +86,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page.click('.gtile:has-text("Woda 0.5")'); await sleep(300);
   const cartLater = await page.evaluate(() => ({ hint: document.getElementById('cartHint').textContent, btn: document.getElementById('cartSellBtn').textContent.trim() }));
   check('способ «При выходе»: подпись «в долг — укажи гостя…/рассчитается при выходе», кнопка «В долг»', /в долг/.test(cartLater.hint) && /В долг/.test(cartLater.btn), JSON.stringify(cartLater));
-  await page.click('#cartSellBtn');
-  await sleep(1500);
+  await toastAfter(page, () => page.click('#cartSellBtn'), 'В долг');
   const later = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, rows: [...document.querySelectorAll('#salesTable tr')].slice(1).map(r => r.textContent.replace(/\s+/g, ' ').trim()), total: document.getElementById('salesTotal').textContent }));
   check('в долг → тост «🧾 В долг: Woda — сумма · Guest29 · должен всего …», строка «в долг · рассчитать · Отменить» (З11-и4: «списать» — это списание долга владельцем), в итогах «в долг: … (не выручка)»', /В долг: Woda/.test(later.toast) && /должен всего/.test(later.toast) && later.rows.some(r => /Woda 0.5/.test(r) && /в долг/.test(r) && /рассчитать/.test(r) && /Отменить/.test(r)) && /в долг: .*не выручка/.test(later.total), later.toast + ' || ' + later.total);
   // ── и3: заказ кухни от стойки ──
@@ -101,8 +100,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await sleep(1400);
   const kCands = await page.evaluate(() => [...document.querySelectorAll('#kitCands .cands button b')].map(b => b.textContent));
   check('заказ кухни «Guest2» → кандидаты под полем', kCands.length >= 2 && kCands.includes('Guest29'), kCands.join(', '));
-  await page.click('#kitCands .cands button:has-text("Guest29")');
-  await sleep(1600);
+  await toastAfter(page, () => page.click('#kitCands .cands button:has-text("Guest29")'), 'Guest29');
   const kAfter = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, board: document.getElementById('kitBoard').textContent.replace(/\s+/g, ' ') }));
   check('выбор Guest29 → заказ принят: тост «🍔 … Guest29 · к PC-09 · при выходе (должен …)», карточка в очереди со статусом «принят»', /Guest29/.test(kAfter.toast) && /к PC-09/.test(kAfter.toast) && /при выходе/.test(kAfter.toast) && /принят/.test(kAfter.board) && /Guest29/.test(kAfter.board), kAfter.toast);
   await page.click('#kitBoard .card:has-text("Guest29") button:has-text("✓ Выдан")');
@@ -121,8 +119,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   const goodsBefore = (await j(API + '/admin/reports/money?preset=today', { headers: ho })).totals.goods_pln;
   await page.click('#drawerBody .uform button:has-text("Рассчитать")');
   await sleep(200);
-  await page.click('#drawerBody .uform button:has-text("Ещё раз — рассчитать")');
-  await sleep(1800);
+  await toastAfter(page, () => page.click('#drawerBody .uform button:has-text("Ещё раз — рассчитать")'), 'рассчитался');
   const settled = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, kv: document.querySelector('#drawerBody').textContent.replace(/\s+/g, ' ') }));
   const goodsAfter = (await j(API + '/admin/reports/money?preset=today', { headers: ho })).totals.goods_pln;
   check('«Рассчитать» картой: тост «✓ Guest29 рассчитался: X zł · карта · кухня … · бар …», строки «Должен» больше нет, выручка +X', /рассчитался: /.test(settled.toast) && /карта/.test(settled.toast) && /кухня/.test(settled.toast) && /бар/.test(settled.toast) && !/Должен/.test(settled.kv) && Math.abs(goodsAfter - goodsBefore - debt) < 0.005, settled.toast + ` | ${goodsBefore}→${goodsAfter} (+${debt})`);
@@ -145,8 +142,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page.fill('#coNote', 'сдал смену Ане');
   const staffBefore = new Set((await j(API + '/admin/staff-chat', { headers: ho })).messages.map(m => m.id));
   await page.click('#coSubmit'); await sleep(200);
-  await page.click('#drawerBody button:has-text("Ещё раз — сдать смену")');
-  await sleep(1800);
+  await toastAfter(page, () => page.click('#drawerBody button:has-text("Ещё раз — сдать смену")'), 'Смена закрыта');
   const closed = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, chip: document.getElementById('shiftTxt').textContent, open: document.getElementById('drawer').classList.contains('open') }));
   const staffAfter = (await j(API + '/admin/staff-chat', { headers: ho })).messages.filter(m => !staffBefore.has(m.id));
   check('сдача смены: тост «Смена закрыта · … · расхождение −20,00 zł — владелец увидит», чип «смена не открыта», шторка закрыта', /Смена закрыта/.test(closed.toast) && /расхождение −20,00 zł/.test(closed.toast) && /не открыта/.test(closed.chip) && !closed.open, JSON.stringify(closed));

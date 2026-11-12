@@ -41,15 +41,13 @@ const z = require('./_z');
   await adm.click(`.gtile:has-text("${NAME}")`); await z.sleep(400);
   const f0 = await adm.evaluate(() => ({ why: !!document.getElementById('saleWhy') && !document.getElementById('saleWhy').classList.contains('hidden'),
     hint: document.getElementById('cartHint').textContent, btn: document.getElementById('cartSellBtn').innerText.trim() }));
-  await tap(adm, '#cartSellBtn'); await z.sleep(700);
-  const t0 = norm(await z.text(adm, '#toast'));
+  const t0 = norm(await z.toastAfter(adm, () => tap(adm, '#cartSellBtn'), 'У подарка нужна причина')); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('админ: «Подарено» — поле «за что», подпись «подарок — не выручка и не касса, в пределах дневного лимита компенсаций», кнопка «Подарить · 6,00 zł»; '
     + 'без причины — тост «У подарка нужна причина…», ничего не записано',
     f0.why && /^1 шт · подарок — не выручка и не касса, в пределах дневного лимита компенсаций$/.test(norm(f0.hint)) && norm(f0.btn) === 'Подарить · 6,00 zł'
     && t0.startsWith('У подарка нужна причина') && comps() === 0, JSON.stringify({ f0, t0 }));
   await put(adm, '#saleWhy', `${MARK}: победа в турнире`);
-  await tap(adm, '#cartSellBtn'); await z.sleep(1500);
-  const t1 = norm(await z.text(adm, '#toast'));
+  const t1 = norm(await z.toastAfter(adm, () => tap(adm, '#cartSellBtn'), 'Подарено:'));
   const feed = await adm.evaluate(n => ({ total: document.getElementById('salesTotal').textContent.replace(/\s+/g, ' '),
     row: (r => r ? { name: r.cells[1].innerText.replace(/\s+/g, ' ').trim(), pay: r.cells[3].innerText.trim() } : null)(
       [...document.querySelectorAll('#salesTable tr')].find(t => t.cells[1] && t.cells[1].innerText.includes(n))) }), NAME);
@@ -60,16 +58,14 @@ const z = require('./_z');
   await z.shot(adm, 'z11_comp_goods');
   for (let i = 0; i < 3; i++) { await adm.click(`.gtile:has-text("${NAME}")`); await z.sleep(250); }
   await put(adm, '#saleWhy', `${MARK}: день рождения`);
-  await tap(adm, '#cartSellBtn'); await z.sleep(1500);
-  const t2 = norm(await z.text(adm, '#toast'));
+  const t2 = norm(await z.toastAfter(adm, () => tap(adm, '#cartSellBtn'), 'Дневной лимит подарков'));
   z.check('ещё 3 × 6 = 18 zł при лимите 20 и уже подаренных 6 — тост «Дневной лимит подарков и компенсаций админа: 20 zł (уже выдано 6 zł)…», не записано',
     t2.startsWith('Дневной лимит подарков и компенсаций админа: 20 zł (уже выдано 6 zł)') && comps() === 1, t2);
   await adm.evaluate(() => cartClear());
   await adm.evaluate(id => openUserDrawer(id, 'pack'), G); await z.sleep(2000);
   await tap(adm, '#drawer .uform .segs button:has-text("Подарено")'); await z.sleep(400);
   await put(adm, '#packWhy', `${MARK}: постоянный гость`);
-  await tap(adm, '#drawer .uform button:has-text("Подарить пакет")'); await z.sleep(1500);
-  const t3 = norm(await z.text(adm, '#toast'));
+  const t3 = norm(await z.toastAfter(adm, () => tap(adm, '#drawer .uform button:has-text("Подарить пакет")'), 'Дневной лимит подарков'));
   z.check('админ: пакет «Подарено» сверх лимита — отказ «Дневной лимит подарков и компенсаций…»',
     t3.startsWith('Дневной лимит подарков и компенсаций админа') && !z.sql(`SELECT id FROM user_packages WHERE comp_reason = '${MARK}: постоянный гость' AND voided_at IS NULL`), t3);
 
@@ -79,8 +75,7 @@ const z = require('./_z');
   const pf = await boss.evaluate(() => ({ why: !!document.getElementById('packWhy'), btn: [...document.querySelectorAll('#drawer .uform button')].map(b => b.innerText.trim()).find(t => /пакет/i.test(t)),
     hint: [...document.querySelectorAll('#drawer .uform .muted')].map(e => e.textContent).join(' | ') }));
   await put(boss, '#packWhy', `${MARK}: постоянный гость`);
-  await tap(boss, '#drawer .uform button:has-text("Подарить пакет")'); await z.sleep(1500);
-  const t4 = norm(await z.text(boss, '#toast'));
+  const t4 = norm(await z.toastAfter(boss, () => tap(boss, '#drawer .uform button:has-text("Подарить пакет")'), 'Подарен пакет'));
   z.check('владелец: пакет «Подарено» — поле «за что», «Подарить пакет», подпись без лимита; подарен — тост «Подарен пакет … · z11q: постоянный гость»',
     pf.why && pf.btn === 'Подарить пакет' && /Подарок — не выручка и не касса: минуты гостю, причина — в журнал и владельцу\./.test(pf.hint)
     && /^Подарен пакет .+ мин на счету · z11q: постоянный гость$/.test(t4), JSON.stringify({ pf, t4 }));
@@ -91,8 +86,7 @@ const z = require('./_z');
   await boss.selectOption('#kitNew select', { label: `${NAME} · 6,00 zł` });  await z.sleep(300);
   await tap(boss, '#kitNew .segs button:has-text("Подарено")'); await z.sleep(300);
   await put(boss, '#kitWhy', `${MARK}: извинение за PC-05`);
-  await boss.click('#kitNew button:has-text("Принять заказ")'); await z.sleep(2000);
-  const t5 = norm(await z.text(boss, '#toast'));
+  const t5 = norm(await z.toastAfter(boss, () => boss.click('#kitNew button:has-text("Принять заказ")'), '· подарено:'));
   const kcard = await boss.evaluate(n => { const c = [...document.querySelectorAll('#kitBoard .card')].find(e => e.innerText.includes(n)); return c ? c.innerText.replace(/\s+/g, ' ') : null; }, NAME);
   z.check('владелец: заказ кухни «Подарено» с причиной — тост «… · подарено: z11q: извинение за PC-05», на кухне — «подарено»',
     t5.endsWith(`· подарено: ${MARK}: извинение за PC-05`) && kcard && kcard.includes('6,00 zł · подарено'), JSON.stringify({ t5, kcard }));

@@ -3,6 +3,7 @@
 // (без токена/с чужим — заглушка, с токеном — ПК без ников и очередь с никами), цифры в палитре
 // (ПК по номеру, телефон → гость), звук вызова с переключателем. Скриншоты. Критерий ADMIN.md Ж8.
 const { chromium } = require('playwright-core');
+const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -90,16 +91,14 @@ function agentStart(pcId, name) {
   const chips = await page.evaluate(() => [...document.querySelectorAll('#grpRows .mchip')].map(x => x.textContent));
   const candsLeft = await page.evaluate(() => document.querySelectorAll('#drawerBody .cands').length);
   check('и2: выбор кандидата → второй чип «✓ Янек», кандидаты убраны', chips.length === 2 && /Янек/.test(chips[1]) && candsLeft === 0, JSON.stringify(chips) + ' cands=' + candsLeft);
-  await page.fill('#grpG2', 'NoSuchGuest'); await page.keyboard.press('Enter'); await sleep(900);
-  let toastTxt = await page.evaluate(() => document.getElementById('toast').textContent);
+  await page.fill('#grpG2', 'NoSuchGuest');
+  let toastTxt = await toastAfter(page, () => page.keyboard.press('Enter'), 'не найден');
   check('и2: неизвестный ник → тост «Гость «NoSuchGuest» не найден», строка остаётся полем', /не найден/.test(toastTxt), toastTxt);
-  await page.click('#drawerBody button:has-text("Посадить всех")'); await sleep(900);
-  toastTxt = await page.evaluate(() => document.getElementById('toast').textContent);
+  toastTxt = await toastAfter(page, () => page.click('#drawerBody button:has-text("Посадить всех")'), ''); // «Опознай всех» или «не найден» — любой тост этого нажатия
   check('и2: «Посадить всех» с неопознанным гостем → тост (опознай всех / не найден — повторный резолв), запроса на сервер нет', /Опознай всех|не найден/.test(toastTxt) && posted.length === 0, toastTxt + ' posted=' + posted.length);
   await page.fill('#grpG2', 'Guest18'); await page.keyboard.press('Enter'); await sleep(900);
   await page.screenshot({ path: OUT + '/zh8_group.png', clip: { x: 1040, y: 0, width: 400, height: 700 } });
-  await page.click('#drawerBody button:has-text("Посадить всех")'); await sleep(2500);
-  toastTxt = await page.evaluate(() => document.getElementById('toast').textContent);
+  toastTxt = await toastAfter(page, () => page.click('#drawerBody button:has-text("Посадить всех")'), 'Компания посажена');
   const drawerOpen = await page.evaluate(() => document.getElementById('drawer').getAttribute('aria-hidden') === 'false');
   check('и2: компания из трёх посажена одним POST /admin/seat-group (planned_min 60, 3 места) — тост «Компания посажена: 3 гостя», шторка закрыта', /Компания посажена: 3 гостя/.test(toastTxt) && posted.length === 1 && posted[0].planned_min === 60 && posted[0].seats.length === 3 && posted[0].seats.every(s => s.guest_id && s.computer_id), toastTxt + ' ' + JSON.stringify(posted[0]) + ' open=' + drawerOpen);
   const active = psql(`SELECT string_agg(c.name, ',' ORDER BY c.name) FROM sessions s JOIN computers c ON c.id=s.computer_id WHERE s.status='active' AND s.user_id IN ('${G.Guest19}','${G['Янек']}','${G.Guest18}')`);
@@ -116,8 +115,7 @@ function agentStart(pcId, name) {
   check('и2: PC-01/02 заняты — новой паре предложены другие соседи', sugg2.length === 2 && !sugg2.includes('PC-01') && !sugg2.includes('PC-02') && sugg2[0] !== sugg2[1], JSON.stringify(sugg2));
   await page.fill('#grpG0', 'Guest19'); await page.keyboard.press('Enter'); await sleep(800);
   await page.fill('#grpG1', 'Guest18'); await page.keyboard.press('Enter'); await sleep(800);
-  await page.click('#drawerBody button:has-text("Посадить всех")'); await sleep(2500);
-  toastTxt = await page.evaluate(() => document.getElementById('toast').textContent);
+  toastTxt = await toastAfter(page, () => page.click('#drawerBody button:has-text("Посадить всех")'), 'Посажено');
   const partial = await page.evaluate(() => ({ open: document.getElementById('drawer').getAttribute('aria-hidden') === 'false', rows: [...document.querySelectorAll('#grpRows .actrow')].map(r => r.textContent.replace(/\s+/g, ' ').trim()), selects: document.querySelectorAll('#grpRows select').length, btn: (document.querySelector('#drawerBody button[onclick="grpSeatAll()"]') || {}).textContent, hint: [...document.querySelectorAll('#drawerBody .muted')].map(x => x.textContent).find(t => /Кто не сел|Предложены/.test(t)) }));
   check('и2: частичный провал: тост «Посажено 1 из 2», шторка открыта, строка Guest19 с причиной «уже идёт сессия», строка Guest18 застыла «→ ' + sugg2[1] + ' ▶ посажен» без селекта, кнопка «…ещё раз (кто не сел)»', /Посажено 1 из 2/.test(toastTxt) && partial.open && /⚠ .*сессия/.test(partial.rows[0]) && new RegExp(sugg2[1] + ' ▶ посажен').test(partial.rows[1]) && partial.selects === 1 && /ещё раз \(кто не сел\)/.test(partial.btn || '') && /Кто не сел — поправь/.test(partial.hint || ''), toastTxt + ' ' + JSON.stringify(partial));
   await page.screenshot({ path: OUT + '/zh8_group_partial.png', clip: { x: 1040, y: 0, width: 400, height: 700 } });
@@ -127,7 +125,7 @@ function agentStart(pcId, name) {
   await page.evaluate(() => nav('settings')); await sleep(1800);
   let bb = await page.evaluate(() => ({ txt: document.getElementById('boardBox').textContent.replace(/\s+/g, ' ').trim(), btns: [...document.querySelectorAll('#boardBox button')].map(b => b.textContent.trim()) }));
   check('и3: карточка «Табло зала»: выключено, кнопка «Выпустить ссылку»', /выключено/.test(bb.txt) && bb.btns.length === 1 && /Выпустить ссылку/.test(bb.btns[0]), JSON.stringify(bb));
-  await page.click('#boardBox button:has-text("Выпустить ссылку")'); await sleep(1200);
+  await toastAfter(page, () => page.click('#boardBox button:has-text("Выпустить ссылку")'), 'Табло включено'); // снимок ниже — с этим тостом
   bb = await page.evaluate(() => ({ txt: document.getElementById('boardBox').textContent.replace(/\s+/g, ' ').trim(), link: (document.getElementById('boardLink') || {}).value, btns: [...document.querySelectorAll('#boardBox button, #boardBox a.btn')].map(b => b.textContent.trim()), toast: document.getElementById('toast').textContent }));
   const tok1 = /token=([0-9a-f]{48})$/.exec(bb.link || '');
   check('и3: включено — ссылка origin + /board?token=<48 hex>, кнопки копировать/открыть/перевыпустить/выключить, тост', /включено/.test(bb.txt) && tok1 && bb.link.startsWith(BASE + '/board?token=') && bb.btns.some(b => /Скопировать/.test(b)) && bb.btns.some(b => /Открыть табло/.test(b)) && bb.btns.some(b => /Перевыпустить/.test(b)) && bb.btns.some(b => /Выключить/.test(b)) && /Табло включено/.test(bb.toast), JSON.stringify(bb));
@@ -136,7 +134,7 @@ function agentStart(pcId, name) {
   await page.click('#boardRotateBtn'); await sleep(300);
   const armed = await page.evaluate(() => document.getElementById('boardRotateBtn').textContent.trim());
   check('и3: «Перевыпустить» со взводом — первый клик: «Ещё раз — старая ссылка умрёт»', /Ещё раз — старая ссылка умрёт/.test(armed), armed);
-  await page.click('#boardRotateBtn'); await sleep(1200);
+  await toastAfter(page, () => page.click('#boardRotateBtn'), 'старая ссылка больше не работает');
   bb = await page.evaluate(() => ({ link: (document.getElementById('boardLink') || {}).value, toast: document.getElementById('toast').textContent }));
   const tok2 = /token=([0-9a-f]{48})$/.exec(bb.link || '');
   check('и3: второй клик — новый токен ≠ старому, тост «старая ссылка больше не работает»', tok2 && tok2[1] !== tok1[1] && /старая ссылка больше не работает/.test(bb.toast), JSON.stringify(bb));
@@ -190,7 +188,8 @@ function agentStart(pcId, name) {
   check('табло: гостя вызвали — строка подсвечена, «ваш ПК свободен — к стойке»', called.called && /к стойке/.test(called.w), JSON.stringify(called));
   psql(`UPDATE waitlist SET status='removed', resolved_at=now() WHERE id='${wid}'`);
   // выключили в админке — табло само гаснет на следующем тике
-  await page.click('#boardOffBtn'); await sleep(300); await page.click('#boardOffBtn'); await sleep(1000);
+  await page.click('#boardOffBtn'); await sleep(300);
+  await toastAfter(page, () => page.click('#boardOffBtn'), 'Табло выключено');
   bb = await page.evaluate(() => ({ txt: document.getElementById('boardBox').textContent.replace(/\s+/g, ' ').trim(), toast: document.getElementById('toast').textContent }));
   check('и3: «Выключить табло» (со взводом) → карточка «выключено», тост', /выключено/.test(bb.txt) && /Табло выключено/.test(bb.toast), JSON.stringify(bb));
   await tv.evaluate(() => tick()); await sleep(800);

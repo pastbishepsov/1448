@@ -55,16 +55,14 @@ const z = require('./_z');
   z.check('перерисовка зала: вопрос на месте, в списке выбран VIP-01', a1 !== null && (await ask()) === a1 && /^VIP-01/.test(sel || ''), sel);
   const k1 = await tap('#moveKeep');
   await z.sleep(500);
-  const k2 = k1 && await tap('#moveKeepGo');
-  await z.sleep(900);
-  const t1 = norm(await z.text(p, '#toast'));
+  let k2 = false;
+  const t1 = norm(await z.toastAfter(p, async () => { k2 = k1 && await tap('#moveKeepGo'); }, 'Тариф остаётся прежним')); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('«Оставить Standard…» без причины — тост «Тариф остаётся прежним — напиши почему: причина уйдёт в журнал», гость всё '
     + 'за PC-04', k2 && t1 === 'Тариф остаётся прежним — напиши почему: причина уйдёт в журнал' && row() === 'PC-04|Standard|20.00',
     `${t1} · ${row()}`);
   if (await vis('#moveWhy')) await p.fill('#moveWhy', WHY);
-  const k3 = await tap('#moveKeepGo');
-  await z.sleep(1500);
-  const t2 = norm(await z.text(p, '#toast'));
+  let k3 = false;
+  const t2 = norm(await z.toastAfter(p, async () => { k3 = await tap('#moveKeepGo'); }, 'Пересажен за VIP-01'));
   z.check('с причиной — тост «Пересажен за VIP-01 · тариф прежний»: сессия за VIP-01 по Standard, 20,00 zł/ч; причина — в журнале',
     k3 && t2 === 'Пересажен за VIP-01 · тариф прежний' && row() === 'VIP-01|Standard|20.00'
     && journal() === `PC-04 → VIP-01 · тариф Standard 20,00 zł/ч оставлен: ${WHY}`, `${t2} · ${row()} · ${journal()}`);
@@ -75,9 +73,8 @@ const z = require('./_z');
 
   await moveTo('VIP-02');
   const a2 = await ask();
-  const k4 = await tap('#moveNew');
-  await z.sleep(1500);
-  const t3 = norm(await z.text(p, '#toast'));
+  let k4 = false;
+  const t3 = norm(await z.toastAfter(p, async () => { k4 = await tap('#moveNew'); }, 'Пересажен за VIP-02'));
   z.check('VIP-01 → VIP-02: снова вопрос (тариф сессии — Standard), «Тариф VIP» — тост «Пересажен за VIP-02 · тариф VIP 30,00 '
     + 'zł/ч», сессия по VIP', k4 && /^⚠ VIP-02 — зона VIP: тариф гостя станет 30,00 zł\/ч \(сейчас Standard, 20,00 zł\/ч\)/.test(a2 || '')
     && t3 === 'Пересажен за VIP-02 · тариф VIP 30,00 zł/ч' && row() === 'VIP-02|VIP|30.00', `${a2} · ${t3} · ${row()}`);

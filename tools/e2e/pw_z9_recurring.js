@@ -33,7 +33,7 @@ const z = require('./_z');
   const sup0 = (await z.api('GET', '/admin/overview', undefined, 'boss')).data.supplies_waiting || 0; // З10-и4: бейдж «Бухгалтерии» — ещё и поставки «ждут цен»
 
   const boss = await z.openAdmin('boss');
-  const toast = async (ms = 1500) => { await z.sleep(ms); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const tplRow = () => boss.evaluate(n => { const r = [...document.querySelectorAll('#refTpls tr.refRow')].find(x => x.cells[0].textContent.startsWith(n));
     return r ? { id: r.dataset.id, off: r.classList.contains('refOff'), cells: [...r.cells].map(c => c.innerText.replace(/\s+/g, ' ').trim()) } : null; }, TPL);
   const dueRow = id => boss.evaluate(i => { const r = document.querySelector(`#expDue tr.dueRow[data-t="${i}"]`);
@@ -50,16 +50,15 @@ const z = require('./_z');
   await boss.fill('#rtName', TPL); await boss.selectOption('#rtCat', other.id); await boss.fill('#rtCp', CP);
   await boss.fill('#rtAmount', '350'); await boss.fill('#rtVat', '65.45'); await boss.fill('#rtDay', '31');
   const hint31 = await z.text(boss, '#rtDayHint');
-  await boss.fill('#rtDay', '32'); await boss.click('#rtSave');
-  const t0 = await toast(900);
+  await boss.fill('#rtDay', '32');
+  const t0 = await after(() => boss.click('#rtSave'), 'Число месяца');
   await boss.fill('#rtDay', String(D));
   const dr = await boss.evaluate(() => ({ title: document.getElementById('drawerTitle').textContent, methods: [...document.querySelectorAll('#rtMethod button')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')) }));
   z.check('«Справочники»: блок «Регулярные расходы» и «Новый регулярный расход»; шторка — способы (банк по умолчанию), число 31 — «в последний день», 32 — тост',
     empty.head === 'Регулярные расходы' && empty.btn && dr.title === 'Новый регулярный расход' && dr.methods.join(',') === 'Из кассы,Банк*,Карта,Личные деньги владельца'
     && /где такого числа нет — в последний день месяца/.test(hint31) && /Число месяца — от 1 до 31/.test(t0), JSON.stringify({ empty, dr, hint31, t0 }));
   await z.shot(boss, 'z9_recurring_new');
-  await boss.click('#rtSave');
-  const t1 = await toast(2000), r1 = await tplRow(), b1 = await badge();
+  const t1 = await after(() => boss.click('#rtSave'), 'заведён'), r1 = await tplRow(), b1 = await badge();
   z.check(`завести «${TPL}» 350 zł (VAT 65,45) банком ${D}-го → тост «ждёт внесения уже сейчас», строка «ждёт внесения»; бейдж «Бухгалтерии» и число на «Расходах» +1`,
     t1.includes(`«${TPL}» заведён — ждёт внесения уже сейчас`) && r1 && r1.cells[1] === `Прочее · ${CP}` && r1.cells[2] === '350,00 zł VAT 65,45'
     && r1.cells[3] === 'Банк' && r1.cells[4] === `${D}-го${D > 28 ? ' *' : ''}` && r1.cells[5] === 'ждёт внесения' && b1.rail === due0 + sup0 + 1 && b1.tab === due0 + 1
@@ -67,8 +66,7 @@ const z = require('./_z');
   await z.shot(boss, 'z9_recurring_refs');
   await boss.click('#rtNew'); await z.sleep(700);
   await boss.fill('#rtName', TPL.toUpperCase()); await boss.selectOption('#rtCat', other.id); await boss.fill('#rtAmount', '1'); await boss.fill('#rtDay', '1');
-  await boss.click('#rtSave');
-  const t2 = await toast();
+  const t2 = await after(() => boss.click('#rtSave'), 'уже есть');
   await boss.evaluate(() => closeDrawer());
   z.check('то же имя в другом регистре → тост «Шаблон с таким названием уже есть», шторка остаётся', /Шаблон с таким названием уже есть/.test(t2), t2);
 
@@ -87,8 +85,7 @@ const z = require('./_z');
     && f.amount === '350' && f.vat === '65.45' && f.method === 'Банк', JSON.stringify(f));
   await boss.fill('#efNote', `${MARK}: по шаблону`);
   await z.shot(boss, 'z9_recurring_enter');
-  await boss.click('#efSave');
-  const t3 = await toast(2000), d2 = await dueRow(id), b2 = await badge();
+  const t3 = await after(() => boss.click('#efSave'), 'Расход 350,00 zł внесён'), d2 = await dueRow(id), b2 = await badge();
   const mark = await boss.evaluate(n => { const r = [...document.querySelectorAll('.expList tr.expRow')].find(x => x.innerText.includes(n));
     const s = r && r.cells[1].querySelector('span[title]'); return r ? { id: r.dataset.id, sign: s ? s.textContent : null, title: s ? s.title : null } : null; }, MARK);
   z.check(`«Внести расход» → тост «регулярный «${TPL}» за ${monthRu}»; в «Ждут внесения» его нет, бейдж ушёл; у расхода в списке ↻`,
@@ -97,32 +94,29 @@ const z = require('./_z');
   await boss.click(`.expList tr.expRow[data-id="${mark && mark.id}"]`); await z.sleep(900);
   const line2 = await z.text(boss, '#efTpl');
   await boss.fill('#efReason', 'проверка: месяц снова ждёт');
-  await boss.click('#efStorno'); await z.sleep(300); await boss.click('#efStorno');
-  const t4 = await toast(2000), d3 = await dueRow(id);
+  await boss.click('#efStorno'); await z.sleep(300);
+  const t4 = await after(() => boss.click('#efStorno'), 'сторнирован'), d3 = await dueRow(id);
   z.check('расход по шаблону в шторке: «сторно освободит месяц»; сторно → месяц снова в «Ждут внесения»',
     /Внесён по регулярному расходу за .* — сторно освободит месяц/.test(line2 || '') && /сторнирован/.test(t4) && d3 && d3[4] === 'срок сегодня',
     JSON.stringify({ line2, t4, d3 }));
 
   await tab('refs');
-  await boss.click(`#refTpls tr.refRow[data-id="${id}"] button:has-text("Выключить")`);
-  const t5 = await toast(2000), r5 = await tplRow(), b5 = await badge();
+  const t5 = await after(() => boss.click(`#refTpls tr.refRow[data-id="${id}"] button:has-text("Выключить")`), 'выключен'), r5 = await tplRow(), b5 = await badge();
   await z.shot(boss, 'z9_recurring_off');
-  await boss.click(`#refTpls tr.refRow[data-id="${id}"] button:has-text("Включить")`);
-  const t6 = await toast(2000), r6 = await tplRow(), b6 = await badge();
+  const t6 = await after(() => boss.click(`#refTpls tr.refRow[data-id="${id}"] button:has-text("Включить")`), 'включён'), r6 = await tplRow(), b6 = await badge();
   z.check('«Выключить» → тост «не ждёт и не напоминает», строка бледная «· выключен», срок «—», бейджа нет; «Включить» → «ждёт внесения уже сейчас», бейдж снова',
     t5.includes(`«${TPL}» выключен — не ждёт и не напоминает`) && r5 && r5.off && r5.cells[0] === `${TPL} · выключен` && r5.cells[5] === '—' && b5.rail === due0 + sup0
     && t6.includes(`«${TPL}» включён — ждёт внесения уже сейчас`) && r6 && !r6.off && r6.cells[5] === 'ждёт внесения' && b6.rail === due0 + sup0 + 1,
     JSON.stringify({ t5, r5, b5, t6, r6, b6 }));
   await boss.click(`#refTpls tr.refRow[data-id="${id}"] button:has-text("Изменить")`); await z.sleep(800);
   const ed = await boss.evaluate(() => ({ title: document.getElementById('drawerTitle').textContent, name: document.getElementById('rtName').value, day: document.getElementById('rtDay').value }));
-  await boss.fill('#rtAmount', '380'); await boss.click('#rtSave');
-  const t7 = await toast(2000), r7 = await tplRow();
+  await boss.fill('#rtAmount', '380');
+  const t7 = await after(() => boss.click('#rtSave'), 'поправлен'), r7 = await tplRow();
   z.check('«Изменить» → шторка «Регулярный расход» с полями шаблона; сумма 380 → «поправлен», в строке 380,00 zł',
     ed.title === 'Регулярный расход' && ed.name === TPL && ed.day === String(D) && /Регулярный расход поправлен/.test(t7) && r7 && r7.cells[2] === '380,00 zł VAT 65,45',
     JSON.stringify({ ed, t7, r7 }));
   await z.sql(`UPDATE expense_templates SET reminded_for = NULL WHERE id = '${id}' RETURNING id`);
-  await z.api('POST', '/admin/expenses/due/remind', {}, 'boss');
-  const t8 = await toast(1800);
+  const t8 = await after(() => z.api('POST', '/admin/expenses/due/remind', {}, 'boss'), 'Регулярный расход ждёт внесения');
   const msg = await z.sql(`SELECT visible_to || '|' || text FROM staff_messages WHERE text LIKE '%«${TPL}»%' ORDER BY created_at DESC LIMIT 1`);
   z.check('напоминание: в канал «только владельцу» — «Пора внести регулярный расход … 380,00 zł, банк; срок сегодня»; у владельца тост',
     t8.includes('Регулярный расход ждёт внесения — «Бухгалтерия» → «Расходы»') && msg.startsWith('owner|') && msg.includes(`«${TPL}» — 380,00 zł, банк; срок сегодня`),

@@ -29,7 +29,7 @@ const z = require('./_z');
   const sell = async method => ((await z.api('POST', '/admin/sales', { good_id: ga, qty: 1, method }, 'z11rp')).data.sale || {}).id;
   const kitchen = async () => (await z.api('POST', '/admin/kitchen/orders', { guest_id: g, good_id: ga, qty: 1, method: 'wallet' }, 'z11rp')).data;
   const rm = (t, id) => z.sql(`SELECT COALESCE(refund_method, '-') FROM ${t} WHERE id = '${id}'`);
-  const toast = async (p, ms = 1500) => { await z.sleep(ms); return (await z.text(p, '#toast')) || ''; };
+  const after = (p, act, want) => z.toastAfter(p, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   // первое нажатие «Отменить» у строки с этим id: ячейка помечается t, в ответ — надписи кнопок выбора (выбора нет — кнопки ячейки)
   const open = (p, id, t) => p.evaluate(([i, tag]) => { const b = document.querySelector(`button[onclick^="arm"][onclick*="'${i}'"]`); if (!b) return null;
     const cell = b.parentElement; cell.dataset.t = tag; b.click();
@@ -43,11 +43,9 @@ const z = require('./_z');
   await z.nav(adm, 'goods');
   const o1 = await open(adm, s1, 's1');
   await z.shot(adm, 'z11_refund_pick');
-  await choose(adm, 's1', 'none');
-  const t1 = await toast(adm);
+  const t1 = await after(adm, () => choose(adm, 's1', 'none'), 'Продажа отменена');
   const o2 = await open(adm, s2, 's2');
-  await choose(adm, 's2', 'card');
-  const t2 = await toast(adm);
+  const t2 = await after(adm, () => choose(adm, 's2', 'card'), 'Продажа отменена');
   z.check('админ, продажа налом: «Отменить» → «Вернуть 10,00 zł наличными» и «Не возвращали» (другого способа нет) → «Не возвращали» — '
     + 'тост «… · деньги не возвращаем»; картой → «Вернуть 10,00 zł на карту» → «верни гостю 10,00 zł на карту через терминал»',
     JSON.stringify(o1) === '["Вернуть 10,00 zł наличными","Не возвращали"]' && /^Продажа отменена — товар вернулся на склад · деньги не возвращаем$/.test(t1)
@@ -66,13 +64,11 @@ const z = require('./_z');
   await adm.evaluate(i => openUserDrawer(i), g); await z.sleep(1800);
   await adm.evaluate(() => uTabSet('deposits')); await z.sleep(500);
   const od = await open(adm, d1, 'd1');
-  await choose(adm, 'd1', 'cash');
-  const td = await toast(adm, 1800);
+  const td = await after(adm, () => choose(adm, 'd1', 'cash'), 'отменён');
   await adm.evaluate(() => uTabSet('pack')); await z.sleep(500);
   const op = await open(adm, p1, 'p1');
   await z.shot(adm, 'z11_refund_pack');
-  await choose(adm, 'p1', 'card');
-  const tp = await toast(adm, 1800);
+  const tp = await after(adm, () => choose(adm, 'p1', 'card'), 'на карту');
   const P = price.toLocaleString('ru-RU', { minimumFractionDigits: 2 });
   z.check(`карточка гостя: депозит налом → «Вернуть 20,00 zł наличными» → «… · верни гостю 20,00 zł наличными из ящика …»; пакет картой → «Вернуть ${P} zł на карту» → «… · верни гостю ${P} zł на карту через терминал»`,
     JSON.stringify(od) === '["Вернуть 20,00 zł наличными","Не возвращали"]' && td.includes('отменён — с кошелька снято 20,00 zł')
@@ -84,8 +80,7 @@ const z = require('./_z');
   const k1 = await kitchen();
   await z.nav(adm, 'kitchen');
   const ok1 = await open(adm, (k1.order || {}).id, 'k1');
-  await choose(adm, 'k1', 'wallet');
-  const tk = await toast(adm);
+  const tk = await after(adm, () => choose(adm, 'k1', 'wallet'), 'Заказ отменён');
   z.check('кухня, заказ с кошелька: «Вернуть 10,00 zł на кошелёк» → «Заказ отменён — 10,00 zł вернулись на кошелёк гостя, товар — на склад»',
     JSON.stringify(ok1) === '["Вернуть 10,00 zł на кошелёк","Не возвращали"]' && tk === 'Заказ отменён — 10,00 zł вернулись на кошелёк гостя, товар — на склад'
     && rm('sales', k1.sale_id) === 'wallet', JSON.stringify({ ok1, tk }));
@@ -99,15 +94,13 @@ const z = require('./_z');
   await choose(boss, 'r1', 'more');
   const or2 = await btns(boss, 'r1');
   await z.shot(boss, 'z11_refund_owner');
-  await choose(boss, 'r1', 'blik');
-  const tr = await toast(boss);
+  const tr = await after(boss, () => choose(boss, 'r1', 'blik'), 'Чек отменён');
   const w0 = +z.sql(`SELECT wallet_grosz FROM users WHERE id = '${g}'`);
   await z.nav(boss, 'kitchen');
   await open(boss, (k2.order || {}).id, 'k2');
   await choose(boss, 'k2', 'more');
   const ok2 = await btns(boss, 'k2');
-  await choose(boss, 'k2', 'cash');
-  const tk2 = await toast(boss);
+  const tk2 = await after(boss, () => choose(boss, 'k2', 'cash'), 'Заказ отменён');
   z.check('владелец: у чека налом — ещё «Другим способом…» → «на карту», «по BLIK» (не «наличными» и не кошелёк) → «по BLIK» — тост «… · верни гостю 15,00 zł по BLIK», '
     + 'у обеих позиций «blik»', JSON.stringify(or1) === '["Вернуть 15,00 zł наличными","Не возвращали","Другим способом…"]'
     && JSON.stringify(or2) === '["Вернуть 15,00 zł наличными","Не возвращали","на карту","по BLIK"]'
@@ -127,8 +120,7 @@ const z = require('./_z');
     return { sw: document.documentElement.scrollWidth, n: b.length, in: b.every(x => { const r = x.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }) }; });
   await z.sleep(300);
   await z.shot(ph, 'z11_refund_phone');
-  await choose(ph, 's4', 'cash');
-  const t4 = await toast(ph);
+  const t4 = await after(ph, () => choose(ph, 's4', 'cash'), 'верни гостю');
   z.check('телефон 360: выбор в строке продажи — без прокрутки вбок, кнопки в экране; «Вернуть 10,00 zł наличными» → «верни гостю 10,00 zł наличными из ящика …»',
     fit.sw <= 360 && fit.n === 2 && fit.in && JSON.stringify(o4) === '["Вернуть 10,00 zł наличными","Не возвращали"]'
     && t4.endsWith('· верни гостю 10,00 zł наличными из ящика — «должно быть» уже меньше на них') && rm('sales', s4) === 'cash', JSON.stringify({ fit, o4, t4 }));

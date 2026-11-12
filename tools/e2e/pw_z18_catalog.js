@@ -63,9 +63,8 @@ const z = require('./_z');
   await z.shot(page, 'z18_catalog_preview');
 
   if (await page.$('#impRoot')) await page.check('#impRoot');
-  if (await page.$('#impResult button:has-text("Сохранить")')) await page.click('#impResult button:has-text("Сохранить")');
-  await page.waitForFunction(() => /Импорт:/.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
-  const toast = await z.text(page, '#toast');
+  const toast = await z.toastAfter(page, async () => {
+    if (await page.$('#impResult button:has-text("Сохранить")')) await page.click('#impResult button:has-text("Сохранить")'); }, 'Импорт:'); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('галочка и «Сохранить 2 записей» — один тост «Импорт: 2 записей (+1 новых, 1 обновлено) · корень игр: E:\\z18pw»; '
     + 'в базе корень и обе команды', toast === 'Импорт: 2 записей (+1 новых, 1 обновлено) · корень игр: E:\\z18pw'
     && root() === 'E:\\z18pw' && app('z18cat_p') === PEXE && app('z18cat_q') === '{GAMES}\\Q\\q.exe'

@@ -59,9 +59,7 @@ const z = require('./_z');
   await boss.evaluate(() => closeDrawer());
 
   await rowBtn(boss, W, 'button.danger');
-  await boss.click('#drawer button.danger:has-text("Уволить")');
-  await z.sleep(2500);
-  const t = norm(await z.text(boss, '#toast'));
+  const t = norm(await z.toastAfter(boss, () => boss.click('#drawer button.danger:has-text("Уволить")'), 'уволен')); // З19-и13: тост этого действия, а не #toast через паузу
   const ts = await boss.evaluate(id => { const tr = [...document.querySelectorAll('#tsTable tr')].find(x => x.innerHTML.includes(id)); // строка записи — по её id в кнопках
     return tr ? tr.cells[4].innerText.replace(/\s+/g, ' ').trim() : null; }, entry);
   const staff = await boss.evaluate(n => [...document.querySelectorAll('#staffTable tr')].some(x => x.cells[0] && x.cells[0].innerText.split('\n')[0].trim() === n), W);
@@ -81,9 +79,7 @@ const z = require('./_z');
   await z.shot(boss, 'z14_demote_card');
   await boss.click('#drawer button:has-text("Снять права")');
   await z.sleep(400);
-  await boss.click('#drawer button:has-text("Точно снять?")');
-  await z.sleep(2500);
-  const tv = norm(await z.text(boss, '#toast'));
+  const tv = norm(await z.toastAfter(boss, () => boss.click('#drawer button:has-text("Точно снять?")'), 'больше не админ'));
   const tsv = await boss.evaluate(id => { const tr = [...document.querySelectorAll('#tsTable tr')].find(x => x.innerHTML.includes(id));
     return tr ? tr.cells[4].innerText.replace(/\s+/g, ' ').trim() : null; }, ev);
   z.check('«Снять права» — тост «z14v больше не админ · смена закрыта, касса не сдана — что осталось, в канале», карточка закрыта; в табеле — «закрыта снятием прав»',

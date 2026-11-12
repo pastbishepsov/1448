@@ -66,10 +66,7 @@ const z = require('./_z');
     && / · через 2 дня$/.test(r2[3]) && !!r3 && r3[2] === '2 ч' && r3[4] === 'ждёт' && / · через 3 дня$/.test(r3[3]), JSON.stringify([r1, r2, r3]));
   await page.evaluate(() => { const b = document.getElementById('packSoon'); if (b) b.scrollIntoView({ block: 'center' }); });
   await z.shot(page, 'z18_settings_soon');
-  if (await page.$('#packWarnBtn')) await page.click('#packWarnBtn');
-  await page.waitForFunction(() => /Предупредили/.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
-  const toast = await z.text(page, '#toast');
-  await z.sleep(800);
+  const toast = await z.toastAfter(page, async () => { if (await page.$('#packWarnBtn')) await page.click('#packWarnBtn'); }, 'Предупредили'); // З19-и13: тост этого действия, а не #toast через паузу
   const s2 = await soon();
   z.check('«Предупредить сейчас — 2 пакета» → тост «Предупредили: 2 пакета — гостям ушло уведомление»; у всех «отправлено», кнопки нет; '
     + 'уведомления — Guest48 «3 часа», Guest49 «Вечер»', !!s1 && s1.btn === 'Предупредить сейчас — 2 пакета'

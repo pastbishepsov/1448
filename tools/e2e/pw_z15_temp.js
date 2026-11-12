@@ -44,10 +44,9 @@ const { CHROME } = require('./_env');
   const t1 = z.sql('SELECT now()::text');
   await p.fill('#pw_new', OWN);
   await p.fill('#pw_new2', OWN);
-  await p.click('#pwCard button:has-text("Задать и войти")');
-  await p.waitForSelector('#rail', { state: 'visible', timeout: 10000 }).catch(() => {});
-  await z.sleep(1500);
-  const toast = norm(await z.text(p, '#toast'));
+  const toast = norm(await z.toastAfter(p, async () => { await p.click('#pwCard button:has-text("Задать и войти")');
+    await p.waitForSelector('#rail', { state: 'visible', timeout: 10000 }).catch(() => {}); }, 'Пароль задан')); // З19-и13: тост этого действия, а не #toast через паузу
+  await z.sleep(1500); // тур стартует через 0,9 с после входа — его пропускает следующая строка
   await p.evaluate(() => { const t = document.getElementById('tour'); if (t && !t.classList.contains('hidden')) tourSkip(); });
   s = await screen();
   const chip = norm(await z.text(p, '#shiftTxt'));

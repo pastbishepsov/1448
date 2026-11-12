@@ -3,6 +3,7 @@
 // «Посадить за…» из карточки, таблица гостей без персонала, фильтры/сортировка, очередь по телефону
 // и выбор кандидата, продажа с кандидатами.
 const { chromium } = require('playwright-core');
+const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { spawn, execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -131,8 +132,7 @@ const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinu
   await sleep(1200);
   await page.click('#drawerBody button:has-text("Завершить сессию за PC-09")');
   await sleep(200);
-  await page.click('#drawerBody button:has-text("Ещё раз — завершить")');
-  await sleep(1500);
+  await toastAfter(page, () => page.click('#drawerBody button:has-text("Ещё раз — завершить")'), 'XP'); // снимок ниже — с этим тостом
   const afterEnd = await page.evaluate(() => ({ title: document.getElementById('drawerTitle').textContent, now: /Сейчас за/.test(document.querySelector('#drawerBody').textContent), btns: [...document.querySelectorAll('#drawerBody button')].map(b => b.textContent.trim()), toast: document.getElementById('toast').textContent }));
   check('завершение из карточки: карточка осталась открытой, строки «Сейчас за» нет, появилась «Посадить за…»', afterEnd.title === 'Guest29' && !afterEnd.now && afterEnd.btns.some(t => /Посадить за…/.test(t)) && /Guest29: \+\d+ XP/.test(afterEnd.toast), JSON.stringify({ title: afterEnd.title, now: afterEnd.now, toast: afterEnd.toast }));
   await page.click('#drawerBody button:has-text("Посадить за…")');
@@ -145,8 +145,7 @@ const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinu
   await sleep(400);
   const seatReq = [];
   page.on('request', r => { if (r.method() === 'POST' && /\/admin\/computers\/[^/]+\/session$/.test(r.url())) seatReq.push(r.postData()); });
-  await page.click('#drawerBody button:has-text("Посадить за PC-09")');
-  await sleep(1800);
+  await toastAfter(page, () => page.click('#drawerBody button:has-text("Посадить за PC-09")'), 'Guest29 за «PC-09»');
   const seated = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, now: (document.querySelector('#drawerBody .kv') || {}).textContent.replace(/\s+/g, ' '), title: document.getElementById('drawerTitle').textContent }));
   const planned = seatReq.length ? String((JSON.parse(seatReq[0]) || {}).planned_min) : '';
   check('посадка из карточки: тост «▶ Guest29 за «PC-09»», строка «Сейчас за PC-09 · ⏳ ждёт [Готов!]», planned_min 120', /Guest29 за «PC-09»/.test(seated.toast) && /Сейчас\s*за PC-09/.test(seated.now) && /ждёт \[Готов!\]/.test(seated.now) && planned === '120' && seatReq.length === 1 && /"guest_id"/.test(seatReq[0]), JSON.stringify({ toast: seated.toast, planned }));

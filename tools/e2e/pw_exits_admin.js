@@ -4,6 +4,7 @@
 // ничего не открыто «назад» ничего не делает и со страницы не уводит. Гости ExitAdmA/ExitAdmB (регистрируются
 // сами), ПК PC-02 и PC-07; заведённая «Проблема» в конце закрывается.
 const L = require('./_exits');
+const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
 const vis = (p, sel) => p.evaluate(sel => { const e = document.querySelector(sel); return !!e && getComputedStyle(e).display !== 'none' && !e.classList.contains('hidden'); }, sel);
 const drawerOpen = p => p.evaluate(() => document.getElementById('drawer').classList.contains('open'));
 async function loginAdmin(p, nick, pass){
@@ -39,8 +40,8 @@ async function loginAdmin(p, nick, pass){
   const seat = await p.$('#seatNick');
   if (seat){
     await p.fill('#seatNick', 'Guest4');
-    await L.esc(p);
-    L.check('набран ник: первый Esc — шторка на месте, тост-предупреждение', await drawerOpen(p) && /несохранённое/.test(await p.evaluate(() => document.getElementById('toast').textContent)));
+    const escT = await toastAfter(p, () => L.esc(p), 'несохранённое');
+    L.check('набран ник: первый Esc — шторка на месте, тост-предупреждение', await drawerOpen(p) && /несохранённое/.test(escT));
     await L.esc(p); L.check('второй Esc в течение 4 с — закрыл', !await drawerOpen(p));
     await p.click(pc); await p.waitForTimeout(600);
     await p.fill('#seatNick', 'Guest4'); await L.mouseBack(p); await p.waitForTimeout(4300);

@@ -23,9 +23,7 @@ const z = require('./_z');
     vis && w.startsWith('⚠ Пересекается со сменами «День» 08:00–20:00, «Ночь» 20:00–08:00. Назначенным смену при входе берём из графика')
     && w.endsWith('Всё равно создать') && made() === '0', JSON.stringify({ vis, w }));
   await z.shot(boss, 'z15_overlap');
-  await boss.click('#shOverlap button:has-text("Всё равно создать")');
-  await z.sleep(1500);
-  const t1 = norm(await z.text(boss, '#toast')), open1 = await boss.evaluate(() => document.getElementById('drawer').classList.contains('open'));
+  const t1 = norm(await z.toastAfter(boss, () => boss.click('#shOverlap button:has-text("Всё равно создать")'), 'Смена сохранена')), open1 = await boss.evaluate(() => document.getElementById('drawer').classList.contains('open'));
   z.check('«Всё равно создать» — смена создана: тост «Смена сохранена», шторка закрыта', t1 === 'Смена сохранена' && !open1 && made() === '1',
     JSON.stringify({ t1, open1, n: made() }));
 

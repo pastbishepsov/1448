@@ -84,8 +84,8 @@ const z = require('./_z');
     d1.btns.some(t => t === 'z24w Будни сезонный только новым') && !d1.btns.some(t => /z24w Завтра/.test(t)) && d1.season === SEASON2, JSON.stringify(d1));
   const sell = async () => { await adm.evaluate(() => { const b = [...document.querySelectorAll('#drawer .uform .segs button')].find(x => x.textContent.trim() === 'Карта'); if (b) b.click(); });
     await z.sleep(300);
-    await adm.evaluate(() => { const b = [...document.querySelectorAll('#drawer .uform button')].find(x => /Выдать пакет/.test(x.textContent)); if (b) b.click(); });
-    await z.sleep(1500); return (await z.text(adm, '#toast')) || ''; };
+    return z.toastAfter(adm, () => adm.evaluate(() => { const b = [...document.querySelectorAll('#drawer .uform button')].find(x => /Выдать пакет/.test(x.textContent)); if (b) b.click(); }),
+      'z24w Будни'); }; // З19-и13: тост этого действия, а не #toast через паузу
   const t1 = await sell();
   await adm.evaluate(id => openUserDrawer(id, 'pack'), U); await z.sleep(1500);
   await adm.evaluate(() => { uTab = 'pack'; renderUserDrawer(); }); await z.sleep(600);

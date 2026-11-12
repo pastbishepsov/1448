@@ -29,9 +29,7 @@ const z = require('./_z');
   await z.shot(page, 'z8_drawer_start');
   await page.click('#coSubmit');
   await z.sleep(200);
-  await page.click('#drawerBody button:has-text("Ещё раз — сдать смену")');
-  await z.sleep(1800);
-  const toast = await z.text(page, '#toast');
+  const toast = await z.toastAfter(page, () => page.click('#drawerBody button:has-text("Ещё раз — сдать смену")'), 'Смена закрыта'); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('сдача: тост «Смена закрыта · … · начальный остаток ящика 350,00 zł»', /Смена закрыта/.test(toast) && /начальный остаток ящика 350,00 zł/.test(toast), toast);
 
   await z.api('POST', '/admin/work/start', {}, 'z8w');
@@ -49,9 +47,7 @@ const z = require('./_z');
   const pid = (issued.data.package || {}).id, price = (issued.data.package || {}).price_pln;
   await page.evaluate(id => openUserDrawer(id), g39);
   await z.sleep(1500);
-  await page.evaluate(id => voidPack(id), pid);
-  await z.sleep(1200);
-  const vt = await z.text(page, '#toast');
+  const vt = await z.toastAfter(page, () => page.evaluate(id => voidPack(id), pid), 'верни гостю');
   const priceTxt = Number(price || 0).toFixed(2).replace('.', ',');
   z.check(`отмена пакета за наличные: тост «… · верни гостю ${priceTxt} zł наличными»`, new RegExp('верни гостю ' + priceTxt + ' zł наличными').test(vt || ''), vt);
 

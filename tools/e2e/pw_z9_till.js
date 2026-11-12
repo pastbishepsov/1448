@@ -26,7 +26,7 @@ const z = require('./_z');
 
   const boss = await z.openAdmin('boss');
   const F = v => boss.evaluate(x => fmtPLN(x).replace(/\s+/g, ' '), v); // деньги так, как их пишет страница
-  const toast = async () => { await z.sleep(1800); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const newExpense = async (method, cat, amount, note, date) => {
     await boss.click('#expNewBtn'); await z.sleep(500);
     const h0 = await boss.isVisible('#efTillHint');
@@ -44,8 +44,7 @@ const z = require('./_z');
 
   const h = await newExpense('Из кассы', 'Прочее', 7, 'вода для зала');
   await z.shot(boss, 'z9_till_form');
-  await boss.click('#efSave');
-  const t1 = await toast();
+  const t1 = await after(() => boss.click('#efSave'), 'Расход 7,00 zł внесён');
   const p1 = await pv();
   z.check('шторка: у «Банка» подсказки нет, у «Из кассы» — есть; тост «✓ Расход 7,00 zł внесён — Прочее · «должно быть в ящике» меньше на 7,00 zł»',
     !h.h0 && h.h1 && t1.includes('Расход 7,00 zł внесён — Прочее · «должно быть в ящике» меньше на 7,00 zł'), JSON.stringify({ h, t1 }));
@@ -86,8 +85,7 @@ const z = require('./_z');
   await boss.click('#accTabs button[data-t="exp"]'); await z.sleep(1500);
   const yday = await boss.evaluate(d => ruDate(d), z.clubDay(-1));
   await newExpense('Из кассы', 'Аренда', 3, 'задним числом', yday);
-  await boss.click('#efSave');
-  const t2 = await toast();
+  const t2 = await after(() => boss.click('#efSave'), 'Расход 3,00 zł внесён');
   const p2 = await pv();
   z.check(`расход 3 zł за вчера «Из кассы»: тост «… · ${says[0]}${coTxt}», «должно быть в ящике» не изменилось`,
     !!want && t2.includes('Расход 3,00 zł внесён — Аренда · ' + says[0] + coTxt) && Math.abs(p2.expected_pln - p1.expected_pln) < 0.005,

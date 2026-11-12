@@ -30,9 +30,7 @@ const z = require('./_z');
     a0 === `${G} Ян Браузерный` && hint === 'Стереть личные данные — ФИО, телефон, заметка и ставка станут пустыми, причина увольнения в журнале — «—». '
       + 'Ник, игровой аккаунт, даты, должность, табель и выплаты останутся.', JSON.stringify({ a0, hint }));
   await boss.fill('#sc_phone', '+48 500 000 004');
-  await boss.click('#drawer button:has-text("Сохранить")');
-  await z.sleep(1500);
-  const t1 = norm(await z.text(boss, '#toast'));
+  const t1 = norm(await z.toastAfter(boss, () => boss.click('#drawer button:has-text("Сохранить")'), 'сохранена')); // З19-и13: тост этого действия, а не #toast через паузу
   const ph = z.sql(`SELECT phone || '|' || COALESCE(dismissed_at::text, '') FROM staff_profiles WHERE user_id = '${ug}'`);
   z.check('карточка уволенного сохраняется: тост «Карточка z14g сохранена», телефон новый (без пробелов, З15-и5), он по-прежнему уволен',
     t1 === `Карточка ${G} сохранена` && ph === `+48500000004|${z.clubDay(0)}`, JSON.stringify({ t1, ph }));
@@ -42,9 +40,7 @@ const z = require('./_z');
   await boss.click('#scErase button:has-text("Стереть личные данные")');
   await z.sleep(300);
   const armed = norm(await z.text(boss, '#scErase button'));
-  await boss.click('#scErase button:has-text("Точно стереть?")');
-  await z.sleep(2500);
-  const t2 = norm(await z.text(boss, '#toast'));
+  const t2 = norm(await z.toastAfter(boss, () => boss.click('#scErase button:has-text("Точно стереть?")'), 'Личные данные'));
   const after = { name: await val(boss, 'sc_name'), phone: await val(boss, 'sc_phone'), note: await val(boss, 'sc_note'),
     rate: await val(boss, 'sc_ratetype'), pos: await val(boss, 'sc_pos') };
   z.check('«Стереть личные данные» → «Точно стереть?» → тост «Личные данные z14g стёрты: ФИО, телефон, заметка, ставка · причина увольнения в '

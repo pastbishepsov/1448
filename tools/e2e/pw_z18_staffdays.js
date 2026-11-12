@@ -29,7 +29,7 @@ const z = require('./_z');
   const ru = d => d.slice(8) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4);
 
   const boss = await z.openAdmin('boss', { timezoneId: TZB });
-  const toast = async (ms = 2000) => { await z.sleep(ms); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const BD = await boss.evaluate(() => isoDate(new Date()));
   z.check(RH !== null ? `своя граница ${RH}:00, сейчас ${H}:xx — клубные сутки ${CD}, календарь клуба ${CAL}; браузер в ${TZB} — ${BD}`
     : `${H}:xx — своей границей сутки не сдвинуть (${CD} = календарь клуба); браузер в ${TZB} — ${BD}`,
@@ -42,15 +42,13 @@ const z = require('./_z');
   z.check(`«Нанять»: «Работает с» — клубные сутки ${ru(CD)}, а не календарь браузера ${ru(BD)}`, hired === ru(CD), hired);
   await boss.fill('#hr_nick', NICK); await boss.fill('#hr_pass', z.STAFF_PASS);
   await z.shot(boss, 'z18_staffdays_hire');
-  await boss.click('button[onclick="doHire()"]');
-  const t1 = await toast(), u = z.uid(NICK), prof = u ? z.sql(`SELECT hired_at FROM staff_profiles WHERE user_id = '${u}'`) : '';
+  const t1 = await after(() => boss.click('button[onclick="doHire()"]'), 'нанят'), u = z.uid(NICK), prof = u ? z.sql(`SELECT hired_at FROM staff_profiles WHERE user_id = '${u}'`) : '';
   z.check(`«Нанять» → тост «${NICK} нанят …»; работает с ${CD}`, t1.includes(`${NICK} нанят`) && prof === CD, JSON.stringify({ t1, prof }));
   let last = null, t2 = '';
   if (u) {
     await boss.click(`#staffTable button[onclick^="dismissDrawer('${u}'"]`); await z.sleep(1500);
     last = await boss.inputValue('#dm_date');
-    await boss.click('button[onclick^="doDismiss("]');
-    t2 = await toast();
+    t2 = await after(() => boss.click('button[onclick^="doDismiss("]'), 'уволен');
   }
   z.check(`«Уволить» той же ночью: последний день по умолчанию — ${ru(CD)}; тост «${NICK} уволен ${ru(CD)}», а не «Дата увольнения раньше даты найма»`,
     last === ru(CD) && t2.includes(`${NICK} уволен ${ru(CD)}`), JSON.stringify({ last, t2 }));

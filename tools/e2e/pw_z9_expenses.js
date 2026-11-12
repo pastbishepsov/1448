@@ -37,8 +37,7 @@ const fs = require('fs'), path = require('path');
   await page.click('#expNewBtn'); await z.sleep(500);
   const dateVal = await page.inputValue('#efDate'), today = await page.evaluate(d => ruDate(d), z.clubDay(0)); // З18-и4д: клубные сутки
   z.check('шторка «Новый расход»: дата — сегодня (клубные сутки) дд.мм.гггг', (await z.text(page, '#drawerTitle')) === 'Новый расход' && dateVal === today, `${dateVal} / ${today}`);
-  await page.click('#efSave'); await z.sleep(700);
-  const tCat = (await z.text(page, '#toast')) || '';
+  const tCat = await z.toastAfter(page, () => page.click('#efSave'), 'Выбери категорию'); // З19-и13: тост этого действия, а не #toast через паузу
   await page.selectOption('#efCat', { label: 'Аренда' });
   await page.fill('#efCp', CP);
   await page.fill('#efAmount', '1234.56'); await page.fill('#efVat', '230.85');
@@ -48,8 +47,7 @@ const fs = require('fs'), path = require('path');
   await page.setInputFiles('#efPhoto', png);
   z.check('без категории — «Выбери категорию»; под суммой — «без VAT: 1 003,71 zł»', /Выбери категорию/.test(tCat) && net === 'без VAT: 1 003,71 zł', `${tCat} / ${net}`);
   await z.shot(page, 'z9_expense_form');
-  await page.click('#efSave'); await z.sleep(2500);
-  const t1 = (await z.text(page, '#toast')) || '';
+  const t1 = await z.toastAfter(page, () => page.click('#efSave'), 'zł внесён — Аренда');
   z.check('записано: «✓ Расход 1 234,56 zł внесён — Аренда · фото документа приложено»',
     t1.includes('Расход 1 234,56 zł внесён — Аренда · фото документа приложено'), t1);
   const row = await page.evaluate(() => { const r = document.querySelector('#accBody tr.expRow'); return r ? { id: r.dataset.id, cells: [...r.cells].map(c => c.innerText.replace(/\s+/g, ' ').trim()) } : null; });
@@ -76,18 +74,17 @@ const fs = require('fs'), path = require('path');
   const img = await page.evaluate(() => { const i = document.querySelector('#efPhotoBox img'); return i ? { w: i.naturalWidth, src: i.src.slice(0, 5) } : null; });
   z.check('клик по строке — шторка «Расход» с фото документа (по токену, blob)', (await z.text(page, '#drawerTitle')) === 'Расход' && img && img.w > 0 && img.src === 'blob:', JSON.stringify(img));
   await page.fill('#efAmount', '1300');
-  await page.click('#efSave'); await z.sleep(1800);
-  const t2 = (await z.text(page, '#toast')) || '';
+  const t2 = await z.toastAfter(page, () => page.click('#efSave'), 'Расход поправлен');
   const sum2 = await page.evaluate(id => { const r = document.querySelector(`#accBody tr.expRow[data-id="${id}"]`); return r ? r.cells[5].innerText.replace(/\s+/g, ' ').trim() : null; }, row.id);
   z.check('правка суммы → «✓ Расход поправлен», в строке 1 300,00', /Расход поправлен/.test(t2) && sum2 === '1 300,00', `${t2} / ${sum2}`);
 
   await page.click(`#accBody tr.expRow[data-id="${row.id}"]`); await z.sleep(1200);
-  await page.click('#efStorno'); await z.sleep(200); await page.click('#efStorno'); await z.sleep(700);
-  const t3 = (await z.text(page, '#toast')) || '';
+  await page.click('#efStorno'); await z.sleep(200);
+  const t3 = await z.toastAfter(page, () => page.click('#efStorno'), 'нужна причина');
   await page.fill('#efReason', 'внесли для проверки');
   await z.shot(page, 'z9_expense_storno');
-  await page.click('#efStorno'); await z.sleep(200); await page.click('#efStorno'); await z.sleep(1800);
-  const t4 = (await z.text(page, '#toast')) || '';
+  await page.click('#efStorno'); await z.sleep(200);
+  const t4 = await z.toastAfter(page, () => page.click('#efStorno'), 'Расход сторнирован');
   const off = await page.evaluate(id => { const r = document.querySelector(`#accBody tr.expRow[data-id="${id}"]`); return r ? { off: r.classList.contains('expOff'), note: r.cells[7].innerText } : null; }, row.id);
   z.check('сторно без причины — «нужна причина»; с причиной — «✓ Расход сторнирован», строка бледная с причиной, итог — как был',
     /нужна причина/.test(t3) && /Расход сторнирован/.test(t4) && off && off.off && /внесли для проверки/.test(off.note)

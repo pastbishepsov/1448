@@ -29,9 +29,7 @@ const z = require('./_z');
   await z.sleep(300);
   await page.click('#ccSubmit');
   await z.sleep(200);
-  await page.click('#ccSubmit');
-  await z.sleep(800);
-  const t0 = await z.text(page, '#toast');
+  const t0 = await z.toastAfter(page, () => page.click('#ccSubmit'), 'по чьему указанию'); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('без заметки — «Напиши, по чьему указанию», ничего не записано', /по чьему указанию/.test(t0 || '')
     && Math.abs((await pv()).collections_pln - p0.collections_pln) < 0.005, t0);
   await page.fill('#ccAmount', String(Math.ceil(p0.expected_pln + 1000)));
@@ -45,9 +43,7 @@ const z = require('./_z');
   await z.shot(page, 'z8_collect_form');
   await page.click('#ccSubmit');
   await z.sleep(200);
-  await page.click('#ccSubmit');
-  await z.sleep(1800);
-  const t1 = await z.text(page, '#toast');
+  const t1 = await z.toastAfter(page, () => page.click('#ccSubmit'), 'Инкассация 50,00 zł в банк записана');
   const p1 = await pv();
   const ev = z.sql(`SELECT id FROM cash_events WHERE created_by='${z.uid('z8cw')}' AND voided_at IS NULL ORDER BY created_at DESC LIMIT 1`);
   if (ev) events.push(ev);

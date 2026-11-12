@@ -47,11 +47,9 @@ const { CHROME } = require('./_env');
   await boss.click('#scPwd button:has-text("Сбросить пароль")');
   await z.sleep(300);
   const armed = norm(await z.text(boss, '#scPwd button'));
-  await boss.click('#scPwd button:has-text("Точно сбросить?")');
-  await z.sleep(1800);
+  const toastB = norm(await z.toastAfter(boss, () => boss.click('#scPwd button:has-text("Точно сбросить?")'), 'Временный пароль')); // З19-и13: тост этого действия, а не #toast через паузу
   const tb = await boss.evaluate(() => ({ tp: ((document.querySelector('#scPwd .tp') || {}).textContent || '').trim(),
     box: ((document.getElementById('scPwd') || {}).textContent || '').replace(/\s+/g, ' ').trim() }));
-  const toastB = norm(await z.text(boss, '#toast'));
   z.check('«Сбросить пароль» → «Точно сбросить?» → на месте кнопки временный пароль xxxx-xxxx-xxxx, «Скопировать», «Показывается один раз…»; тост; '
     + 'в базе — обязательная смена', armed === 'Точно сбросить?' && TEMP_RE.test(tb.tp) && tb.box.includes('Скопировать')
     && tb.box.includes('Показывается один раз. Все его входы уже закрыты; при входе админка попросит задать свой пароль.')
@@ -77,9 +75,9 @@ const { CHROME } = require('./_env');
   await z.sleep(400);
   const s3 = await screen(tp);
   await tp.fill('#pw_new2', NEWT);
-  await tp.click('#pwCard button:has-text("Задать и войти")');
-  await z.sleep(2500);
-  const s4 = await screen(tp), toastT = norm(await z.text(tp, '#toast'));
+  const toastT = norm(await z.toastAfter(tp, async () => { await tp.click('#pwCard button:has-text("Задать и войти")');
+    await tp.waitForSelector('#rail', { state: 'visible', timeout: 10000 }).catch(() => {}); }, 'Пароль задан'));
+  const s4 = await screen(tp);
   await skipTour(tp);
   z.check('новые не совпали — «Новые пароли не совпадают»; совпали — админка открыта, тост «Пароль задан — дальше входи им», флага в базе нет',
     s3.pwErr === 'Новые пароли не совпадают' && s4.app && !s4.pw && toastT === 'Пароль задан — дальше входи им' && flag(ut) === 'f',
@@ -106,9 +104,7 @@ const { CHROME } = require('./_env');
   await z.sleep(800);
   const title = norm(await z.text(up, '#drawerTitle'));
   await up.fill('#mp_cur', NEWU); await up.fill('#mp_new', NEWU2); await up.fill('#mp_new2', NEWU2);
-  await up.click('#drawer button:has-text("Сменить")');
-  await z.sleep(2000);
-  const toastU = norm(await z.text(up, '#toast'));
+  const toastU = norm(await z.toastAfter(up, () => up.click('#drawer button:has-text("Сменить")'), 'Пароль сменён'));
   const still = await up.evaluate(() => api('/admin/work/me').then(() => true, () => false));
   await z.sleep(800);
   const s7 = await screen(up);

@@ -54,8 +54,7 @@ const z = require('./_z');
     && w.endsWith('Снять с графика и сохранить') && state(t.id) === '127|9000|1', JSON.stringify({ ov: ov.slice(0, 40), w, open1, st: state(t.id) }));
   await z.shot(boss, 'z15_days_assigned');
   const btn = await boss.$('#shOverlap button:has-text("Снять с графика и сохранить")');
-  if (btn) { await btn.click(); await z.sleep(1500); }
-  const toast = norm(await z.text(boss, '#toast')), open2 = await boss.evaluate(() => document.getElementById('drawer').classList.contains('open'));
+  const toast = norm(await z.toastAfter(boss, async () => { if (btn) await btn.click(); }, 'Смена сохранена')), open2 = await boss.evaluate(() => document.getElementById('drawer').classList.contains('open'));
   z.check('«Снять с графика и сохранить» — тост «Смена сохранена · снято с графика: 1», шторка закрыта; день убран, порядок 0, назначения на завтра нет',
     toast === 'Смена сохранена · снято с графика: 1' && !open2 && state(t.id) === `${127 & ~(1 << wd)}|0|0`, JSON.stringify({ toast, open2, st: state(t.id) }));
 

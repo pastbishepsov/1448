@@ -104,9 +104,9 @@ const { CHROME } = require('./_env');
     z.check(`«Правило» внахлёст (${hm((E - 30 + 1440) % 1440)}–${hm((E + 30) % 1440)}): в форме — «Накладывается на правило «${R1}»…», правило одно`,
       !!b2 && b2.form && /Накладывается на правило «каждый день/.test(b2.err) && b2.err.includes(R1) && rules().length === 1, JSON.stringify([b2, rules()]));
     await fill(E, E + 60, 30, 'z24u ночь');
-    await boss.click('#zr_save'); await z.sleep(1200);
+    const t3 = await z.toastAfter(boss, () => boss.click('#zr_save'), 'Правило добавлено'); // З19-и13: тост этого действия, а не #toast через паузу
     const R2 = `каждый день ${hm(E)}–${hmEnd(E + 60 > 1440 ? (E + 60) % 1440 : E + 60)} — 30,00 zł/ч`;
-    const b3 = await box(), ct3 = await cellTxt(), t3 = await z.text(boss, '#toast');
+    const b3 = await box(), ct3 = await cellTxt();
     z.check(`встык (${hm(E)}–${hm((E + 60) % 1440)}) — добавлено: тост «✓ Правило добавлено: ${R2}», в шторке два правила, форма закрыта; в списке — «2 правила»`,
       !!b3 && b3.rows.length === 2 && b3.rows[1] === `${R2} z24u ночь` && !b3.form && b3.add && /· 2 правила$/.test(ct3 || '')
       && (t3 || '').includes('Правило добавлено: ' + R2) && rules().length === 2, JSON.stringify([b3, ct3, t3]));
@@ -141,8 +141,8 @@ const { CHROME } = require('./_env');
     await boss.evaluate(() => zrDays(0)); await boss.fill('#zr_rate', '12');
     await boss.click('#zr_save'); await z.sleep(400);
     const b6 = await box();
-    await boss.evaluate(() => { const b = [...document.querySelectorAll('#drawer .uform button')].find(x => x.textContent.trim() === 'Сохранить'); if (b) b.click(); });
-    await z.sleep(500);
+    await z.toastAfter(boss, () => boss.evaluate(() => { const b = [...document.querySelectorAll('#drawer .uform button')].find(x => x.textContent.trim() === 'Сохранить'); if (b) b.click(); }),
+      'Правило не добавлено'); // снимок ниже — с этим тостом
     const st = await boss.evaluate(() => ({ open: document.getElementById('drawer').classList.contains('open'), toast: document.getElementById('toast').textContent }));
     z.check('без дней — «Отметь хотя бы один день»; «Сохранить» зоны с набранным правилом — шторка открыта, тост «Правило не добавлено …»',
       !!b6 && /Отметь хотя бы один день/.test(b6.err) && st.open && /Правило не добавлено/.test(st.toast) && rules().length === 1, JSON.stringify([b6 && b6.err, st]));

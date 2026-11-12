@@ -54,9 +54,7 @@ const { CHROME } = require('./_env');
     && d1.note.endsWith(`Со смен графика после ${ru(D3)} снимется, когда увольнение завершится.`), JSON.stringify(d1));
   await z.shot(boss, 'z14_leave_drawer');
   await boss.fill('#dm_reason', 'z14 переезжает');
-  await boss.click('#drawer button.danger:has-text("Уволить")');
-  await z.sleep(2500);
-  const t1 = norm(await z.text(boss, '#toast')), r1 = await row(boss, J);
+  const t1 = norm(await z.toastAfter(boss, () => boss.click('#drawer button.danger:has-text("Уволить")'), 'уходит')), r1 = await row(boss, J);
   z.check(`«Уволить» — тост «z14j уходит ${ru(D3)} — до конца дня работает, потом увольнение завершится само»; в списке у ника — «уходит ${dm(D3)}» `
     + 'и «Отменить увольнение», «Уволить» на месте; роль — admin, смена открыта',
     t1 === `${J} уходит ${ru(D3)} — до конца дня работает, потом увольнение завершится само` && r1 && r1.badge === `уходит ${dm(D3)}`
@@ -81,9 +79,7 @@ const { CHROME } = require('./_env');
 
   await click(boss, J, 'Отменить увольнение');
   const armed = (await row(boss, J) || { btns: [] }).btns;
-  await click(boss, J, 'Точно отменить?');
-  await z.sleep(1200);
-  const t2 = norm(await z.text(boss, '#toast')), r2 = await row(boss, J);
+  const t2 = norm(await z.toastAfter(boss, () => click(boss, J, 'Точно отменить?'), 'отменено')), r2 = await row(boss, J);
   z.check(`«Отменить увольнение» → «Точно отменить?» → тост «Увольнение z14j (${ru(D3)}) отменено — остаётся в команде»; у ника — ни «уходит», ни кнопки`,
     armed.includes('Точно отменить?') && t2 === `Увольнение ${J} (${ru(D3)}) отменено — остаётся в команде` && r2 && r2.badge === ''
     && !r2.btns.includes('Отменить увольнение') && leaveOn(uj) === '|', JSON.stringify({ armed, t2, r2, l: leaveOn(uj) }));

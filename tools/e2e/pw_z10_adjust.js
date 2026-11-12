@@ -21,7 +21,7 @@ const z = require('./_z');
   await z.api('POST', `/admin/goods/${ga}/stock`, { delta: 3, reason: 'adjust', note: `${MARK}: нашлось` }, 'admin1'); // «нашлось» — партия без цены
   const found = z.sql(`SELECT id FROM stock_lots WHERE good_id = '${ga}' AND kind = 'found'`);
   const left = id => +z.sql(`SELECT qty_left FROM stock_lots WHERE id = '${id}'`);
-  const toast = async (p, ms = 2000) => { await z.sleep(ms); return (await z.text(p, '#toast')) || ''; };
+  const after = (p, act, want) => z.toastAfter(p, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const openStock = async p => { await z.nav(p, 'goods'); await p.evaluate(i => stockDrawer(i), ga); await z.sleep(700);
     await p.click('#stk_adjust'); await z.sleep(1200); };
 
@@ -35,8 +35,7 @@ const z = require('./_z');
   await boss.selectOption('#stk_lot', found);
   await boss.fill('#stk_delta', '-2'); await boss.fill('#stk_note', `${MARK}: разбили`);
   await z.shot(boss, 'z10_adjust_drawer');
-  await boss.click('.uform button:has-text("Записать")');
-  const t1 = await toast(boss);
+  const t1 = await after(boss, () => boss.click('.uform button:has-text("Записать")'), 'Склад обновлён');
   z.check('−2 из «нашлось» → тост «Склад обновлён · из партии «нашлось …»»; списано ровно из неё (осталось 1), поставка не тронута',
     /^Склад обновлён · из партии «нашлось \d\d\.\d\d \d\d:\d\d»$/.test(t1) && left(found) === 1
     && z.sql(`SELECT qty_left FROM stock_lots WHERE good_id = '${ga}' AND kind = 'supply'`) === '10', JSON.stringify({ t1, found: left(found) }));
@@ -54,8 +53,7 @@ const z = require('./_z');
   await boss.evaluate(i => document.querySelector(`#purLots tr.purLot[data-id="${i}"]`).scrollIntoView({ block: 'center' }), found); await z.sleep(300);
   await z.shot(boss, 'z10_adjust_lots');
   await boss.fill(`#purLots tr.purLot[data-id="${found}"] input`, '1.5');
-  await boss.click(`#purLots tr.purLot[data-id="${found}"] button`);
-  const t2 = await toast(boss), r1 = await row();
+  const t2 = await after(boss, () => boss.click(`#purLots tr.purLot[data-id="${found}"] button`), 'Цена партии'), r1 = await row();
   z.check('«Закупки» → «Начальный остаток и «нашлось»»: партия без цены — «пришло 3 · осталось 1»; 1,50 → тост «Цена партии: … — 1,50 zł за штуку», цена записана',
     /^Начальный остаток и «нашлось» · без цены: \d+$/.test(head) && r0 && r0.cells[0] === A && /^нашлось /.test(r0.cells[1]) && r0.cells[2] === '3 · 1' && r0.price === ''
     && /^Цена партии: z10p Бой окно · нашлось \d\d\.\d\d \d\d:\d\d — 1,50 zł за штуку$/.test(t2) && r1 && r1.price === '1.5'

@@ -203,9 +203,8 @@ const z = require('./_z');
   await z.shot(page, 'z13_goods_cat');
   z.check('«Ко всей категории» с 5 % — первый клик: взвод «Всем 2 — 5 %?», запроса нет', armedCat === 'Всем 2 — 5 %?' && reqs.length === nb,
     `${armedCat}; запросов +${reqs.length - nb}`);
-  await click(page, '#gd_vatcat');
-  await z.sleep(2500);
-  const vput = last('PUT', /\/admin\/vat\/goods$/), toastT = await z.text(page, '#toast'), gt2 = await vatCell(page, '#goodsTable', [A, B]);
+  const toastT = await z.toastAfter(page, () => click(page, '#gd_vatcat'), 'поменяли у'); // З19-и13: тост этого действия, а не #toast через паузу
+  const vput = last('PUT', /\/admin\/vat\/goods$/), gt2 = await vatCell(page, '#goodsTable', [A, B]);
   z.check('второй клик — PUT /admin/vat/goods {category: «z13u», vat_pct: 5}: у обеих в базе 5, в списке 5 %, тост «поменяли у 2 из 2», в журнале строка категории',
     !!vput && JSON.stringify(vput.b) === JSON.stringify({ category: CAT, vat_pct: 5 }) && vatOf('goods', ga) === '5' && vatOf('goods', gb) === '5'
     && !!gt2 && gt2.vats.join() === '5 %,5 %' && /поменяли у 2 из 2/.test(toastT || '') && audit('goods_vat') === gv0 + 1

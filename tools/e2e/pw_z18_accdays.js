@@ -37,7 +37,7 @@ const z = require('./_z');
   const a = await mk(T1, +CD.slice(8), rent.id, 1800), b = await mk(T2, +NX.slice(8), other.id, 70);
 
   const boss = await z.openAdmin('boss', { timezoneId: TZB });
-  const toast = async (ms = 2000) => { await z.sleep(ms); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const form = () => boss.evaluate(() => ({ title: (document.getElementById('drawerTitle') || {}).textContent,
     date: (document.getElementById('efDate') || {}).value || null }));
   const BD = await boss.evaluate(() => isoDate(new Date()));
@@ -60,8 +60,7 @@ const z = require('./_z');
   await z.shot(boss, 'z18_accdays_new');
   await boss.click('#efMethod button:has-text("Банк")');
   await boss.selectOption('#efCat', other.id); await boss.fill('#efAmount', '7'); await boss.fill('#efNote', MARK + ': новый');
-  await boss.click('#efSave');
-  const t1 = await toast(2500);
+  const t1 = await after(() => boss.click('#efSave'), 'Расход 7,00 zł внесён');
   const row = await boss.evaluate(n => { const r = [...document.querySelectorAll('#accBody tr.expRow')].find(x => x.innerText.includes(n));
     return r ? { id: r.dataset.id, cells: [...r.cells].map(c => c.innerText.replace(/\s+/g, ' ').trim()) } : null; }, MARK + ': новый');
   const db = row ? z.sql(`SELECT op_date FROM expenses WHERE id = '${row.id}'`) : '';

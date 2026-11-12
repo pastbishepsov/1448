@@ -118,10 +118,9 @@ const { execFileSync } = require('child_process');
 
   // ── «Скачать» ──
   const T0 = z.sql('SELECT now()::text');
-  const [dl] = await Promise.all([boss.waitForEvent('download', { timeout: 60000 }), boss.click('#outGet')]);
+  let dl;
+  const t1 = await z.toastAfter(boss, async () => { [dl] = await Promise.all([boss.waitForEvent('download', { timeout: 60000 }), boss.click('#outGet')]); }, 'скачан'); // З19-и13: тост этого действия, а не #toast через паузу
   const zl = zipNames(await dl.path());
-  await z.sleep(500);
-  const t1 = await z.text(boss, '#toast');
   z.check(`«Скачать» CSV: «1448-vygruzka-${PREV}.zip» — архив, файлы — как в списке листов; тост «Файл … скачан — выгрузка в журнале»`,
     dl.suggestedFilename() === `1448-vygruzka-${PREV}.zip` && JSON.stringify(zl) === JSON.stringify((P4.sheets || []).map(x => x.file))
     && /Файл «1448-vygruzka-\d{4}-\d{2}\.zip» скачан — выгрузка в журнале/.test(t1 || ''), JSON.stringify({ name: dl.suggestedFilename(), zl: zl.slice(0, 3), t1 }));
@@ -146,8 +145,8 @@ const { execFileSync } = require('child_process');
   const p0 = puts.length;
   await boss.selectOption('#out_sep', '1'); await boss.selectOption('#out_date', '1');
   const fh = await z.text(boss, '#outFileHint');
-  await outWait(boss, () => boss.click('#outFileSave'));
-  const fp = puts.slice(p0), t2 = await z.text(boss, '#toast');
+  const t2 = await z.toastAfter(boss, () => outWait(boss, () => boss.click('#outFileSave')), 'Настройки файла сохранены');
+  const fp = puts.slice(p0);
   const fdb = z.sql("SELECT string_agg(key || '=' || value, ',' ORDER BY key) FROM settings WHERE key IN ('acc_csv_sep', 'acc_date_fmt')");
   z.check('«,» и ГГГГ-ММ-ДД: «Изменено: 2»; «Сохранить» — один PUT только с ними, в базе — 1 и 1, тост «Настройки файла сохранены»',
     fh === 'Изменено: 2' && fp.length === 1 && fp[0] === 'PUT /settings {"acc_csv_sep":1,"acc_date_fmt":1}' && fdb === 'acc_csv_sep=1,acc_date_fmt=1'
@@ -163,9 +162,9 @@ const { execFileSync } = require('child_process');
   const warn2 = await boss.evaluate(() => !document.getElementById('outNipWarn').classList.contains('hidden'));
   await boss.fill('#out_raddr', 'ul. Firmowa 2, 03-000 Warszawa');
   const rh = await z.text(boss, '#outReqHint'), p1 = puts.length;
-  await boss.click('#outReqSave');
+  const t3 = await z.toastAfter(boss, () => boss.click('#outReqSave'), 'Реквизиты сохранены');
   await boss.waitForFunction(() => (document.getElementById('outReqHint') || {}).textContent === 'Правок нет', undefined, { timeout: 15000 }).catch(() => {});
-  const R1 = (await z.api('GET', '/admin/export/requisites', undefined, 'boss')).data, rp = puts.slice(p1), t3 = await z.text(boss, '#toast');
+  const R1 = (await z.api('GET', '/admin/export/requisites', undefined, 'boss')).data, rp = puts.slice(p1);
   const nipShown = await boss.evaluate(() => document.getElementById('out_rnip').value);
   z.check('«Реквизиты фирмы»: пустые — подсказки с названием и адресом клуба; NIP с несходящейся суммой — предупреждение, верный — без; «Изменено: 3»; '
     + '«Сохранить» — название, NIP цифрами и адрес на сервере, в поле NIP — с дефисами, тост «Реквизиты сохранены»',
@@ -244,9 +243,9 @@ const { execFileSync } = require('child_process');
   await boss.click(btn);
   await z.sleep(300);
   const armed = await boss.evaluate(s => (document.querySelector(s) || {}).textContent, btn), early = puts.length - p4;
-  await boss.click(btn);
+  const t4 = await z.toastAfter(boss, () => boss.click(btn), 'поменяли у');
   await ryWait(/^8,5 %$/);
-  const y1 = await ryRow(), t4 = await z.text(boss, '#toast');
+  const y1 = await ryRow();
   await boss.click(`#refRy tr.refRow[data-i="${y1.i}"] button:has-text("Позиции")`);
   await boss.waitForSelector('#ryList', { timeout: 5000 }).catch(() => {});
   const items = await boss.evaluate(() => [...document.querySelectorAll('#ryList .ryItem')].map(x => [x.querySelector('span').textContent.trim(), x.querySelector('select').value]));

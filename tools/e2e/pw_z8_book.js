@@ -35,7 +35,7 @@ const z = require('./_z');
   const boss = await z.openAdmin('boss');
   const F = v => boss.evaluate(x => fmtPLN(x).replace(/\s+/g, ' '), v); // деньги так, как их пишет страница
   const kpis = () => boss.evaluate(() => [...document.querySelectorAll('#accBody .kpi')].map(k => k.textContent.replace(/\s+/g, ' ').trim()));
-  const toast = async () => { await z.sleep(1600); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   if (!z.check('владелец: в рейле «Бухгалтерия»', await boss.isVisible('#r-acc'))) return z.done();
   await boss.click('#r-acc'); await z.sleep(1800);
   await boss.click('#accTabs button[data-t="cash"]'); await z.sleep(1800); // З12-и4: вход — «Обзор», книга — во вкладке «Касса»
@@ -62,15 +62,15 @@ const z = require('./_z');
   z.check('«Инкассация» — шторка с суммой, «В банк» / «В сейф», заметкой', await z.text(boss, '#drawerTitle') === 'Инкассация'
     && await boss.isVisible('#acAmount') && await boss.isVisible('#acNote'));
   const n0 = nEvents();
-  await boss.click('#acSubmit'); await z.sleep(200); await boss.click('#acSubmit');
-  const t0 = await toast();
+  await boss.click('#acSubmit'); await z.sleep(200);
+  const t0 = await after(() => boss.click('#acSubmit'), 'сумма больше нуля');
   z.check('без суммы — «сумма больше нуля», ничего не записано', /сумма больше нуля/.test(t0) && nEvents() === n0, t0);
   await boss.fill('#acAmount', '12');
   await boss.click('#drawerBody button:has-text("В сейф")'); await z.sleep(300);
   await boss.fill('#acNote', 'в сейф на ночь');
   await z.shot(boss, 'z8_book_collect');
-  await boss.click('#acSubmit'); await z.sleep(200); await boss.click('#acSubmit');
-  const t1 = await toast();
+  await boss.click('#acSubmit'); await z.sleep(200);
+  const t1 = await after(() => boss.click('#acSubmit'), 'Инкассация 12,00 zł в сейф записана');
   const col = lastEvent('collect'); if (col) events.push(col);
   const now1 = Math.round((now0 - 12) * 100) / 100;
   z.check(`тост «✓ Инкассация 12,00 zł в сейф записана · в ящике должно быть ${await F(now1)} zł», в книге — минус 12`,
@@ -84,13 +84,13 @@ const z = require('./_z');
   const stated = Math.round((now1 + 7) * 100) / 100;
   await boss.fill('#acStated', String(stated)); await z.sleep(200);
   const hint = await z.text(boss, '#acDelta');
-  await boss.click('#acCorSubmit'); await z.sleep(200); await boss.click('#acCorSubmit');
-  const t2 = await toast();
+  await boss.click('#acCorSubmit'); await z.sleep(200);
+  const t2 = await after(() => boss.click('#acCorSubmit'), 'нужна причина');
   z.check('поправка видна до записи (+7,00); без причины — «нужна причина»', hint === 'Поправка +7,00 zł' && /нужна причина/.test(t2), `${hint} / ${t2}`);
   await boss.fill('#acReason', 'пересчитал ящик');
   await z.shot(boss, 'z8_book_correct');
-  await boss.click('#acCorSubmit'); await z.sleep(200); await boss.click('#acCorSubmit');
-  const t3 = await toast();
+  await boss.click('#acCorSubmit'); await z.sleep(200);
+  const t3 = await after(() => boss.click('#acCorSubmit'), 'Остаток поправлен');
   const cor = lastEvent('correct'); if (cor) events.push(cor);
   z.check(`тост «✓ Остаток поправлен: в ящике ${await F(stated)} zł, поправка +7,00 zł», «В ящике сейчас» — ${await F(stated)}`,
     t3.includes(`Остаток поправлен: в ящике ${await F(stated)} zł, поправка +7,00 zł`) && (await kpis())[0] === `В ящике сейчас ${await F(stated)} zł`, t3);
@@ -99,8 +99,8 @@ const z = require('./_z');
     .map(e => ({ t: e.textContent.replace(/\s+/g, ' ').trim(), off: e.classList.contains('accVoid') })).pop() || null);
   const l0 = await line();
   const vb = await boss.$$('#accBody tr.accDet div:has-text("инкассация 12,00 zł в сейф") button:has-text("Отменить")');
-  if (vb.length) { await vb[vb.length - 1].click(); await z.sleep(200); await vb[vb.length - 1].click(); }
-  const t4 = await toast(), l1 = await line();
+  const t4 = await after(async () => { if (vb.length) { await vb[vb.length - 1].click(); await z.sleep(200); await vb[vb.length - 1].click(); } },
+    'Событие отменено'), l1 = await line();
   const now2 = Math.round((stated + 12) * 100) / 100;
   z.check(`отмена инкассации из книги: тост «в ящике должно быть ${await F(now2)} zł», строка зачёркнута — «отменил boss»`,
     l0 && !l0.off && t4.includes(`Событие отменено · в ящике должно быть ${await F(now2)} zł`) && l1 && l1.off && /отменил boss/.test(l1.t), JSON.stringify({ l0, t4, l1 }));

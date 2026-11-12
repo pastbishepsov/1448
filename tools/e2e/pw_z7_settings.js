@@ -39,9 +39,7 @@ const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лим�
   await z.shot(page, 'z7_settings');
 
   const a0 = audit();
-  await save();
-  await z.sleep(800);
-  const t0 = await z.text(page, '#toast');
+  const t0 = await z.toastAfter(page, () => save(), 'Правок нет'); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('«Сохранить» без правок: тост «Правок нет», запроса нет, журнал молчит', puts.length === 0 && /Правок нет/.test(t0 || '') && audit() === a0,
     `PUT ${puts.length}, тост «${t0}», журнал +${audit() - a0}`);
 

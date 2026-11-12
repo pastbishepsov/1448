@@ -79,9 +79,8 @@ const z = require('./_z');
   await z.sleep(200);
   await tap(p, '#coSubmit');
   const armed2 = norm(await z.text(p, '#coSubmit'));
-  await tap(p, '#coSubmit', 2000);
+  const t = norm(await z.toastAfter(p, () => tap(p, '#coSubmit', 0), 'Смена закрыта')); // З19-и13: тост этого действия, а не #toast через паузу
   v = await view(p);
-  const t = norm(await z.text(p, '#toast'));
   const row = z.sql(`SELECT (ended_at IS NOT NULL)::text || '|' || auto_closed::text FROM work_entries WHERE user_id = '${qid}' AND started_at >= '${since}'`);
   const co = z.sql(`SELECT skipped::text || '|' || COALESCE(diff_grosz::text, '') FROM shift_closeouts WHERE user_id = '${qid}' AND created_at >= '${since}' ORDER BY created_at DESC LIMIT 1`);
   z.check('«Сдать смену и выйти» (пересчитано = должно быть) — со второго нажатия: тост «Смена закрыта · … · касса сошлась», '

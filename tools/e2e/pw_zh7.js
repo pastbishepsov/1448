@@ -3,6 +3,7 @@
 // тост депозита с «хватит ещё на …», «ПК в ремонте» при посадке, виджет даты-времени брони
 // «дд.мм.гггг чч:мм» (пресеты сегодня/завтра, четверти часа, RFC3339 наружу). Скриншоты.
 const { chromium } = require('playwright-core');
+const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -64,9 +65,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   // и2: тост депозита с часами
   await page.evaluate(id => openUserDrawer(id, 'deposit'), g); await sleep(1200);
   await page.fill('#d_sum', '50');
-  await page.click('#drawerBody button:has-text("Оформить депозит")');
-  await sleep(1200);
-  const depToast = await page.evaluate(() => document.getElementById('toast').textContent);
+  const depToast = await toastAfter(page, () => page.click('#drawerBody button:has-text("Оформить депозит")'), '+50,00 zł');
   const cheapest = +psql(`SELECT rate_pln FROM zones WHERE rate_pln > 0 ORDER BY rate_pln, sort, name LIMIT 1`);
   const expMin = Math.floor(5000 * 60 / Math.round(cheapest * 100));
   const expTxt = (Math.floor(expMin / 60) ? Math.floor(expMin / 60) + ' ч' + (expMin % 60 ? ' ' + (expMin % 60) + ' мин' : '') : expMin + ' мин');
@@ -97,11 +96,9 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page.fill('#b_nick', 'Guest28');
   const reqs = [];
   page.on('request', r => { if (r.method() === 'POST' && /\/admin\/bookings$/.test(r.url())) reqs.push(r.postData()); });
-  await page.click('#drawerBody button:has-text("Забронировать")');
-  await sleep(1500);
+  const bkToast = await toastAfter(page, () => page.click('#drawerBody button:has-text("Забронировать")'), 'Бронь');
   const sent = reqs.length ? JSON.parse(reqs[0]) : {};
   const local = sent.start_time ? new Date(sent.start_time) : null;
-  const bkToast = await page.evaluate(() => document.getElementById('toast').textContent);
   check('«Забронировать»: start_time — RFC3339 (UTC, с Z), в местном времени это завтра 18:15; тост «📅 Бронь: Guest28 · … · 18:15»', /Z$/.test(sent.start_time || '') && local && local.getHours() === 18 && local.getMinutes() === 15 && local.getDate() === tomorrow.getDate() && /Бронь: Guest28/.test(bkToast) && /18:15/.test(bkToast), JSON.stringify({ start_time: sent.start_time, toast: bkToast }));
   await page.evaluate(() => newBookingDrawer()); await sleep(600);
   await page.screenshot({ path: OUT + '/zh7_booking.png', clip: { x: 1040, y: 0, width: 400, height: 700 } });

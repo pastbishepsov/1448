@@ -20,9 +20,7 @@ const z = require('./_z');
   const boss = await z.openAdmin('boss');
   await z.nav(boss, 'staff');
   await boss.fill('#stNick', M);
-  await boss.click('button[onclick="promoteStaff()"]');
-  await z.sleep(1500);
-  const t1 = norm(await z.text(boss, '#toast'));
+  const t1 = norm(await z.toastAfter(boss, () => boss.click('button[onclick="promoteStaff()"]'), 'снова в команде')); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('«Назначить» бывшего сотрудника — тост «z15m снова в команде — может входить в админку; новый период работы с сегодня, '
     + 'прежние — в карточке»', t1 === `${M} снова в команде — может входить в админку; новый период работы с сегодня, прежние — в карточке`
     && z.sql(`SELECT role FROM users WHERE id = '${mid}'`) === 'admin', t1);
@@ -43,18 +41,14 @@ const z = require('./_z');
     JSON.stringify(periods));
   await z.shot(boss, 'z15_card_periods');
   await boss.fill('#sc_phone', '+48 500 000 012');
-  await boss.click('#drawer button:has-text("Сохранить")');
-  await z.sleep(1500);
-  const t2 = norm(await z.text(boss, '#toast'));
+  const t2 = norm(await z.toastAfter(boss, () => boss.click('#drawer button:has-text("Сохранить")'), 'сохранена'));
   await archive(boss);
   await openCard(boss, M);
   const ph = await boss.evaluate(() => document.getElementById('sc_phone').value);
   z.check('телефон «+48 500 000 012» — тост «Карточка z15m сохранена», в карточке +48500000012', t2 === `Карточка ${M} сохранена`
     && ph === '+48500000012', JSON.stringify({ t2, ph }));
   await boss.fill('#sc_phone', '600 000');
-  await boss.click('#drawer button:has-text("Сохранить")');
-  await z.sleep(1500);
-  const t3 = norm(await z.text(boss, '#toast'));
+  const t3 = norm(await z.toastAfter(boss, () => boss.click('#drawer button:has-text("Сохранить")'), 'Телефон'));
   z.check('телефон «600 000» — отказ «Телефон — в международном формате: + и 6–15 цифр», в базе прежний',
     t3 === 'Телефон — в международном формате: + и 6–15 цифр'
     && z.sql(`SELECT phone FROM staff_profiles WHERE user_id = '${mid}'`) === '+48500000012', t3);

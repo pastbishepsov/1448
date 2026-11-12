@@ -33,7 +33,7 @@ const z = require('./_z');
   const lots = (gid, s) => z.rows(`SELECT part || ' ' || qty_in || '/' || qty_left || ' @' || COALESCE(price_grosz::text, '-') FROM stock_lots WHERE good_id = '${gid}' AND supply_id = '${s}' ORDER BY part`);
 
   const boss = await z.openAdmin('boss');
-  const toast = async (p, ms = 2000) => { await z.sleep(ms); return (await z.text(p, '#toast')) || ''; };
+  const after = (p, act, want) => z.toastAfter(p, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const tabs = () => boss.evaluate(() => { const t = document.querySelector('#accTabs button[data-t="pur"]'), b = document.getElementById('accBadge');
     return { text: t ? t.textContent : null, n: t && t.dataset.n ? +t.dataset.n : 0, rail: b && !b.classList.contains('hidden') ? +b.textContent : 0 }; });
   const rowOf = (tbl, id) => boss.evaluate(([t, i]) => { const r = document.querySelector(`#${t} tr.purRow[data-id="${i}"]`);
@@ -63,8 +63,7 @@ const z = require('./_z');
     d0.title === 'Цены поставки' && d0.heads[0] === `${A} пришло 30 · ушло 12` && d0.heads[1] === `${B} пришло 20` && JSON.stringify(d0.pieces) === '[["30×"],["20×"]]'
     && d0.cat === 'Закупка товаров' && d0.method === 'Банк' && d0.save === 'Записать цены', JSON.stringify(d0));
   await boss.fill(piece(1, 1) + ':nth-of-type(2)', '2.5');
-  await boss.click('#purSave');
-  const e1 = await toast(boss, 700);
+  const e1 = await after(boss, () => boss.click('#purSave'), 'цена за штуку');
   z.check(`без цены у «${B}» — тост «цена за штуку …», запроса нет`, e1 === `«${B}»: цена за штуку — от 0, не больше двух знаков после запятой`
     && z.sql(`SELECT status FROM supplies WHERE id = '${sid}'`) === 'waiting', e1);
   await boss.fill(piece(1, 1) + ':nth-of-type(1)', '20');
@@ -77,8 +76,7 @@ const z = require('./_z');
   z.check('«+ цена» — второй кусок с оставшимися 10 шт (цена 2,50 сохранилась); итог по поставке 140,00 zł',
     JSON.stringify(d1.pieces[0]) === '["20×2.5","10×"]' && d2.total.replace(/\s+/g, ' ') === 'Итого по поставке 140,00 zł', JSON.stringify({ d1: d1.pieces, total: d2.total }));
   await z.shot(boss, 'z10_pricing_drawer');
-  await boss.click('#purSave');
-  const t1 = await toast(boss), row1 = await rowOf('purDone', sid), w1 = await rowOf('purWait', sid), tb1 = await tabs();
+  const t1 = await after(boss, () => boss.click('#purSave'), 'Поставка оценена'), row1 = await rowOf('purDone', sid), w1 = await rowOf('purWait', sid), tb1 = await tabs();
   z.check('«Записать цены» → тост «Поставка оценена: 140,00 zł · расход заведён — Закупка товаров»; поставка — в «Оценённых»: документ, контрагент, 140,00 zł, «Закупка товаров · Банк»; число «Закупок» и бейдж — меньше на 1',
     t1 === 'Поставка оценена: 140,00 zł · расход заведён — Закупка товаров' && !w1 && row1 && row1[1] === `FV z10p/1 от ${today}` && row1[2] === CP
     && row1[3] === `${A} ×30, ${B} ×20` && row1[4] === '140,00 zł' && row1[5] === 'Закупка товаров · Банк' && tb1.n === sup0 - 1 && tb1.rail === due0 + sup0 - 1,
@@ -94,8 +92,7 @@ const z = require('./_z');
     && d3.exp === `Расход поставки: 140,00 zł · Закупка товаров · ${today} — переоценка его перепишет` && d3.save === 'Переоценить', JSON.stringify(d3));
   await boss.click('#purLines .purLine:nth-child(1) > .purPiece:nth-child(3) button'); await z.sleep(400); // убрать второй кусок
   await boss.fill(piece(1, 1) + ':nth-of-type(1)', '30'); await boss.fill(piece(1, 1) + ':nth-of-type(2)', '2.7');
-  await boss.click('#purSave');
-  const t2 = await toast(boss), eid = z.sql(`SELECT expense_id FROM supplies WHERE id = '${sid}'`);
+  const t2 = await after(boss, () => boss.click('#purSave'), 'Переоценка'), eid = z.sql(`SELECT expense_id FROM supplies WHERE id = '${sid}'`);
   z.check('переоценка «окна» 30 × 2,70 → тост «Переоценка: 143,00 zł · расход переписан»; расход — 143,00',
     t2 === 'Переоценка: 143,00 zł · расход переписан' && z.sql(`SELECT gross_grosz FROM expenses WHERE id = '${eid}'`) === '14300'
     && JSON.stringify(lots(ga, sid)) === '["1 30/18 @270"]', JSON.stringify({ t2, lots: lots(ga, sid) }));
@@ -126,8 +123,7 @@ const z = require('./_z');
     return r ? [...r.querySelectorAll('button')].map(b => b.textContent) : null; }, sid2);
   await boss.click(`#suppliesBox tr.supRow[data-id="${sid2}"] button:has-text("Цены")`); await z.sleep(1200);
   await boss.fill(piece(1, 1) + ':nth-of-type(2)', '0');
-  await boss.click('#purSave');
-  const t3 = await toast(boss), gone2 = await boss.evaluate(i => !document.querySelector(`#suppliesBox tr.supRow[data-id="${i}"]`), sid2);
+  const t3 = await after(boss, () => boss.click('#purSave'), 'Поставка оценена'), gone2 = await boss.evaluate(i => !document.querySelector(`#suppliesBox tr.supRow[data-id="${i}"]`), sid2);
   z.check('«Товары» → «Поставки» у владельца: «Исправить» и «Цены»; подарок по 0 → тост «Поставка оценена: 0,00 zł — сумма 0, расхода нет», из «ждут цен» ушла',
     JSON.stringify(btns) === '["Исправить","Цены"]' && t3 === 'Поставка оценена: 0,00 zł — сумма 0, расхода нет' && gone2, JSON.stringify({ btns, t3, gone2 }));
 

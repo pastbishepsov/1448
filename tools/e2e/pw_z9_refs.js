@@ -21,7 +21,7 @@ const z = require('./_z');
   const catExisted = (await apiCats()).some(c => c.name === CAT), cpExisted = (await apiCps()).some(p => p.name === CP);
 
   const boss = await z.openAdmin('boss');
-  const toast = async () => { await z.sleep(1500); return (await z.text(boss, '#toast')) || ''; };
+  const after = (act, want) => z.toastAfter(boss, act, want); // З19-и13: тост этого действия, а не #toast через паузу
   const catRow = name => boss.evaluate(n => { const r = [...document.querySelectorAll('#refCats tr.refRow')].find(x => x.cells[0].textContent.startsWith(n));
     return r ? { id: r.dataset.id, off: r.classList.contains('refOff'), cells: [...r.cells].map(c => c.innerText.replace(/\s+/g, ' ').trim()) } : null; }, name);
   const cpRow = name => boss.evaluate(n => { const r = [...document.querySelectorAll('#refCps tr.refRow')].find(x => x.cells[0].textContent.startsWith(n));
@@ -41,8 +41,8 @@ const z = require('./_z');
   await z.shot(boss, 'z9_refs');
 
   // своя категория
-  await boss.fill('#rcName', CAT); await boss.check('#rcPurchase'); await boss.click('#rcAdd');
-  const t1 = await toast(), r1 = await catRow(CAT);
+  await boss.fill('#rcName', CAT); await boss.check('#rcPurchase');
+  const t1 = await after(() => boss.click('#rcAdd'), catExisted ? 'уже есть' : 'добавлена'), r1 = await catRow(CAT);
   z.check(`своя категория «${CAT}» с закупкой → тост «добавлена — закупка», строка «своя · закупка»`,
     (catExisted ? /уже есть/.test(t1) : t1.includes(`Категория «${CAT}» добавлена — закупка · уже в форме расхода`)) && r1 && r1.cells[1] === 'своя' && r1.cells[2] === 'закупка',
     JSON.stringify({ t1, r1 }));
@@ -50,17 +50,15 @@ const z = require('./_z');
   const lock = await boss.evaluate(() => ({ title: document.getElementById('drawerTitle').textContent, dis: document.getElementById('rcEditPurchase').disabled }));
   await boss.evaluate(() => closeDrawer());
   await boss.click(`#refCats tr.refRow[data-id="${r1.id}"] button:has-text("Изменить")`); await z.sleep(600);
-  await boss.fill('#rcEditName', CAT2); await boss.click('#rcSave');
-  const t2 = await toast(), r2 = await catRow(CAT2);
+  await boss.fill('#rcEditName', CAT2);
+  const t2 = await after(() => boss.click('#rcSave'), 'Категория поправлена'), r2 = await catRow(CAT2);
   z.check('«Изменить»: у «Аренды» «закупка» заблокирована; своя переименована → «✓ Категория поправлена», строка с новым именем',
     lock.title === 'Категория' && lock.dis && /Категория поправлена/.test(t2) && r2 && r2.id === r1.id, JSON.stringify({ lock, t2, r2 }));
-  await boss.click(`#refCats tr.refRow[data-id="${r1.id}"] button:has-text("Скрыть")`);
-  const t3 = await toast(), r3 = await catRow(CAT2);
+  const t3 = await after(() => boss.click(`#refCats tr.refRow[data-id="${r1.id}"] button:has-text("Скрыть")`), 'скрыта'), r3 = await catRow(CAT2);
   const f1 = await expForm();
   await boss.evaluate(() => closeDrawer());
   await tabRefs();
-  await boss.click(`#refCats tr.refRow[data-id="${r1.id}"] button:has-text("Вернуть")`);
-  const t4 = await toast(), r4 = await catRow(CAT2);
+  const t4 = await after(() => boss.click(`#refCats tr.refRow[data-id="${r1.id}"] button:has-text("Вернуть")`), 'снова в списке'), r4 = await catRow(CAT2);
   z.check('«Скрыть» → тост, строка бледная «· скрыта», в форме расхода её нет; «Вернуть» → «снова в списке»',
     t3.includes(`«${CAT2}» скрыта — в новом расходе её нет, старые расходы остались`) && r3 && r3.off && /· скрыта/.test(r3.cells[0])
     && !f1.cats.includes(CAT2) && f1.cats.includes('Аренда') && t4.includes(`«${CAT2}» снова в списке`) && r4 && !r4.off, JSON.stringify({ t3, r3, cats: f1.cats.length, t4 }));
@@ -68,40 +66,36 @@ const z = require('./_z');
   // контрагент
   if (!cpExisted) {
     await boss.click('#rpNew'); await z.sleep(600);
-    await boss.fill('#rpName', CP); await boss.fill('#rpNip', '123-456-78-90'); await boss.click('#rpSave');
-    const t5 = await toast();
-    await boss.fill('#rpNip', '774-000-14-54'); await boss.fill('#rpContact', 'druk@example.pl'); await boss.click('#rpSave');
-    const t6 = await toast(), p1 = await cpRow(CP);
+    await boss.fill('#rpName', CP); await boss.fill('#rpNip', '123-456-78-90');
+    const t5 = await after(() => boss.click('#rpSave'), 'NIP не сходится');
+    await boss.fill('#rpNip', '774-000-14-54'); await boss.fill('#rpContact', 'druk@example.pl');
+    const t6 = await after(() => boss.click('#rpSave'), 'добавлен'), p1 = await cpRow(CP);
     z.check('новый контрагент: NIP 123-456-78-90 → «NIP не сходится по контрольной сумме»; 774-000-14-54 → «добавлен», в списке NIP через дефисы',
       /NIP не сходится по контрольной сумме/.test(t5) && t6.includes(`Контрагент «${CP}» добавлен`) && p1 && p1.cells[1] === '774-000-14-54' && p1.cells[2] === 'druk@example.pl',
       JSON.stringify({ t5, t6, p1 }));
   } else {
     const p0 = await cpRow(CP);
     await boss.click(`#refCps tr.refRow[data-id="${p0.id}"] button:has-text("Изменить")`); await z.sleep(600);
-    await boss.fill('#rpNip', '123-456-78-90'); await boss.click('#rpSave');
-    const t5 = await toast();
-    await boss.fill('#rpNip', '774-000-14-54'); await boss.fill('#rpContact', 'druk' + Date.now() % 1000 + '@example.pl'); await boss.click('#rpSave');
-    const t6 = await toast(), p1 = await cpRow(CP);
+    await boss.fill('#rpNip', '123-456-78-90');
+    const t5 = await after(() => boss.click('#rpSave'), 'NIP не сходится');
+    await boss.fill('#rpNip', '774-000-14-54'); await boss.fill('#rpContact', 'druk' + Date.now() % 1000 + '@example.pl');
+    const t6 = await after(() => boss.click('#rpSave'), 'Контрагент поправлен'), p1 = await cpRow(CP);
     z.check('контрагент (с прошлого прогона): NIP 123-456-78-90 → «NIP не сходится по контрольной сумме»; верный — «Контрагент поправлен»',
       /NIP не сходится по контрольной сумме/.test(t5) && /Контрагент поправлен/.test(t6) && p1 && p1.cells[1] === '774-000-14-54', JSON.stringify({ t5, t6, p1 }));
   }
   const p2 = await cpRow(CP);
-  await boss.click(`#refCps tr.refRow[data-id="${p2.id}"] button:has-text("Скрыть")`);
-  const t7 = await toast(), p3 = await cpRow(CP);
-  await boss.click(`#refCps tr.refRow[data-id="${p2.id}"] button:has-text("Вернуть")`);
-  const t8 = await toast();
+  const t7 = await after(() => boss.click(`#refCps tr.refRow[data-id="${p2.id}"] button:has-text("Скрыть")`), 'скрыт'), p3 = await cpRow(CP);
+  const t8 = await after(() => boss.click(`#refCps tr.refRow[data-id="${p2.id}"] button:has-text("Вернуть")`), 'снова в подсказках');
   z.check('контрагент: «Скрыть» → «скрыт — в подсказках его нет», строка бледная; «Вернуть» → «снова в подсказках»',
     t7.includes(`«${CP}» скрыт — в подсказках его нет`) && p3 && p3.off && t8.includes(`«${CP}» снова в подсказках`), JSON.stringify({ t7, p3, t8 }));
 
   // способы оплаты
-  await boss.click('#rmMethods button[data-m="card"]');
-  const t9 = await toast(), cardOn = await boss.evaluate(() => document.querySelector('#rmMethods button[data-m="card"]').classList.contains('on'));
+  const t9 = await after(() => boss.click('#rmMethods button[data-m="card"]'), 'выключен'), cardOn = await boss.evaluate(() => document.querySelector('#rmMethods button[data-m="card"]').classList.contains('on'));
   await z.shot(boss, 'z9_refs_methods');
   const f2 = await expForm();
   await boss.evaluate(() => closeDrawer());
   await tabRefs();
-  await boss.click('#rmMethods button[data-m="card"]');
-  const t10 = await toast();
+  const t10 = await after(() => boss.click('#rmMethods button[data-m="card"]'), 'снова включён');
   const f3 = await expForm();
   await boss.evaluate(() => closeDrawer());
   z.check('«Карта» выключена → тост, кнопка погасла, в форме расхода «Карты» нет; включили — снова есть',

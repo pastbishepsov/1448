@@ -18,7 +18,6 @@ const z = require('./_z');
   }
   const scan = async (page, code) => { await page.keyboard.type(code, { delay: 8 }); await page.keyboard.press('Enter'); await z.sleep(500); };
   const blur = page => page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
-  const toastNow = page => page.evaluate(() => (document.getElementById('toast') || {}).textContent || '');
 
   const adm = await z.openAdmin('admin1');
   await z.nav(adm, 'goods'); await z.sleep(1500);
@@ -30,13 +29,13 @@ const z = require('./_z');
   }
   // в чек
   await blur(adm);
-  await scan(adm, A); const t1 = await toastNow(adm);
+  const t1 = await z.toastAfter(adm, () => scan(adm, A), 'в чек'); // З19-и13: тост этого действия, а не #toast через паузу
   await scan(adm, A);
   await scan(adm, U);
   const c1 = await adm.evaluate(ids => ({ kola: cart[ids['z23k Кола']] || 0, upc: cart[ids['z23k UPC']] || 0, tab: curTab }), ids);
   z.check(`«Товары»: скан Колы дважды — в чеке 2 («${t1}»), раздел не сменился`, c1.kola === 2 && c1.tab === 'goods' && /в чек/.test(t1), JSON.stringify(c1));
   z.check('UPC-A из 12 цифр нашёл позицию с EAN-13 0036000291452', c1.upc === 1, JSON.stringify(c1));
-  await scan(adm, C); const t2 = await toastNow(adm);
+  const t2 = await z.toastAfter(adm, () => scan(adm, C), 'не привязан');
   const c2 = await adm.evaluate(() => Object.values(cart).reduce((a, b) => a + b, 0));
   z.check(`чужой код — «${t2}», чек не тронут`, /не привязан ни к одной позиции/.test(t2) && c2 === 3, JSON.stringify({ t2, c2 }));
   await adm.evaluate(() => cartClear());
@@ -76,7 +75,7 @@ const z = require('./_z');
   await z.nav(boss, 'goods'); await z.sleep(1500);
   await boss.evaluate(id => editGood(id), ids['z23k Без кода']); await z.sleep(600);
   await boss.click('#gd_scan'); await z.sleep(200);
-  await boss.keyboard.type(C, { delay: 8 }); await boss.keyboard.press('Enter'); await z.sleep(400);
+  await boss.keyboard.type(C, { delay: 8 }); await z.toastAfter(boss, () => boss.keyboard.press('Enter'), 'считан'); // снимок ниже — с этим тостом
   const f = await boss.evaluate(() => ({ v: document.getElementById('gd_barcode').value, open: document.getElementById('drawer').classList.contains('open'),
     t: (document.getElementById('toast') || {}).textContent || '' }));
   await z.shot(boss, 'z23_scan_card');

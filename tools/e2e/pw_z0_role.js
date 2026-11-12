@@ -25,9 +25,7 @@ const z = require('./_z');
   const txt = await z.text(boss, '#s-staff');
   z.check('«Персонал» владельца: подписи про перелогин нет', !/перелогин/.test(txt), (txt.match(/[^.]*перелогин[^.]*/) || [''])[0]);
   await boss.fill('#stNick', 'z0live');
-  await boss.click('button:has-text("Назначить")');
-  await z.sleep(800);
-  const toast = await z.text(boss, '#toast');
+  const toast = await z.toastAfter(boss, () => boss.click('button:has-text("Назначить")'), 'может входить в админку'); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('тост назначения: «теперь админ» (бывшему сотруднику — «снова в команде», З15-и5), «может входить в админку», без «пусть перелогинится»',
     /z0live (теперь админ|снова в команде) — может входить в админку/.test(toast) && !/перелогин/.test(toast), toast);
   await z.shot(boss, 'z0_role_staff');

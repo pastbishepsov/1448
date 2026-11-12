@@ -60,8 +60,7 @@ const fs = require('fs');
     && z.sql("SELECT count(*) FROM computers WHERE name LIKE 'z25v-%'") === '0', JSON.stringify(pv));
   await boss.click('#hiApply'); await z.sleep(200);
   const armed = await boss.evaluate(() => (document.getElementById('hiApply') || {}).textContent || '');
-  await boss.click('#hiApply'); await z.sleep(1500);
-  const t1 = (await z.text(boss, '#toast')) || '';
+  const t1 = await z.toastAfter(boss, () => boss.click('#hiApply'), 'Зал из файла'); // З19-и13: тост этого действия, а не #toast через паузу
   const back = z.sql("SELECT concat_ws('|', c.pos_x, c.pos_y, c.mac, z.name, z.rate_pln) FROM computers c JOIN zones z ON z.id = c.zone_id WHERE c.name = 'z25v-1'");
   z.check('«Применить» — первое нажатие «Применить? Ещё раз», второе — тост «Зал из файла: …», z25v-1 снова на месте с MAC, зона 12 zł/ч',
     /Применить\? Ещё раз/.test(armed) && /Зал из файла: .*ПК: новых 2/.test(t1) && back === `${cell[0]}|${cell[1]}|AA:BB:CC:00:25:0A|z25v Зона|12.00`,

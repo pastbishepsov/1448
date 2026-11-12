@@ -2,6 +2,7 @@
 // второй строкой, шторка ожидания шелла, «⚠ занят без сессии» + «Освободить ПК» arm-паттерном,
 // «Продлить» у придержания, рамка «зовёт» по ПК гостя, легенда, схема ужимается при шторке.
 const { chromium } = require('playwright-core');
+const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { spawn, execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -50,8 +51,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await sleep(200);
   const armed = await page.evaluate(() => [...document.querySelectorAll('#drawerBody button')].map(b => b.textContent.trim()).find(t => /Ещё раз — освободить/.test(t)));
   check('первый клик взводит: «Ещё раз — освободить»', !!armed, String(armed));
-  await page.click('#drawerBody button:has-text("Ещё раз — освободить")');
-  await sleep(1200);
+  await toastAfter(page, () => page.click('#drawerBody button:has-text("Ещё раз — освободить")'), 'освобождён'); // снимок ниже — с этим тостом
   const afterRel = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, st: (hallData.find(p => p.name === 'PC-07') || {}).status, stuck: (hallData.find(p => p.name === 'PC-07') || {}).stuck, open: document.body.classList.contains('drawer-open') }));
   check('второй клик: PC-07 освобождён, тост, шторка закрыта', /освобождён/.test(afterRel.toast) && afterRel.st === 'available' && !afterRel.stuck && !afterRel.open, JSON.stringify(afterRel));
   // форма посадки на PC-08 (офлайн)
@@ -63,9 +63,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page.click('#drawerBody .uform .segs button:has-text("60 мин")');
   await sleep(300);
   await page.fill('#seatNick', 'Guest29');
-  await page.click('#drawerBody button:has-text("Начать сессию")');
-  await sleep(1500);
-  const seatToast = await page.evaluate(() => document.getElementById('toast').textContent);
+  const seatToast = await toastAfter(page, () => page.click('#drawerBody button:has-text("Начать сессию")'), 'Guest29 за');
   check('тост посадки честный: «⏻ Guest29 за «PC-08»: ПК не на связи — ждём его 7 мин … WoL»', /Guest29 за «PC-08»/.test(seatToast) && /ждём его 7 мин/.test(seatToast) && /WoL/.test(seatToast), seatToast);
   await page.evaluate(() => closeDrawer());
   await sleep(800);
@@ -91,10 +89,8 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   check('придержанный ПК: кнопки «Продлить» и «Снять придержание»', holdBtns.some(t => /Продлить/.test(t)) && holdBtns.some(t => /Снять придержание/.test(t)), holdBtns.join(' | '));
   const holdBefore = psql(`SELECT EXTRACT(EPOCH FROM hold_until)::int FROM computers WHERE name='PC-06'`);
   await sleep(1100);
-  await page.click('#drawerBody button:has-text("Продлить")');
-  await sleep(1200);
+  const holdToast = await toastAfter(page, () => page.click('#drawerBody button:has-text("Продлить")'), 'продлено');
   const holdAfter = psql(`SELECT EXTRACT(EPOCH FROM hold_until)::int FROM computers WHERE name='PC-06'`);
-  const holdToast = await page.evaluate(() => document.getElementById('toast').textContent);
   check('«Продлить»: срок сдвинулся вперёд, шторка осталась, тост «продлено»', +holdAfter > +holdBefore && /продлено/.test(holdToast) && (await page.evaluate(() => drawerPCId)) === P('PC-06').id, `${holdBefore} → ${holdAfter} · ${holdToast}`);
   await page.evaluate(() => closeDrawer());
   await j(API + '/admin/computers/' + P('PC-06').id + '/hold', { method: 'DELETE', headers: h });
