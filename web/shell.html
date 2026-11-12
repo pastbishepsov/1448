@@ -218,6 +218,18 @@
   .sc-note b{font-size:14px; color:#fff; font-weight:800}
   @keyframes scLow{50%{box-shadow:inset 0 0 0 2px rgba(255,39,64,1), inset 0 0 34px rgba(255,39,64,.38)}}
   body.perf-lite .sesscard.sc-low{animation:none}
+  /* К9-и3: пакет своей зоны, на который хватает кошелька и по которому час дешевле, — кнопкой в том же слоте, что
+     заметка и2 (вместе их не бывает: в красном состоянии пакет не предлагаем). Нажатие открывает вкладку «Пакеты» */
+  .sc-pack{flex:1; min-width:0; position:relative; text-align:left; font:inherit; font-size:11.5px; line-height:1.2;
+    color:var(--dim); cursor:pointer; background:var(--glass-2); border:1px solid var(--glass-brd); border-radius:11px;
+    padding:1px 24px 1px 10px; display:flex; flex-direction:column; justify-content:center;
+    transition:border-color .2s, background .2s}
+  .sc-pack:hover{border-color:rgba(255,255,255,.34); background:rgba(255,255,255,.1)}
+  .sc-pack::after{content:'›'; position:absolute; right:9px; top:50%; transform:translateY(-54%); font-size:18px}
+  .sc-pack-1{display:flex; min-width:0; font-size:13px; color:var(--txt); white-space:nowrap}
+  .sc-pack-1 b:first-child{min-width:0; overflow:hidden; text-overflow:ellipsis} /* длинное имя режется, цена видна */
+  .sc-pack-1 b:last-child{flex:none; white-space:pre}
+  #scPackHour{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .sidetabs{display:flex; border-bottom:1px solid var(--hair)}
   .sidetabs button{flex:1; background:transparent; border:0; color:var(--dim); padding:12px 4px; cursor:pointer;
                    font-weight:700; font-size:12.5px; border-bottom:2px solid transparent; transition:color .15s}
@@ -1265,6 +1277,7 @@ const SH_RU = {
   sc_lbl: "Денег хватит на", sc_lbl_mix: "Хватит на", sc_lbl_bk: "ПК забронирован — осталось", // К9-и1: карточка идущей сессии
   sc_low: "Деньги кончаются — осталось", sc_low_mix: "Время кончается — осталось", // К9-и2: 15 минут и меньше
   sc_note: "Пополнить — у стойки", sc_note2: "игра не прервётся",
+  sc_pack: "час по {h} zł вместо {r}", // К9-и3: пакет в карточке — вторая строка, первая — имя и цена пакета
   sc_till: "до", sc_play: "Играешь", sc_spent: "потрачено", sc_rate: "{r} zł/ч", dur_h: "{n} ч", dur_m: "{n} мин",
   sess_none: "Сессия не начата",
   sess_ready: "Готов играть?",
@@ -1821,6 +1834,7 @@ const SH_EN = {
   sc_lbl: "Money lasts for", sc_lbl_mix: "Enough for", sc_lbl_bk: "PC is booked — time left",
   sc_low: "Money is running out — time left", sc_low_mix: "Running low — time left",
   sc_note: "Top up at the desk", sc_note2: "your game won't be interrupted",
+  sc_pack: "{h} zł per hour instead of {r}",
   sc_till: "until", sc_play: "Playing", sc_spent: "spent", sc_rate: "{r} zł/h", dur_h: "{n} h", dur_m: "{n} min",
   sess_none: "No session yet",
   sess_ready: "Ready to play?",
@@ -2377,6 +2391,7 @@ const SH_PL = {
   sc_lbl: "Pieniędzy starczy na", sc_lbl_mix: "Starczy na", sc_lbl_bk: "PC zarezerwowany — zostało",
   sc_low: "Pieniądze się kończą — zostało", sc_low_mix: "Czas się kończy — zostało",
   sc_note: "Doładuj przy ladzie", sc_note2: "gra nie zostanie przerwana",
+  sc_pack: "{h} zł za godzinę zamiast {r}",
   sc_till: "do", sc_play: "Grasz", sc_spent: "wydano", sc_rate: "{r} zł/h", dur_h: "{n} h", dur_m: "{n} min",
   sess_none: "Sesja nie rozpoczęta",
   sess_ready: "Gotowy do gry?",
@@ -3390,6 +3405,7 @@ async function loadAll(){
     if (prevLvl && me.level > prevLvl) showLevelUp(me.level);
     renderTop(); renderWallet(); renderSession(); renderSide(); renderLock();
     paintReadyGate(); // Е1: посадили, но время ещё не пошло — просим подтвердить
+    packsKeepFresh(); // К9-и3
     // Г8-и5: любимые игры изменились → пересобрать витрину (звёзды и порядок)
     const favsKey = (me.favorite_games || []).join();
     if (favsKey !== lastFavsKey){ lastFavsKey = favsKey; if (CATALOG.games) renderCatalog(); }
@@ -3508,6 +3524,10 @@ function paintSessCard(f){
   const low = !!f.low, cardEl = document.getElementById('sessCard');
   if (cardEl) cardEl.classList.toggle('sc-low', low);
   show('scNote', low && !f.byBooking);
+  const po = low ? null : packOffer(); // К9-и3: в красном состоянии на этом месте «Пополнить», пакет не предлагаем
+  show('scPack', !!po);
+  if (po){ set('scPackName', po.name); set('scPackPrice', ' — ' + fmtNum(po.price_pln) + ' zł');
+    set('scPackHour', T('sc_pack', {h: fmtNum(po.hour_pln), r: fmtNum(eff)})); }
   set('scLbl', f.byBooking ? STR.sc_lbl_bk : low ? (f.mixed ? STR.sc_low_mix : STR.sc_low) : f.mixed ? STR.sc_lbl_mix : STR.sc_lbl);
   set('scLeft', fmtDur(f.left));
   set('scTill', f.till ? fmtClock(f.till) : ''); show('scTillBox', !!f.till);
@@ -3521,15 +3541,42 @@ function paintSessCard(f){
    покупает сам с кошелька (Р12): ночью админа за стойкой нет, а час по
    пакету дешевле — ждать утра ради этого незачем. ── */
 let myPacks = [], packShop = [], packBusy = false;
+// К9-и3: карточке сессии нужен каталог, а грузился он только при открытии вкладки. Пока идёт сессия, держим его не
+// старше пяти минут (владелец мог выключить пакет или поменять цену); запрос упал — следующая попытка через пять минут
+let packsAt = 0;
+function packsKeepFresh(){ if (activeSession && Date.now() - packsAt > 300000){ packsAt = Date.now(); loadPacks(); } }
 async function loadPacks(){
   try{
     const [mine, shop] = await Promise.all([api('/me/packages'), api('/me/packages/catalog')]);
     myPacks = mine.packages || [];
     packShop = shop.packages || [];
     minutesByZone = mine.minutes_by_zone || []; // Ж2
+    packsAt = Date.now(); // К9-и3
   }catch(e){ /* тихо: панель покажет, что есть */ }
   if (curTab === 'pack') renderSide();
   if (packShopOpen()) paintPackShop();
+}
+
+// К9-и3: пакет для строки в карточке сессии. Из каталога гостя (тот же список, что во вкладке: сервер уже убрал
+// выключенные и то, что этому гостю сейчас не продаётся) — пакет зоны сессии, на который хватает кошелька и по
+// которому час дешевле, чем сессия стоит сейчас со скидкой гостя; из нескольких — с самым дешёвым часом, при
+// равенстве — дешевле по цене. Пакет с окном списания (тратится только в свои дни и часы) не предлагаем: вне окна
+// сессия платит кошельком, и «час дешевле» было бы неправдой, — он остаётся во вкладке. У гостя уже есть минуты
+// пакета этой зоны — не предлагаем ничего
+function packOffer(){
+  if (!activeSession || !me || packMinutesHere > 0) return null;
+  const gr = v => Math.round((v || 0) * 100);
+  const rateGr = gr(activeSession.effective_rate_pln), w = me.wallet_grosz || 0, zid = activeSession.zone_id;
+  let best = null;
+  packShop.forEach(p => {
+    if (zid ? p.zone_id !== zid : !sessZone || p.zone !== sessZone) return;
+    if (!(p.minutes > 0) || gr(p.price_pln) > w || !(gr(p.hour_pln) > 0) || gr(p.hour_pln) >= rateGr) return;
+    if ((p.spend_days_mask != null && p.spend_days_mask !== 127) || p.spend_start_min > 0
+        || (p.spend_end_min != null && p.spend_end_min !== 1440)) return;
+    if (!best || gr(p.hour_pln) < gr(best.hour_pln)
+        || (gr(p.hour_pln) === gr(best.hour_pln) && gr(p.price_pln) < gr(best.price_pln))) best = p;
+  });
+  return best;
 }
 
 function packLiveLine(){
@@ -3646,6 +3693,11 @@ async function buyPack(id){
   try{
     const d = await api('/me/packages', {method:'POST', body: JSON.stringify({package_id: id})});
     toast(T('pack_bought', {n: d.package.name}));
+    // К9-и3: минуты купленного пакета — сразу, а не со следующим опросом (до 10 с): иначе кошелёк уже меньше, а
+    // минут ещё нет — прогноз проваливается, и карточка сессии зря краснеет
+    let ss = null;
+    if (activeSession) try{ ss = await api('/me/sessions'); }catch(e){}
+    if (ss){ packMinutesHere = ss.pack_minutes || 0; zoneMinutesHere = ss.zone_minutes || 0; }
     if (me) me.wallet_grosz = Math.round((d.wallet_pln || 0) * 100);
     renderWallet();
     await loadPacks();
@@ -4585,6 +4637,7 @@ function renderSession(){
         ${!pauseOn && economy && economy.afk_stop_min > 0 ? `<div class="muted" style="font-size:11.5px">${esc(T('sess_nopause_hint', {n: economy.afk_stop_min}))}</div>` : ''}
         <div class="sc-btns">
           <div class="sc-note hidden" id="scNote"><b>${esc(STR.sc_note)}</b>${esc(STR.sc_note2)}</div>
+          <button class="sc-pack hidden" id="scPack" onclick="sideTab('pack')"><span class="sc-pack-1"><b id="scPackName"></b><b id="scPackPrice"></b></span><span id="scPackHour"></span></button>
           ${pauseOn ? `<button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>` : ''}
           ${DEV_TOOLS ? `<button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>` : ''}
           <button class="btn ghost slim sc-end" onclick="endClick(this)">${esc(STR.btn_finish)}</button>
@@ -4863,6 +4916,7 @@ setInterval(async () => {
     packMinutesHere = ss.pack_minutes || 0;        // Е2-и5: пакет тает — прогноз едет за ним
     zoneMinutesHere = ss.zone_minutes || 0;        // Ж2: зонные минуты тают так же
     sessZone = ss.zone || sessZone;
+    packsKeepFresh(); // К9-и3
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);

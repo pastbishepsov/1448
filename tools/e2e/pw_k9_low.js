@@ -21,17 +21,30 @@ const { CHROME } = require('./_env');
       + "(SELECT computer_id FROM sessions WHERE status='active')");
   };
   const [w0, cm0, pct0] = z.sql(`SELECT wallet_grosz || '|' || coin_minutes || '|' || payment_increase_pct FROM users WHERE id='${g}'`).split('|');
+  // Кошелёк проверка выставляет мимо сервера, а стенд трека З держит правило «кошелёк гостя = сумма его журнала»
+  // (e2e_z0_stand). Поэтому выставление — один запрос: кошелёк и строка журнала на ту же разницу (как посев стенда,
+  // seed_stand.py); в конце проверка сама сверяет, что расхождение кошелька с журналом осталось каким было
+  const setWallet = v => z.sql(`WITH o AS (SELECT id, wallet_grosz AS w FROM users WHERE id='${g}' FOR UPDATE),
+      u AS (UPDATE users SET wallet_grosz = ${v} FROM o WHERE users.id = o.id RETURNING o.w)
+    INSERT INTO wallet_transactions (user_id, kind, amount_grosz, balance_after, ref_type, note, created_at)
+    SELECT '${g}', 'adjust', ${v} - u.w, ${v}, 'e2e', 'pw_k9_low: проверка выставила кошелёк', now() FROM u WHERE u.w <> ${v}`);
+  const gap = () => z.sql('SELECT u.wallet_grosz - COALESCE((SELECT sum(amount_grosz) FROM wallet_transactions w WHERE w.user_id = u.id), 0) '
+    + `FROM users u WHERE u.id='${g}'`);
+  const gap0 = gap();
   let dep = null;
   z.atEnd(async () => { // гостя — как был: сессию закрыть, пополнение отменить, кошелёк, минуты и скидку вернуть
     await endTails();
     if (dep) {
-      z.sql(`UPDATE users SET wallet_grosz = ${+w0 + 5000} WHERE id='${g}'`);
+      setWallet(+w0 + 5000);
       await z.api('POST', `/admin/deposits/${dep}/void`, {}, 'boss');
     }
-    z.sql(`UPDATE users SET wallet_grosz=${w0}, coin_minutes=${cm0}, payment_increase_pct=${pct0} WHERE id='${g}'`);
+    setWallet(+w0);
+    z.sql(`UPDATE users SET coin_minutes=${cm0}, payment_increase_pct=${pct0} WHERE id='${g}'`);
+    z.check('проверка убрала за собой: кошелёк гостя сходится со своим журналом так же, как до неё', gap() === gap0, `расхождение ${gap0} → ${gap()} гр`);
   });
   await endTails();
-  z.sql(`UPDATE users SET wallet_grosz=9000, coin_minutes=0, payment_increase_pct=0 WHERE id='${g}'`);
+  setWallet(9000);
+  z.sql(`UPDATE users SET coin_minutes=0, payment_increase_pct=0 WHERE id='${g}'`);
 
   // посадка админом; «сессия идёт уже 20 минут»: начало сдвигается в базе, биллинг досчитывает минуты сам
   const BACK = '20 minutes 10 seconds';
@@ -115,7 +128,7 @@ const { CHROME } = require('./_env');
   const cost = m => Math.floor((rate * m + 59) / 60); // цена минут — как у сервера (costForMinutes)
   const b1 = await waitCharge(billed(), 75); // сразу после списания: до следующего — около минуты
   const paid = +z.sql(`SELECT money_minutes FROM sessions WHERE id='${sid}'`);
-  z.sql(`UPDATE users SET wallet_grosz = ${cost(paid + 16) - cost(paid)} WHERE id='${g}'`);
+  setWallet(cost(paid + 16) - cost(paid));
   await sync(p);
   let a = await adm(), c = await card(p);
   const btns0 = await p.evaluate(() => document.querySelectorAll('#sessCard button').length);
@@ -231,7 +244,8 @@ const { CHROME } = require('./_env');
   await z.shot(p, 'k9_low_topup');
 
   console.log('— в запасе минуты, кошелёк пуст');
-  z.sql(`UPDATE users SET coin_minutes = 9, wallet_grosz = 0 WHERE id='${g}'`);
+  z.sql(`UPDATE users SET coin_minutes = 9 WHERE id='${g}'`); // сначала минуты, потом пустой кошелёк: ни мгновения без того и другого
+  setWallet(0);
   await p.waitForFunction(() => (me.coin_minutes || 0) > 0 && !(me.wallet_grosz > 0), null, { timeout: 14000 }).catch(() => {});
   let okMix = false;
   for (let i = 0; i < 3 && !okMix; i++) {
