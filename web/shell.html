@@ -187,6 +187,26 @@
   .sess-on{display:flex; align-items:center; justify-content:space-between; gap:10px}
   .sess-time{font-size:30px; font-weight:900; color:var(--green); font-variant-numeric:tabular-nums;
     text-shadow:0 0 18px rgba(52,211,153,.35)}
+  /* К9-и1: карточка идущей сессии — на сколько хватит, до скольких, тариф, потрачено */
+  .sc{display:flex; flex-direction:column; gap:9px}
+  .sc-top{font-size:12.5px; color:var(--dim); display:flex; align-items:center; white-space:nowrap}
+  .sc-top b{color:var(--txt); flex:none}
+  .sc-dot{width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 10px rgba(52,211,153,.7); flex:none; margin-right:6px}
+  .sc-where{min-width:0; overflow:hidden; text-overflow:ellipsis} /* длинное название зоны режется, тариф виден всегда */
+  .sc-sep{white-space:pre; flex:none}
+  .sc-off{font-size:11px; font-weight:800; color:var(--txt); background:rgba(255,255,255,.08); border-radius:7px; padding:1px 6px;
+    flex:none; margin-left:6px}
+  .sc-main{display:flex; align-items:flex-end; justify-content:space-between; gap:10px}
+  .sc-lbl{font-size:12px; color:var(--dim); margin-bottom:3px}
+  .sc-left{font-size:34px; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; color:var(--txt);
+    letter-spacing:-.01em; white-space:nowrap}
+  .sc-till{font-size:12px; color:var(--dim); text-align:right; line-height:1.15; white-space:nowrap}
+  .sc-till b{display:block; font-size:20px; color:var(--txt); font-variant-numeric:tabular-nums}
+  .sc-row{font-size:12.5px; color:var(--dim); white-space:nowrap}
+  .sc-row b{color:var(--txt); font-weight:700; font-variant-numeric:tabular-nums}
+  .sc-btns{display:flex; gap:8px; align-items:stretch; margin-top:1px}
+  .sc-btns .btn{box-shadow:none}
+  .sc-end{padding:8px 12px; font-size:12.5px; color:var(--dim); margin-left:auto; flex:none}
   .sidetabs{display:flex; border-bottom:1px solid var(--hair)}
   .sidetabs button{flex:1; background:transparent; border:0; color:var(--dim); padding:12px 4px; cursor:pointer;
                    font-weight:700; font-size:12.5px; border-bottom:2px solid transparent; transition:color .15s}
@@ -1231,6 +1251,8 @@ const SH_RU = {
   toast_admin_reply: "💬 Ответ администратора — открой «Админ»",
   sess_paused: "Пауза — время и деньги стоят",
   sess_running: "Сессия идёт",
+  sc_lbl: "Денег хватит на", sc_lbl_mix: "Хватит на", sc_lbl_bk: "ПК забронирован — осталось", // К9-и1: карточка идущей сессии
+  sc_till: "до", sc_play: "Играешь", sc_spent: "потрачено", sc_rate: "{r} zł/ч", dur_h: "{n} ч", dur_m: "{n} мин",
   sess_none: "Сессия не начата",
   sess_ready: "Готов играть?",
   btn_resume: "▶ Продолжить",
@@ -1783,6 +1805,8 @@ const SH_EN = {
   toast_admin_reply: "💬 Admin replied — open “Admin”",
   sess_paused: "Paused — time and money stand still",
   sess_running: "Session running",
+  sc_lbl: "Money lasts for", sc_lbl_mix: "Enough for", sc_lbl_bk: "PC is booked — time left",
+  sc_till: "until", sc_play: "Playing", sc_spent: "spent", sc_rate: "{r} zł/h", dur_h: "{n} h", dur_m: "{n} min",
   sess_none: "No session yet",
   sess_ready: "Ready to play?",
   btn_resume: "▶ Resume",
@@ -2335,6 +2359,8 @@ const SH_PL = {
   toast_admin_reply: "💬 Odpowiedź admina — otwórz „Admin”",
   sess_paused: "Pauza — czas i pieniądze stoją",
   sess_running: "Sesja trwa",
+  sc_lbl: "Pieniędzy starczy na", sc_lbl_mix: "Starczy na", sc_lbl_bk: "PC zarezerwowany — zostało",
+  sc_till: "do", sc_play: "Grasz", sc_spent: "wydano", sc_rate: "{r} zł/h", dur_h: "{n} h", dur_m: "{n} min",
   sess_none: "Sesja nie rozpoczęta",
   sess_ready: "Gotowy do gry?",
   btn_resume: "▶ Wznów",
@@ -3394,34 +3420,78 @@ let minutesByZone = [];                 // Ж2: запас по зонам (се
    Клиент только показывает: баланс и ставка приходят с сервера (Р2),
    списание и решения — целиком серверные (billing.go). ── */
 function fmtZl(gr){ return ((gr||0)/100).toFixed(2).replace('.', ',') + ' zł'; }
+/* К9-и1: один расчёт «на сколько хватит» — и чипу кошелька, и карточке сессии; второй формулы нет.
+   Слагаемые — как у сервера (forecast.go): минуты счёта + зонные + пакет + деньги по тарифу сессии.
+   null — сессии нет или тариф 0; {paused} — пауза; иначе {left, till, byBooking, low, mixed}:
+   left — минут осталось (при чужой брони — до её дедлайна), till — когда кончится (null, если left = 0),
+   mixed — в запасе есть минуты или пакет, а не только деньги. */
+function sessForecast(){
+  if (!activeSession || !me) return null;
+  if (activeSession.paused_at) return {paused: true}; // Г2: время стоит — прогноз «до HH:MM» не честен
+  const rateGr = Math.round((activeSession.effective_rate_pln || 0) * 100);
+  if (rateGr <= 0) return null;
+  // Е2-и5: минуты пакета — такое же оплаченное время, как монеты. Без них
+  // «хватит до 19:40» врёт в меньшую сторону, и гость идёт доплачивать зря.
+  // Ж2: зонные минуты — только годные на ЭТОЙ машине (сервер отдаёт их
+  // отдельно от пула без зоны); минуты чужой зоны в прогноз не входят
+  const mins = (me.coin_minutes || 0) + (zoneMinutesHere || 0) + (packMinutesHere || 0);
+  // деньги — как сервер (minutesAffordable): цена минут округляется вверх до гроша по сумме, не по минуте;
+  // paid — минуты этой сессии, уже оплаченные кошельком. Иначе число на минуту расходилось бы с админским
+  const w = me.wallet_grosz || 0, paid = activeSession.money_minutes || 0, cost = m => Math.floor((rateGr * m + 59) / 60);
+  let byMoney = w > 0 ? Math.floor(w * 60 / rateGr) + 1 : 0;
+  while (byMoney > 0 && cost(paid + byMoney) - cost(paid) > w) byMoney--;
+  let left = mins + byMoney;
+  let low = left <= 15, till = null, byBooking = false;
+  if (left > 0){
+    // «до» — как у сервера (forecastUntil): старт + паузы + (учтённые минуты + остаток). Так время стоит
+    // на месте и равно тому, что видит админ; «сейчас + остаток» раз в минуту прыгало бы туда-сюда.
+    const now = Date.now(), t0 = new Date(activeSession.started_at).getTime();
+    till = new Date(activeSession.billed_minutes == null || isNaN(t0) ? now + left * 60000
+      : Math.max(now, t0 + (activeSession.paused_total_sec || 0) * 1000 + (activeSession.billed_minutes + left) * 60000));
+    if (bookingDeadline && new Date(bookingDeadline) < till){ // Г3: ПК уйдёт под чужую бронь раньше денег
+      till = new Date(bookingDeadline); byBooking = true;
+      low = low || (till - now <= 15 * 60000);
+      left = Math.max(0, Math.ceil((till - now) / 60000));
+    }
+  }
+  return {left, till, byBooking, low, mixed: mins > 0};
+}
+function fmtClock(d){ return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function fmtDur(min){ // «3 ч 05 мин», «23 мин»
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? T('dur_h', {n: h}) + ' ' + T('dur_m', {n: String(m).padStart(2, '0')}) : T('dur_m', {n: m});
+}
 function renderWallet(){
   const zl = document.getElementById('walletZl'), eta = document.getElementById('walletEta');
   if (!zl || !me) return;
   zl.textContent = fmtZl(me.wallet_grosz);
-  let txt = '', low = false;
-  if (activeSession && activeSession.paused_at){
-    txt = STR.eta_pause; // Г2: время стоит — прогноз «до HH:MM» не честен
-  } else if (activeSession){
-    const rateGr = Math.round((activeSession.effective_rate_pln || 0) * 100);
-    if (rateGr > 0){
-      // Е2-и5: минуты пакета — такое же оплаченное время, как монеты. Без них
-      // «хватит до 19:40» врёт в меньшую сторону, и гость идёт доплачивать зря.
-      // Ж2: зонные минуты — только годные на ЭТОЙ машине (сервер отдаёт их
-      // отдельно от пула без зоны); минуты чужой зоны в прогноз не входят
-      const left = (me.coin_minutes || 0) + (zoneMinutesHere || 0) + (packMinutesHere || 0)
-                 + Math.floor((me.wallet_grosz || 0) * 60 / rateGr);
-      low = left <= 15;
-      if (left > 0){
-        let till = new Date(Date.now() + left * 60000), byBooking = false;
-        if (bookingDeadline && new Date(bookingDeadline) < till){ till = new Date(bookingDeadline); byBooking = true; } // Г3
-        txt = T('eta_till', {t: String(till.getHours()).padStart(2, '0') + ':' + String(till.getMinutes()).padStart(2, '0')})
-            + (byBooking ? STR.eta_booking : '');
-        if (byBooking) low = low || (till - Date.now() <= 15 * 60000);
-      } else txt = STR.eta_topup;
-    }
-  }
-  eta.textContent = txt;
-  document.getElementById('walletChip').classList.toggle('low', low);
+  const f = sessForecast();
+  eta.textContent = !f ? '' : f.paused ? STR.eta_pause
+    : f.till ? T('eta_till', {t: fmtClock(f.till)}) + (f.byBooking ? STR.eta_booking : '') : STR.eta_topup;
+  document.getElementById('walletChip').classList.toggle('low', !!(f && f.low));
+  paintSessCard(f);
+}
+/* К9-и1: живые числа карточки сессии. Разметку ставит renderSession; сюда приходят раз в секунду (tickTimer)
+   и после каждого опроса кошелька (renderWallet) — пишем только то, что изменилось. */
+function paintSessCard(f){
+  if (!document.getElementById('scLeft')) return;
+  f = f || sessForecast();
+  if (!f || f.paused) return;
+  const set = (id, v) => { const e = document.getElementById(id); if (e && e.textContent !== v) e.textContent = v; };
+  const show = (id, on) => { const e = document.getElementById(id); if (e) e.classList.toggle('hidden', !on); };
+  const s = activeSession, eff = s.effective_rate_pln || 0, base = s.base_rate_pln || 0;
+  const off = base > eff ? Math.round((1 - eff / base) * 100) : 0; // скидка гостя: тариф сессии ниже цены зоны
+  const where = [sessComputer, s.zone_name || sessZone].filter(Boolean).join(' · ');
+  set('scWhere', where); show('scSep', !!where);
+  set('scRate', T('sc_rate', {r: fmtNum(eff)}));
+  set('scOff', '−' + off + '%'); show('scOff', off > 0);
+  set('scLbl', f.byBooking ? STR.sc_lbl_bk : f.mixed ? STR.sc_lbl_mix : STR.sc_lbl);
+  set('scLeft', fmtDur(f.left));
+  set('scTill', f.till ? fmtClock(f.till) : ''); show('scTillBox', !!f.till);
+  set('scSpent', fmtZl(s.charged_grosz)); show('scSpentBox', (s.charged_grosz || 0) > 0);
+  // ≈ XP — формула начисления сервера (sessionRewards), та же, что в калькуляторе
+  const xp = economy && economy.rates && economy.rank && economy.talents ? calcCompute(Math.floor(effectiveSec() / 60)).xp : 0;
+  set('scXp', '+' + fmt(xp) + ' XP'); show('scXpBox', xp > 0);
 }
 
 /* ── Е2-и5: пакеты времени. Гость видит купленное время рядом с деньгами и
@@ -4468,7 +4538,7 @@ function renderSession(){
           <button class="btn slim" onclick="resumeSession()">${esc(STR.btn_resume)}</button>
           <button class="btn danger slim" onclick="endClick(this)">${esc(STR.btn_finish)}</button>
         </div>
-      </div>` : `
+      </div>` : !sessForecast() ? `
       <div class="sess-on">
         <div>
           <div class="muted">${esc(STR.sess_running)}</div>
@@ -4479,6 +4549,20 @@ function renderSession(){
           ${pauseOn ? `<button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>` : ''}
           <button class="btn danger slim" onclick="endClick(this)">${esc(STR.btn_finish)}</button>
           ${DEV_TOOLS ? `<button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>` : ''}
+        </div>
+      </div>` : `
+      <div class="sc">
+        <div class="sc-top"><span class="sc-dot"></span><span class="sc-where" id="scWhere"></span><span class="sc-sep" id="scSep"> · </span><b id="scRate"></b><span class="sc-off hidden" id="scOff"></span></div>
+        <div class="sc-main">
+          <div><div class="sc-lbl" id="scLbl"></div><div class="sc-left" id="scLeft"></div></div>
+          <div class="sc-till" id="scTillBox">${esc(STR.sc_till)}<b id="scTill"></b></div>
+        </div>
+        <div class="sc-row">${esc(STR.sc_play)} <b id="sessTime">00:00</b><span id="scSpentBox" class="hidden"> · ${esc(STR.sc_spent)} <b id="scSpent"></b></span><span id="scXpBox" class="hidden"> · ≈ <b id="scXp"></b></span></div>
+        ${!pauseOn && economy && economy.afk_stop_min > 0 ? `<div class="muted" style="font-size:11.5px">${esc(T('sess_nopause_hint', {n: economy.afk_stop_min}))}</div>` : ''}
+        <div class="sc-btns">
+          ${pauseOn ? `<button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>` : ''}
+          ${DEV_TOOLS ? `<button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>` : ''}
+          <button class="btn ghost slim sc-end" onclick="endClick(this)">${esc(STR.btn_finish)}</button>
         </div>
       </div>`;
     if (timerIv) clearInterval(timerIv);
@@ -4532,6 +4616,7 @@ function tickTimer(){
   const t = fmtHMS(effectiveSec());
   const st = document.getElementById('sessTime');
   if (st) st.textContent = t;
+  paintSessCard(); // К9-и1: «хватит на», «до» и XP — вместе с таймером
   document.getElementById('timer').textContent = t;
 }
 
@@ -4756,6 +4841,8 @@ setInterval(async () => {
     const rows = ss.sessions || [];
     if (activeSession){
       const still = rows.find(s => s.id === activeSession.id && !s.ended_at);
+      if (still){ activeSession.charged_grosz = still.charged_grosz; activeSession.billed_minutes = still.billed_minutes;
+        activeSession.money_minutes = still.money_minutes; } // К9-и1: живые «потрачено» и прогноз
       if (!still){ // К1-и3; К3-и6: тот же экран итогов с чеком, что и при своём завершении
         const row = rows.find(s => s.id === activeSession.id);
         toast(STR.toast_sess_ended);
