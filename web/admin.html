@@ -596,6 +596,13 @@
   .pkMark.new{background:rgba(52,211,153,.12); color:var(--green)}
   .pkMark.off{background:rgba(255,255,255,.06); color:var(--dim)}
   .pkSeason{font-size:12px; margin-top:2px}
+  /* З25-и2: импорт зала — строки просмотра */
+  .hiList{display:flex; flex-direction:column; gap:4px}
+  .hiRow{padding:6px 9px; border-radius:9px; background:var(--card2); font-size:13px; line-height:1.35}
+  .hiRow .hiAct{font-size:11px; font-weight:700; padding:1px 7px; border-radius:7px}
+  .hiRow .hiAct.create{background:rgba(52,211,153,.12); color:var(--green)}
+  .hiRow .hiAct.update{background:rgba(251,191,36,.12); color:var(--gold)}
+  .hiRow .hiAct.history{background:rgba(255,255,255,.06); color:var(--dim)}
   .zrCell{font-size:12px; margin-top:2px}
   .hpc .inf2 .pr.up,.pc .pr.up{color:var(--gold)}
   .hpc .inf2 .pr.down,.pc .pr.down{color:var(--green)}
@@ -1015,6 +1022,8 @@
           <button class="btn ghost mini" onclick="openGroupDrawer()" title="Ж-Р13: посадить компанию рядом — отдельной кнопкой, не шагом обычной посадки"><span data-ic="users"></span>Компания</button>
           <button class="btn ghost mini ownerOnly hidden" id="hallEditBtn" onclick="toggleHallEdit()"><span data-ic="edit"></span>Редактор зала</button>
           <span class="muted hidden" id="hallEditHint">тапни ПК, потом клетку — переставить · повторный тап по ПК — карточка · «+» — новый ПК</span>
+          <button class="btn ghost mini hidden" id="hallExpBtn" onclick="exportHall()"><span data-ic="save"></span>Выгрузить зал</button><!-- З25-и2 -->
+          <button class="btn ghost mini hidden" id="hallImpBtn" onclick="openHallImport()"><span data-ic="plus"></span>Загрузить из файла</button>
         </div>
         <div class="hallrow">
           <div id="hallMap" style="flex:1; min-width:0"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -2569,7 +2578,101 @@ function toggleHallEdit(){
   btn.innerHTML = hallEdit ? '<span data-ic="check"></span>Готово' : '<span data-ic="edit"></span>Редактор зала';
   mountIcons(btn);
   document.getElementById('hallEditHint').classList.toggle('hidden', !hallEdit);
+  ['hallExpBtn', 'hallImpBtn'].forEach(id => document.getElementById(id).classList.toggle('hidden', !hallEdit)); // З25-и2
   if (hallEdit) paintHall(); else renderHall();
+}
+
+/* ── З25-и2 (№56): зал файлом (сервер — З25-и1). «Выгрузить зал» — файл: схема, зоны с ценой, VAT, порядком и
+   расписанием цен, ПК с клеткой и MAC; шаблон второго клуба или копия на чёрный день. «Загрузить из файла» — сначала
+   просмотр сервера: что заведём, что поправим, что с историей не тронем, чего в файле нет (остаётся как есть); потом
+   «Применить» двумя нажатиями — одна транзакция и строка журнала. Импорт ничего не удаляет. ── */
+let hallImp = null; // {file: разобранный файл, plan: ответ просмотра, err}
+async function exportHall(){
+  try{
+    const d = await api('/admin/hall/export');
+    const blob = new Blob([JSON.stringify(d, null, 2)], {type: 'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'hall-1448-' + ymdLocal(new Date()) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('✓ Зал выгружен: схема ' + d.layout.w + '×' + d.layout.h + ', зон ' + d.zones.length + ', ПК ' + d.computers.length);
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+function openHallImport(){
+  if (!isOwner()){ toast('Зал из файла — у владельца'); return; }
+  hallImp = {file: null, plan: null, err: ''};
+  openDrawer('Зал из файла', `<div class="uform" style="margin-top:0">
+    <div class="muted">Файл «Выгрузить зал» — этого клуба или другого. Сначала покажем, что изменится; ничего не удаляется:
+      зоны и ПК, которых нет в файле, остаются как есть, а ПК с историей (сессии, брони) не трогаем.</div>
+    <label class="btn ghost mini" style="align-self:flex-start; cursor:pointer"><span data-ic="plus"></span>Выбрать файл
+      <input type="file" id="hiFile" accept=".json,application/json" style="display:none" onchange="hallImpFile(this)"></label>
+    <textarea id="hiText" class="input" style="min-height:110px; font-family:ui-monospace,Consolas,monospace; font-size:12px"
+      placeholder="…или вставь текст файла" oninput="hallImp.plan = null; hallImpPaint()"></textarea>
+    <div><button class="btn mini" id="hiLook" onclick="hallImpLook()"><span data-ic="search"></span>Проверить</button></div>
+  </div><div id="hiPrev" style="margin-top:12px"></div>`);
+  hallImpPaint();
+}
+function hallImpFile(inp){
+  const f = inp.files && inp.files[0];
+  if (!f) return;
+  if (f.size > 2 * 1024 * 1024){ hallImp.err = 'Файл больше 2 МБ — это не файл зала'; hallImpPaint(); return; }
+  const r = new FileReader();
+  r.onload = () => { document.getElementById('hiText').value = r.result; hallImpLook(); };
+  r.readAsText(f);
+}
+async function hallImpLook(){
+  const t = (document.getElementById('hiText') || {}).value || '';
+  hallImp.plan = null;
+  try{ hallImp.file = JSON.parse(t); }catch(e){ hallImp.err = t.trim() ? 'Это не JSON — выбери файл «Выгрузить зал»' : 'Пусто — выбери файл'; hallImpPaint(); return; }
+  try{
+    hallImp.plan = await api('/admin/hall/import', {method: 'POST', body: JSON.stringify({hall: hallImp.file})});
+    hallImp.err = '';
+  }catch(e){ hallImp.err = e.message; }
+  hallImpPaint();
+}
+const HI_ACT = {create: 'новая', update: 'правка', history: 'есть история — не трогаем'};
+function hallImpRow(r, pc){
+  const act = r.action === 'create' && pc ? 'новый' : HI_ACT[r.action];
+  const what = r.action === 'create' && pc ? [r.zone || 'без зоны', r.cell].join(' · ') : (r.changes || []).join(' · ');
+  const notes = [r.note, ...(r.notes || [])].filter(Boolean);
+  return `<div class="hiRow" data-act="${r.action}"><b>${esc(r.name)}</b> <span class="hiAct ${r.action}">${esc(act)}</span>${
+    what ? '<div class="muted">' + esc(what) + '</div>' : ''}${notes.map(n => '<div class="muted" style="color:var(--orange)">' + esc(n) + '</div>').join('')}</div>`;
+}
+function hallImpPaint(){
+  const box = document.getElementById('hiPrev');
+  if (!box || !hallImp) return;
+  if (hallImp.err){ box.innerHTML = `<div class="setwarn" id="hiErr">⚠ ${esc(hallImp.err)}</div>`; return; }
+  const p = hallImp.plan;
+  if (!p){ box.innerHTML = ''; return; }
+  const zs = (p.zones || []).filter(z => z.action !== 'same' || (z.notes || []).length);
+  const ps = (p.computers || []).filter(c => c.action !== 'same' || c.note);
+  const same = (p.computers || []).length - ps.length;
+  const miss = p.missing || {};
+  const todo = p.layout.change || zs.some(z => z.action !== 'same') || ps.some(c => c.action === 'create' || c.action === 'update');
+  box.innerHTML = `<div class="muted" id="hiSum" style="margin-bottom:8px">${esc(p.summary)}</div>
+    ${p.layout.change ? `<div class="hiRow"><b>Схема</b> <span class="hiAct update">${esc(p.layout.from)} → ${esc(p.layout.to)}</span></div>`
+      : p.layout.note ? `<div class="hiRow"><b>Схема</b><div class="muted" style="color:var(--orange)">${esc(p.layout.note)}</div></div>` : ''}
+    ${zs.length ? '<div class="dsub">Зоны</div><div class="hiList" id="hiZones">' + zs.map(z => hallImpRow(z, false)).join('') + '</div>' : ''}
+    ${ps.length ? '<div class="dsub">ПК</div><div class="hiList" id="hiPCs">' + ps.map(c => hallImpRow(c, true)).join('') + '</div>' : ''}
+    ${same ? `<div class="muted" style="margin-top:6px">Без изменений: ${repPlural(same, 'ПК', 'ПК', 'ПК')}</div>` : ''}
+    ${(miss.zones || []).length || (miss.computers || []).length ? `<div class="muted" id="hiMiss" style="margin-top:6px">В файле нет —
+      остаются как есть: ${esc([...(miss.zones || []).map(n => 'зона «' + n + '»'), ...(miss.computers || [])].join(', '))}</div>` : ''}
+    <div style="margin-top:12px">${todo ? '<button class="btn" id="hiApply" onclick="hallImpApply(this)"><span data-ic="save"></span>Применить</button>'
+      : '<div class="muted" id="hiNone">Менять нечего — зал уже такой.</div>'}</div>`;
+  mountIcons(box);
+}
+function hallImpApply(btn){
+  armButton(btn, 'Применить? Ещё раз', async () => {
+    try{
+      const r = await api('/admin/hall/import', {method: 'POST', body: JSON.stringify({hall: hallImp.file, apply: true})});
+      toast('✓ Зал из файла: ' + r.summary);
+      closeDrawer();
+      hallImp = null;
+      zonesAt = 0;
+      renderHall();
+    }catch(e){ hallImp.err = e.message; hallImp.plan = null; hallImpPaint(); }
+  });
 }
 
 function paintHallEditor(el){
@@ -4727,6 +4830,7 @@ const AUD_GROUPS = {
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release', // Ж4-и3
        'zone_minutes_move','zone_minutes_burn', // З18-и1
        'zone_rule_create','zone_rule_update','zone_rule_delete', // З24-и2: расписание цен зоны
+       'hall_export','hall_import', // З25-и2: зал файлом
        'prices_bulk', // З24-и4
        'club_update'], // З18-и6: карточка клуба
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
@@ -4751,6 +4855,7 @@ const AUD_LABEL = {
   package_create:'пакет заведён', package_update:'пакет: правка', package_delete:'пакет удалён',
   package_issue:'выдан пакет', package_void:'отмена выдачи пакета',
   pc_create:'ПК добавлен', pc_update:'ПК изменён', pc_delete:'ПК удалён', layout_update:'схема зала',
+  hall_export:'зал: выгружен файлом', hall_import:'зал: загружен из файла', // З25-и2
   club_update:'карточка клуба', // З18-и6
   staff_promote:'персонал: назначен', staff_demote:'персонал: снят',
   shift_tpl_create:'смена: создана', shift_tpl_update:'смена: правка',
@@ -4808,6 +4913,7 @@ const AUD_ICON = {
   catalog_sort:'apps', catalog_import:'apps', catalog_cover:'apps',
   catalog_config:'wrench', settings_update:'gear',
   pc_create:'plus', pc_update:'edit', pc_delete:'cross', layout_update:'monitor', club_update:'gear',
+  hall_export:'save', hall_import:'monitor', // З25-и2
   staff_promote:'users', staff_demote:'out',
   shift_tpl_create:'clock', shift_tpl_update:'edit', shift_tpl_delete:'cross',
   shift_assign:'cal', shift_unassign:'out',
@@ -11248,6 +11354,11 @@ function paintZonesHint(){
   setText('zonesHint', clubZoneReq() ? 'ПК без зоны запрещены — у каждого ПК своя зона (карточка «Клуб» выше)'
     : 'Клубный тариф ' + fmtPLN(d.club_rate_pln) + ' zł/ч действует на ПК без зоны' + (d.without_zone ? ' — таких сейчас ' + d.without_zone : ''));
 }
+// З25-и2: палитра «зал файлом» — «Зал» в режиме редактора: там «Выгрузить зал» и «Загрузить из файла»
+function palGoHallFile(){
+  nav('hall');
+  setTimeout(() => { if (!hallEdit) toggleHallEdit(); }, 300);
+}
 // З24-и2: палитра «расписание цен» — «Экономика» → «Зоны и цена часа», когда список встал
 function palGoZones(){
   nav('settings');
@@ -11570,6 +11681,9 @@ const PAL_WORDS = [
   {who:'owner', words:['цены разом', 'массовая правка', 'поднять цены', 'повысить цены', 'снизить цены', 'изменить цены', 'подорожание',
    'округлить цены', 'все цены'], name:'Цены разом', // З24-и4
    sub:'Зоны, товары или пакеты: ± % или ± zł, округление, «было → станет»', ic:'coins', run:() => bulkOpen('goods')},
+  {who:'owner', words:['зал файлом', 'шаблон зала', 'выгрузить зал', 'загрузить зал', 'экспорт зала', 'импорт зала', 'второй клуб',
+   'перенести зал', 'копия зала'], name:'Зал файлом', // З25-и2
+   sub:'Зал → Редактор зала: «Выгрузить зал» и «Загрузить из файла» с просмотром', ic:'monitor', run:() => palGoHallFile()},
   {who:'owner', words:['форма учёта', 'kpir', 'księga', 'ryczałt', 'ryczalt', 'ewidencja', 'pełna księgowość', 'полная бухгалтерия'], name:'Форма учёта', // З13-и7
    sub:'Экономика → Бухгалтерия: KPiR, ryczałt или полная бухгалтерия — какие листы выгрузки первыми', ic:'gear', run:() => palGoAccForm()},
   {who:'owner', words:['колонка kpir', 'колонки kpir', 'kpir', 'счёт категории', 'план счетов', 'ставка ryczałtu', 'ставки ryczałtu', 'ryczałt'],
