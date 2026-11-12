@@ -106,6 +106,7 @@ func packOut(p *models.TimePackage, zoneName string, zoneRate float64) gin.H {
 		"hour_pln": packageHourPLN(p.Minutes, p.PricePLN),
 		"vat_pct":  p.VatPct, // З13-и1
 	}
+	seasonOut(p, out) // З24-и5
 	// Выгода считается от цены часа ЗОНЫ: без неё «45 zł за 3 часа» ни о чём
 	// не говорит ни гостю, ни админу у стойки.
 	if zoneRate > 0 {
@@ -147,6 +148,9 @@ func handleAdminPackages(c *gin.Context) {
 func handleMyPackageCatalog(c *gin.Context) {
 	var packs []models.TimePackage
 	db.Where("active = TRUE").Order("sort, minutes").Find(&packs)
+	if uid, err := uuid.Parse(c.GetString("user_id")); err == nil {
+		packs = catalogFor(uid, packs, time.Now()) // З24-и5: только то, что этот гость может купить сейчас
+	}
 	zones := zoneIndex()
 	out := make([]gin.H, 0, len(packs))
 	for i := range packs {
@@ -165,6 +169,9 @@ type packageRequest struct {
 	Sort      *int     `json:"sort"`
 	Active    *bool    `json:"active"`
 	VatPct    *int     `json:"vat_pct"` // З13-и1: ставка VAT пакета; не прислана — 23 у нового, прежняя у старого
+
+	// З24-и5: окно продажи, лимит на гостя, только новым, окно списания
+	seasonRequest
 }
 
 // POST /admin/packages — новый пакет (owner).
@@ -215,6 +222,11 @@ func handleAdminPackageCreate(c *gin.Context) {
 	p := models.TimePackage{
 		ClubID: club.ID, ZoneID: zone.ID, Name: strings.TrimSpace(req.Name),
 		Minutes: minutes, PricePLN: price, DaysValid: days, Active: true, VatPct: vat,
+		SpendDaysMask: 127, SpendEndMin: 1440, // З24-и5: новый пакет — продаётся всегда, тратится всегда
+	}
+	if code := req.seasonRequest.apply(&p); code != "" {
+		packFail(c, http.StatusBadRequest, code)
+		return
 	}
 	if req.Sort != nil {
 		p.Sort = *req.Sort
@@ -226,8 +238,12 @@ func handleAdminPackageCreate(c *gin.Context) {
 		packFail(c, http.StatusInternalServerError, "db_error")
 		return
 	}
+	season := ""
+	if t := seasonText(p); t != "" {
+		season = " · " + t // З24-и5
+	}
 	logAdminAction(c, "package_create", nil,
-		fmt.Sprintf("%s · %s · %d мин · %.2f zł%s", p.Name, zone.Name, p.Minutes, p.PricePLN, daysSuffix(p.DaysValid)))
+		fmt.Sprintf("%s · %s · %d мин · %.2f zł%s%s", p.Name, zone.Name, p.Minutes, p.PricePLN, daysSuffix(p.DaysValid), season))
 	c.JSON(http.StatusCreated, gin.H{"package": packOut(&p, zone.Name, zone.RatePLN)})
 }
 
@@ -302,6 +318,12 @@ func handleAdminPackageUpdate(c *gin.Context) {
 	if vat != p.VatPct {
 		changes = append(changes, "VAT "+models.VatLabel(p.VatPct)+" → "+models.VatLabel(vat))
 	}
+	was := p
+	if code := req.seasonRequest.apply(&p); code != "" { // З24-и5
+		packFail(c, http.StatusBadRequest, code)
+		return
+	}
+	changes = append(changes, seasonChanges(was, p)...)
 	p.Name, p.Minutes, p.PricePLN, p.DaysValid, p.ZoneID, p.VatPct = name, minutes, price, days, zone.ID, vat
 	if req.Sort != nil {
 		p.Sort = *req.Sort
@@ -425,6 +447,10 @@ func userPackOut(p *models.UserPackage, now time.Time) gin.H {
 	if p.CompReason != nil {
 		out["comp_reason"] = *p.CompReason // З11-и5: за что подарили
 	}
+	if t := spendText(p.SpendDaysMask, p.SpendStartMin, p.SpendEndMin); t != "" { // З24-и5: когда тратится
+		out["spend_text"] = t
+		out["spend_now"] = spendOpen(p.SpendDaysMask, p.SpendStartMin, p.SpendEndMin, now)
+	}
 	if p.ExpiresAt != nil {
 		out["expires_at"] = p.ExpiresAt
 		out["days_left"] = daysLeft(*p.ExpiresAt, now)
@@ -458,11 +484,21 @@ func issuePackage(user *models.User, pack *models.TimePackage, zone models.Zone,
 		MinutesTotal: pack.Minutes, MinutesLeft: pack.Minutes,
 		PricePLN: pack.PricePLN, Method: method,
 		ExpiresAt: packageExpiry(pack.DaysValid, now), CreatedBy: by, CompReason: reason,
+		SpendDaysMask: pack.SpendDaysMask, SpendStartMin: pack.SpendStartMin, SpendEndMin: pack.SpendEndMin, // З24-и5
 	}
 	price := models.GroszFromPLN(pack.PricePLN)
 	walletAfter := user.WalletGrosz
+	season := ""
 
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// З24-и5: условия продажи — под замком строки гостя: две покупки разом не обойдут лимит
+		var locked models.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&locked, "id = ?", user.ID).Error; err != nil {
+			return err
+		}
+		if season = seasonBlock(tx, pack, user.ID, now); season != "" {
+			return errSeason
+		}
 		if err := tx.Create(&up).Error; err != nil {
 			return err
 		}
@@ -490,6 +526,9 @@ func issuePackage(user *models.User, pack *models.TimePackage, zone models.Zone,
 		if errors.Is(err, errNotEnough) {
 			return nil, 0, "not_enough"
 		}
+		if errors.Is(err, errSeason) {
+			return nil, 0, season
+		}
 		return nil, 0, "db_error"
 	}
 	// К0-и2 (KIOSK.md): пакет своей зоны оживляет сессию на нуле — как депозит.
@@ -497,7 +536,9 @@ func issuePackage(user *models.User, pack *models.TimePackage, zone models.Zone,
 	// не завершит его по zero_since. Пакет ЧУЖОЙ зоны здесь не тратится, и
 	// сессию не спасает (иначе второй бесплатный грейс).
 	zid := pack.ZoneID
-	reviveActiveSession(user.ID, &zid)
+	if spendOpen(up.SpendDaysMask, up.SpendStartMin, up.SpendEndMin, now) { // З24-и5: вне своего окна пакет не платит
+		reviveActiveSession(user.ID, &zid)
+	}
 	notifyUser(user.ID, "package_added", map[string]any{
 		"name": up.Name, "zone": up.ZoneName, "minutes": up.MinutesTotal,
 		"expires_at": up.ExpiresAt,
@@ -506,6 +547,7 @@ func issuePackage(user *models.User, pack *models.TimePackage, zone models.Zone,
 }
 
 var errNotEnough = errors.New("not_enough")
+var errSeason = errors.New("season") // З24-и5: отказ продажи — код в season
 
 // POST /admin/users/:id/packages — выдать гостю пакет у стойки (staff).
 // Цель — только player и не сам себе: тот же инвариант, что у депозитов.
@@ -549,6 +591,10 @@ func handleAdminPackageIssue(c *gin.Context) {
 		why = &reason
 	}
 	up, walletAfter, code := issuePackage(user, pack, *zone, method, &adminID, why)
+	if seasonCodes[code] { // З24-и5: вне окна продажи, только новым, лимит на гостя — 409 словами
+		seasonFail(c, code, pack, user.ID, false)
+		return
+	}
 	if code != "" {
 		status := http.StatusInternalServerError
 		if code == "not_enough" {
@@ -594,6 +640,10 @@ func handleMyPackageBuy(c *gin.Context) {
 		return
 	}
 	up, walletAfter, code := issuePackage(&user, pack, *zone, "wallet", &user.ID, nil)
+	if seasonCodes[code] { // З24-и5
+		seasonFail(c, code, pack, user.ID, true)
+		return
+	}
 	if code != "" {
 		status := http.StatusInternalServerError
 		if code == "not_enough" {
@@ -856,7 +906,13 @@ func livePackagesFor(tx *gorm.DB, userID uuid.UUID, zoneID *uuid.UUID, now time.
 	          AND (expires_at IS NULL OR expires_at > ?)`, userID, *zoneID, now).
 		Order("expires_at ASC NULLS LAST, created_at ASC").
 		Find(&packs)
-	return packs
+	open := packs[:0] // З24-и5: только пакеты, чьё окно списания идёт сейчас
+	for _, p := range packs {
+		if spendOpen(p.SpendDaysMask, p.SpendStartMin, p.SpendEndMin, now) {
+			open = append(open, p)
+		}
+	}
+	return open
 }
 
 // takePackageMinutes — снять need минут с пакетов по порядку. Возвращает,
@@ -929,11 +985,9 @@ func livePackMinutes(userID uuid.UUID, zoneID *uuid.UUID, now time.Time) int64 {
 		return 0
 	}
 	var sum int64
-	db.Model(&models.UserPackage{}).
-		Select("COALESCE(SUM(minutes_left),0)").
-		Where(`user_id = ? AND zone_id = ? AND voided_at IS NULL AND minutes_left > 0
-		       AND (expires_at IS NULL OR expires_at > ?)`, userID, *zoneID, now).
-		Scan(&sum)
+	for _, p := range livePackagesFor(db, userID, zoneID, now) { // З24-и5: как биллинг — только в окне списания
+		sum += int64(p.MinutesLeft)
+	}
 	return sum
 }
 

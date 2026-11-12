@@ -36,6 +36,25 @@ type TimePackage struct {
 
 	// З13-и1 (миграция 083): ставка VAT пакета, % (−1 — zw); без default в теге — ставку ставит ручка (как у зоны).
 	VatPct int `json:"vat_pct" gorm:"column:vat_pct;not null"`
+
+	// З24-и5 (миграция 101): сезонность. Продаётся с SellFrom по SellTo (даты по календарю клуба, nil — без границы);
+	// не больше PerGuest покупок на гостя (0 — без ограничения); NewOnly — только новым гостям; минуты тратятся в окне
+	// SpendDaysMask (пн = 1 … вс = 64) × SpendStartMin…SpendEndMin по стенным часам (127, 0, 1440 — всегда). Без default
+	// в тегах — значения ставит ручка (новый пакет — «всегда»).
+	SellFrom      *time.Time `json:"sell_from"       gorm:"type:date"`
+	SellTo        *time.Time `json:"sell_to"         gorm:"type:date"`
+	PerGuest      int        `json:"per_guest"       gorm:"not null"`
+	NewOnly       bool       `json:"new_only"        gorm:"not null"`
+	SpendDaysMask int        `json:"spend_days_mask" gorm:"not null"`
+	SpendStartMin int        `json:"spend_start_min" gorm:"not null"`
+	SpendEndMin   int        `json:"spend_end_min"   gorm:"not null"`
+}
+
+// AfterFind — даты окна продажи: полночь клуба, а не UTC (как срок правила цены зоны, З24-и1).
+func (p *TimePackage) AfterFind(tx *gorm.DB) error {
+	clubDayPtr(p.SellFrom)
+	clubDayPtr(p.SellTo)
+	return nil
 }
 
 func (p *TimePackage) BeforeCreate(tx *gorm.DB) error {
@@ -84,6 +103,10 @@ type UserPackage struct {
 	CompReason *string `json:"comp_reason,omitempty" gorm:"size:200"`
 	// З13-и1 (миграция 083): снимок ставки VAT пакета на момент выдачи; NULL — выдача до ставок.
 	VatPct *int `json:"vat_pct,omitempty" gorm:"column:vat_pct"`
+	// З24-и5 (миграция 101): снимок окна списания пакета на момент выдачи — правка каталога не меняет проданного.
+	SpendDaysMask int `json:"spend_days_mask" gorm:"not null"`
+	SpendStartMin int `json:"spend_start_min" gorm:"not null"`
+	SpendEndMin   int `json:"spend_end_min"   gorm:"not null"`
 }
 
 func (p *UserPackage) BeforeCreate(tx *gorm.DB) error {
