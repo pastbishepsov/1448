@@ -437,6 +437,8 @@ func main() {
 		own.POST("/zones/:id/rules", handleZoneRuleCreate)
 		own.PATCH("/zone-rules/:id", handleZoneRuleUpdate)
 		own.DELETE("/zone-rules/:id", handleZoneRuleDelete)
+		// З24-и4: массовые правки цен — зоны, товары или пакеты разом; просмотр и запись
+		own.POST("/prices/bulk", handlePricesBulk)
 		own.GET("/work", handleWorkList)
 		own.POST("/work", handleWorkCreate)
 		own.PATCH("/work/:id", handleWorkUpdate)

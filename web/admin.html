@@ -576,6 +576,20 @@
   .zrRow .zrBtns{display:flex; gap:6px; margin-left:auto}
   .zrPair{display:flex; gap:6px; align-items:center; flex:1 1 150px; min-width:0} /* телефон — пара на строку, поле не режется */
   .zrPair .input{flex:1 1 auto; width:auto; min-width:0}
+  /* З24-и4: «Цены разом» — строки «было → станет» */
+  .bkList{display:flex; flex-direction:column; gap:4px; max-height:46vh; overflow:auto}
+  .bkRow{display:grid; grid-template-columns:18px minmax(0,1fr) auto 12px auto; gap:8px; align-items:center; padding:6px 9px;
+         border-radius:9px; background:var(--card2); border:1px solid transparent; font-size:13px; cursor:pointer;
+         font-variant-numeric:tabular-nums}
+  .bkRow .bkName{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .bkRow .bkWas{color:var(--dim)}
+  .bkRow .bkArr{color:var(--dim)}
+  .bkRow .bkWill{font-weight:800}
+  .bkRow .bkWill.up{color:var(--gold)}
+  .bkRow .bkWill.down{color:var(--green)}
+  .bkRow.same{opacity:.5; cursor:default}
+  .bkRow.bad{border-color:rgba(255,39,64,.5); cursor:default}
+  .bkRow .bkBad{grid-column:2 / -1; color:var(--acc3); font-size:11.5px}
   .zrCell{font-size:12px; margin-top:2px}
   .hpc .inf2 .pr.up,.pc .pr.up{color:var(--gold)}
   .hpc .inf2 .pr.down,.pc .pr.down{color:var(--green)}
@@ -1101,6 +1115,7 @@
           <input id="saleNick" class="input" placeholder="Кому: ник, телефон или имя — необязательно" autocomplete="off" style="min-width:250px" oninput="saleGuestTyped()">
           <span id="saleGuestChip" class="mchip hidden" title="продажи запишутся на этого гостя; ✕ — снять"></span>
           <button class="btn mini ownerOnly hidden" onclick="editGood('')"><span data-ic="plus"></span>Позиция</button>
+          <button class="btn ghost mini ownerOnly hidden" id="bulkGoodsBtn" onclick="bulkOpen('goods')"><span data-ic="coins"></span>Цены разом</button><!-- З24-и4 -->
         </div>
         <div id="saleCands"></div><!-- Ж5-и4 (№15): выбор из кандидатов при 409, как в посадке -->
         <div class="toolrow"><div class="segs" id="goodsCats"></div>
@@ -1306,6 +1321,7 @@
         <div class="sect" id="zonesHead">Зоны и цена часа</div>
         <div class="toolrow">
           <button class="btn mini" onclick="zoneEdit('')"><span data-ic="plus"></span>Зона</button>
+          <button class="btn ghost mini" onclick="bulkOpen('zones')"><span data-ic="coins"></span>Цены разом</button><!-- З24-и4 -->
           <span class="muted" id="zonesHint"></span>
         </div>
         <div class="tablewrap" id="zonesTable"><div class="skel"></div><div class="skel"></div></div>
@@ -1315,6 +1331,7 @@
         <div class="sect">Пакеты времени</div>
         <div class="toolrow">
           <button class="btn mini" onclick="packEdit('')"><span data-ic="plus"></span>Пакет</button>
+          <button class="btn ghost mini" onclick="bulkOpen('packages')"><span data-ic="coins"></span>Цены разом</button><!-- З24-и4 -->
           <span class="muted" id="packsHint"></span>
         </div>
         <div class="tablewrap" id="packsTable"><div class="skel"></div><div class="skel"></div></div>
@@ -4681,6 +4698,7 @@ let audKind = 'all', audQ = '', audData = [];
 const AUD_GROUPS = {
   money: ['deposit','deposit_void','sale','sale_void','coin_redeem','coin_redeem_void','coin_burn','incident_compensate', // К8: компенсация — обязательство
           'zone_minutes_move','zone_minutes_burn', // З18-и1: минуты удаляемой зоны — тоже обязательство клуба
+          'prices_bulk', // З24-и4: цены разом — и в «ПК и зал», и в «Товарах»
           'package_issue','package_void','package_warn', // Е2: пакеты — те же деньги стойки
           'kitchen_done','kitchen_pay','kitchen_cancel', // кухню считают у той же стойки (ревью 26.08)
           'sale_paid','settle','kitchen_order','shift_close', // Ж6: расчёт долга, заказ кухни от стойки, сдача кассы
@@ -4701,12 +4719,14 @@ const AUD_GROUPS = {
   pc: ['pc_maintenance','pc_available','pc_create','pc_update','pc_delete','layout_update','pc_power','zone_create','zone_update','zone_delete','pc_hold','pc_unhold','pc_release', // Ж4-и3
        'zone_minutes_move','zone_minutes_burn', // З18-и1
        'zone_rule_create','zone_rule_update','zone_rule_delete', // З24-и2: расписание цен зоны
+       'prices_bulk', // З24-и4
        'club_update'], // З18-и6: карточка клуба
   catalog: ['catalog_upsert','catalog_toggle','catalog_delete','catalog_sort',
             'catalog_import','catalog_cover','catalog_config'],
   goods: ['sale','sale_void','sale_paid','settle','debt_write_off','debt_restore','good_create','good_update','good_delete','stock_in','stock_adjust', // Ж6
           'supply_receive','supply_edit','supply_cancel', // З10-и4: приёмка
           'inventory', // З23-и4: акт инвентаризации
+          'prices_bulk', // З24-и4
           'goods_vat', 'goods_ryczalt'], // З13-и2: ставка VAT всей категории; З13-и7 — ставка ryczałtu
   staff: ['staff_promote','staff_demote','staff_card','staff_hire','staff_dismiss','staff_leave','staff_leave_cancel','staff_password_reset','staff_password_change','staff_erase','work_start','work_stop','work_edit','shift_tpl_create','shift_tpl_update','shift_tpl_delete','shift_assign','shift_unassign','onboarding','shift_close','login_failed'], // ревью 26.08; Ж6-и4: сдача кассы
 };
@@ -4746,6 +4766,7 @@ const AUD_LABEL = {
   zone_create:'зона: создана', zone_update:'зона: правка', zone_delete:'зона: удалена',
   zone_minutes_move:'зона: минуты перенесены', zone_minutes_burn:'зона: минуты сожжены', // З18-и1
   zone_rule_create:'зона: правило цены', zone_rule_update:'зона: правило цены — правка', zone_rule_delete:'зона: правило цены убрано', // З24-и2
+  prices_bulk:'цены разом', // З24-и4
   coin_redeem:'монеты: время за монеты',
   coin_burn:'монеты: сгорание',
   coin_redeem_void:'монеты: отмена выдачи',
@@ -4797,6 +4818,7 @@ const AUD_ICON = {
   zone_create:'plus', zone_update:'edit', zone_delete:'cross',
   zone_minutes_move:'clock', zone_minutes_burn:'cross', // З18-и1
   zone_rule_create:'plus', zone_rule_update:'edit', zone_rule_delete:'cross', // З24-и2
+  prices_bulk:'coins', // З24-и4
   coin_redeem:'clock',
   coin_burn:'clock',
   coin_redeem_void:'cross',
@@ -10146,6 +10168,137 @@ async function renderZones(){
    save_pln) — здесь только показываем: расходиться в цене клиенту с сервером
    нельзя, а «45 zł за 3 часа» само по себе ни о чём не говорит. */
 let packsCache = [];
+
+/* ── З24-и4 (№53 «в»): «Цены разом» — массовая правка цен (владелец). Считает сервер (prices_bulk.go): просмотр «было →
+   станет» ничего не пишет; запись — только отмеченных строк и с ценами просмотра (expect): цену правили между ними —
+   409 prices_moved со списком, не пишется ничего. Любая правка полей убирает просмотр — «Применить» только после
+   нового «Посмотреть». Неизменные строки и вышедшие за границы цены — без флажка. ── */
+let bulk = null; // {kind, cat ('*' — все), zone, all, mode: pct|add|round, val, round, prev, off: Set, moved, err}
+async function bulkOpen(kind){
+  bulk = {kind: kind || 'goods', cat: '*', zone: '', all: false, mode: 'pct', val: '', round: '0', prev: null, off: new Set(), moved: null, err: ''};
+  openDrawer('Цены разом', '<div class="uform" id="bulkBox" style="margin-top:0"></div><div id="bulkPrev" style="margin-top:12px"></div>');
+  bulkPaint();
+  const need = [];
+  if (!goodsData.length) need.push(api('/admin/goods').then(g => { goodsData = g.goods || []; }));
+  if (!zonesCache.length) need.push(api('/admin/zones').then(d => { zonesCache = d.zones || []; zonesData = d; zonesAt = Date.now(); }));
+  if (need.length){ await Promise.all(need).catch(() => {}); bulkPaint(); }
+}
+function bulkCats(){ return [...new Set(goodsData.map(g => g.category || ''))].sort((a, b) => a.localeCompare(b, 'ru')); }
+function bulkPaint(){
+  const b = bulk, box = document.getElementById('bulkBox');
+  if (!b || !box) return;
+  const seg = (cur, list, fn) => `<div class="segs">${list.map(([v, t]) =>
+    `<button class="${cur === v ? 'on' : ''}" data-v="${v}" onclick="${fn}('${v}')">${t}</button>`).join('')}</div>`;
+  const filt = b.kind === 'goods' ? `<select id="bk_cat" class="input" aria-label="категория" onchange="bulkSet('cat', this.value)">
+        <option value="*"${b.cat === '*' ? ' selected' : ''}>Все категории</option>${bulkCats().map(c =>
+        `<option value="${esc(c)}"${b.cat === c ? ' selected' : ''}>${c ? esc(c) : 'Без категории'}</option>`).join('')}</select>`
+    : b.kind === 'packages' ? `<select id="bk_zone" class="input" aria-label="зона" onchange="bulkSet('zone', this.value)">
+        <option value="">Все зоны</option>${zonesCache.map(z =>
+        `<option value="${z.id}"${b.zone === z.id ? ' selected' : ''}>${esc(z.name)}</option>`).join('')}</select>` : '';
+  box.innerHTML = `<label class="muted" style="margin-bottom:-6px">Что правим</label>
+    ${seg(b.kind, [['zones', 'Зоны'], ['goods', 'Товары'], ['packages', 'Пакеты']], 'bulkKind')}
+    ${filt}
+    ${b.kind === 'zones' ? '<div class="muted">Цена часа зон; расписание цен (правила зон) не меняется.</div>'
+      : `<label class="muted" style="display:flex; gap:8px; align-items:center; cursor:pointer"><input type="checkbox" id="bk_all"${
+        b.all ? ' checked' : ''} onchange="bulkSet('all', this.checked)"> и выключенные</label>`}
+    <label class="muted" style="margin-bottom:-6px">Как</label>
+    ${seg(b.mode, [['pct', '± %'], ['add', '± zł'], ['round', 'только округлить']], 'bulkMode')}
+    ${b.mode === 'round' ? '' : `<input id="bk_val" class="input" inputmode="decimal" value="${esc(b.val)}" oninput="bulkSet('val', this.value)"
+      placeholder="${b.mode === 'pct' ? '10 — дороже на 10 %, −10 — дешевле' : '2 — дороже на 2 zł, −2 — дешевле'}" aria-label="на сколько">`}
+    <label class="muted" style="margin-bottom:-6px">Округлить</label>
+    ${seg(b.round, [['0', 'как есть'], ['0.5', 'до 0,50'], ['1', 'до целых']], 'bulkRound')}
+    <div><button class="btn mini" id="bk_look" onclick="bulkLook()"><span data-ic="search"></span>Посмотреть</button></div>`;
+  mountIcons(box);
+  bulkPrevPaint();
+}
+function bulkDirty(){ if (bulk){ bulk.prev = null; bulk.err = ''; bulkPrevPaint(); } }
+function bulkKind(v){ bulk.kind = v; bulk.off = new Set(); bulk.moved = null; bulk.prev = null; bulk.err = ''; bulkPaint(); }
+function bulkMode(v){ bulk.mode = v; bulk.prev = null; bulk.err = ''; bulkPaint(); }
+function bulkRound(v){ bulk.round = v; bulk.prev = null; bulk.err = ''; bulkPaint(); }
+function bulkSet(k, v){ bulk[k] = v; bulkDirty(); } // поле не перерисовываем — курсор остаётся в нём
+function bulkReq(){
+  const b = bulk, q = {kind: b.kind, round: +b.round};
+  if (b.kind === 'goods' && b.cat !== '*') q.category = b.cat;
+  if (b.kind === 'packages' && b.zone) q.zone_id = b.zone;
+  if (b.kind !== 'zones') q.all = !!b.all;
+  const v = parseFloat(String(b.val).replace(',', '.').replace('−', '-'));
+  if (b.mode === 'pct') q.pct = v;
+  if (b.mode === 'add') q.add_pln = v;
+  return q;
+}
+async function bulkLook(){
+  const b = bulk;
+  if (!b) return;
+  const v = parseFloat(String(b.val).replace(',', '.').replace('−', '-'));
+  b.err = b.mode !== 'round' && !(v && isFinite(v)) ? 'На сколько: ' + (b.mode === 'pct' ? 'проценты' : 'злотые') + ', не ноль'
+    : b.mode === 'round' && !+b.round ? 'Выбери, до чего округлить: до 0,50 или до целых' : '';
+  if (b.err){ b.prev = null; bulkPrevPaint(); return; }
+  try{
+    b.prev = await api('/admin/prices/bulk', {method: 'POST', body: JSON.stringify(bulkReq())});
+    b.off = new Set(); b.moved = null;
+  }catch(e){ b.prev = null; b.err = e.message; }
+  bulkPrevPaint();
+}
+function bulkPicked(){
+  const p = bulk && bulk.prev;
+  if (!p) return [];
+  const bad = new Set((p.out_of_range || []).map(r => r.id));
+  return (p.rows || []).filter(r => r.changed && !bad.has(r.id) && !bulk.off.has(r.id));
+}
+function bulkPrevPaint(){
+  const b = bulk, box = document.getElementById('bulkPrev');
+  if (!b || !box) return;
+  if (b.err){ box.innerHTML = `<div class="setwarn" id="bk_err">⚠ ${esc(b.err)}</div>`; return; }
+  if (b.moved && !b.prev){
+    box.innerHTML = `<div class="setwarn" id="bk_moved">⚠ Цены изменились, пока ты смотрел, — ничего не записано: ${b.moved.map(m =>
+      esc(m.name) + (m.was != null ? ' — было ' + fmtPLN(m.was) : '') + ', сейчас ' + fmtPLN(m.now)).join('; ')}.</div>
+      <div style="margin-top:10px"><button class="btn mini" onclick="bulkLook()"><span data-ic="search"></span>Посмотреть ещё раз</button></div>`;
+    mountIcons(box);
+    return;
+  }
+  const p = b.prev;
+  if (!p){ box.innerHTML = '<div class="muted">«Посмотреть» покажет «было → станет»; без него ничего не меняется.</div>'; return; }
+  const bad = new Set((p.out_of_range || []).map(r => r.id)), rows = p.rows || [], n = bulkPicked().length;
+  box.innerHTML = `<div class="muted" id="bk_sum" style="margin-bottom:6px">${esc(p.scope)}: ${esc(p.op)} — меняется ${n} из ${rows.length}${
+      bad.size ? ', за границы — ' + bad.size : ''}</div>
+    <div class="bkList" id="bk_list">${rows.map(r => {
+      const x = bad.has(r.id), on = r.changed && !x;
+      return `<label class="bkRow${r.changed ? '' : ' same'}${x ? ' bad' : ''}" data-id="${r.id}"><input type="checkbox" data-id="${r.id}"${
+        on && !b.off.has(r.id) ? ' checked' : ''}${on ? '' : ' disabled'} onchange="bulkToggle(this)">
+        <span class="bkName" title="${esc(r.name)}">${esc(r.name)}${r.group ? ' <span class="muted">· ' + esc(r.group) + '</span>' : ''}</span>
+        <span class="bkWas">${fmtPLN(r.was)}</span><span class="bkArr">→</span>
+        <span class="bkWill${r.will > r.was ? ' up' : r.will < r.was ? ' down' : ''}">${fmtPLN(r.will)}</span>${
+        x ? '<span class="bkBad">цена вышла бы за границы — не меняем</span>' : ''}</label>`;
+    }).join('')}</div>
+    <div style="margin-top:10px">${n ? `<button class="btn" id="bk_apply" onclick="bulkApply(this)"><span data-ic="save"></span>Применить к ${n}</button>`
+      : '<div class="muted" id="bk_none">Менять нечего — отмеченных строк нет или цены уже такие.</div>'}</div>`;
+  mountIcons(box);
+}
+function bulkToggle(el){
+  if (el.checked) bulk.off.delete(el.dataset.id); else bulk.off.add(el.dataset.id);
+  bulkPrevPaint();
+}
+function bulkApply(btn){
+  const n = bulkPicked().length;
+  armButton(btn, 'Применить к ' + n + '? Ещё раз', async () => {
+    const b = bulk, sel = bulkPicked();
+    if (!b || !sel.length) return;
+    const q = Object.assign(bulkReq(), {apply: true, ids: sel.map(r => r.id), expect: Object.fromEntries(sel.map(r => [r.id, r.was]))});
+    try{
+      const r = await api('/admin/prices/bulk', {method: 'POST', body: JSON.stringify(q)});
+      toast('✓ Цены обновлены: ' + r.changed + ' — ' + r.op);
+      closeDrawer();
+      bulk = null;
+      if (q.kind === 'zones') renderZones();
+      else if (q.kind === 'packages') renderPackages();
+      else { goodsData = []; if (curTab === 'goods') renderGoods(); }
+    }catch(e){
+      if (e.code === 'prices_moved'){ b.moved = (e.data && e.data.rows) || []; b.prev = null; b.err = ''; }
+      else { b.prev = null; b.err = e.message; }
+      bulkPrevPaint();
+    }
+  });
+}
 async function renderPackages(){
   try{
     const d = await api('/admin/packages');
@@ -11349,6 +11502,9 @@ const PAL_WORDS = [
   {who:'owner', words:['расписание цен', 'цена по часам', 'цены по времени', 'вечерняя цена', 'ночной тариф', 'happy hours',
    'счастливые часы', 'цены зон', 'цена зоны', 'зоны'], name:'Расписание цен', // З24-и2
    sub:'Экономика → Зоны и цена часа: правила «дни, часы, цена, срок» — в шторке зоны', ic:'clock', run:() => palGoZones()},
+  {who:'owner', words:['цены разом', 'массовая правка', 'поднять цены', 'повысить цены', 'снизить цены', 'изменить цены', 'подорожание',
+   'округлить цены', 'все цены'], name:'Цены разом', // З24-и4
+   sub:'Зоны, товары или пакеты: ± % или ± zł, округление, «было → станет»', ic:'coins', run:() => bulkOpen('goods')},
   {who:'owner', words:['форма учёта', 'kpir', 'księga', 'ryczałt', 'ryczalt', 'ewidencja', 'pełna księgowość', 'полная бухгалтерия'], name:'Форма учёта', // З13-и7
    sub:'Экономика → Бухгалтерия: KPiR, ryczałt или полная бухгалтерия — какие листы выгрузки первыми', ic:'gear', run:() => palGoAccForm()},
   {who:'owner', words:['колонка kpir', 'колонки kpir', 'kpir', 'счёт категории', 'план счетов', 'ставка ryczałtu', 'ставки ryczałtu', 'ryczałt'],
