@@ -207,6 +207,17 @@
   .sc-btns{display:flex; gap:8px; align-items:stretch; margin-top:1px}
   .sc-btns .btn{box-shadow:none}
   .sc-end{padding:8px 12px; font-size:12.5px; color:var(--dim); margin-left:auto; flex:none}
+  /* К9-и2: деньги кончаются (15 минут и меньше — порог чипа кошелька и серверного balance_low) — карточка красная.
+     Рамка мигает три раза и замирает: киоск стоит за игрой, вечная анимация ела бы кадры */
+  .sesscard.sc-low{background:linear-gradient(160deg, rgba(255,39,64,.26), rgba(255,39,64,.06) 75%);
+    box-shadow:inset 0 0 0 1px rgba(255,39,64,.6); animation:scLow 1.6s ease-in-out 3}
+  .sesscard.sc-low .sc-lbl{color:#ff9aa6; font-weight:700}
+  .sesscard.sc-low .sc-dot{background:var(--acc); box-shadow:0 0 10px rgba(255,39,64,.8)}
+  .sc-note{flex:1; min-width:0; font-size:11.5px; color:#ffb3bc; line-height:1.3; display:flex; flex-direction:column;
+    justify-content:center}
+  .sc-note b{font-size:14px; color:#fff; font-weight:800}
+  @keyframes scLow{50%{box-shadow:inset 0 0 0 2px rgba(255,39,64,1), inset 0 0 34px rgba(255,39,64,.38)}}
+  body.perf-lite .sesscard.sc-low{animation:none}
   .sidetabs{display:flex; border-bottom:1px solid var(--hair)}
   .sidetabs button{flex:1; background:transparent; border:0; color:var(--dim); padding:12px 4px; cursor:pointer;
                    font-weight:700; font-size:12.5px; border-bottom:2px solid transparent; transition:color .15s}
@@ -1252,6 +1263,8 @@ const SH_RU = {
   sess_paused: "Пауза — время и деньги стоят",
   sess_running: "Сессия идёт",
   sc_lbl: "Денег хватит на", sc_lbl_mix: "Хватит на", sc_lbl_bk: "ПК забронирован — осталось", // К9-и1: карточка идущей сессии
+  sc_low: "Деньги кончаются — осталось", sc_low_mix: "Время кончается — осталось", // К9-и2: 15 минут и меньше
+  sc_note: "Пополнить — у стойки", sc_note2: "игра не прервётся",
   sc_till: "до", sc_play: "Играешь", sc_spent: "потрачено", sc_rate: "{r} zł/ч", dur_h: "{n} ч", dur_m: "{n} мин",
   sess_none: "Сессия не начата",
   sess_ready: "Готов играть?",
@@ -1806,6 +1819,8 @@ const SH_EN = {
   sess_paused: "Paused — time and money stand still",
   sess_running: "Session running",
   sc_lbl: "Money lasts for", sc_lbl_mix: "Enough for", sc_lbl_bk: "PC is booked — time left",
+  sc_low: "Money is running out — time left", sc_low_mix: "Running low — time left",
+  sc_note: "Top up at the desk", sc_note2: "your game won't be interrupted",
   sc_till: "until", sc_play: "Playing", sc_spent: "spent", sc_rate: "{r} zł/h", dur_h: "{n} h", dur_m: "{n} min",
   sess_none: "No session yet",
   sess_ready: "Ready to play?",
@@ -2360,6 +2375,8 @@ const SH_PL = {
   sess_paused: "Pauza — czas i pieniądze stoją",
   sess_running: "Sesja trwa",
   sc_lbl: "Pieniędzy starczy na", sc_lbl_mix: "Starczy na", sc_lbl_bk: "PC zarezerwowany — zostało",
+  sc_low: "Pieniądze się kończą — zostało", sc_low_mix: "Czas się kończy — zostało",
+  sc_note: "Doładuj przy ladzie", sc_note2: "gra nie zostanie przerwana",
   sc_till: "do", sc_play: "Grasz", sc_spent: "wydano", sc_rate: "{r} zł/h", dur_h: "{n} h", dur_m: "{n} min",
   sess_none: "Sesja nie rozpoczęta",
   sess_ready: "Gotowy do gry?",
@@ -3485,7 +3502,13 @@ function paintSessCard(f){
   set('scWhere', where); show('scSep', !!where);
   set('scRate', T('sc_rate', {r: fmtNum(eff)}));
   set('scOff', '−' + off + '%'); show('scOff', off > 0);
-  set('scLbl', f.byBooking ? STR.sc_lbl_bk : f.mixed ? STR.sc_lbl_mix : STR.sc_lbl);
+  // К9-и2: осталось 15 минут и меньше — карточка красная и говорит, куда идти. Пополнили у стойки — опрос кошелька
+  // (раз в 10 с) принесёт новый остаток, и вид вернётся сам. Чужая бронь: красная, но без «Пополнить» —
+  // деньги бронь не отодвинут. В запасе минуты или пакет — «Время кончается», только кошелёк — «Деньги кончаются»
+  const low = !!f.low, cardEl = document.getElementById('sessCard');
+  if (cardEl) cardEl.classList.toggle('sc-low', low);
+  show('scNote', low && !f.byBooking);
+  set('scLbl', f.byBooking ? STR.sc_lbl_bk : low ? (f.mixed ? STR.sc_low_mix : STR.sc_low) : f.mixed ? STR.sc_lbl_mix : STR.sc_lbl);
   set('scLeft', fmtDur(f.left));
   set('scTill', f.till ? fmtClock(f.till) : ''); show('scTillBox', !!f.till);
   set('scSpent', fmtZl(s.charged_grosz)); show('scSpentBox', (s.charged_grosz || 0) > 0);
@@ -4525,6 +4548,7 @@ function renderSession(){
   const el = document.getElementById('sessCard');
   const chip = document.getElementById('timerChip');
   el.classList.toggle('live', !!activeSession);
+  el.classList.remove('sc-low'); // К9-и2: пауза, нет прогноза, сессии нет — не красная
   if (activeSession){
     chip.classList.add('on');
     const paused = !!activeSession.paused_at; // Г2: пауза — время и деньги стоят
@@ -4560,6 +4584,7 @@ function renderSession(){
         <div class="sc-row">${esc(STR.sc_play)} <b id="sessTime">00:00</b><span id="scSpentBox" class="hidden"> · ${esc(STR.sc_spent)} <b id="scSpent"></b></span><span id="scXpBox" class="hidden"> · ≈ <b id="scXp"></b></span></div>
         ${!pauseOn && economy && economy.afk_stop_min > 0 ? `<div class="muted" style="font-size:11.5px">${esc(T('sess_nopause_hint', {n: economy.afk_stop_min}))}</div>` : ''}
         <div class="sc-btns">
+          <div class="sc-note hidden" id="scNote"><b>${esc(STR.sc_note)}</b>${esc(STR.sc_note2)}</div>
           ${pauseOn ? `<button class="btn ghost slim" onclick="pauseSession()">${esc(STR.btn_pause)}</button>` : ''}
           ${DEV_TOOLS ? `<button class="btn ghost slim" title="${esc(STR.btn_dev150_title)}" onclick="endSession(150)">${esc(STR.btn_dev150)}</button>` : ''}
           <button class="btn ghost slim sc-end" onclick="endClick(this)">${esc(STR.btn_finish)}</button>

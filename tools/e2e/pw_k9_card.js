@@ -167,10 +167,14 @@ const { CHROME } = require('./_env');
     null, { timeout: 15000 }).catch(() => {});
   await pw.waitForTimeout(900);
   const kx = () => p.evaluate(() => { paintSessCard(); return document.getElementById('scXp').textContent.replace(/\D/g, ''); });
-  const k1 = await kx(), px = await pw.evaluate(() => { const e = document.getElementById('liveXP'); return e ? String(Number(e.dataset.v || 0)) : null; }), k2 = await kx();
+  // Минута может смениться между чтениями: киоск пересчитывает сразу, PWA — на своём тике (раз в секунду) и дописывает
+  // цифру с анимацией. Поэтому не одно чтение, а до шести секунд ожидания, пока цифры сойдутся
+  const pxOf = () => pw.evaluate(() => { const e = document.getElementById('liveXP'); return e ? String(Number(e.dataset.v || 0)) : null; });
+  let k1, px, k2, tries = 0;
+  for (; tries < 12; tries++) { k1 = await kx(); px = await pxOf(); k2 = await kx(); if (px === k1 || px === k2) break; await z.sleep(500); }
   await pctx.close();
   z.check(`«≈ XP» киоска = «≈ XP» карточки сессии в PWA (${px}); у гостя нет таланта на опыт`,
-    x.boost === 0 && (px === k1 || px === k2), J({ k1, px, k2, boost: x.boost }));
+    x.boost === 0 && (px === k1 || px === k2), J({ k1, px, k2, boost: x.boost, tries }));
   let ticked = false; // числа обновляются сами: меняем кошелёк в памяти страницы и ничего не перерисовываем
   for (let i = 0; i < 2 && !ticked; i++) {
     const before = (await card(p)).left;
