@@ -464,6 +464,9 @@ func main() {
 		own.PATCH("/computers/:id", handleAdminUpdateComputer)
 		own.DELETE("/computers/:id", handleAdminDeleteComputer)
 		own.PATCH("/clubs/:id/layout", handleAdminClubLayout)
+		// З25-и1: зал файлом — экспорт и импорт с просмотром
+		own.GET("/hall/export", handleHallExport)
+		own.POST("/hall/import", handleHallImport)
 		own.PATCH("/clubs/:id", handleAdminClubUpdate) // З18-и5: карточка клуба
 	}
 
