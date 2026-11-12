@@ -6635,12 +6635,19 @@ function supGo(){ nav('goods'); setTimeout(() => { const h = document.getElement
    по умолчанию «Закупка товаров»; VAT по документу — одной суммой. Поставка сама заведёт расход; поправили его сумму в
    «Расходах» — переоценка его не тронет, здесь — пометка. Число «ждут цен» — на вкладке «Закупки». Сервер —
    supplies_pricing.go. ── */
-let purData = null, purForm = null;
+let purData = null, purForm = null, purSeq = 0; // З19-и12: purSeq — номер последнего запроса «Закупок»
 async function renderPur(){
-  const box = document.getElementById('accBody');
-  if (!purData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
-  try{ await expRefs(); purData = await api('/admin/purchases'); }
-  catch(e){ box.innerHTML = '<div class="muted">Закупки не загрузились: ' + esc(e.message) + '</div>'; return; }
+  if (accTab !== 'pur' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
+  const box = document.getElementById('accBody'), seq = ++purSeq;
+  if (!purData || !document.getElementById('purWaitHead')) box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; // на экране чужая вкладка — заглушка
+  let d;
+  try{ await expRefs(); d = await api('/admin/purchases'); }
+  catch(e){
+    if (seq === purSeq && accTab === 'pur' && curTab === 'acc') box.innerHTML = '<div class="muted">Закупки не загрузились: ' + esc(e.message) + '</div>';
+    return;
+  }
+  if (seq !== purSeq || accTab !== 'pur' || curTab !== 'acc') return; // пока считалось, ушли с «Закупок» или запросили заново
+  purData = d;
   paintPur();
 }
 function purLinesText(s){
@@ -6655,6 +6662,7 @@ function purExpFlag(e){
   return '';
 }
 function paintPur(){
+  if (accTab !== 'pur' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
   const box = document.getElementById('accBody'), d = purData || {}, w = d.waiting || [], p = d.priced || [];
   box.innerHTML = `
     <div class="muted" style="margin:0 0 12px">Поставку принимает админ в «Товарах» — по штукам; цены и документ ставишь ты, поставка сама заведёт расход. Уже проданное разложится по ценам: проданное — по первой цене.</div>
@@ -6845,7 +6853,7 @@ function expSupOpen(){ const id = expForm && expForm.supply; if (!id) return; cl
    (для календарных пресетов это тот же отрезок прошлого месяца/года).
    Все окна — клубные сутки от report_hour, поэтому ночная смена целиком
    принадлежит дню своего начала и выручка ночи не делится пополам. ── */
-let repPeriod = {preset:'d7'}, repTab = 'money';
+let repPeriod = {preset:'d7'}, repTab = 'money', repSeq = 0; // З19-и12: repSeq — номер последнего запроса отчёта
 
 function repQuery(){
   return repPeriod.preset ? 'preset=' + repPeriod.preset
@@ -7001,6 +7009,7 @@ function repTable(head, rows, empty){
 async function renderReports(){
   const body = document.getElementById('repBody');
   if (!body) return;
+  const seq = ++repSeq;
   body.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try{
     // З17-и3: «Загрузке» — и шаблоны смен для карты (не загрузились — карта без скобок); З21-и2б: «Гостям» — когорты
@@ -7008,6 +7017,8 @@ async function renderReports(){
     const [d, sh] = await Promise.all([api('/admin/reports/' + repTab + '?' + repQuery()),
       repTab === 'load' ? api('/admin/shifts').catch(() => null)
         : repTab === 'guests' ? api('/admin/reports/cohorts').catch(() => null) : null]);
+    // З19-и12: пока считалось, выбрали другую вкладку или период — рисует только последний запрос (его вкладка и период)
+    if (seq !== repSeq || curTab !== 'stats') return;
     const p = d.period, pv = d.prev_period;
     document.getElementById('repLabel').textContent =
       repDate(p.from) + ' — ' + repDate(p.to) + ' · ' + repPlural(p.days, 'день', 'дня', 'дней') +
@@ -7020,6 +7031,7 @@ async function renderReports(){
     if (repTab === 'coins') loadBurnPreview();
     mountIcons(body);
   }catch(e){
+    if (seq !== repSeq || curTab !== 'stats') return; // ошибка старого запроса новый отчёт не закрывает
     body.innerHTML = repEmpty('Отчёт не загрузился: ' + e.message);
     mountIcons(body);
   }
@@ -7818,6 +7830,7 @@ function ovCustom(){
   ovPeriod = {from:f, to:t || f}; renderOv();
 }
 async function renderOv(){
+  if (accTab !== 'ov' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
   const box = document.getElementById('accBody'), seq = ++ovSeq, main = document.getElementById('ovMain');
   if (!ovData || !main) box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   else { // прежние числа видны бледно, пока считается новый период; месяц в переключателе — уже новый
@@ -7841,6 +7854,7 @@ async function renderOv(){
   paintOv();
 }
 function paintOv(){
+  if (accTab !== 'ov' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
   const box = document.getElementById('accBody'), d = ovData || {}, w = d.prev || {}, k = d.delta || {};
   const i = d.income || {}, r = d.returns || {}, c = d.cogs || {}, l = d.losses || {}, x = d.expenses || {};
   ovPaints++;
@@ -8075,7 +8089,7 @@ function ovVatHtml(v){
    расхождения пересчётов, на конец; строка дня раскрывает сдачи и события ящика. Инкассация, коррекция
    остатка «в ящике сейчас N» и отмена ошибочного события — здесь же. Строка дня сходится всегда:
    расхождения — то, что осталось после движения (сервер, cashbook.go). ── */
-let accPeriod = {preset:'d7'}, accData = null, accDay = null;
+let accPeriod = {preset:'d7'}, accData = null, accDay = null, bookSeq = 0; // З19-и12: bookSeq — номер последнего запроса книги
 let accCol = {amount:'', dest:'bank', note:''}, accCor = {stated:'', note:''};
 const ACC_PRESETS = [['today','Сегодня'], ['yesterday','Вчера'], ['d7','7 дней'], ['d30','30 дней'], ['month','Этот месяц'], ['prev_month','Прошлый месяц'], ['d90','90 дней']];
 const accPLN = v => v == null ? '—' : fmtPLN(v) + ' zł';
@@ -8098,14 +8112,22 @@ async function renderAcc(){
   if (accTab === 'refs') return renderRefs(); // З9-и4
   if (accTab === 'pur') return renderPur(); // З10-и6
   if (accTab === 'out') return renderOut(); // З13-и7
-  const box = document.getElementById('accBody');
-  if (!accData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
-  try{ accData = await api('/admin/cash/book?' + accQuery()); }
-  catch(e){ box.innerHTML = '<div class="muted">Книга не посчиталась: ' + esc(e.message) + '</div>'; return; }
+  if (curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
+  const box = document.getElementById('accBody'), seq = ++bookSeq;
+  if (!accData || !document.getElementById('accNow')) box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; // на экране чужая вкладка — заглушка
+  let d;
+  try{ d = await api('/admin/cash/book?' + accQuery()); }
+  catch(e){
+    if (seq === bookSeq && accTab === 'cash' && curTab === 'acc') box.innerHTML = '<div class="muted">Книга не посчиталась: ' + esc(e.message) + '</div>';
+    return;
+  }
+  if (seq !== bookSeq || accTab !== 'cash' || curTab !== 'acc') return; // пока считалось, выбрали другую вкладку или период
+  accData = d;
   paintAcc();
 }
 function accToggle(date){ accDay = accDay === date ? null : date; paintAcc(); }
 function paintAcc(){
+  if (accTab !== 'cash' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
   const box = document.getElementById('accBody');
   const d = accData || {}, t = d.totals || {}, now = d.now || {}, per = d.period || {};
   const days = (d.days || []).slice().reverse(); // свежий день — сверху
@@ -8331,6 +8353,7 @@ function outCustom(){
 function outFmtSet(f){ if (outFmt === f) return; outFmt = f; outPrefsSave(); renderOut(); }
 function outLangSet(l){ if (outLang === l) return; outLang = l; outPrefsSave(); renderOut(); }
 async function renderOut(){
+  if (accTab !== 'out' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
   const box = document.getElementById('accBody'), seq = ++outSeq, main = document.getElementById('outMain');
   if (!main) box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   else main.classList.add('ovBusy'); // прежние листы видны бледно, пока считается новый период
@@ -8363,6 +8386,7 @@ function outProfHtml(){
     : 'освобождён от VAT — без колонок VAT'} · <a href="#" class="lnk" onclick="event.preventDefault(); palGoAccForm()">поменять — «Экономика» → «Бухгалтерия»</a>`;
 }
 function paintOut(){
+  if (accTab !== 'out' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
   const box = document.getElementById('accBody'), d = outData || {}, per = d.period || {}, sheets = d.sheets || [], r = outReq || {}, s = outSet;
   const csv = outFmt === 'csv', rh = Number(s.report_hour ?? 0), hh = String(rh).padStart(2, '0') + ':00';
   const running = !outPeriod.from && outPeriod.month && outPeriod.month === outCur;
@@ -8527,6 +8551,7 @@ function expTplLine(f){
   return '';
 }
 let expPeriod = {preset:'month'}, expData = null, expCats = null, expCps = null, expFilt = {category:'', method:''}, expForm = null;
+let expSeq = 0; // З19-и12: номер последнего запроса «Расходов»
 let expTodayCos = null; // З9-и3в: сегодняшние сдачи с пересчётом — для «взяли до сдачи»
 const EXP_METHODS = [['till','Из кассы'], ['bank','Банк'], ['card','Карта'], ['owner','Личные деньги владельца']];
 const EXP_METHOD_RU = Object.fromEntries(EXP_METHODS);
@@ -8545,10 +8570,17 @@ async function expRefs(){ // справочники — один раз; нов�
 let expMethodsOn = null; // З9-и4: какие способы оплаты включены; справочники поменяли — перечитать (refsDirty)
 function expMethodDef(){ const on = expMethodsOn || {}; return on.bank !== false ? 'bank' : (EXP_METHODS.find(([k]) => on[k]) || ['bank'])[0]; }
 async function renderExp(){
-  const box = document.getElementById('accBody');
-  if (!expData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
-  try{ await expRefs(); expData = await api('/admin/expenses?' + expQuery()); }
-  catch(e){ box.innerHTML = '<div class="muted">Расходы не загрузились: ' + esc(e.message) + '</div>'; return; }
+  if (accTab !== 'exp' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
+  const box = document.getElementById('accBody'), seq = ++expSeq;
+  if (!expData || !document.getElementById('expTotal')) box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; // на экране чужая вкладка — заглушка
+  let d;
+  try{ await expRefs(); d = await api('/admin/expenses?' + expQuery()); }
+  catch(e){
+    if (seq === expSeq && accTab === 'exp' && curTab === 'acc') box.innerHTML = '<div class="muted">Расходы не загрузились: ' + esc(e.message) + '</div>';
+    return;
+  }
+  if (seq !== expSeq || accTab !== 'exp' || curTab !== 'acc') return; // пока считалось, выбрали другую вкладку, период или фильтр
+  expData = d;
   paintExp();
 }
 function expPreset(p){ expPeriod = {preset:p}; renderExp(); }
@@ -8562,6 +8594,7 @@ function expCustom(){
   expPeriod = {from:f, to:t || f}; renderExp();
 }
 function paintExp(){
+  if (accTab !== 'exp' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
   const box = document.getElementById('accBody'), d = expData || {}, t = d.totals || {}, per = d.period || {};
   const cats = (d.by_category || []).slice().sort((a, b) => b.amount_pln - a.amount_pln);
   const list = d.expenses || [], cur = expCats.filter(c => !c.hidden || c.id === expFilt.category);
@@ -8768,7 +8801,7 @@ async function expSave(){
                : '✓ Расход ' + fmtPLN(d.expense.amount_pln) + ' zł внесён — ' + d.expense.category
                  + (f.tpl ? ' · регулярный «' + f.tpl.name + '» за ' + tplMonth(f.tpl.month) + (f.tpl.early ? ' — заранее' : '') : '') + ph + tn + dn);
     closeDrawer();
-    if (accTab === 'refs') renderRefs(); else renderExp(); // З9-и5б: «Внести заранее» открывают из «Справочников»
+    renderAcc(); // З19-и12: выбранная вкладка (шторка живёт поверх вкладок); З9-и5б: «Внести заранее» — из «Справочников»
   }catch(e){ toast('⚠ ' + e.message); }
   finally{ if (btn.isConnected) btn.disabled = false; }
 }
@@ -8802,7 +8835,7 @@ async function expPhotoDel(id){
     await api('/admin/expenses/' + id + '/photo', {method:'DELETE'});
     toast('✓ Фото убрано');
     expForm.photo = false;
-    renderExp();
+    renderAcc(); // З19-и12: выбранная вкладка
     expPaint();
   }catch(e){ toast('⚠ ' + e.message); }
 }
@@ -8813,7 +8846,7 @@ async function expStorno(){
     const d = await api('/admin/expenses/' + expForm.id + '/storno', {method:'POST', body: JSON.stringify({reason})});
     toast('✓ Расход сторнирован — строка осталась, в итоги не входит' + debtNote(d.owner_debt, (expData || {}).owner_debt));
     closeDrawer();
-    renderExp();
+    renderAcc(); // З19-и12: выбранная вкладка (книга, если сторнировали из «Кассы»)
   }catch(e){ toast('⚠ ' + e.message); }
 }
 
@@ -8906,7 +8939,7 @@ function debtGo(){ accGo('exp'); debtOpen('bank'); }
    её нет, старые расходы остаются. Контрагенты: новый и правка в шторке — NIP 10 цифр с контрольной суммой; скрытый
    не подсказывается. Способы оплаты: выключенный не предлагается в новом расходе, хотя бы один остаётся. Удаления нет.
    Сервер — expense_refs.go. ── */
-let refsData = null, refCat = null, refCp = null;
+let refsData = null, refCat = null, refCp = null, refsSeq = 0; // З19-и12: refsSeq — номер последнего запроса «Справочников»
 function refsDirty(){ expCats = null; expCps = null; expMethodsOn = null; } // форма расхода перечитает справочники
 function nipOk(n){ // контрольная сумма NIP, как на сервере (у старых записей может не сходиться — покажем)
   if (!/^\d{10}$/.test(n || '')) return false;
@@ -8915,17 +8948,25 @@ function nipOk(n){ // контрольная сумма NIP, как на сер�
 }
 function nipFmt(n){ return n ? n.slice(0, 3) + '-' + n.slice(3, 6) + '-' + n.slice(6, 8) + '-' + n.slice(8) : ''; }
 async function renderRefs(){
-  const box = document.getElementById('accBody');
-  if (!refsData) box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  if (accTab !== 'refs' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
+  const box = document.getElementById('accBody'), seq = ++refsSeq;
+  if (!refsData || !document.getElementById('refCats')) box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; // на экране чужая вкладка — заглушка
+  let fresh;
   try{
     const [c, p, m, t, g, st] = await Promise.all([api('/admin/expense-categories'), api('/admin/counterparties'), api('/admin/expense-methods'),
       api('/admin/expense-templates'), api('/admin/goods'), api('/admin/settings'), kpirLoad(), ryLoad()]); // З9-и5; З13-и7 — позиции и форма учёта
-    refsData = {cats: c.categories || [], cps: p.counterparties || [], methods: m.methods || [], tpls: t.templates || [],
+    fresh = {cats: c.categories || [], cps: p.counterparties || [], methods: m.methods || [], tpls: t.templates || [],
       goods: g.goods || [], settings: st.settings || {}};
-  }catch(e){ box.innerHTML = '<div class="muted">Справочники не загрузились: ' + esc(e.message) + '</div>'; return; }
+  }catch(e){
+    if (seq === refsSeq && accTab === 'refs' && curTab === 'acc') box.innerHTML = '<div class="muted">Справочники не загрузились: ' + esc(e.message) + '</div>';
+    return;
+  }
+  if (seq !== refsSeq || accTab !== 'refs' || curTab !== 'acc') return; // пока считалось, ушли со «Справочников» или запросили заново
+  refsData = fresh;
   paintRefs();
 }
 function paintRefs(){
+  if (accTab !== 'refs' || curTab !== 'acc') return; // З19-и12: рисуется только выбранная вкладка
   const box = document.getElementById('accBody'), d = refsData || {cats:[], cps:[], methods:[], tpls:[]};
   const cat = c => `<tr class="refRow${c.hidden ? ' refOff' : ''}" data-id="${c.id}">
       <td><b>${esc(c.name)}</b>${c.hidden ? ' <span class="muted">· скрыта</span>' : ''}</td>
