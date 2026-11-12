@@ -590,6 +590,12 @@
   .bkRow.same{opacity:.5; cursor:default}
   .bkRow.bad{border-color:rgba(255,39,64,.5); cursor:default}
   .bkRow .bkBad{grid-column:2 / -1; color:var(--acc3); font-size:11.5px}
+  /* З24-и6: сезонные пакеты — пометки в списке и при выдаче */
+  .pkMark{display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:7px; margin-left:4px;
+          background:rgba(251,191,36,.12); color:var(--gold); vertical-align:1px}
+  .pkMark.new{background:rgba(52,211,153,.12); color:var(--green)}
+  .pkMark.off{background:rgba(255,255,255,.06); color:var(--dim)}
+  .pkSeason{font-size:12px; margin-top:2px}
   .zrCell{font-size:12px; margin-top:2px}
   .hpc .inf2 .pr.up,.pc .pr.up{color:var(--gold)}
   .hpc .inf2 .pr.down,.pc .pr.down{color:var(--green)}
@@ -3903,17 +3909,18 @@ function uFormHtml(){
   // или кошельком — тогда это не выручка, а перевод обязательства клуба из
   // денег во время (Г-Р7). Оба случая — одна кнопка, разница только в способе.
   if (uForm === 'pack'){
-    const live = (packsCache || []).filter(p => p.active);
+    const live = (packsCache || []).filter(p => p.active && p.on_sale !== false); // З24-и6: вне окна продажи — нет
     if (!live.length) return `<div class="uform"><div class="muted">
       Пакетов в продаже нет. Владелец заводит их в «Настройки → Пакеты времени».</div></div>`;
     const sel = live.find(p => p.id === issuePack) || live[0];
     issuePack = sel.id;
     return `<div class="uform">
       <div class="segs" style="flex-wrap:wrap">${live.map(p =>
-        `<button class="${issuePack===p.id?'on':''}" onclick="issuePack='${p.id}'; renderUserDrawer()">${esc(p.name)}</button>`).join('')}</div>
+        `<button class="${issuePack===p.id?'on':''}" onclick="issuePack='${p.id}'; renderUserDrawer()">${esc(p.name)}${packMarks(p)}</button>`).join('')}</div>
       <div class="muted">${esc(sel.zone || '—')} · ${packDur(sel.minutes)} · <b>${fmtPLN(sel.price_pln)} zł</b>
         · час выходит ${fmtPLN(sel.hour_pln)} zł${sel.save_pln > 0 ? ' (выгода ' + fmtPLN(sel.save_pln) + ' zł)' : ''}
         · ${sel.days_valid ? 'сгорит через ' + sel.days_valid + ' дн' : 'бессрочно'}</div>
+      ${sel.season_text ? '<div class="muted pkSeason" id="packSeason">' + esc(sel.season_text) + '</div>' : ''}
       <div class="segs">
         <button class="${issueMethod==='cash'?'on':''}" onclick="issueMethod='cash'; renderUserDrawer()">Нал</button>
         <button class="${issueMethod==='card'?'on':''}" onclick="issueMethod='card'; renderUserDrawer()">Карта</button>
@@ -4001,7 +4008,8 @@ function uHistHtml(){
     if (!rows.length) return '<div class="empty">Пакетов не покупал</div>';
     return `<table class="hist">${rows.map(x => `<tr${x.live ? '' : ' style="opacity:.55"'}>
       <td class="muted">${fmtTime(x.created_at)}</td>
-      <td><b>${esc(x.name)}</b><div class="muted">${esc(x.zone||'—')} · ${esc(x.method)}</div></td>
+      <td><b>${esc(x.name)}</b><div class="muted">${esc(x.zone||'—')} · ${esc(x.method)}</div>${x.spend_text
+        ? '<div class="muted pkSeason">тратится ' + esc(x.spend_text) + (x.live && x.spend_now === false ? ' · сейчас не тратится' : '') + '</div>' : ''}</td>
       <td>${x.minutes_left}/${x.minutes_total} мин${
         x.voided_at ? '<div class="muted">отменён</div>'
         : (x.days_left !== undefined ? '<div class="muted">' + (x.days_left > 0 ? 'сгорит через ' + x.days_left + ' дн' : 'сгорел') + '</div>' : '')}</td>
@@ -10310,7 +10318,8 @@ async function renderPackages(){
       ? '<div class="empty"><span data-ic="clock"></span>Пакетов нет — гости платят по часам</div>'
       : `<table><tr><th>Пакет</th><th>Зона</th><th>Время</th><th>Цена</th><th>VAT</th><th>Час выходит</th><th>Срок</th><th></th></tr>
       ${packsCache.map(p => `<tr${p.active ? '' : ' style="opacity:.5"'}>
-        <td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="muted">— выключен</span>'}</td>
+        <td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="muted">— выключен</span>'}${packMarks(p)}${
+          p.season_text ? '<div class="muted pkSeason">' + esc(p.season_text) + '</div>' : ''}</td>
         <td class="muted">${esc(p.zone || '—')}</td>
         <td>${packDur(p.minutes)}</td>
         <td>${fmtPLN(p.price_pln)} zł</td>
@@ -10379,6 +10388,57 @@ function packEdit(id){
   openDrawer(isNew ? 'Новый пакет' : 'Пакет · ' + p.name, packFormHtml(p, isNew));
 }
 
+/* ── З24-и6 (№55): сезонность пакета (сервер — З24-и5). Когда продаётся (даты, пусто — всегда), сколько раз один гость
+   может купить, «только новым» (как «Новые» в «Гостях»), когда тратятся минуты (дни и часы; 00:00–00:00 — весь день).
+   Вне окна продажи пакета нет ни у стойки, ни в приложении; вне окна списания его минуты ждут — сессия платит другим
+   запасом и кошельком. Проданное живёт по условиям на момент продажи. ── */
+function packSeasonal(p){
+  return !!(p.sell_from || p.sell_to || (p.spend_days_mask != null
+    && !(p.spend_days_mask === 127 && p.spend_start_min === 0 && p.spend_end_min === 1440)));
+}
+function packMarks(p){
+  return (packSeasonal(p) ? ' <span class="pkMark">сезонный</span>' : '') + (p.new_only ? ' <span class="pkMark new">только новым</span>' : '')
+    + (p.on_sale === false ? ' <span class="pkMark off">не продаётся сейчас</span>' : '');
+}
+function packSeasonHtml(p){
+  const mask = p.spend_days_mask ?? 127, st = p.spend_start_min ?? 0, en = p.spend_end_min ?? 1440;
+  return `<div class="dsub" style="margin:8px 0 -2px">Сезонность</div>
+    <label class="muted" style="margin-bottom:-6px">Продаётся — пусто, если всегда</label>
+    <div class="vatrow"><span class="zrPair"><label class="muted" for="pk_sf">с</label><input id="pk_sf" class="input" type="date" value="${p.sell_from || ''}"></span>
+      <span class="zrPair"><label class="muted" for="pk_st">по</label><input id="pk_st" class="input" type="date" value="${p.sell_to || ''}"></span></div>
+    <label class="muted" style="margin-bottom:-6px" for="pk_pg">Не больше на одного гостя (0 — без ограничения)</label>
+    <input id="pk_pg" class="input" type="number" min="0" max="100" value="${p.per_guest ?? 0}">
+    <label class="muted" style="display:flex; gap:8px; align-items:center"><input id="pk_new" type="checkbox"${p.new_only ? ' checked' : ''}>
+      только новым гостям — как «Новые» в «Гостях»</label>
+    <label class="muted" style="margin-bottom:-6px">Минуты тратятся — дни и часы</label>
+    <div class="dayscol" id="pk_dmask">${DAYS_RU.map((d, i) =>
+      `<label><input type="checkbox" class="pkDay" data-b="${i}"${(mask & (1 << i)) ? ' checked' : ''}>${d}</label>`).join('')}</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap">
+      <button class="btn ghost mini" onclick="pkDays(127)">каждый день</button>
+      <button class="btn ghost mini" onclick="pkDays(31)">будни</button>
+      <button class="btn ghost mini" onclick="pkDays(96)">выходные</button></div>
+    <div class="vatrow"><span class="zrPair"><label class="muted" for="pk_ss">с</label><input id="pk_ss" class="input" type="time" value="${mmHH2(st)}"></span>
+      <span class="zrPair"><label class="muted" for="pk_se">до</label><input id="pk_se" class="input" type="time" value="${mmHH2(en % 1440)}"></span></div>
+    <div class="muted">00:00–00:00 — весь день; конец раньше начала — через полночь. Вне этих дней и часов минуты пакета ждут —
+      сессия платит другим запасом и кошельком.</div>`;
+}
+function pkDays(mask){ document.querySelectorAll('.pkDay').forEach(ch => { ch.checked = !!(mask & (1 << (+ch.dataset.b))); }); }
+// поля сезонности из формы: {ошибка} или поля запроса
+function packSeasonBody(){
+  const v = x => { const el = document.getElementById(x); return el ? el.value.trim() : ''; };
+  let mask = 0;
+  document.querySelectorAll('.pkDay:checked').forEach(ch => { mask |= 1 << (+ch.dataset.b); });
+  const ss = hhmmToMin(v('pk_ss')), se0 = hhmmToMin(v('pk_se'));
+  if (!mask) return {err: 'Отметь хотя бы один день, когда тратятся минуты'};
+  if (ss < 0 || se0 < 0) return {err: 'Заполни часы, когда тратятся минуты'};
+  const se = se0 === 0 ? 1440 : se0; // 00:00 в конце — до полуночи
+  if (ss === se) return {err: 'Часы списания: начало и конец совпадают'};
+  const pg = parseInt(v('pk_pg') || '0', 10);
+  if (!(pg >= 0 && pg <= 100)) return {err: 'Не больше на гостя — от 0 до 100'};
+  return {sell_from: v('pk_sf'), sell_to: v('pk_st'), per_guest: pg, new_only: !!(document.getElementById('pk_new') || {}).checked,
+    spend_days_mask: mask, spend_start_min: ss, spend_end_min: se};
+}
+
 function packFormHtml(p, isNew){
   return `<div class="uform">
     <label class="muted" style="margin-bottom:-6px">Название — его увидит гость</label>
@@ -10395,6 +10455,7 @@ function packFormHtml(p, isNew){
     <select id="pk_vat" class="input">${vatOptions(p.vat_pct)}</select>
     <label class="muted" style="margin-bottom:-6px">Сгорает через, дней (0 — бессрочно)</label>
     <input id="pk_days" class="input" type="number" min="0" max="3650" value="${p.days_valid ?? 0}">
+    ${packSeasonHtml(p)}
     <label class="muted" style="margin-bottom:-6px">Порядок в списке</label>
     <input id="pk_sort" class="input" type="number" value="${p.sort ?? 100}">
     <label class="muted" style="display:flex; gap:8px; align-items:center">
@@ -10420,6 +10481,7 @@ function packRepaint(){
     sort: +(document.getElementById('pk_sort')||{}).value || 100,
     active: (document.getElementById('pk_active')||{}).checked,
     vat_pct: document.getElementById('pk_vat') ? Number(document.getElementById('pk_vat').value) : p.vat_pct, // З13-и2: смена зоны выбор не сбрасывает
+    ...(() => { const b = packSeasonBody(); return b.err ? {} : b; })(), // З24-и6: смена зоны сезонность не сбрасывает
     id: p.id, zone_id: packZone,
   };
   setHTML('drawerBody', packFormHtml(cur, !p.id));
@@ -10458,6 +10520,9 @@ async function savePack(id){
     active: document.getElementById('pk_active').checked,
   };
   if (!body.name){ toast('⚠ Нужно название'); return; }
+  const season = packSeasonBody(); // З24-и6
+  if (season.err){ toast('⚠ ' + season.err); return; }
+  Object.assign(body, season);
   if (!(body.minutes > 0)){ toast('⚠ Нужны минуты'); return; }
   if (!(body.price_pln > 0)){ toast('⚠ Нужна цена больше нуля'); return; }
   vatPut(body, 'pk_vat', packsCache.find(x => x.id === id)); // З13-и2
