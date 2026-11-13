@@ -1,4 +1,5 @@
-// К10-и1 «Вкладка „Сейчас“» (KIOSK.md, этап VII), браузер. Киоск PC-07, гость Guest46, сессия идёт.
+// К10 «Вкладка „Сейчас“» (KIOSK.md, этап VII; пункты 1–3 — К10-и1, пункт 4 — К10-и3), браузер. Киоск PC-07, гость
+// Guest46, сессия идёт.
 // 1. После входа открыта «Сейчас»; вкладки 5 + 5 в порядке «Сейчас, Кейсы, Таланты, Ачивки, Топ / История, Кухня,
 //    Брони, Пакеты, Койны»; на трёх языках подписи целиком и в одну строку.
 // 2. Наполнение — подстановкой на странице одним синхронным действием (подставить → нарисовать → прочитать →
@@ -10,6 +11,10 @@
 //    забрали приз — карточка ушла; заказали на «Кухне» — заказ на «Сейчас» со статусом и крестиком; админ принял —
 //    статус сменился сам; вышли с «Кухни» и вошли снова — открыта «Сейчас», заказ на месте, меню при этом не
 //    запрашивали; админ отменил — блок ушёл; полоса ачивки раз в минуту обновляется и на «Сейчас».
+// 4. Заказы на «Сейчас» обновляются сами: заказали «с телефона» (теми же запросами, что шлёт PWA, мимо киоска; админ
+//    не трогал, уведомлений гостю нет) — строка появилась сама, причём читались одни заказы, без меню; ничего не
+//    изменилось — вкладка не перерисована; отменили «с телефона» — блок ушёл; вернулись на «Сейчас» с другой вкладки —
+//    заказ виден сразу; «Кухня» обновляется как раньше, раз в 15 секунд.
 // Убирает за собой: сессия закрыта, свои заказы отменены (остаток возвращён), кошелёк и надбавка гостя как были.
 // Выданный кейс и открытый кейс дают ноль по числу ждущих; выпавшее из кейса остаётся гостю.
 const z = require('./_z');
@@ -261,6 +266,61 @@ const J = JSON.stringify;
   const lone = () => reqs.some(a => a[1] === 'achievements' && !reqs.some(c => c[1] === 'cases' && Math.abs(c[0] - a[0]) < 3000));
   for (let i = 0; i < 75 && !lone(); i++) await z.sleep(1000);
   z.check('пока открыта «Сейчас» и идёт сессия, ачивки обновляются раз в минуту (как на вкладке «Ачивки»)', lone() && await tabsOn() === 'now / st-now', await tabsOn());
+
+  // ── 4. К10-и3: заказы на «Сейчас» обновляются сами. «С телефона» — теми же запросами, что шлёт PWA, мимо этого киоска;
+  // админ ничего не делает, уведомлений гостю о его же действиях сервер не шлёт — строка может появиться и уйти только
+  // за счёт собственного обновления вкладки
+  const notifN = () => +z.sql(`SELECT count(*) FROM notifications WHERE user_id='${g}'`);
+  const since = (t, what) => reqs.filter(r => r[0] >= t && r[1] === what).length;
+  const gid = oid ? z.sql(`SELECT good_id FROM kitchen_orders WHERE id='${oid}'`) : '';
+  // сначала киоск забирает прежние уведомления (отмена заказа админом выше): иначе данные перечитал бы их тост, а не вкладка
+  const t40 = Date.now();
+  for (let i = 0; i < 20 && since(t40, 'notifications') < 1; i++) await z.sleep(1000);
+  await z.sleep(2500);
+  const nt0 = notifN(), t4 = Date.now();
+  const po = await z.api('POST', '/me/kitchen/orders', { good_id: gid, qty: 1 }, G);
+  const poId = po.data && po.data.order && po.data.order.id;
+  const rowPhone = await until(() => !!document.querySelector('#sideBody .foodorder.st-new'), null, 20000);
+  const sec4 = ((Date.now() - t4) / 1000).toFixed(1), full4 = since(t4, 'cases');
+  z.check('К10-и3: заказ «с телефона» (мимо киоска, админ не трогал) сам появился на «Сейчас» за 20 секунд — без уведомления гостю и без полной перезагрузки данных',
+    !!poId && rowPhone && notifN() === nt0 && full4 === 0 && await tabsOn() === 'now / st-now',
+    `ответ ${po.status}, строка ${rowPhone} за ${sec4} с, уведомлений ${notifN() - nt0}, полных перезагрузок ${full4}, ${await tabsOn()}`);
+  z.check('обновление «Сейчас» читает одни заказы — меню не запрашивает', since(t4, 'kitchen/orders') >= 1 && since(t4, 'menu') === 0,
+    `запросов заказов ${since(t4, 'kitchen/orders')}, меню ${since(t4, 'menu')}`);
+  // ничего не изменилось — вкладку не трогаем: метка на строке заказа переживает обновление (вторая попытка — на случай,
+  // если ровно в этот миг вкладку перерисовало минутное обновление ачивок)
+  const keepMark = () => p.evaluate(async () => {
+    const r = document.querySelector('#sideBody .foodorder');
+    if (!r || typeof loadMyOrders !== 'function') return 'нет строки заказа или самого обновления';
+    r.dataset.k10 = 'keep'; await loadMyOrders();
+    const r2 = document.querySelector('#sideBody .foodorder');
+    return r2 && r2.dataset.k10 === 'keep' ? 'та же' : 'перерисована';
+  });
+  let kept = await keepMark(); if (kept === 'перерисована') kept = await keepMark();
+  z.check('заказы перечитаны, ничего не изменилось — вкладка не перерисована (строка заказа та же)', kept === 'та же', kept);
+  const pc = poId ? await z.api('POST', `/me/kitchen/orders/${poId}/cancel`, {}, G) : { status: 0 };
+  const rowPhoneGone = await until(() => !document.querySelector('#sideBody .foodorder'), null, 20000);
+  z.check('отменили «с телефона» — блок заказа ушёл с «Сейчас» сам за 20 секунд, уведомлений гостю нет',
+    rowPhone && pc.status === 200 && rowPhoneGone && notifN() === nt0, `строка была ${rowPhone}, ответ ${pc.status}, ушла ${rowPhoneGone}, уведомлений ${notifN() - nt0}`);
+  // с другой вкладки на «Сейчас» — заказы перечитаны сразу, своей очереди не ждём
+  await p.click('#st-top');
+  const po2 = await z.api('POST', '/me/kitchen/orders', { good_id: gid, qty: 1 }, G);
+  const po2Id = po2.data && po2.data.order && po2.data.order.id;
+  const t6 = Date.now();
+  await p.click('#st-now');
+  const rowOpen = await until(() => !!document.querySelector('#sideBody .foodorder.st-new'), null, 2500);
+  z.check('вернулись на «Сейчас» с другой вкладки — новый заказ виден сразу, а не через 15 секунд', !!po2Id && rowOpen, `ответ ${po2.status}, строка ${rowOpen} за ${Date.now() - t6} мс`);
+  // «Кухня» обновляется как раньше: раз в 15 секунд меню и заказы вместе (запросы самого открытия вкладки не в счёт)
+  await p.click('#st-food');
+  const t7 = Date.now() + 1500;
+  for (let i = 0; i < 20 && since(t7, 'menu') < 1; i++) await z.sleep(1000);
+  await z.sleep(500);
+  z.check('«Кухня» обновляется как раньше — раз в 15 секунд меню и заказы вместе', since(t7, 'menu') >= 1 && since(t7, 'kitchen/orders') >= 1,
+    `после открытия вкладки: запросов меню ${since(t7, 'menu')}, заказов ${since(t7, 'kitchen/orders')}`);
+  if (po2Id) await z.api('POST', `/me/kitchen/orders/${po2Id}/cancel`, {}, G);
+  await p.click('#st-now');
+  const clean4 = await until(() => !document.querySelector('#sideBody .foodorder'), null, 20000);
+  z.check('проверка отменила свои заказы — на «Сейчас» блока заказа снова нет', ordMine().length === 0 && clean4, `открытых заказов в базе ${ordMine().length}, блок ушёл ${clean4}`);
 
   z.check('ошибок JS в киоске нет', z.jsErrors.length === 0, z.jsErrors.join(' | '));
   await z.done();

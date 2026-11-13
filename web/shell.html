@@ -4257,7 +4257,25 @@ async function foodCancel(id){
     await loadKitchen();
   }catch(e){ toast('⚠ ' + e.message); }
 }
-setInterval(() => { if (me && curTab === 'food') loadKitchen(); }, 15000);
+// К10-и3: на «Сейчас» заказы обновляются сами, как на «Кухне», — заказ или отмена с телефона видны без действий
+// админа (о действиях самого гостя сервер уведомлений не шлёт). Меню тут не нужно — читаем одни заказы; вкладка
+// открыта по умолчанию, поэтому перерисовываем её, только если заказы изменились
+async function loadMyOrders(){
+  const who = me;
+  if (!who) return;
+  try{
+    const o = await api('/me/kitchen/orders');
+    if (me !== who) return; // пока ждали ответ, гость вышел или его данные перечитаны целиком (заказы — там же)
+    const was = JSON.stringify([myOrders, myUnpaidPln]);
+    myOrders = o.orders || []; myUnpaidPln = o.unpaid_pln || 0;
+    if (curTab === 'now' && JSON.stringify([myOrders, myUnpaidPln]) !== was) renderSide();
+  }catch(e){}
+}
+setInterval(() => {
+  if (!me) return;
+  if (curTab === 'food') loadKitchen();
+  else if (curTab === 'now' && activeSession) loadMyOrders();
+}, 15000);
 
 /* Е0-и5в: подпись поля профиля на языке гостя. Неизвестный ключ показываем
    как есть — лучше сырое слово, чем пустое место. */
@@ -5065,6 +5083,7 @@ function sideTab(t){
   const tbSens = document.getElementById('tbSens');
   if (tbSens) tbSens.classList.toggle('active', t==='sens');
   if (t === 'food') loadKitchen(); // Г7: меню и заказы — при открытии
+  if (t === 'now') loadMyOrders(); // К10-и3: заказы — при открытии, не дожидаясь своей очереди
   if (t === 'pack') loadPacks();   // Е2-и5: свои пакеты и витрина — при открытии
   renderSide();
   FX.swap(document.getElementById('sideBody'));
