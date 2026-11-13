@@ -734,6 +734,12 @@
   .now-more{display:block; width:100%; margin:0 0 10px; padding:9px 12px; border:1px dashed var(--line); border-radius:12px;
     background:transparent; color:var(--dim); font:inherit; font-size:12.5px; text-align:center; cursor:pointer; transition:.15s}
   .now-more:hover{border-color:var(--acc); color:var(--txt)}
+  /* К10-и2: «Открытые раньше · N» — строка-кнопка во вкладке «Кейсы», под кейсами, которые можно открыть */
+  .cases-past{display:flex; align-items:center; gap:14px; width:100%; margin:4px 0 10px; padding:9px 12px;
+    border:1px dashed var(--line); border-radius:12px; background:transparent; color:var(--dim); font:inherit;
+    font-size:12.5px; text-align:left; cursor:pointer; transition:.15s}
+  .cases-past:hover{border-color:var(--acc); color:var(--txt)}
+  .cases-past .chev{margin-left:auto}
   .now-empty{text-align:center; padding:30px 12px 26px; color:var(--dim); font-size:13px; line-height:1.45}
   .now-empty .isvg{width:30px; height:30px}
   .now-empty .t{margin:8px 0 4px; font-weight:800; font-size:15px; color:var(--txt)}
@@ -1415,6 +1421,8 @@ const SH_RU = {
   ntf_zone_burned: "🔥 Зону «{z}» закрыли — сгорело {m} мин этой зоны",
   tab_food_title: "Кухня",
   cases_empty: "Кейсов пока нет.<br>Играй, поднимай уровень, выполняй ачивки.",
+  cases_past: "Открытые раньше · {n}",
+  cases_burnt: "Сгоревшие · {n}",
   cases_odds_link: "шансы дропа",
   case_opened_coins: "открыт: +{n} {ic}",
   case_opened_buster: "открыт: +{n}% кэшбек",
@@ -1979,6 +1987,8 @@ const SH_EN = {
   ntf_zone_burned: "🔥 Zone “{z}” was closed — {m} min of that zone are gone",
   tab_food_title: "Kitchen",
   cases_empty: "No cases yet.<br>Play, level up, earn achievements.",
+  cases_past: "Opened earlier · {n}",
+  cases_burnt: "Expired · {n}",
   cases_odds_link: "drop odds",
   case_opened_coins: "opened: +{n} {ic}",
   case_opened_buster: "opened: +{n}% cashback",
@@ -2543,6 +2553,8 @@ const SH_PL = {
   ntf_zone_burned: "🔥 Strefę „{z}” zamknięto — przepadło {m} min z tej strefy",
   tab_food_title: "Kuchnia",
   cases_empty: "Nie masz jeszcze skrzynek.<br>Graj, zdobywaj poziomy i osiągnięcia.",
+  cases_past: "Otwarte wcześniej · {n}",
+  cases_burnt: "Wygasłe · {n}",
   cases_odds_link: "szanse dropu",
   case_opened_coins: "otwarta: +{n} {ic}",
   case_opened_buster: "otwarta: +{n}% cashbacku",
@@ -3179,6 +3191,7 @@ let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
 let sensProfile = null, sensProfileApplied = false;
 let sensOwnMouse = false; // С2-и5 (Р2): гость со своей мышью — DPI свой, без пересчёта под мышь клуба
 let activeSession = null, timerIv = null, curTab = 'now', profAva = 1;
+let casesPastOpen = false; // К10-и2: во вкладке «Кейсы» раскрыт список открытых и сгоревших; смена вкладки сворачивает
 let sessComputer = ''; // Е1: имя машины активной сессии — для экрана «Готов?»
 let menuData = null, myOrders = [], foodQty = {}, foodBusy = false, myUnpaidPln = 0; // Г7: кухня (Р10: постоплата)
 let lastFavsKey = ''; // Г8: витрина пересобирается при смене любимых игр
@@ -5077,6 +5090,7 @@ attractPoke();
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
+  casesPastOpen = false; // К10-и2: «Открытые раньше» после любой смены вкладки снова одной строкой
   ['now','cases','talents','top','ach','hist','book','coins','food','pack'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
   // студия сенсы живёт в топбаре — подсвечиваем её кнопку
@@ -5166,8 +5180,19 @@ function renderSide(){
       streakCard();
   }
   if (curTab === 'cases'){
-    if (!cases.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+UI.chest+'<br>'+STR.cases_empty+'<br><a href="#" style="color:var(--dim)" onclick="openOdds(event,\'\',\'\');return false">'+esc(STR.cases_odds_link)+'</a></div>'; return; }
-    el.innerHTML = cases.map(caseRow).join('');
+    // К10-и2: сверху кейсы, которые можно открыть; открытые и сгоревшие — одной строкой под ними, список — по нажатию.
+    // Раскрыт ли список, помнит casesPastOpen: перерисовка его не схлопывает, смена вкладки сворачивает
+    const empty = '<div class="muted" style="text-align:center; padding:40px 0">'+UI.chest+'<br>'+STR.cases_empty+'<br><a href="#" style="color:var(--dim)" onclick="openOdds(event,\'\',\'\');return false">'+esc(STR.cases_odds_link)+'</a></div>';
+    if (!cases.length){ el.innerHTML = empty; return; }
+    const now = Date.now(), burnt = c => !c.opened_at && c.expires_at && new Date(c.expires_at) < now;
+    const live = cases.filter(c => !c.opened_at && !burnt(c));
+    const done = cases.filter(c => c.opened_at), gone = cases.filter(burnt);
+    el.innerHTML = (live.length ? live.map(caseRow).join('') : empty) +
+      (done.length || gone.length ? `<button class="cases-past" onclick="casesPastOpen = !casesPastOpen; renderSide()">` +
+        (done.length ? `<span>${T('cases_past', {n: done.length})}</span>` : '') +
+        (gone.length ? `<span>${T('cases_burnt', {n: gone.length})}</span>` : '') +
+        `<span class="chev">${casesPastOpen ? '▴' : '▾'}</span></button>` +
+        (casesPastOpen ? done.concat(gone).map(caseRow).join('') : '') : '');
   }
   if (curTab === 'talents'){
     if (!talents){ el.innerHTML = ''; return; }

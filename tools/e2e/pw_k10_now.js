@@ -1,5 +1,5 @@
-// К10 «Вкладка „Сейчас“» (KIOSK.md, этап VII; пункты 1–3 — К10-и1, пункт 4 — К10-и3), браузер. Киоск PC-07, гость
-// Guest46, сессия идёт.
+// К10 «Вкладка „Сейчас“» (KIOSK.md, этап VII; пункты 1–3 — К10-и1, пункт 4 — К10-и3, пункт 5 — К10-и2), браузер.
+// Киоск PC-07, гость Guest46, сессия идёт.
 // 1. После входа открыта «Сейчас»; вкладки 5 + 5 в порядке «Сейчас, Кейсы, Таланты, Ачивки, Топ / История, Кухня,
 //    Брони, Пакеты, Койны»; на трёх языках подписи целиком и в одну строку.
 // 2. Наполнение — подстановкой на странице одним синхронным действием (подставить → нарисовать → прочитать →
@@ -15,6 +15,9 @@
 //    не трогал, уведомлений гостю нет) — строка появилась сама, причём читались одни заказы, без меню; ничего не
 //    изменилось — вкладка не перерисована; отменили «с телефона» — блок ушёл; вернулись на «Сейчас» с другой вкладки —
 //    заказ виден сразу; «Кухня» обновляется как раньше, раз в 15 секунд.
+// 5. Вкладка «Кейсы»: сверху только кейсы, которые можно открыть; открытые и сгоревшие — одной свёрнутой строкой
+//    «Открытые раньше · N» и «Сгоревшие · M»; нажатие раскрывает и сворачивает список, перерисовка его не схлопывает,
+//    смена вкладки сворачивает; счётчики сходятся с базой; кейс, открытый во вкладке, уходит в свёрнутые.
 // Убирает за собой: сессия закрыта, свои заказы отменены (остаток возвращён), кошелёк и надбавка гостя как были.
 // Выданный кейс и открытый кейс дают ноль по числу ждущих; выпавшее из кейса остаётся гостю.
 const z = require('./_z');
@@ -321,6 +324,74 @@ const J = JSON.stringify;
   await p.click('#st-now');
   const clean4 = await until(() => !document.querySelector('#sideBody .foodorder'), null, 20000);
   z.check('проверка отменила свои заказы — на «Сейчас» блока заказа снова нет', ordMine().length === 0 && clean4, `открытых заказов в базе ${ordMine().length}, блок ушёл ${clean4}`);
+
+  // ── 5. К10-и2: во вкладке «Кейсы» сверху кейсы, которые можно открыть; открытые и сгоревшие — одной свёрнутой строкой.
+  // Подстановка, как в пункте 2: одно синхронное действие на странице — данные, вкладка, шаги, чтение, всё вернуть.
+  // Чтение: top / under — карточки над строкой и под ней (o — можно открыть, x — открыт или сгорел), line — ярлыки строки
+  const view = (cs, steps) => p.evaluate(([cs, steps]) => {
+    const keep = { cases, curTab }, out = [], body = document.getElementById('sideBody');
+    const read = () => {
+      const kids = [...body.children], i = kids.findIndex(e => e.classList.contains('cases-past'));
+      const rows = l => l.filter(e => e.classList.contains('case-i')).map(e => e.classList.contains('opened') ? 'x' : 'o').join('');
+      return { line: i < 0 ? null : [...kids[i].querySelectorAll('span')].map(s => s.textContent.trim()).join(' | '),
+        top: rows(i < 0 ? kids : kids.slice(0, i)), under: i < 0 ? '' : rows(kids.slice(i + 1)),
+        empty: !!body.querySelector(':scope > .muted a') };
+    };
+    try {
+      cases = cs; sideTab('cases'); out.push(read());
+      for (const s of steps || []) {
+        if (s === 'click') { const b = body.querySelector('.cases-past'); if (b) b.click(); }
+        if (s === 'render') renderSide();
+        if (s === 'tabs') { sideTab('top'); sideTab('cases'); }
+        out.push(read());
+      }
+    } catch (e) { out.push({ err: String((e && e.message) || e) }); }
+    cases = keep.cases; sideTab(keep.curTab);
+    return out;
+  }, [cs, steps]);
+  const LINE11 = 'Открытые раньше · 1 | Сгоревшие · 1 | ▾';
+  const v1 = await view(CASES, ['click', 'render', 'click', 'click', 'tabs']), at = n => v1[n] || {};
+  z.check('К10-и2: «Кейсы» — сверху только кейсы, которые можно открыть; открытый и сгоревший убраны в одну свёрнутую строку со своими счётчиками',
+    at(0).top === 'ooooo' && at(0).under === '' && at(0).line === LINE11, J(v1[0]));
+  z.check('нажали на строку — под ней открытый и сгоревший, наверху всё как было; перерисовка (пришли свежие данные) список не сворачивает',
+    at(1).top === 'ooooo' && at(1).under === 'xx' && /▴$/.test(at(1).line || '') && at(2).under === 'xx', J([v1[1], v1[2]]));
+  z.check('нажали ещё раз — список свёрнут; раскрыли, ушли на другую вкладку и вернулись — снова свёрнут',
+    at(3).under === '' && at(4).under === 'xx' && at(5).under === '' && at(5).top === 'ooooo', J([v1[3], v1[4], v1[5]]));
+  const O2 = kase('op2', 'medium', 3.5, { opened_at: iso(-2), drop_type: 'buster', drop_amount: 500 });
+  const v2 = await view([W20, OPENED, BURNT, O2], ['click']), v3 = await view([BURNT, W2]), v4 = await view([W20, W2]), v5 = await view([OPENED, BURNT]);
+  z.check('счётчики раздельные: открытых 2 и сгоревший 1; только сгоревший — в строке один ярлык «Сгоревшие · 1»; ни тех ни других — строки нет',
+    v2[0].line === 'Открытые раньше · 2 | Сгоревшие · 1 | ▾' && v2[0].top === 'o' && (v2[1] || {}).under === 'xxx'
+    && v3[0].line === 'Сгоревшие · 1 | ▾' && v3[0].top === 'o' && v4[0].line === null && v4[0].top === 'oo', J([v2, v3[0], v4[0]]));
+  z.check('открывать нечего, а прошлые есть — сверху «Кейсов пока нет», строка под ним на месте',
+    v5[0].empty === true && v5[0].top === '' && v5[0].line === LINE11, J(v5[0]));
+  const dict = await p.evaluate(() => [SH_RU, SH_EN, SH_PL].map(d => [d.cases_past, d.cases_burnt].map(s => /\{n\}/.test(s || '') ? 1 : 0).join('')).join(' '));
+  z.check('ярлыки строки есть на трёх языках', dict === '11 11 11', dict);
+  // кадры для глаз: те же подставленные кейсы — строка свёрнута и раскрыта (нажатие настоящее, мышью); в пункты не входят
+  await p.evaluate(cs => { window.__k10c = { cases, curTab }; cases = cs; curTab = 'cases'; renderSide(); }, CASES);
+  await shot('#sideBody', 'cases_past');
+  if (await p.locator('#sideBody .cases-past').count()) await p.click('#sideBody .cases-past');
+  await shot('#sideBody', 'cases_past_open');
+  await p.evaluate(() => { const k = window.__k10c; window.__k10c = null; cases = k.cases; sideTab(k.curTab); });
+  // настоящие данные: счётчики — открытые и сгоревшие кейсы гостя, как их отдаёт сервер (не больше ста, сначала неоткрытые)
+  const pastDb = () => z.sql(`SELECT count(*) FILTER (WHERE opened_at IS NOT NULL) || ' ' || count(*) FILTER (WHERE opened_at IS NULL AND expires_at <= now())
+    FROM (SELECT opened_at, expires_at FROM cases WHERE user_id='${g}' ORDER BY (opened_at IS NULL) DESC, created_at DESC LIMIT 100) x`);
+  const tri = want => until(want => {
+    const b = document.querySelector('#sideBody .cases-past'), t = b ? [...b.querySelectorAll('span')].map(s => s.textContent) : [];
+    const num = k => { const pre = (STR[k] || '\n').split('{n}')[0], m = t.find(x => x.startsWith(pre)); return m ? +m.slice(pre.length).replace(/\D+/g, '') : 0; };
+    return curTab === 'cases' && [num('cases_past'), num('cases_burnt'), document.querySelectorAll('#sideBody > .case-i:not(.opened)').length].join(' ') === want;
+  }, want, 25000);
+  const gr5 = await z.api('POST', `/admin/users/${g}/grant`, { type: 'case', case_tier: 'light', reason: 'pw_k10_now: проверка' }, 'boss');
+  await p.click('#st-cases');
+  const w5 = waitingDb(), [o5, b5] = pastDb().split(' ').map(Number);
+  z.check('настоящие данные: наверху столько кейсов, сколько ждут в базе; в строке — столько открытых и сгоревших, сколько отдаёт сервер',
+    gr5.status < 300 && w5 >= 1 && o5 >= 1 && !!(await tri(`${o5} ${b5} ${w5}`)), `в базе: открытых ${o5}, сгоревших ${b5}, ждут ${w5}`);
+  await shot('#sideBody', 'cases_real');
+  await p.click('#sideBody > .case-i:not(.opened)');
+  const prize5 = await until(() => !document.getElementById('coResult').classList.contains('hidden'), null, 20000);
+  await p.evaluate(() => goBack()); // «назад» после приза = «Забрать»
+  z.check('открыли кейс во вкладке «Кейсы» — он ушёл в свёрнутые: наверху на один меньше, «Открытые раньше» на один больше',
+    !!prize5 && !!(await tri(`${o5 + 1} ${b5} ${w5 - 1}`)) && pastDb() === `${o5 + 1} ${b5}`, `приз ${prize5}, в базе ${pastDb()}, ждут ${waitingDb()}`);
+  await p.evaluate(() => sideTab('now'));
 
   z.check('ошибок JS в киоске нет', z.jsErrors.length === 0, z.jsErrors.join(' | '));
   await z.done();
