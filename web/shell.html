@@ -245,7 +245,7 @@
   .case-i:hover{border-color:var(--acc)}
   .case-i .box{width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px}
   .case-i .t{font-weight:800; text-transform:capitalize}
-  .case-i .open-hint{margin-left:auto; font-size:12px; font-weight:700; color:var(--acc)}
+  .case-i .open-hint{margin-left:auto; font-size:12px; font-weight:700; color:var(--acc); white-space:nowrap}
   .case-i.opened{opacity:.45; cursor:default}
   .case-i .odds-chip{margin-left:auto; width:30px; height:30px; flex:none; display:flex; align-items:center;
     justify-content:center; background:rgba(255,255,255,.05); border:1px solid transparent; border-radius:9px;
@@ -743,7 +743,6 @@
   .now-empty{text-align:center; padding:30px 12px 26px; color:var(--dim); font-size:13px; line-height:1.45}
   .now-empty .isvg{width:30px; height:30px}
   .now-empty .t{margin:8px 0 4px; font-weight:800; font-size:15px; color:var(--txt)}
-  .sidetabs.two button i{font-style:normal; font-size:16px; line-height:1}
   .sidetabs.two button span:not(.bub){max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .sidetabs.two .bub{position:absolute; top:4px; left:calc(50% + 6px); margin:0}
   /* и3: подписи у чисел в шапке; предупреждение об агенте — только когда его нет */
@@ -753,7 +752,7 @@
      стояло в ряду шапки, блок опыта сжимался до самого длинного слова — «2 230 / 2 600 XP» и «до уровня: 370 XP»
      переносились по словам и читались вперемешку, а «Админ» и ⏻ уезжали за край экрана. Теперь предупреждение — своей
      строкой под рядом шапки; числа опыта не рвутся: не хватает места — «до уровня» встаёт второй строкой целиком (так и
-     по-польски на 1440×900 без предупреждения); уже 1366 — подписи «монеты»/«очки» прячутся (значок и подсказка
+     по-польски на 1440×900 без предупреждения); на 1366 и уже — подписи «монетки»/«очки» прячутся (значок и подсказка
      остаются), промежутки уже; ряд, которому всё равно тесно, переносится, а не уезжает за край */
   #agentDot{font-weight:700; white-space:nowrap}
   #agentDot.warn{order:99; flex:1 0 100%; white-space:normal; text-align:center; background:rgba(255,39,64,.08);
@@ -761,7 +760,7 @@
   .topbar{flex-wrap:wrap; row-gap:4px}
   .xpnums{flex-wrap:wrap; column-gap:6px}
   .xpnums span, .clock{white-space:nowrap}
-  @media (max-width:1365px){
+  @media (max-width:1366px){   /* К11-и1: было 1365 — на 1366×768 шапка с подписями шла в два ряда */
     .topbar{column-gap:10px}
     .topbar .res .rl{display:none}
   }
@@ -860,9 +859,9 @@
       <div class="xpwrap"><div class="xpbar" id="xpBar"></div></div>
       <div class="xpnums"><span id="xpText">0 / 1000 XP</span><span id="xpLeft"></span></div>
     </div>
-    <div class="res" data-str-title="tb_coins_title"><span class="ic" data-ic="coins"></span><span class="gold-t" id="coins">0</span><span class="rl" data-str="tb_coins"></span></div>
+    <div class="res" data-str-title="tb_coins_title"><span class="ic" data-ic="coins"></span><span class="gold-t" id="coins">0</span><span class="rl" id="coinsLbl"></span></div>
     <div class="res" id="walletChip" data-str-title="tb_wallet_title"><span class="ic" data-ic="wallet"></span><span class="gold-t" id="walletZl">—</span><span class="muted" id="walletEta"></span></div>
-    <div class="res" data-str-title="tb_sp_title"><span class="ic" data-ic="sp"></span><span class="cyan-t" id="sp">0</span><span class="rl" data-str="tb_sp"></span></div>
+    <div class="res" data-str-title="tb_sp_title"><span class="ic" data-ic="sp"></span><span class="cyan-t" id="sp">0</span><span class="rl" id="spLbl"></span></div>
     <div class="res timerchip" id="timerChip"><span class="ic" data-ic="timer"></span><span id="timer">00:00</span></div>
     <div class="clock" id="clock">--:--</div>
     <div class="muted" id="agentDot"><span data-ic="monitor"></span> <span id="agentTxt"></span></div>
@@ -895,7 +894,7 @@
         </div>
         <div class="strow">
           <button id="st-hist" onclick="sideTab('hist')"><span data-ic="clip"></span><span data-str="tab_hist"></span></button>
-          <button id="st-food" onclick="sideTab('food')" data-str-title="tab_food_title"><i>🍔</i><span data-str="tab_food"></span></button>
+          <button id="st-food" onclick="sideTab('food')" data-str-title="tab_food_title"><span data-ic="food"></span><span data-str="tab_food"></span></button>
           <button id="st-book" onclick="sideTab('book')"><span data-ic="cal"></span><span data-str="tab_book"></span></button>
           <button id="st-pack" onclick="sideTab('pack')" data-str-title="tab_pack_title"><span data-ic="timer"></span><span data-str="tab_pack"></span></button>
           <button id="st-coins" onclick="sideTab('coins')"><span data-ic="coins"></span><span data-str="tab_coins"></span></button>
@@ -1205,7 +1204,7 @@ const SH_RU = {
   lock_sub: "ПК заблокирован — начни сессию, чтобы играть",
   btn_start: "▶ Начать сессию",
   btn_switch_acc: "Сменить аккаунт",
-  lock_rules: "правила монет и кейсов",
+  lock_rules: "правила монеток и кейсов",
   lock_user: "Вошёл как {n} · LVL {l}",
   attract_free: "свободно <b>{f}</b> из {t}",
   tb_rank_title: "Ранг аккаунта — жми, чтобы увидеть все",
@@ -1216,7 +1215,7 @@ const SH_RU = {
   tb_pc_title_off: "shell-agent не найден: работают только протоколы браузера",
   tb_sens: "Сенса",
   tb_sens_title: "Студия сенсы — настрой прицел под любую игру",
-  tb_info_title: "Инфо — правила монет и кейсов, лицензии",
+  tb_info_title: "Инфо — правила монеток и кейсов, лицензии",
   tb_admin: "Админ",
   tb_logout_title: "Выйти",
   xp_left: "до уровня: {n} XP",
@@ -1232,7 +1231,7 @@ const SH_RU = {
   cat_total: "всего {n}",
   cat_plat_hint: "папки — внутри все игры платформы и её клиент",
   cat_apps_hint: "папки — зайди и выбери",
-  grp_comm: "Коммуникация",
+  grp_comm: "Войсчат",
   grp_sys: "Системные",
   grp_other: "Другие",
   grp_other_games: "Другие игры",
@@ -1250,6 +1249,8 @@ const SH_RU = {
   pl_app_1: "приложение",
   pl_app_2: "приложения",
   pl_app_5: "приложений",
+  pl_coin_1: "монетка", pl_coin_2: "монетки", pl_coin_5: "монеток", // К11-и1: слово рядом с числом согласуется с ним
+  pl_sp_1: "очко", pl_sp_2: "очка", pl_sp_5: "очков",
   n_games: "{n} {w}",
   n_apps: "{n} {w}",
   launching: "🚀 Запускаю {n}…",
@@ -1313,7 +1314,7 @@ const SH_RU = {
   zero_note: "Баланс и XP за отыгранное время никуда не денутся",
   co_opening: "Открываем кейс…",
   co_drop: "Твой дроп!",
-  co_coins: "монет · кейс {t}",
+  co_coins: "{w} · кейс {t}",
   co_buster: "бустер кэшбека · кейс {t}",
   co_take: "Забрать",
   co_title: "Кейс {t}",
@@ -1333,7 +1334,7 @@ const SH_RU = {
   rank_from_start: "с самого старта",
   rank_from_hours: "от {n} ч игры",
   rank_base: "базовые ставки",
-  perk_coins: "койны ×{n}",
+  perk_coins: "монетки ×{n}",
   perk_case: "кейс +{n}%",
   perk_tier: "тир +{n}%",
   ranks_loading: "Ранги ещё грузятся…",
@@ -1343,18 +1344,18 @@ const SH_RU = {
   odds_error: "⚠ Не удалось загрузить шансы: {m}",
   odds_bonus_tier: "тир бонусного кейса · {p}",
   odds_bonus_title: "Шанс, что бонусный кейс за сессию окажется этого тира",
-  odds_coins: "монеты {a}–{b}",
+  odds_coins: "монетки {a}–{b}",
   odds_buster: "бустер кэшбека +{n}%",
-  odds_jackpot: "джекпот {n} монет",
+  odds_jackpot: "джекпот {n} {w}",
   odds_footer: "Дроп считает сервер (crypto/rand) — что выпало, то и показываем, без «подкруток». Таланты и ранг могут только повышать шанс редких тиров.",
   odds_version: "Таблица шансов v{v} от {d}{rtp}.",
   odds_rtp: " · RTP клуба ×{n}",
   odds_chip_title: "Шансы дропа — открытая таблица",
   info_title: "Инфо",
-  info_h_coins: "Монеты и кейсы — правила",
-  info_li1: "Монеты и дропы кейсов — внутриигровые ценности клуба: они <b>не выводятся</b> в деньги, <b>не обмениваются</b> на деньги или товары и <b>не имеют</b> денежной стоимости.",
+  info_h_coins: "Монетки и кейсы — правила",
+  info_li1: "Монетки и дропы кейсов — внутриигровые ценности клуба: они <b>не выводятся</b> в деньги, <b>не обмениваются</b> на деньги или товары и <b>не имеют</b> денежной стоимости.",
   info_li2: "Кейсы не продаются и не привязаны к пополнениям — выдаются бесплатно: за игру, новые уровни и достижения.",
-  info_li3: "Дроп считает сервер (crypto/rand) и показывается как выпал — без «подкруток». Таблица шансов открыта: кнопка «{ic}» на любом кейсе.",
+  info_li3: "Дроп считает сервер (crypto/rand) и показывается как выпал — без «подкруток». Таблица шансов открыта: кнопка «{ic:percent}» на любом кейсе.",
   info_li4: "Таланты и ранг могут только повышать шанс редких тиров — в пользу игрока.",
   info_h_lic: "Иконки и лицензии",
   info_lic1: "Интерфейс — <b>Phosphor Icons</b> (MIT, phosphoricons.com).",
@@ -1408,7 +1409,7 @@ const SH_RU = {
   pack_bought: "▶ {n} — время на счету",
   pack_poor: "На кошельке не хватает. Пополни у стойки",
   pack_zone_note: "Минуты пакета тратятся только в своей зоне и раньше кошелька",
-  res_head: "Минуты за монеты и компенсации",
+  res_head: "Минуты за монетки и компенсации",
   res_zone: "{n} мин · {z}",
   res_any: "{n} мин · везде",
   res_here: " — в этой зоне",
@@ -1437,7 +1438,7 @@ const SH_RU = {
   top_my_place: "Твоё место: {n}",
   top_empty: "Пока пусто",
   ach_head: "Получено: {a} · Наиграно часов: {h}",
-  ach_reset: " · ⏳ до резета {t}",
+  ach_reset: " · ⏳ резет через {t}",
   ach_cat_daily: "Дня — резет в 14:48",
   ach_cat_weekly: "Недели",
   ach_cat_monthly: "Месяца",
@@ -1489,22 +1490,21 @@ const SH_RU = {
   rank_max: "Максимальный ранг — выше некуда",
   rank_next: "Ещё {n} ч до «{r}»",
   btn_all_ranks: "Все ранги и бонусы",
-  calc_title: "Калькулятор койнов",
+  calc_title: "Калькулятор монеток",
   calc_sub: "Что накапает за сессию с учётом ранга и талантов",
   calc_time: "{t} игры",
   calc_h: "{n} ч ",
   calc_m: "{n} мин",
   calc_zero: "0 мин",
-  calc_coins_base: "Койны: база ({m} × {r})",
+  calc_coins_base: "Монетки: база ({m} × {r})",
   calc_rank_mult: "+ ранг ×{n}",
   calc_xp_base: "XP: база ({m} × {r})",
   calc_xp_boost: "+ «Разгон опыта» +{n}%",
-  calc_coins_lbl: "койнов",
-  how_title: "Как образуются койны",
-  how_base: "Базовая ставка — <b style=\"color:var(--txt)\">{n} койна/мин</b> за время за ПК.<br>",
-  how_rank: "Множитель ранга «{r}» — <b class=\"plus\">×{c}</b> к койнам, <b class=\"plus\">×{x}</b> к опыту.<br>",
-  how_mint: "Талант «Монетный двор» — при пополнении баланса <b class=\"plus\">+{n}%</b> койнов (курс {r} койнов за 1 zł).<br>",
-  how_tail: "Чем выше ранг (больше наиграно часов), тем больше койнов и XP, и тем чаще падают кейсы: сейчас <b style=\"color:var(--txt)\">{n}%</b> за сессию.",
+  how_title: "Как образуются монетки",
+  how_base: "Базовая ставка — <b style=\"color:var(--txt)\">{n} {w}/мин</b> за время за ПК.<br>",
+  how_rank: "Множитель ранга «{r}» — <b class=\"plus\">×{c}</b> к монеткам, <b class=\"plus\">×{x}</b> к опыту.<br>",
+  how_mint: "Талант «Монетный двор» — при пополнении баланса <b class=\"plus\">+{n}%</b> монеток (курс {r} {w} за 1 zł).<br>",
+  how_tail: "Чем выше ранг (больше наиграно часов), тем больше монеток и XP, и тем чаще падают кейсы: сейчас <b style=\"color:var(--txt)\">{n}%</b> за сессию.",
   sens_title: "Студия сенсы",
   sens_sub: "Перенеси свою сенсу из одной игры в другую — прицел останется тем же",
   sens_step1: "<b style=\"color:var(--acc)\">Шаг 1.</b> DPI мыши (посмотри в софте мыши)",
@@ -1597,7 +1597,7 @@ const SH_RU = {
   ntf_paren_pc: " ({c})",
   ntf_bk_cancel: "📅 Админ отменил твою бронь",
   ntf_bk_restore: "📅 Твоя бронь возвращена",
-  ntf_deposit: "💰 +{c} монет — депозит {a} zł",
+  ntf_deposit: "💰 +{c} {w} — депозит {a} zł",
   ntf_deposit_void: "↩ Депозит {a} zł отменён у стойки — с кошелька снято {r} zł, в кошельке {w} zł",
   ntf_grant_xp: "⚡ Тебе начислено +{n} XP",
   ntf_lvl: " → LVL {l} 🎉",
@@ -1651,7 +1651,7 @@ const SH_RU = {
   ntf_ach: "🏆 {t}",
   ntf_ach_case: " · кейс {c}",
   ntf_ach_xp: " · +{n} XP",
-  ntf_ach_sp: " · +{n} очков",
+  ntf_ach_sp: " · +{n} {w}",
   ach_left_min: "ещё {n} мин",
   ach_left_h: "ещё {n} ч",
   ach_left_n: "ещё {n}",
@@ -1701,10 +1701,8 @@ const SH_RU = {
   tab_food: "Кухня",
   tab_book: "Брони",
   tab_pack: "Пакеты",
-  tab_coins: "Койны",
-  tb_coins: "монеты",
-  tb_coins_title: "Монеты — кэшбек за игру, гасятся временем у стойки",
-  tb_sp: "очки",
+  tab_coins: "Монетки",
+  tb_coins_title: "Монетки — кэшбек за игру, гасятся временем у стойки",
   tb_sp_title: "Очки навыков — вкладывай в таланты",
   tb_agent_warn: "⚠ агент не найден — игры не запустятся, позови админа",
   auth_forgot: "Забыл пароль? Подойди к стойке — админ сбросит",
@@ -1722,8 +1720,8 @@ const SH_RU = {
   att_rate: "{z} <b>{r} zł</b>/ч",
   att_next: "({w} — {r} zł)", att_from: "с {t}", att_from_tmrw: "завтра с {t}", // З24-и3: «VIP 25 zł/ч (с 18:00 — 30 zł)»
   /* К3-и2: уведомления, которых шелл не знал */
-  ntf_burn_soon: "⏳ Через {d} дн монеты начнут таять: −{p}% в неделю от {c}. Зайди поиграть — таймер сбросится",
-  ntf_burned: "🔥 Сгорело {c} монет за {d} дн простоя — осталось {l}",
+  ntf_burn_soon: "⏳ Через {d} дн монетки начнут таять: −{p}% в неделю от {c}. Зайди поиграть — таймер сбросится",
+  ntf_burned: "🔥 Сгорело монеток: {c} за {d} дн простоя — осталось {l}",
   ntf_wl_ready: "🎮 ПК {c} свободен — подойди к стойке",
   ntf_wl_remove: "📋 Тебя сняли с очереди на ПК",
   /* К3-и4: сырые ключи сервера → слова */
@@ -1798,7 +1796,7 @@ const SH_EN = {
   cat_total: "{n} total",
   cat_plat_hint: "folders — every game of the platform and its client inside",
   cat_apps_hint: "folders — open and pick",
-  grp_comm: "Communication",
+  grp_comm: "Voice chat",
   grp_sys: "System",
   grp_other: "Other",
   grp_other_games: "Other games",
@@ -1816,6 +1814,8 @@ const SH_EN = {
   pl_app_1: "app",
   pl_app_2: "apps",
   pl_app_5: "apps",
+  pl_coin_1: "coin", pl_coin_2: "coins", pl_coin_5: "coins",
+  pl_sp_1: "point", pl_sp_2: "points", pl_sp_5: "points",
   n_games: "{n} {w}",
   n_apps: "{n} {w}",
   launching: "🚀 Launching {n}…",
@@ -1879,7 +1879,7 @@ const SH_EN = {
   zero_note: "Your balance and the XP you earned stay with you",
   co_opening: "Opening the case…",
   co_drop: "Your drop!",
-  co_coins: "coins · {t} case",
+  co_coins: "{w} · {t} case",
   co_buster: "cashback booster · {t} case",
   co_take: "Claim",
   co_title: "{t} case",
@@ -1911,7 +1911,7 @@ const SH_EN = {
   odds_bonus_title: "Chance that the session bonus case is of this tier",
   odds_coins: "coins {a}–{b}",
   odds_buster: "cashback booster +{n}%",
-  odds_jackpot: "jackpot {n} coins",
+  odds_jackpot: "jackpot {n} {w}",
   odds_footer: "The server rolls the drop (crypto/rand) — what dropped is what you see, no tweaking. Talents and rank can only raise the chance of rare tiers.",
   odds_version: "Odds table v{v} of {d}{rtp}.",
   odds_rtp: " · club RTP ×{n}",
@@ -1920,7 +1920,7 @@ const SH_EN = {
   info_h_coins: "Coins and cases — the rules",
   info_li1: "Coins and case drops are in-club virtual values: they <b>cannot be cashed out</b>, <b>cannot be exchanged</b> for money or goods and <b>have no</b> monetary value.",
   info_li2: "Cases are not sold and not tied to top-ups — they are given for free: for playing, new levels and achievements.",
-  info_li3: "The server rolls the drop (crypto/rand) and shows it as it fell — no tweaking. The odds table is open: the “{ic}” button on any case.",
+  info_li3: "The server rolls the drop (crypto/rand) and shows it as it fell — no tweaking. The odds table is open: the “{ic:percent}” button on any case.",
   info_li4: "Talents and rank can only raise the chance of rare tiers — in the player’s favor.",
   info_h_lic: "Icons and licenses",
   info_lic1: "Interface — <b>Phosphor Icons</b> (MIT, phosphoricons.com).",
@@ -2065,11 +2065,10 @@ const SH_EN = {
   calc_rank_mult: "+ rank ×{n}",
   calc_xp_base: "XP: base ({m} × {r})",
   calc_xp_boost: "+ “XP boost” +{n}%",
-  calc_coins_lbl: "coins",
   how_title: "How coins are made",
-  how_base: "Base rate — <b style=\"color:var(--txt)\">{n} coins/min</b> for time at the PC.<br>",
+  how_base: "Base rate — <b style=\"color:var(--txt)\">{n} {w}/min</b> for time at the PC.<br>",
   how_rank: "Rank “{r}” multiplier — <b class=\"plus\">×{c}</b> to coins, <b class=\"plus\">×{x}</b> to XP.<br>",
-  how_mint: "“Coin mint” talent — <b class=\"plus\">+{n}%</b> coins on top-ups ({r} coins per 1 zł).<br>",
+  how_mint: "“Coin mint” talent — <b class=\"plus\">+{n}%</b> coins on top-ups ({r} {w} per 1 zł).<br>",
   how_tail: "The higher your rank (more hours played), the more coins and XP you get and the more often cases drop: currently <b style=\"color:var(--txt)\">{n}%</b> per session.",
   sens_title: "Sensitivity studio",
   sens_sub: "Carry your sens from one game to another — the aim stays the same",
@@ -2163,7 +2162,7 @@ const SH_EN = {
   ntf_paren_pc: " ({c})",
   ntf_bk_cancel: "📅 The admin cancelled your booking",
   ntf_bk_restore: "📅 Your booking is restored",
-  ntf_deposit: "💰 +{c} coins — top-up {a} zł",
+  ntf_deposit: "💰 +{c} {w} — top-up {a} zł",
   ntf_deposit_void: "↩ Top-up {a} zł voided at the desk — {r} zł taken from your wallet, {w} zł left",
   ntf_grant_xp: "⚡ You were granted +{n} XP",
   ntf_lvl: " → LVL {l} 🎉",
@@ -2217,7 +2216,7 @@ const SH_EN = {
   ntf_ach: "🏆 {t}",
   ntf_ach_case: " · {c} case",
   ntf_ach_xp: " · +{n} XP",
-  ntf_ach_sp: " · +{n} points",
+  ntf_ach_sp: " · +{n} {w}",
   ach_left_min: "{n} min to go",
   ach_left_h: "{n} h to go",
   ach_left_n: "{n} to go",
@@ -2268,9 +2267,7 @@ const SH_EN = {
   tab_book: "Bookings",
   tab_pack: "Packs",
   tab_coins: "Coins",
-  tb_coins: "coins",
   tb_coins_title: "Coins — cashback for playing, redeemed for time at the desk",
-  tb_sp: "points",
   tb_sp_title: "Skill points — invest them in talents",
   tb_agent_warn: "⚠ agent not found — games will not launch, call the admin",
   auth_forgot: "Forgot your password? Ask at the desk — the admin will reset it",
@@ -2289,7 +2286,7 @@ const SH_EN = {
   att_next: "({w} — {r} zł)", att_from: "from {t}", att_from_tmrw: "tomorrow from {t}", // З24-и3
   /* К3-и2 */
   ntf_burn_soon: "⏳ In {d} d your coins start melting: −{p}% a week of {c}. Come play — the timer resets",
-  ntf_burned: "🔥 {c} coins burned after {d} idle days — {l} left",
+  ntf_burned: "🔥 {c} {w} burned after {d} idle days — {l} left",
   ntf_wl_ready: "🎮 PC {c} is free — come to the desk",
   ntf_wl_remove: "📋 You were removed from the PC queue",
   /* К3-и4 */
@@ -2337,7 +2334,7 @@ const SH_PL = {
   lock_sub: "PC zablokowany — zacznij sesję, żeby grać",
   btn_start: "▶ Zacznij sesję",
   btn_switch_acc: "Zmień konto",
-  lock_rules: "zasady monet i skrzynek",
+  lock_rules: "zasady monetek i skrzynek",
   lock_user: "Zalogowany jako {n} · LVL {l}",
   attract_free: "wolne <b>{f}</b> z {t}",
   tb_rank_title: "Ranga konta — kliknij, żeby zobaczyć wszystkie",
@@ -2348,7 +2345,7 @@ const SH_PL = {
   tb_pc_title_off: "shell-agent nie znaleziony: działają tylko protokoły przeglądarki",
   tb_sens: "Czułość",
   tb_sens_title: "Studio czułości — ustaw celownik pod każdą grę",
-  tb_info_title: "Info — zasady monet i skrzynek, licencje",
+  tb_info_title: "Info — zasady monetek i skrzynek, licencje",
   tb_admin: "Admin",
   tb_logout_title: "Wyloguj",
   xp_left: "do poziomu: {n} XP",
@@ -2364,7 +2361,7 @@ const SH_PL = {
   cat_total: "łącznie {n}",
   cat_plat_hint: "foldery — w środku wszystkie gry platformy i jej klient",
   cat_apps_hint: "foldery — wejdź i wybierz",
-  grp_comm: "Komunikacja",
+  grp_comm: "Czat głosowy",
   grp_sys: "Systemowe",
   grp_other: "Inne",
   grp_other_games: "Inne gry",
@@ -2382,6 +2379,8 @@ const SH_PL = {
   pl_app_1: "aplikacja",
   pl_app_2: "aplikacje",
   pl_app_5: "aplikacji",
+  pl_coin_1: "monetka", pl_coin_2: "monetki", pl_coin_5: "monetek",
+  pl_sp_1: "punkt", pl_sp_2: "punkty", pl_sp_5: "punktów",
   n_games: "{n} {w}",
   n_apps: "{n} {w}",
   launching: "🚀 Uruchamiam {n}…",
@@ -2445,7 +2444,7 @@ const SH_PL = {
   zero_note: "Saldo i XP za rozegrany czas zostają z tobą",
   co_opening: "Otwieramy skrzynkę…",
   co_drop: "Twój drop!",
-  co_coins: "monet · skrzynka {t}",
+  co_coins: "{w} · skrzynka {t}",
   co_buster: "booster cashbacku · skrzynka {t}",
   co_take: "Odbierz",
   co_title: "Skrzynka {t}",
@@ -2465,7 +2464,7 @@ const SH_PL = {
   rank_from_start: "od samego startu",
   rank_from_hours: "od {n} godz. gry",
   rank_base: "stawki bazowe",
-  perk_coins: "monety ×{n}",
+  perk_coins: "monetki ×{n}",
   perk_case: "skrzynka +{n}%",
   perk_tier: "tier +{n}%",
   ranks_loading: "Rangi jeszcze się ładują…",
@@ -2475,18 +2474,18 @@ const SH_PL = {
   odds_error: "⚠ Nie udało się wczytać szans: {m}",
   odds_bonus_tier: "tier skrzynki bonusowej · {p}",
   odds_bonus_title: "Szansa, że bonusowa skrzynka za sesję będzie tego tieru",
-  odds_coins: "monety {a}–{b}",
+  odds_coins: "monetki {a}–{b}",
   odds_buster: "booster cashbacku +{n}%",
-  odds_jackpot: "jackpot {n} monet",
+  odds_jackpot: "jackpot {n} {w}",
   odds_footer: "Drop losuje serwer (crypto/rand) — co wypadło, to pokazujemy, bez „podkręcania”. Talenty i ranga mogą tylko zwiększać szansę rzadkich tierów.",
   odds_version: "Tabela szans v{v} z {d}{rtp}.",
   odds_rtp: " · RTP klubu ×{n}",
   odds_chip_title: "Szanse dropu — jawna tabela",
   info_title: "Info",
-  info_h_coins: "Monety i skrzynki — zasady",
-  info_li1: "Monety i dropy skrzynek to wewnętrzne wartości klubu: <b>nie wypłacamy</b> ich na pieniądze, <b>nie wymieniamy</b> na pieniądze ani towary i <b>nie mają</b> wartości pieniężnej.",
+  info_h_coins: "Monetki i skrzynki — zasady",
+  info_li1: "Monetki i dropy skrzynek to wewnętrzne wartości klubu: <b>nie wypłacamy</b> ich na pieniądze, <b>nie wymieniamy</b> na pieniądze ani towary i <b>nie mają</b> wartości pieniężnej.",
   info_li2: "Skrzynki nie są sprzedawane ani powiązane z wpłatami — dostajesz je za darmo: za grę, nowe poziomy i osiągnięcia.",
-  info_li3: "Drop losuje serwer (crypto/rand) i pokazuje tak, jak wypadł — bez „podkręcania”. Tabela szans jest jawna: przycisk „{ic}” na każdej skrzynce.",
+  info_li3: "Drop losuje serwer (crypto/rand) i pokazuje tak, jak wypadł — bez „podkręcania”. Tabela szans jest jawna: przycisk „{ic:percent}” na każdej skrzynce.",
   info_li4: "Talenty i ranga mogą tylko zwiększać szansę rzadkich tierów — na korzyść gracza.",
   info_h_lic: "Ikony i licencje",
   info_lic1: "Interfejs — <b>Phosphor Icons</b> (MIT, phosphoricons.com).",
@@ -2540,7 +2539,7 @@ const SH_PL = {
   pack_bought: "▶ {n} — czas na koncie",
   pack_poor: "W portfelu za mało. Doładuj przy ladzie",
   pack_zone_note: "Minuty pakietu działają tylko w swojej strefie i idą przed portfelem",
-  res_head: "Minuty za monety i rekompensaty",
+  res_head: "Minuty za monetki i rekompensaty",
   res_zone: "{n} min · {z}",
   res_any: "{n} min · wszędzie",
   res_here: " — w tej strefie",
@@ -2569,7 +2568,7 @@ const SH_PL = {
   top_my_place: "Twoje miejsce: {n}",
   top_empty: "Na razie pusto",
   ach_head: "Zdobyte: {a} · Rozegrane godziny: {h}",
-  ach_reset: " · ⏳ do resetu {t}",
+  ach_reset: " · ⏳ reset za {t}",
   ach_cat_daily: "Dnia — reset o 14:48",
   ach_cat_weekly: "Tygodnia",
   ach_cat_monthly: "Miesiąca",
@@ -2621,22 +2620,21 @@ const SH_PL = {
   rank_max: "Najwyższa ranga — wyżej się nie da",
   rank_next: "Jeszcze {n} godz. do „{r}”",
   btn_all_ranks: "Wszystkie rangi i bonusy",
-  calc_title: "Kalkulator monet",
+  calc_title: "Kalkulator monetek",
   calc_sub: "Ile nakapie za sesję z twoją rangą i talentami",
   calc_time: "{t} gry",
   calc_h: "{n} godz. ",
   calc_m: "{n} min",
   calc_zero: "0 min",
-  calc_coins_base: "Monety: baza ({m} × {r})",
+  calc_coins_base: "Monetki: baza ({m} × {r})",
   calc_rank_mult: "+ ranga ×{n}",
   calc_xp_base: "XP: baza ({m} × {r})",
   calc_xp_boost: "+ „Przyspieszenie XP” +{n}%",
-  calc_coins_lbl: "monet",
-  how_title: "Jak powstają monety",
-  how_base: "Stawka bazowa — <b style=\"color:var(--txt)\">{n} monety/min</b> za czas przy PC.<br>",
-  how_rank: "Mnożnik rangi „{r}” — <b class=\"plus\">×{c}</b> do monet, <b class=\"plus\">×{x}</b> do XP.<br>",
-  how_mint: "Talent „Mennica” — przy doładowaniu <b class=\"plus\">+{n}%</b> monet (kurs {r} monet za 1 zł).<br>",
-  how_tail: "Im wyższa ranga (więcej rozegranych godzin), tym więcej monet i XP oraz częstsze skrzynki: teraz <b style=\"color:var(--txt)\">{n}%</b> za sesję.",
+  how_title: "Jak powstają monetki",
+  how_base: "Stawka bazowa — <b style=\"color:var(--txt)\">{n} {w}/min</b> za czas przy PC.<br>",
+  how_rank: "Mnożnik rangi „{r}” — <b class=\"plus\">×{c}</b> do monetek, <b class=\"plus\">×{x}</b> do XP.<br>",
+  how_mint: "Talent „Mennica” — przy doładowaniu <b class=\"plus\">+{n}%</b> monetek (kurs {r} {w} za 1 zł).<br>",
+  how_tail: "Im wyższa ranga (więcej rozegranych godzin), tym więcej monetek i XP oraz częstsze skrzynki: teraz <b style=\"color:var(--txt)\">{n}%</b> za sesję.",
   sens_title: "Studio czułości",
   sens_sub: "Przenieś czułość z jednej gry do drugiej — celownik zostanie ten sam",
   sens_step1: "<b style=\"color:var(--acc)\">Krok 1.</b> DPI myszy (sprawdź w sofcie myszy)",
@@ -2729,7 +2727,7 @@ const SH_PL = {
   ntf_paren_pc: " ({c})",
   ntf_bk_cancel: "📅 Admin anulował twoją rezerwację",
   ntf_bk_restore: "📅 Twoja rezerwacja wróciła",
-  ntf_deposit: "💰 +{c} monet — wpłata {a} zł",
+  ntf_deposit: "💰 +{c} {w} — wpłata {a} zł",
   ntf_deposit_void: "↩ Wpłata {a} zł anulowana przy ladzie — z portfela zdjęto {r} zł, w portfelu {w} zł",
   ntf_grant_xp: "⚡ Przyznano ci +{n} XP",
   ntf_lvl: " → LVL {l} 🎉",
@@ -2833,10 +2831,8 @@ const SH_PL = {
   tab_food: "Kuchnia",
   tab_book: "Rezerwacje",
   tab_pack: "Pakiety",
-  tab_coins: "Coiny",
-  tb_coins: "coiny",
-  tb_coins_title: "Coiny — cashback za grę, wymieniane na czas przy ladzie",
-  tb_sp: "punkty",
+  tab_coins: "Monetki",
+  tb_coins_title: "Monetki — cashback za grę, wymieniane na czas przy ladzie",
   tb_sp_title: "Punkty umiejętności — inwestuj w talenty",
   tb_agent_warn: "⚠ brak agenta — gry się nie uruchomią, zawołaj admina",
   auth_forgot: "Nie pamiętasz hasła? Podejdź do lady — admin je zresetuje",
@@ -2854,8 +2850,8 @@ const SH_PL = {
   att_rate: "{z} <b>{r} zł</b>/h",
   att_next: "({w} — {r} zł)", att_from: "od {t}", att_from_tmrw: "jutro od {t}", // З24-и3
   /* К3-и2 */
-  ntf_burn_soon: "⏳ Za {d} dni coiny zaczną topnieć: −{p}% tygodniowo z {c}. Wpadnij pograć — licznik się wyzeruje",
-  ntf_burned: "🔥 Spłonęło {c} coinów po {d} dniach przerwy — zostało {l}",
+  ntf_burn_soon: "⏳ Za {d} dni monetki zaczną topnieć: −{p}% tygodniowo z {c}. Wpadnij pograć — licznik się wyzeruje",
+  ntf_burned: "🔥 Spłonęło monetek: {c} po {d} dniach przerwy — zostało {l}",
   ntf_wl_ready: "🎮 PC {c} jest wolny — podejdź do lady",
   ntf_wl_remove: "📋 Usunięto cię z kolejki do PC",
   /* К3-и4 */
@@ -2899,15 +2895,16 @@ function T(key, vars){
   return String(STR[key] == null ? '' : STR[key])
     .replace(/\{(\w+)\}/g, (_, n) => vars && vars[n] != null ? vars[n] : '');
 }
-/* статичная разметка: data-str (текст), data-str-html (разметка внутри),
+/* статичная разметка: data-str (текст), data-str-html (разметка внутри; «{ic:percent}» — значок UI.percent),
    data-str-ph (placeholder), data-str-title (подсказка) */
 function applyStrings(){
   document.documentElement.lang = LANG;
   document.title = STR.page_title;
   document.querySelectorAll('[data-str]').forEach(el => { el.textContent = STR[el.dataset.str] || ''; });
-  document.querySelectorAll('[data-str-html]').forEach(el => { el.innerHTML = STR[el.dataset.strHtml] || ''; });
+  document.querySelectorAll('[data-str-html]').forEach(el => { el.innerHTML = (STR[el.dataset.strHtml] || '').replace(/\{ic:(\w+)\}/g, (_, k) => UI[k] || ''); });
   document.querySelectorAll('[data-str-ph]').forEach(el => { el.placeholder = STR[el.dataset.strPh] || ''; });
   document.querySelectorAll('[data-str-title]').forEach(el => { el.title = STR[el.dataset.strTitle] || ''; });
+  topLabels();
 }
 /* смена языка: сразу в localStorage, в аккаунт — если гость вошёл; перезагрузка
    применяет словарь целиком (проще и честнее точечной перерисовки) */
@@ -3067,6 +3064,7 @@ const UI = {
   check: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg>`,
   lock: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,96V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H208A8,8,0,0,1,216,96Z" fill="var(--acc)" opacity=".45"/><path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z"/></svg>`,
   info: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" fill="var(--acc)" opacity=".45"/><path d="M144,176a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176Zm88-48A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128ZM124,96a12,12,0,1,0-12-12A12,12,0,0,0,124,96Z"/></svg>`,
+  food: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M188,176l20-7.27V184a32,32,0,0,1-32,32H80a32,32,0,0,1-32-32V167.27L68,160l40,16,40-16Zm27.82-89.72C209.32,55.55,172.48,32,128,32S46.68,55.55,40.18,86.28A8,8,0,0,0,48.07,96H207.93A8,8,0,0,0,215.82,86.28Z" fill="var(--acc)" opacity=".45"/><path d="M48.07,104H207.93a16,16,0,0,0,15.72-19.38C216.22,49.5,176,24,128,24S39.78,49.5,32.35,84.62A16,16,0,0,0,48.07,104ZM128,40c39.82,0,74.21,20.61,79.93,48H48.07L48,87.93C53.79,60.61,88.18,40,128,40ZM229.26,152.48l-41.13,15L151,152.57a8,8,0,0,0-5.94,0l-37,14.81L71,152.57a8,8,0,0,0-5.7-.09l-44,16a8,8,0,0,0,5.47,15L40,178.69V184a40,40,0,0,0,40,40h96a40,40,0,0,0,40-40v-9.67l18.73-6.81a8,8,0,1,0-5.47-15ZM200,184a24,24,0,0,1-24,24H80a24,24,0,0,1-24-24V172.88l11.87-4.32L105,183.43a8,8,0,0,0,5.94,0l37-14.81,37,14.81a8,8,0,0,0,5.7.09l9.27-3.37ZM16,128a8,8,0,0,1,8-8H232a8,8,0,0,1,0,16H24A8,8,0,0,1,16,128Z"/></svg>`, // К11-и1: «Кухня» — значок из набора (Phosphor duotone, hamburger), не эмодзи
   percent: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M95.8,56.2a28,28,0,1,1-39.6,0A28,28,0,0,1,95.8,56.2Zm104,104a28,28,0,1,0,0,39.6A28,28,0,0,0,199.8,160.2Z" fill="var(--acc)" opacity=".45"/><path d="M205.66,61.64l-144,144a8,8,0,0,1-11.32-11.32l144-144a8,8,0,0,1,11.32,11.31ZM50.54,101.44a36,36,0,0,1,50.92-50.91h0a36,36,0,0,1-50.92,50.91ZM56,76A20,20,0,1,0,90.14,61.84h0A20,20,0,0,0,56,76ZM216,180a36,36,0,1,1-10.54-25.46h0A35.76,35.76,0,0,1,216,180Zm-16,0a20,20,0,1,0-5.86,14.14A19.87,19.87,0,0,0,200,180Z"/></svg>`,
   chest: `<svg class="isvg" viewBox="0 0 512 512" fill="currentColor"><path d="M146.857 20.842c-12.535-.036-24.268 2.86-37.285 9.424h.004C61.356 54.6 19.966 120.734 17.982 175.91l41.848 14.236c4.33-61.89 47.057-128.37 101.527-155.86h.002c4.423-2.23 8.822-4.162 13.185-5.8l-22.26-7.45c-1.83-.123-3.637-.19-5.428-.194zm59.34 20.19c-10.478-.09-22.832 3.093-36.424 9.943l.004-.004c-48.23 24.34-89.625 90.513-91.548 145.436l156.485 53.24c3.865-62.22 46.797-129.372 101.613-157.035h.002l.002-.003c4.303-2.168 8.584-4.056 12.832-5.666l-134.54-45.036c-2.652-.542-5.458-.847-8.427-.873zm174.97 58.323c-10.476-.09-22.83 3.092-36.42 9.94l-.005.002c-48.577 24.518-90.225 91.473-91.586 146.623l46.205 15.72c3.914-62.188 46.825-129.274 101.607-156.92 4.522-2.283 9.04-4.258 13.53-5.91l-26.544-8.884c-2.164-.35-4.423-.55-6.785-.57zm63.554 22.014c-10.267.093-22.094 3.353-35.333 10.034-47.158 23.8-87.777 87.587-91.362 141.75l174.55-73.726c-.404-39.01-10.754-61.304-24.415-71.082-2.347-1.68-4.867-3.057-7.55-4.137l-.01.034-4.735-1.584c-3.48-.887-7.195-1.327-11.144-1.29zM17.9 195.622l-.035 187.484L59.46 397.58V209.764L17.9 195.624zM78.15 216.12v187.962l156.282 54.37V269.288l-29.053-9.886v119.43l-101.054-34.082V225.025L78.15 216.12zm414.22 3.683L318.433 293.27v189.236l173.935-73.504v-189.2zm-369.354 11.582v99.947l63.675 21.477v-99.763l-63.674-21.662zm31.306 28.797c9.705 0 17.573 7.867 17.573 17.572 0 6.34-3.37 11.88-8.407 14.97v28.53h-18.69v-28.746c-4.838-3.13-8.048-8.562-8.048-14.754 0-9.705 7.867-17.572 17.572-17.572zm98.797 15.464v189.307l46.626 16.22V291.51l-46.627-15.864z"/><path d="M80.39 38.55c1.28 1.5 2.5 3.13 3.61 4.91l9.36 14.71c5.11 8.17 7.14 16.75 6.61 24.51 9.73 1.32 19.73 7.43 26.63 18.42l9.3 14.7c6 9.2 7.7 19.1 6.3 27.6 7.3 2.4 14.3 7.5 19.7 15.2h188.2c5.5-7.7 12.4-12.8 19.7-15.2-1.5-8.5.4-18.4 6.3-27.6l9.2-14.7c7-10.99 17-17.1 26.8-18.42-.6-7.87 1.5-16.39 6.6-24.58l9.3-14.73c1.2-1.74 2.3-3.34 3.4-4.82zM456 44.12c-3 .52-7 3.04-11.4 9.76l-9.3 14.71c-7.4 11.8-4 17.15-.5 19.22 3.4 2.2 9.7 3.07 16.9-8.52l4.3-6.66zm-399.97.11v28.4l4.15 6.66c7.33 11.59 13.66 10.72 17.05 8.52 3.39-2.07 6.89-7.42-.55-19.12l-9.29-14.72c-4.33-6.74-8.24-9.27-11.36-9.79zm41.34 57.47c-1.4 0-3.19.5-4.32 1.3-3.52 2.1-7 7.4.52 19.1l9.23 14.7c6.3 10 12 10.8 15.7 9.3.7-.5 1.6-1 2.3-1.5 2.9-2.4 5.2-7.9-1.5-18.4l-9.2-14.7c-5-7.6-9.4-9.8-12.73-9.8zm317.13 0c-3.3 0-7.6 2.2-12.5 9.8l-9.3 14.7c-6.6 10.5-4.5 16-1.6 18.4 1 .6 1.7 1 2.4 1.5 3.6 1.5 9.3.7 15.7-9.3l9.3-14.7c7.4-11.7 3.9-17 .5-19.1-1.4-.9-2.9-1.2-4.5-1.3zm-358.47 1v55.9h40.44c-3.72-2.9-7.37-6.6-10.31-11.2l-9.25-14.9c-5.14-8.1-7.22-16.7-6.67-24.4-4.81-.6-9.68-2.5-14.21-5.4zm399.97 0c-4.7 2.9-9.4 4.8-14.2 5.4.5 7.7-1.6 16.3-6.7 24.4l-9.3 14.9c-3 4.6-6.5 8.3-10.2 11.2H456zM90.99 178.3v271.8l12.01-9.5c8.1-6.6 17-9.4 25.3-9.4 1.1-8.8 6-18.1 15-25.2l13.8-10.7c7.8-6.3 16.4-9.1 24.2-9.3 4.5 0 8.6.8 12.5 2.3V283.9c-11.3.6-23.8-5.7-31.9-18.5l-9.4-14.9c-5.6-8.7-7.3-17.8-6.5-26-8.6-2.1-17.3-7.9-23.4-17.8l-9.3-14.7c-2.8-4.6-4.7-9.1-5.8-13.7zm37.11 0c.5 1 1.2 2.2 1.9 3.2l9.2 14.9c7.4 11.5 13.6 10.5 17 8.4 3.4-2.1 6.9-7.4-.6-19.1l-4.5-7.4zm46.1 0c4.1 7.8 5.4 15.8 4.7 23 8.6 2 17.2 8 23.4 17.6l9.2 14.9c6.5 10 8 20.8 5.9 29.8h77.3c-2.2-9-.6-19.8 5.8-29.8l9.2-14.9c6.2-9.6 14.8-15.6 23.4-17.6-.7-7.2.5-15.2 4.7-23zm186.7 0l-4.6 7.4c-7.4 11.7-3.9 17-.5 19.1 3.4 2.1 9.5 3.1 17-8.4l9.3-14.9c.6-1 1.4-2.2 1.9-3.2zm43.6 0c-1 4.6-2.9 9.1-5.8 13.7l-9.3 14.7c-6 9.9-14.7 15.7-23.3 17.8.9 8.2-1.1 17.3-6.6 26l-9.4 14.9c-8.2 12.8-20.6 19.1-31.8 18.5v104.4c3.7-1.5 7.9-2.3 12.5-2.3 7.9.2 16.5 3 24.3 9.3l13.6 10.7c9 7.1 13.9 16.4 15.1 25.2 8.3 0 17.1 2.8 25.2 9.4l12 9.5V178.3zm-231.3 41.3c-1.8 0-3.4.7-4.6 1.4-3.3 2-6.8 7.5.6 19.1l9.2 14.7c6.4 9.9 11.7 10.8 15.4 9.4l1.6-.8c3.4-2.1 7-7.5-.5-19.2l-9.2-14.7c-4.9-7.7-9.4-9.9-12.5-9.9zm165.8 0c-3.3 0-7.6 2.2-12.6 9.9l-9.3 14.7c-7.5 11.7-4 17.1-.6 19.2l1.8.8c3.5 1.4 9.1.5 15.2-9.4l9.5-14.7c7.3-11.6 3.9-17.1.5-19.1-1.7-.8-3-1.3-4.5-1.4zm-125.5 63.7V386h85.1V283.3zm42.7 16.3c9.7.2 17.2 7.9 17.2 17.5 0 5.2-2.2 10.3-6.4 13.7l6.4 38.7h-34.9l6.7-38.7c-4.2-3.3-6.7-8.3-6.7-13.7 0-9.7 8-17.6 17.7-17.5zm-74.3 105.2c-3.2 0-7.3 1.6-12.6 5.9l-13.8 10.8c-7 5.7-8.8 10.2-8.3 13.6.1 1.4.8 3.1 1.8 4.2 2.3 3.1 8.1 6.1 18.8-2.6l13.7-10.9c10.7-8.5 9.2-14.6 6.6-17.8-1.2-1.5-3.1-3.1-6.2-3.2zm148.2 0c-2.9.1-5.1 1.7-6.2 3.2-2.6 3.2-4.1 9.3 6.7 17.8l13.6 10.9c10.9 8.7 16.5 5.7 19 2.6 1-1.4 1.4-2.8 1.6-4.2.4-3.4-1.2-7.9-8.4-13.6l-13.5-10.8c-5.5-4.3-9.7-5.9-12.8-5.9zm-121.7.8c2.8 11.4-2 25.6-14.6 35.7L180 452c-8.1 6.6-17 9.5-25.2 9.5-.5 3.9-1.6 8-3.9 11.9h210.2c-2.1-3.9-3.4-8-3.9-11.9-8.2 0-17.1-2.9-25.2-9.5l-13.7-10.7c-12.7-10.1-17.5-24.3-14.6-35.7zm-80.6 44.6c-3 0-7.2 1.3-12.6 5.7l-13.7 10.8c-2.93 2.4-4.93 4.7-6.33 6.7h29.63l2.7-2.2c10.7-8.7 9.2-14.8 6.7-17.8-1.2-1.7-3.2-3.1-6.4-3.2zm256.4 0c-3.2.1-5.1 1.5-6.3 3.2-2.5 3-4.2 9.1 6.6 17.8l2.8 2.2h29.4c-1.2-2-3.2-4.3-6.2-6.7l-13.8-10.8c-5.3-4.4-9.4-5.7-12.5-5.7z"/><path d="M256 23c-75.556 0-137 61.444-137 137v.008c.038 42.262 19.614 82.002 52.756 107.857L116.473 489h279.054l-55.35-221.402c33.076-25.838 52.76-65.38 52.823-107.584V160c0-75.556-61.444-137-137-137zm0 18c65.824 0 118.993 53.164 119 118.986-.06 38.516-18.74 74.6-50.154 96.88l-5.016 3.56L372.473 471H139.527l52.625-210.504-5.013-3.558C155.712 234.64 137.036 198.53 137 160v-.008C137.004 94.168 190.174 41 256 41zm14.508 44.69c-1.983-.01-3.966-.003-5.95.03-30.615.485-61.19 6.227-91.69 16.77-3.66 5.217-6.824 10.77-9.378 16.608-1.183 2.468-2.232 4.98-3.166 7.523 30.858-12.783 61.51-20.36 91.987-22.376-25.746 5.47-45.19 28.43-45.19 55.756 0 31.374 25.627 57 57 57 31.375 0 57-25.626 57-57 0-28.278-20.82-51.876-47.9-56.26 24.755.443 49.475 4.616 74.22 12.733-4.17-8.416-9.554-16.247-15.872-23.258-20.307-4.896-40.67-7.39-61.06-7.524zM264.12 121c21.647 0 39 17.354 39 39s-17.353 39-39 39c-21.645 0-39-17.354-39-39 0-4.494.76-8.8 2.14-12.807.83.772 1.705 1.465 2.597 2.037 4.008 2.572 8.673 3.77 13.676 3.77s9.67-1.198 13.676-3.77C261.215 146.66 265 142 265 136s-3.784-10.66-7.79-13.23c-.484-.31-.978-.597-1.48-.868 2.702-.585 5.507-.902 8.39-.902zm-102.915 72.994c3.308 9.103 7.833 17.772 13.428 25.645 36.963 15.02 72.75 24.08 107.156 25.694 10.122.475 20.12.278 29.972-.613 8.763-5.944 16.48-13.31 22.963-21.65-16.736 3.786-34.09 5.127-52.092 4.284-37.77-1.77-78.5-13.594-121.428-33.36z"/><path d="M494 12.973L208.54 169.975 35.65 97.938a121.168 121.168 0 0 0-1.716 14.103l174.302 101.68L494 64.212zm-68.223 6.12S346.247 35.15 320 48c-45.024 22.044-98.655 84.697-98.655 84.697C288.43 88.467 344.922 48 425.777 19.092zm-319.953 6.063c-19.304 0-36.98 9.903-50.3 26.918-6.275 8.02-11.472 17.613-15.233 28.297l137.866 57.444c1.29-35.483-7.338-63.638-20.734-82.76-13.84-19.758-32.403-29.898-51.598-29.898zm-71.422 108c3.352 30.315 17.906 56.833 38.366 70.74l4.677 3.176L62.23 309.137l99.247 19.83-17.54-117.656a81.96 81.96 0 0 0 10.15-8.34zm300.895 57.03c-50.015 39.164-126.724 78.674-165.047 43.546 11.574 23.1 24.986 42.545 51.31 38.317 37.69-6.055 92.397-52.364 113.737-81.863zM59.572 326.962l-2.035 13.65L494 430.653v-16.888zm-4.7 31.513l-2.038 13.687L494 489.967v-17.55zm-4.71 31.605l-15.055 100.98H185.64l-10.06-67.49z"/><path d="M269.03 14.47c-110.473 1.825-290.752 92.88-243.5 450.5 0-210.674 118.628-315.626 181.814-315.626 41.72 0 70.595 34.945 73.812 102.75h-40.592l7.218 13.687 114.94 218.283 8.25 15.687 8.28-15.688 114.938-218.28 7.218-13.688H441.97C438.38 104.607 361.12 15.24 274.25 14.47c-1.717-.017-3.465-.03-5.22 0zm-4.592 44.593c85.555-1.117 146.173 75.667 148.687 211.718h57.313L371 459.657 271.53 270.78h65.595c-2.322-140.208-60.25-201.84-171.72-180.25 35.16-20.848 68.674-31.07 99.032-31.468z"/></svg>`,
   chestOpen: `<svg class="isvg" viewBox="0 0 512 512" fill="currentColor"><path d="M410.365 101.005c8.21-22.26 16.21-31.12 20.33-34.45 3.06-2.48 5.73-3.42 7.92-2.81 4 1.13 8.49 7.45 11.88 16.89 10.89 30.34 10 84.28-.93 129.51zm-286 72.92c7.52-31 10.28-66.13 7.77-94.92l-43.6-4.86zm289.46-113l-301.2-33.53c-2.5-.28-5.24 1.46-7.11 3-3.67 3-10.42 10.32-17.66 27.64l308.68 34.34c5.16-13.25 11.02-23.89 17.31-31.43zm-228.78 298.71v-70.72l10.76 1.19 42.24 5.18v70.51zm16-40.34a13 13 0 0 0 5.34 10.29l-2.34 24.42 17 1.74-4-25a9.54 9.54 0 0 0 5-9.15 13.64 13.64 0 0 0-11.06-12.59s.17.1.13.1c-5.95-.68-11.07 3.9-10.07 10.1zm53 64.45l-85-9.84v-86.72l-1.05-.09a8.14 8.14 0 0 1-7.27 6.71 8 8 0 0 1 5.23 8.9 8 8 0 0 1-8 6.66c8.453 4.004 4.341 16.778-4.86 15.1a8 8 0 0 1-8 13.8 8.01 8.01 0 0 1-12.28 10.29v.09a8 8 0 0 1-3.86 8.37l9.13 5.35v14.25l-12 7.13-12-7.12v-14.26l8.15-4.82a8.21 8.21 0 0 1-5.07-5.92.418.418 0 0 1 0-.1 8 8 0 0 1-15.18-5c-6.851 7.214-18.094-2.065-12.31-10.16-8.346 4.519-16.217-6.676-9.14-13-9.17 2.661-14.453-10.083-6.09-14.69a8 8 0 0 1-3.21-15.67c-9.294-1.047-9.548-14.463-.3-15.86-.669-.164-1.264-.473-1.83-.76l-17.24-1.86.6 167.11 309.18 34.49-.6-165.83-107-13.05zm140.06-164l4.72 1.91.91.58 38.72 4.31-23.26-64.77-12.82 37c-.16.46-3.41 9.8-8.27 20.99zm-208.54-39.74l5 5.49 12.75-11.15 21.45-2.28 16.61 15.35 10.51 8.73 18.54-9.29 3.44.5c.12-.67.25-1.34.38-2 3.08-16.1 7.35-30.16 7.53-30.75l13.39-43.91 16.88 42.71 8.42 21.42 10.66-12.39 22.14-25.73 5.78 33.45 3.29 19.1 17.1-9.64 35.09-19.79-18.48-51.4-247.86-27.61c2.51 34.94-1.85 77.32-12.39 112h2.32l7-12.86h40.46zm-111.29 97.39c7.6 2.1 7.9 12.766.43 15.29 7.737.867 9.802 11.153 3 14.94 7.653-.548 11.614 8.947 5.84 14 7.313-2.115 13.168 6.216 8.7 12.38 6.288-3.518 13.657 2.417 11.56 9.31 4.53-4.723 12.506-2.304 13.65 4.14 2.057-5.713 9.48-7.141 13.51-2.6-1.285-6.404 5.23-11.566 11.17-8.85-4.564-5.77.425-14.123 7.67-12.84-6.419-4.541-3.122-14.648 4.74-14.53-7.316-3.503-5.375-14.415 2.7-15.18a8 8 0 0 1-5.38-8l-76.43-8.26c-.41.19-.746.15-1.16.2zm367.54 139.08l-.59-163.86-8.67 7-55.51 46.79.58 162zm-26.23-165.2l-24.11-15.27-4.18-1.69c-5.91 11.52-13.39 23-22.66 27.88-5.44 2.88-12.22 4.34-20.16 4.34-11.13 0-24.75-2.91-37.35-8-10-4-23.3-11-30.26-21.34-4.9-7.29-6.64-17.77-5.31-32.92l-21.78 10.93-19-15.8-11.42-10.53-9.16 1-20.45 17.83-11-11.7h-24.21l-17.61 32-5.7-7.2-4.42 4.85-10.76 16.35-12.29 4.91L97.611 256h-12.2l-2.776 6.005 76.9 8.21a8.15 8.15 0 0 1 2-2.9 8 8 0 0 1 10.31-.46 1.657 1.657 0 0 1-.14-.24c-4.955-8.368 6.459-16.62 12.87-9.375 6.412 7.245-3.167 17.571-10.87 11.635a8 8 0 0 1 1.12 2.89l22.62 2.44 168.54 20.57 51.49-43.38zm-28.34-57.73l-36.88 20.79-7.14-41.47-28 32.51-18.13-46.11s-16.65 54.58-7 69c7.69 11.45 35.42 22.25 54.33 22.25 5 0 9.43-.76 12.67-2.48 13.8-7.31 30.15-54.49 30.15-54.49zm-317.08 270.8v-.2c0-3.77-8.21-6.83-18.33-6.83-10.12 0-18.33 3.06-18.33 6.83 0 3.21 6 5.9 14 6.63v.2c0 3.77 8.21 6.83 18.33 6.83 10.12 0 18.33-3.06 18.33-6.83-.01-3.21-5.98-5.9-14-6.63zm350 6.63c-10.13 0-18.33 3.06-18.33 6.83s8.21 6.83 18.33 6.83c10.12 0 18.33-3.06 18.33-6.83s-8.25-6.8-18.38-6.8zm40-16.28c-10.13 0-18.33 3.06-18.33 6.83s8.21 6.83 18.33 6.83c10.12 0 18.33-3.06 18.33-6.83s-8.22-6.83-18.34-6.83z"/><path d="M461.512 194.104L494 222.457S391.01 310.462 305.379 342.57c-8.514 3.191-45.39 8.99-69.714 8.99-9.03 0-16.327-.798-19.8-2.831-64.013-37.392-129.62-43.784-166.905-43.784-19.284.01-30.96 1.712-30.96 1.712V199.261s1.314.068 3.94.068c12.503 0 54.662-1.43 126.128-17.942a40.33 40.33 0 0 1 9.058-.973c24.324 0 57.707 16.804 73.1 18.818 29.49 3.892 112.272 6.207 112.272 6.207l22.621 33.996c-38.48 30.162-158.38 27.146-158.38 27.146s73.77 27.915 164.822-16.667c10.128-4.923 89.951-55.81 89.951-55.81zm-102.162-29.19l-16.074-4.378-57.406 27.185c5.556.273 18.487.516 23.741.74zm38.413-4.475l-61.794 29.277c4.262.136 14.75.438 14.75.438l6.617 8.757 54.652-28.557zm-17.815 66.98l74.423-44.621-18.487-11.462-70.531 37.382z"/><path d="M192 64c-15.4 3.77-35.7 16.04-53 33.17-19.2 19.13-34.9 43.63-39.58 64.63l-.58 135.3.37 157.4 93.99-40.3L192 64zm128 0l-1.2 350.2 94 40.3.4-156.8-.6-135.9c-4.7-21-20.3-45.5-39.6-64.63-17.3-17.13-37.6-29.4-53-33.17zM57.24 94.67c-8.39 0-15 6.63-15 15.03 0 8.4 6.61 15 15 15s15-6.6 15-15-6.61-15.03-15-15.03zm397.56 0c-8.4 0-15 6.63-15 15.03 0 8.4 6.6 15 15 15s15-6.6 15-15-6.6-15.03-15-15.03zM35.5 142.7l-1.42 334h46l1.42-334h-46zm395 0l1.5 334h46l-1.5-334h-46zM159.2 231h18v48h-18v-48zm175.6 0h18v48h-18v-48z"/><path d="M41 73v304.563L88.697 151H423v-30H185.514l-16-48H41zm62.303 96L43.092 455h381.605l60.211-286H103.303z"/><path d="M457.03 213.037L416.514 100.24C425 77.232 433.27 68.075 437.527 64.633c3.162-2.563 5.922-3.534 8.185-2.904 4.134 1.168 8.775 7.7 12.278 17.456 11.266 31.347 10.377 87.094-.96 133.85zm-324.287-17.9l312.804 34.84-43.82-122.1L145.558 79.34c2.593 36.102-1.913 79.913-12.817 115.796zM128.98 77.5l-45.06-5.02 37.03 103.123c7.773-32.06 10.625-68.357 8.03-98.102zM101.46 27.19c-3.793 3.1-10.77 10.666-18.25 28.566L402.23 91.3c5.333-13.695 11.37-24.702 17.88-32.495L108.796 24.13c-2.573-.29-5.415 1.51-7.338 3.06zm280.63 283.338l.61 169.352 66.352-53.63-.61-169.35zM366.163 487.9L46.62 452.306 46 278.396l319.553 35.594zM216.726 337.648a9.777 9.777 0 0 0 5.168-9.405c-.248-6.367-5.364-12.092-11.43-12.857h-.125c-6.14-.693-10.904 3.927-10.646 10.335a13.973 13.973 0 0 0 5.767 10.543l-2.17 25.073 17.57 2.005zm219.28-91.983l-307.46-34.25v59.54l242.712 27.037zM58.31 263.13l54.34 6.058v-49.98z"/><path d="M149.688 85.625c-1.234.005-2.465.033-3.72.063-33.913.806-75.48 10.704-127.25 33.718V362.78c60.77-28.82 106.718-37.067 144.22-33.092 33.502 3.55 59.685 16.66 83.562 31.187v-242.97c-23.217-17.744-50.195-30.04-85.97-32-3.52-.192-7.142-.296-10.843-.28zm211.968 0c-3.7-.016-7.322.088-10.844.28-35.773 1.96-62.75 14.256-85.968 32v242.97c23.876-14.527 50.06-27.637 83.562-31.188 37.502-3.974 83.45 4.272 144.22 33.094V119.407c-51.77-23.014-93.337-32.912-127.25-33.72-1.255-.028-2.486-.056-3.72-.06zm5.72 261.78c-1.038-.002-2.074.017-3.095.033-4.808.075-9.43.37-13.905.843-33.932 3.597-59.603 17.976-85.53 34.44v.28c-6.554-1.99-13.02-2.37-19.408-.97-25.566-16.177-51.003-30.202-84.468-33.75-5.595-.592-11.44-.883-17.564-.842-32.04.213-71.833 9.778-124.687 35.937v42.53c60.77-28.823 106.714-37.067 144.218-33.092 18.545 1.965 34.837 6.845 49.75 13.28-4.682 6.064-9.308 13.268-13.875 21.688h117.156c-5.93-8.22-11.798-15.414-17.626-21.56 14.996-6.503 31.39-11.43 50.062-13.408 37.503-3.974 83.448 4.27 144.22 33.094v-42.53c-53.16-26.31-93.115-35.863-125.25-35.97z"/><path d="M256 64c64 0 224 224 224 352 0 31.3-47.7 52.4-112 63.3-.3-100-5.8-143.3-112-143.3s-111.7 43.3-112 143.3c-64.3-10.9-112-32-112-63.3C32 288 192 64 256 64z"/></svg>`,
@@ -3486,6 +3484,7 @@ function renderTop(){
   document.getElementById('ava').textContent = AVATARS[(me.avatar_id||1)-1] || '😎';
   FX.countUp(document.getElementById('coins'), me.coins_balance);
   FX.countUp(document.getElementById('sp'), me.skillpoints_available);
+  topLabels();
   document.getElementById('xpText').textContent = fmt(me.xp_current) + ' / ' + fmt(need) + ' XP';
   document.getElementById('xpLeft').textContent = T('xp_left', {n: fmt(Math.max(0, need - me.xp_current))});
   document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
@@ -3761,16 +3760,27 @@ async function buyPack(id){
 }
 
 /* ═══════════════ КАТАЛОГ ═══════════════ */
-/* Г9-и2: ru и pl делят правило 1 / 2-4 / 5+; en — просто one/many */
+/* Г9-и2: ru и pl делят правило 1 / 2-4 / 5+; en — просто one/many.
+   К11-и1: в польском форма «1» — только само 1 («21 gier», а не «21 gra»); дробное — «0,5 монетки» (ru, pl) */
 function plural(n, forms){
+  n = Math.abs(+n) || 0;
   if (LANG === 'en') return n === 1 ? forms[0] : forms[2];
+  if (!Number.isInteger(n)) return forms[1];
   const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return forms[0];
+  if (LANG === 'pl' ? n === 1 : (m10 === 1 && m100 !== 11)) return forms[0];
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
   return forms[2];
 }
 function plGame(n){ return plural(n, [STR.pl_game_1, STR.pl_game_2, STR.pl_game_5]); }
 function plApp(n){ return plural(n, [STR.pl_app_1, STR.pl_app_2, STR.pl_app_5]); }
+function plCoin(n){ return plural(n, [STR.pl_coin_1, STR.pl_coin_2, STR.pl_coin_5]); }
+function plSp(n){ return plural(n, [STR.pl_sp_1, STR.pl_sp_2, STR.pl_sp_5]); }
+/* К11-и1: подписи шапки согласуются с числом («1 монетка», «2 очка»), поэтому ставятся здесь, а не через data-str */
+function topLabels(){
+  const set = (id, s) => { const el = document.getElementById(id); if (el) el.textContent = s; };
+  set('coinsLbl', plCoin(me ? me.coins_balance : 0));
+  set('spLbl', plSp(me ? me.skillpoints_available : 0));
+}
 /* имена групп и системных приложений приходят из каталога данными (сервер их
    не переводит) — переводим только на показ, сравнения в коде не трогаем */
 const GRP_KEYS = {'Коммуникация':'grp_comm', 'Системные':'grp_sys', 'Другие':'grp_other', 'Другие игры':'grp_other_games'};
@@ -4301,7 +4311,7 @@ function notifText(n){
       + (p.computer ? T('ntf_paren_pc', {c: p.computer}) : '');
     case 'booking_restore': return STR.ntf_bk_restore + (p.start_time ? T('ntf_dash_time', {t: chHM(p.start_time)}) : '');
     // З16-и1е: суммы — как ценники («0,34», «12,50», «30»), а не как пришли с сервера («0.34», «12.5»)
-    case 'deposit': return T('ntf_deposit', {c: fmt(p.coins||0), a: fmtNum(p.amount_pln)});
+    case 'deposit': return T('ntf_deposit', {c: fmt(p.coins||0), w: plCoin(p.coins||0), a: fmtNum(p.amount_pln)});
     case 'deposit_void': return T('ntf_deposit_void', {a: fmtNum(p.amount_pln), r: fmtNum(p.refund_pln), w: fmtNum(p.wallet_pln)}); // Ж1
     case 'grant_xp': return T('ntf_grant_xp', {n: p.amount||0}) + (p.levels_gained > 0 ? T('ntf_lvl', {l: p.level}) : '');
     case 'grant_case': return T('ntf_grant_case', {t: p.tier||''});
@@ -4343,7 +4353,7 @@ function notifText(n){
     // К3-и2 (№16): таяние монет (В4-3) и очередь на ПК (Б9) — раньше падали в
     // «🔔 Обновление аккаунта», и гость не понимал, что у него сгорели монеты.
     case 'coins_burn_soon': return T('ntf_burn_soon', {d: p.days||0, p: p.pct||0, c: fmt(p.coins||0)});
-    case 'coins_burned': return T('ntf_burned', {c: fmt(p.coins||0), d: p.idle_days||0, l: fmt(p.left||0)});
+    case 'coins_burned': return T('ntf_burned', {c: fmt(p.coins||0), w: plCoin(p.coins||0), d: p.idle_days||0, l: fmt(p.left||0)});
     case 'waitlist_ready': return T('ntf_wl_ready', {c: p.computer || STR.pc_default});
     case 'waitlist_remove': return STR.ntf_wl_remove;
     // Е2: пакеты времени
@@ -4364,7 +4374,7 @@ function notifText(n){
     case 'achievement_earned': return T('ntf_ach', {t: p.title || ''})
       + (p.reward_case_tier ? T('ntf_ach_case', {c: p.reward_case_tier}) : '')
       + (p.reward_xp > 0 ? T('ntf_ach_xp', {n: p.reward_xp}) : '')
-      + (p.reward_skillpoints > 0 ? T('ntf_ach_sp', {n: p.reward_skillpoints}) : '');
+      + (p.reward_skillpoints > 0 ? T('ntf_ach_sp', {n: p.reward_skillpoints, w: plSp(p.reward_skillpoints)}) : '');
     case 'sens_applied': return sensAppliedText(p); // С2-и4: агент подставил сенсу по команде сервера
     case 'ready_auto': return STR.ntf_ready_auto;   // Е1: окно истекло, время пошло
     case 'seat_cancelled': return p.reason === 'shell_offline' // Ж4: ПК не включился — посадка снята автоматом
@@ -5236,8 +5246,9 @@ function renderSide(){
     if (achievements.resets_at){
       const ms = new Date(achievements.resets_at) - Date.now();
       if (ms > 0){
-        const h = Math.floor(ms/3600000), m = Math.floor(ms%3600000/60000);
-        resetTxt = T('ach_reset', {t: h + ':' + String(m).padStart(2,'0')});
+        resetTxt = T('ach_reset', {t: fmtDur(Math.max(1, Math.ceil(ms/60000)))})
+          // К11-и1: «⏳ резет через 16 ч 50 мин» переносится целиком, а не посреди длительности
+          .replace(/⏳.*/, s => '<span style="white-space:nowrap">' + s + '</span>');
       }
     }
     const CATS = [['daily', STR.ach_cat_daily], ['weekly', STR.ach_cat_weekly],
@@ -5459,7 +5470,7 @@ function renderCalc(){
     <input class="calc-slider" type="range" min="15" max="600" step="15" value="${calcMinutes}" oninput="calcSlide(this.value)">
     <div class="muted" style="text-align:center; font-weight:700" id="calcTime">${calcTimeLabel()}</div>
     <div class="calc-out">
-      <div class="box"><div class="v gold-t cnum" id="calcCoins">${fmt(c.coins)}</div><div class="l">${UI.coins} ${esc(STR.calc_coins_lbl)}</div></div>
+      <div class="box"><div class="v gold-t cnum" id="calcCoins">${fmt(c.coins)}</div><div class="l">${UI.coins} <span id="calcCoinsLbl">${esc(plCoin(c.coins))}</span></div></div>
       <div class="box"><div class="v cyan-t cnum" id="calcXp">${fmt(c.xp)}</div><div class="l">${UI.xp} XP</div></div>
     </div>
     <div class="calc-break" id="calcBreak">${calcBreakHtml(c)}</div>
@@ -5467,9 +5478,9 @@ function renderCalc(){
   <div class="card">
     <div style="font-weight:800; margin-bottom:6px">${esc(STR.how_title)}</div>
     <div class="muted" style="font-size:12.5px; line-height:1.7">
-      ${T('how_base', {n: e.rates.coins_per_min})}
+      ${T('how_base', {n: e.rates.coins_per_min, w: plCoin(e.rates.coins_per_min)})}
       ${T('how_rank', {r: esc(rankName(rk.name)), c: rk.coin_mult, x: rk.xp_mult})}
-      ${e.talents.coin_mint>0?T('how_mint', {n: Math.round(e.talents.coin_mint*100), r: e.rates.deposit_coins_per_pln}):''}
+      ${e.talents.coin_mint>0?T('how_mint', {n: Math.round(e.talents.coin_mint*100), r: e.rates.deposit_coins_per_pln, w: plCoin(e.rates.deposit_coins_per_pln)}):''}
       ${T('how_tail', {n: Math.round(e.session_case_chance*100)})}
     </div>
   </div>`;
@@ -5480,7 +5491,7 @@ function calcSlide(v){
   calcMinutes = +v;
   const c = calcCompute(calcMinutes);
   const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
-  set('calcCoins', fmt(c.coins)); set('calcXp', fmt(c.xp)); set('calcTime', calcTimeLabel());
+  set('calcCoins', fmt(c.coins)); set('calcCoinsLbl', plCoin(c.coins)); set('calcXp', fmt(c.xp)); set('calcTime', calcTimeLabel());
   const b = document.getElementById('calcBreak'); if (b) b.innerHTML = calcBreakHtml(c);
 }
 
@@ -6004,7 +6015,7 @@ function oddsHtml(d, cur){
         <span class="pct" title="${esc(STR.odds_bonus_title)}">${T('odds_bonus_tier', {p: pctF(t.bonus_roll_pct)})}</span></div>
       <div class="odds-row"><span class="l">${UI.coins} ${T('odds_coins', {a: fmt(t.coins_min), b: fmt(t.coins_max)})}</span><b>${pctF(t.coins_pct)}</b></div>
       <div class="odds-row"><span class="l">${UI.xp} ${T('odds_buster', {n: t.buster_boost_pct})}</span><b>${pctF(t.buster_pct)}</b></div>
-      <div class="odds-row"><span class="l">${UI.chest} ${T('odds_jackpot', {n: fmt(t.jackpot_amount)})}</span><b>${pctF(t.jackpot_pct)}</b></div>
+      <div class="odds-row"><span class="l">${UI.chest} ${T('odds_jackpot', {n: fmt(t.jackpot_amount), w: plCoin(t.jackpot_amount)})}</span><b>${pctF(t.jackpot_pct)}</b></div>
     </div>`;
   }).join('');
   const rtp = (d.rtp_modifier && d.rtp_modifier !== 1) ? T('odds_rtp', {n: d.rtp_modifier}) : '';
@@ -6141,7 +6152,7 @@ function showPrize(d, range){
     box.innerHTML = UI.coins;
     amt.dataset.v = '0'; amt.textContent = '0';
     document.getElementById('coType').textContent =
-      (d.drop_amount >= (range ? range[2] : JACKPOT) ? STR.co_jackpot + ' · ' : '') + T('co_coins', {t: tierName(d.tier)});
+      (d.drop_amount >= (range ? range[2] : JACKPOT) ? STR.co_jackpot + ' · ' : '') + T('co_coins', {t: tierName(d.tier), w: plCoin(d.drop_amount)});
     FX.countUp(amt, d.drop_amount);
   } else {
     box.innerHTML = UI.xp;

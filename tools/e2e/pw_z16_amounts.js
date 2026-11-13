@@ -42,7 +42,8 @@ const { CHROME } = require('./_env');
   const dep = await z.api('POST', `/admin/users/${g}/deposit`, { amount_pln: 12.5, method: 'card' }, 'boss');
   const pd = last('deposit');
   const coins = await k.evaluate(c => (c || 0).toLocaleString('ru-RU'), pd.coins);
-  const WANT_DEP = `💰 +${coins} монет — депозит 12,50 zł`;
+  const WANT_DEP = `💰 +${coins} монеток — депозит 12,50 zł`; // К11-и1: в киоске валюта — «монетки»
+  const WANT_DEP_APP = `💰 +${coins} монет — депозит 12,50 zł`; // PWA сменит слово в К11-и3 — тогда эта строка не нужна
   const kDep = await toastIs(k, WANT_DEP, 25000);
   z.check(`пополнение на 12,50 zł картой — киоск: «${WANT_DEP}» (было «депозит 12.5 zł»)`,
     dep.status === 201 && pd.amount_pln === 12.5 && kDep, `${dep.status} ${JSON.stringify(pd)} · ${await z.text(k, '#toast')}`);
@@ -55,7 +56,7 @@ const { CHROME } = require('./_env');
     `${vd.status} ${JSON.stringify(pv)} · ${await z.text(k, '#toast')}`);
   const ks = await k.evaluate(() => {
     const n = (type, payload) => notifText({ type, payload });
-    const out = { dep: n('deposit', { coins: 1500, amount_pln: 12.5 }), want: '💰 +' + (1500).toLocaleString('ru-RU') + ' монет — депозит 12,50 zł',
+    const out = { dep: n('deposit', { coins: 1500, amount_pln: 12.5 }), want: '💰 +' + (1500).toLocaleString('ru-RU') + ' монеток — депозит 12,50 zł',
       void: n('deposit_void', { amount_pln: 0.34, refund_pln: 0.34, wallet_pln: 30 }),
       kt: n('kitchen_unpaid', { total_pln: 7.5, bar_pln: 0 }), bar: n('kitchen_unpaid', { total_pln: 7.5, bar_pln: 3 }) };
     const save = STR;
@@ -63,10 +64,10 @@ const { CHROME } = require('./_env');
     STR = save;
     return out;
   });
-  z.check('киоск: «+1 500 монет — депозит 12,50 zł», отмена «0,34 … 30 zł», долг «7,50 zł» (и с баром); EN «top-up 0,34 zł», PL «wpłata 0,34 zł»',
+  z.check('киоск: «+1 500 монеток — депозит 12,50 zł», отмена «0,34 … 30 zł», долг «7,50 zł» (и с баром); EN «top-up 0,34 zł», PL «wpłata 0,34 zł»',
     ks.dep === ks.want && ks.void === '↩ Депозит 0,34 zł отменён у стойки — с кошелька снято 0,34 zł, в кошельке 30 zł'
     && ks.kt === '🧾 Не забудь рассчитаться за кухню у стойки: 7,50 zł' && ks.bar === '🧾 Не забудь рассчитаться у стойки: 7,50 zł (кухня и бар)'
-    && ks.en === '💰 +5 coins — top-up 0,34 zł' && ks.pl === '💰 +5 monet — wpłata 0,34 zł', JSON.stringify(ks));
+    && ks.en === '💰 +5 coins — top-up 0,34 zł' && ks.pl === '💰 +5 monetek — wpłata 0,34 zł', JSON.stringify(ks));
 
   // PWA: оба уведомления не прочитаны «вообще» (киоск ставит свою отметку) — приходят при входе, в ленте — обе строки
   const a = await (await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage();
@@ -74,7 +75,7 @@ const { CHROME } = require('./_env');
   await a.goto(z.BASE + '/app', { waitUntil: 'load' });
   await a.fill('#nick', G); await a.fill('#pass', z.GUEST_PASS); await a.click('#authBtn');
   const feedHas = await a.waitForFunction(ws => { const f = document.getElementById('ntfFeed'); return !!f && ws.every(x => f.textContent.includes(x)); },
-    [WANT_DEP, WANT_VOID], { timeout: 20000 }).then(() => true).catch(() => false);
+    [WANT_DEP_APP, WANT_VOID], { timeout: 20000 }).then(() => true).catch(() => false);
   const feed = await a.evaluate(() => { const f = document.getElementById('ntfFeed'); return f ? f.textContent : ''; });
   z.check('PWA: в ленте уведомлений — те же строки пополнения и отмены', feedHas, feed.slice(0, 240));
   await z.shot(a, 'z16_amounts_pwa');
