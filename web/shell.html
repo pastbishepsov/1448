@@ -728,6 +728,15 @@
   .sidetabs .strow + .strow{border-top:1px solid var(--hair)}
   .sidetabs.two button{flex:1 1 auto; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 2px 7px; font-size:11px; line-height:1.1; min-width:0}
   .sidetabs.two button .isvg{width:17px; height:17px}
+  /* К10-и1: вкладка «Сейчас» — заголовки блоков, «ещё N кейсов», пустое состояние */
+  .now-h{margin:14px 2px 6px; font-weight:800; letter-spacing:.4px}
+  .now-h:first-child{margin-top:2px}
+  .now-more{display:block; width:100%; margin:0 0 10px; padding:9px 12px; border:1px dashed var(--line); border-radius:12px;
+    background:transparent; color:var(--dim); font:inherit; font-size:12.5px; text-align:center; cursor:pointer; transition:.15s}
+  .now-more:hover{border-color:var(--acc); color:var(--txt)}
+  .now-empty{text-align:center; padding:30px 12px 26px; color:var(--dim); font-size:13px; line-height:1.45}
+  .now-empty .isvg{width:30px; height:30px}
+  .now-empty .t{margin:8px 0 4px; font-weight:800; font-size:15px; color:var(--txt)}
   .sidetabs.two button i{font-style:normal; font-size:16px; line-height:1}
   .sidetabs.two button span:not(.bub){max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .sidetabs.two .bub{position:absolute; top:4px; left:calc(50% + 6px); margin:0}
@@ -872,13 +881,14 @@
            в одной строке: четыре — иконки без подписей, «Пакеты» обрезались (в EN/PL — невидимы). -->
       <div class="sidetabs two">
         <div class="strow">
-          <button id="st-cases" class="on" onclick="sideTab('cases')"><span data-ic="chest"></span><span data-str="tab_cases"></span><span class="bub hidden" id="casesBub">0</span></button>
+          <button id="st-now" class="on" onclick="sideTab('now')"><span data-ic="now"></span><span data-str="tab_now"></span></button>
+          <button id="st-cases" onclick="sideTab('cases')"><span data-ic="chest"></span><span data-str="tab_cases"></span><span class="bub hidden" id="casesBub">0</span></button>
           <button id="st-talents" onclick="sideTab('talents')"><span data-ic="sp"></span><span data-str="tab_talents"></span></button>
           <button id="st-ach" onclick="sideTab('ach')"><span data-ic="trophy"></span><span data-str="tab_ach"></span></button>
           <button id="st-top" onclick="sideTab('top')"><span data-ic="laurels"></span><span data-str="tab_top"></span></button>
-          <button id="st-hist" onclick="sideTab('hist')"><span data-ic="clip"></span><span data-str="tab_hist"></span></button>
         </div>
         <div class="strow">
+          <button id="st-hist" onclick="sideTab('hist')"><span data-ic="clip"></span><span data-str="tab_hist"></span></button>
           <button id="st-food" onclick="sideTab('food')" data-str-title="tab_food_title"><i>🍔</i><span data-str="tab_food"></span></button>
           <button id="st-book" onclick="sideTab('book')"><span data-ic="cal"></span><span data-str="tab_book"></span></button>
           <button id="st-pack" onclick="sideTab('pack')" data-str-title="tab_pack_title"><span data-ic="timer"></span><span data-str="tab_pack"></span></button>
@@ -1362,6 +1372,13 @@ const SH_RU = {
   toast_prof_xp: "🎉 Анкета: +{n} XP",
   toast_fav_limit: "Любимых игр — до трёх",
   tab_cases: "Кейсы",
+  // К10-и1: вкладка «Сейчас»
+  tab_now: "Сейчас",
+  now_cases: "Ждут открытия · {n}",
+  now_cases_more: "Ещё {n} — во вкладке „Кейсы“",
+  now_ach: "Ближайшая дневная ачивка",
+  now_empty_t: "Пока ничего не ждёт",
+  now_empty_d: "Заказ с кухни, новый кейс и ближайшая дневная ачивка появятся здесь сами",
   tab_talents: "Таланты",
   tab_top: "Топ",
   tab_ach: "Ачивки",
@@ -1919,6 +1936,13 @@ const SH_EN = {
   toast_prof_xp: "🎉 Profile form: +{n} XP",
   toast_fav_limit: "Up to three favorite games",
   tab_cases: "Cases",
+  // К10-и1: вкладка «Сейчас»
+  tab_now: "Now",
+  now_cases: "Waiting to be opened · {n}",
+  now_cases_more: "{n} more — in the Cases tab",
+  now_ach: "Nearest daily achievement",
+  now_empty_t: "Nothing is waiting right now",
+  now_empty_d: "A kitchen order, a new case and the nearest daily achievement will show up here by themselves",
   tab_talents: "Talents",
   tab_top: "Top",
   tab_ach: "Achievements",
@@ -2476,6 +2500,13 @@ const SH_PL = {
   toast_prof_xp: "🎉 Ankieta: +{n} XP",
   toast_fav_limit: "Ulubione gry — maksymalnie trzy",
   tab_cases: "Skrzynki",
+  // К10-и1: вкладка «Сейчас»
+  tab_now: "Teraz",
+  now_cases: "Czekają na otwarcie · {n}",
+  now_cases_more: "Jeszcze {n} — w zakładce Skrzynki",
+  now_ach: "Najbliższe dzienne osiągnięcie",
+  now_empty_t: "Na razie nic nie czeka",
+  now_empty_d: "Zamówienie z kuchni, nowa skrzynka i najbliższe dzienne osiągnięcie pojawią się tu same",
   tab_talents: "Talenty",
   tab_top: "Top",
   tab_ach: "Osiągnięcia",
@@ -3003,6 +3034,7 @@ async function loadCatalog(){
 /* UI-иконки. Phosphor duotone (MIT) — второй слой фирменный красный var(--acc).
    Геймификация — game-icons.net (CC BY 3.0; авторы: Lorc, Delapouite и соавторы, https://game-icons.net). */
 const UI = {
+  now: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><circle cx="128" cy="128" r="96" fill="var(--acc)" opacity=".45"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/><circle cx="128" cy="128" r="40"/></svg>`, // К10-и1: вкладка «Сейчас»
   wallet: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,72H56a8,8,0,0,1,0-16H192a8,8,0,0,0,0-16H56A24,24,0,0,0,32,64V192a24,24,0,0,0,24,24H216a16,16,0,0,0,16-16V88A16,16,0,0,0,216,72Z" opacity=".45" fill="var(--acc)"/><path d="M216,64H56a8,8,0,0,1,0-16H192a8,8,0,0,0,0-16H56A24,24,0,0,0,32,56V184a24,24,0,0,0,24,24H216a16,16,0,0,0,16-16V80A16,16,0,0,0,216,64Zm0,128H56a8,8,0,0,1-8-8V78.63A23.84,23.84,0,0,0,56,80H216ZM180,124a12,12,0,1,1-12,12A12,12,0,0,1,180,124Z"/></svg>`,
   coins: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M240,132c0,19.88-35.82,36-80,36-19.6,0-37.56-3.17-51.47-8.44h0C146.76,156.85,176,142,176,124V96.72h0C212.52,100.06,240,114.58,240,132ZM176,84c0-19.88-35.82-36-80-36S16,64.12,16,84s35.82,36,80,36S176,103.88,176,84Z" fill="var(--acc)" opacity=".45"/><path d="M184,89.57V84c0-25.08-37.83-44-88-44S8,58.92,8,84v40c0,20.89,26.25,37.49,64,42.46V172c0,25.08,37.83,44,88,44s88-18.92,88-44V132C248,111.3,222.58,94.68,184,89.57ZM232,132c0,13.22-30.79,28-72,28-3.73,0-7.43-.13-11.08-.37C170.49,151.77,184,139,184,124V105.74C213.87,110.19,232,122.27,232,132ZM72,150.25V126.46A183.74,183.74,0,0,0,96,128a183.74,183.74,0,0,0,24-1.54v23.79A163,163,0,0,1,96,152,163,163,0,0,1,72,150.25Zm96-40.32V124c0,8.39-12.41,17.4-32,22.87V123.5C148.91,120.37,159.84,115.71,168,109.93ZM96,56c41.21,0,72,14.78,72,28s-30.79,28-72,28S24,97.22,24,84,54.79,56,96,56ZM24,124V109.93c8.16,5.78,19.09,10.44,32,13.57v23.37C36.41,141.4,24,132.39,24,124Zm64,48v-4.17c2.63.1,5.29.17,8,.17,3.88,0,7.67-.13,11.39-.35A121.92,121.92,0,0,0,120,171.41v23.46C100.41,189.4,88,180.39,88,172Zm48,26.25V174.4a179.48,179.48,0,0,0,24,1.6,183.74,183.74,0,0,0,24-1.54v23.79a165.45,165.45,0,0,1-48,0Zm64-3.38V171.5c12.91-3.13,23.84-7.79,32-13.57V172C232,180.39,219.59,189.4,200,194.87Z"/></svg>`,
   sp: `<svg class="isvg" viewBox="0 0 256 256" fill="currentColor"><path d="M194.82,151.43l-55.09,20.3-20.3,55.09a7.92,7.92,0,0,1-14.86,0l-20.3-55.09-55.09-20.3a7.92,7.92,0,0,1,0-14.86l55.09-20.3,20.3-55.09a7.92,7.92,0,0,1,14.86,0l20.3,55.09,55.09,20.3A7.92,7.92,0,0,1,194.82,151.43Z" fill="var(--acc)" opacity=".45"/><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"/></svg>`,
@@ -3146,7 +3178,7 @@ let sensDPI = +(lsGet('1448_dpi') || 800); // К1-и6: обёртка — пол
 let sensFrom = 'cs2', sensTo = 'valorant', sensVal = 2.0;
 let sensProfile = null, sensProfileApplied = false;
 let sensOwnMouse = false; // С2-и5 (Р2): гость со своей мышью — DPI свой, без пересчёта под мышь клуба
-let activeSession = null, timerIv = null, curTab = 'cases', profAva = 1;
+let activeSession = null, timerIv = null, curTab = 'now', profAva = 1;
 let sessComputer = ''; // Е1: имя машины активной сессии — для экрана «Готов?»
 let menuData = null, myOrders = [], foodQty = {}, foodBusy = false, myUnpaidPln = 0; // Г7: кухня (Р10: постоплата)
 let lastFavsKey = ''; // Г8: витрина пересобирается при смене любимых игр
@@ -3319,6 +3351,10 @@ function logout(){
   lsDel('1448_aim_result'); lsDel('1448_dpi'); // старый localStorage-мост (до С0) — чистим, если остался
   const bub = document.getElementById('casesBub');
   if (bub){ bub.classList.add('hidden'); bub.textContent = ''; }
+  // К10-и1: следующий гость начинает со «Сейчас», а не с вкладки прошлого
+  curTab = 'now';
+  document.querySelectorAll('.sidetabs button').forEach(b => b.classList.toggle('on', b.id === 'st-now'));
+  const tbs = document.getElementById('tbSens'); if (tbs) tbs.classList.remove('active');
   document.getElementById('chatPanel').classList.add('hidden');
   document.getElementById('lockOverlay').classList.remove('show');
   document.getElementById('shellView').classList.add('hidden');
@@ -3375,17 +3411,19 @@ function enterShell(){
 
 async function loadAll(){
   try{
-    const [m, cs, tl, ac, lb, ss, bk, ec, sp, ar] = await Promise.all([
+    const [m, cs, tl, ac, lb, ss, bk, ec, sp, ar, ko] = await Promise.all([
       api('/me'), api('/me/cases'), api('/me/talents'),
       api('/me/achievements'), api('/leaderboard'), api('/me/sessions'),
       api('/me/bookings'), api('/me/economy'), api('/me/sensitivity'),
       api('/aim-rating').catch(() => null), // С4-и4: аим-рейтинг; старый сервер без ручки — не беда
+      api('/me/kitchen/orders').catch(() => null), // К10-и1: заказы кухни — для «Сейчас», не дожидаясь открытия «Кухни»
     ]);
     const prevLvl = me ? me.level : null;
     me = m.user || m;
     paintPwdGate(); // Е0-и5в: флаг мог появиться, пока гость сидел за ПК
     if (applyProfileLang(me)) return; // Г9-и2: язык приехал из аккаунта
     cases = cs.cases || []; talents = tl; achievements = ac; leaderboard = lb; aimRating = ar;
+    if (ko){ myOrders = ko.orders || []; myUnpaidPln = ko.unpaid_pln || 0; }
     sessions = ss.sessions || [];
     bookingDeadline = ss.booking_deadline || null; // Г3: ПК уйдёт под бронь
     packMinutesHere = ss.pack_minutes || 0;        // Е2-и5: минуты пакета ЭТОЙ зоны
@@ -4190,7 +4228,7 @@ async function loadKitchen(){
   try{
     const [m, o] = await Promise.all([api('/me/menu'), api('/me/kitchen/orders')]);
     menuData = m; myOrders = o.orders || []; myUnpaidPln = o.unpaid_pln || 0;
-    if (curTab === 'food') renderSide();
+    if (curTab === 'food' || curTab === 'now') renderSide(); // К10-и1: заказ виден и на «Сейчас»
   }catch(e){ if (e.message !== 'unauthorized') toast('⚠ ' + e.message); }
 }
 function foodQ(id, d){
@@ -4380,7 +4418,7 @@ setInterval(async () => {
 // К5-и3: бары ачивок живут во время игры — сервер досчитывает идущую сессию
 // (К5-и1); пока открыта вкладка и идёт сессия, обновляем раз в минуту.
 setInterval(async () => {
-  if (!me || !activeSession || curTab !== 'ach') return;
+  if (!me || !activeSession || (curTab !== 'ach' && curTab !== 'now')) return; // К10-и1: на «Сейчас» — ближайшая дневная
   try{ achievements = await api('/me/achievements'); renderSide(); }catch(e){}
 }, 60000);
 setInterval(async () => {
@@ -5021,7 +5059,7 @@ attractPoke();
 /* ═══════════════ САЙДБАР ═══════════════ */
 function sideTab(t){
   curTab = t;
-  ['cases','talents','top','ach','hist','book','coins','food','pack'].forEach(x =>
+  ['now','cases','talents','top','ach','hist','book','coins','food','pack'].forEach(x =>
     document.getElementById('st-'+x).classList.toggle('on', x===t));
   // студия сенсы живёт в топбаре — подсвечиваем её кнопку
   const tbSens = document.getElementById('tbSens');
@@ -5032,11 +5070,9 @@ function sideTab(t){
   FX.swap(document.getElementById('sideBody'));
 }
 
-function renderSide(){
-  const el = document.getElementById('sideBody');
-  if (curTab === 'cases'){
-    if (!cases.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+UI.chest+'<br>'+STR.cases_empty+'<br><a href="#" style="color:var(--dim)" onclick="openOdds(event,\'\',\'\');return false">'+esc(STR.cases_odds_link)+'</a></div>'; return; }
-    el.innerHTML = cases.map(c => {
+// ── К10-и1: карточки боковой колонки — одни на свою вкладку и на «Сейчас». Тела перенесены из веток renderSide
+// как есть, с их отступами: пробелы внутри шаблонов — часть разметки, вкладки рисуются байт в байт как раньше ──
+function caseRow(c){
       const t = TIER[c.tier] || TIER.light;
       const opened = !!c.opened_at;
       const expired = !opened && c.expires_at && new Date(c.expires_at) < new Date();
@@ -5055,7 +5091,64 @@ function renderSide(){
         <button class="odds-chip" title="${esc(STR.odds_chip_title)}" onclick="openOdds(event,'${c.tier}','${c.club_id||''}')">${UI.percent}</button>
         ${dead?'':'<div class="open-hint">'+esc(STR.open_hint)+'</div>'}
       </div>`;
-    }).join('');
+}
+// кейсы, которые ждут: не открыты и не сгорели; ближе к сгоранию — выше, бессрочные — в конце
+function casesWaiting(){
+  const now = Date.now(), NEVER = 8.64e15; // потолок дат JS
+  const exp = c => c.expires_at ? new Date(c.expires_at).getTime() : NEVER;
+  return cases.filter(c => !c.opened_at && exp(c) >= now).sort((a, b) => exp(a) - exp(b));
+}
+// К5-и3: сколько осталось до ближайшей дневной — в единицах условия (unit с сервера)
+function achLeft(pr){
+      const n = Math.max(0, pr.target - pr.value);
+      return T(pr.unit === 'min' ? 'ach_left_min' : pr.unit === 'hours' ? 'ach_left_h' : 'ach_left_n', {n});
+}
+function achRow(a, near){
+      const pr = a.progress, pct = pr && pr.target ? Math.min(100, 100*pr.value/pr.target) : 0;
+      return `
+      <div class="card ach ${a.earned?'got':''}">
+        <div class="st">${a.earned?UI.check:UI.lock}</div>
+        <div style="flex:1; min-width:0"><div class="t">${a.title}</div><div class="d">${a.description||''}</div>
+        ${pr && !a.earned ? `<div class="achbar"><i style="width:${pct}%"></i></div><div class="d cnum">${pr.value} / ${pr.target}${near && pr.target ? ' · <b class="cyan-t">' + esc(achLeft(pr)) + '</b>' : ''}</div>` : ''}
+        <div class="rw">${a.reward_xp ? '+'+a.reward_xp+' XP ' : ''}${a.reward_skillpoints ? '+'+a.reward_skillpoints+' '+UI.sp+' ' : ''}${a.reward_case_tier ? T('ach_reward_case', {t: a.reward_case_tier}) : ''}</div></div>
+      </div>`;
+}
+function achNear(a){ const p = a.progress; return p && p.target ? -(p.value/p.target) : 0; }
+// ближайшая незакрытая дневная: та, что во вкладке «Ачивки» подписана «ещё N», и она же — на «Сейчас»
+function achNearestDaily(){
+  const list = (achievements && achievements.achievements) || [];
+  return list.filter(a => a.category === 'daily' && !a.earned).sort((x, y) => achNear(x) - achNear(y))
+    .find(a => a.progress && a.progress.target && a.progress.value < a.progress.target) || null;
+}
+// заказы кухни «в работе» (и выданные, но не оплаченные) и их строка
+function foodOpenOrders(){ return myOrders.filter(o => o.unpaid || !['done','cancelled'].includes(o.status)); }
+function foodOrdRow(o){
+    const stName = {new: STR.food_st_new, accepted: STR.food_st_accepted, preparing: STR.food_st_preparing,
+                    delivering: STR.food_st_delivering, done: STR.food_st_done, cancelled: STR.food_st_cancelled};
+    return `<div class="foodorder st-${o.status}">
+      <span class="fst">${o.pay_method ? esc(STR.food_paid) : (stName[o.status]||o.status)}</span>
+      <span style="flex:1; min-width:0"><b>${esc(o.name)}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.unpaid?' · <b style="color:var(--acc)">'+esc(STR.food_unpaid)+'</b>':''}</span>
+      ${o.can_cancel?`<button style="border:0; background:transparent; color:var(--dim); cursor:pointer; font-size:15px" title="${esc(STR.food_cancel_title)}" onclick="foodCancel('${o.id}')">✕</button>`:''}
+    </div>`;
+}
+function renderSide(){
+  const el = document.getElementById('sideBody');
+  if (curTab === 'now'){
+    // К10-и1: «Сейчас» — живое с других вкладок теми же карточками: заказ кухни, кейсы, которые ждут, ближайшая
+    // дневная ачивка, стрик. Блок приходит и уходит вместе с данными своей вкладки; больше трёх кейсов не кладём.
+    const ord = foodOpenOrders(), wait = casesWaiting(), na = achNearestDaily(), MAX = 3;
+    const head = t => `<div class="muted now-h">${t}</div>`;
+    el.innerHTML =
+      (ord.length ? head(esc(STR.food_my_orders)) + ord.map(foodOrdRow).join('') : '') +
+      (wait.length ? head(T('now_cases', {n: wait.length})) + wait.slice(0, MAX).map(caseRow).join('') : '') +
+      (wait.length > MAX ? `<button class="now-more" onclick="sideTab('cases')">${T('now_cases_more', {n: wait.length - MAX})}</button>` : '') +
+      (na ? head(esc(STR.now_ach)) + achRow(na, true) : '') +
+      (ord.length || wait.length || na ? '' : `<div class="now-empty">${UI.now}<div class="t">${esc(STR.now_empty_t)}</div>${esc(STR.now_empty_d)}</div>`) +
+      streakCard();
+  }
+  if (curTab === 'cases'){
+    if (!cases.length){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+UI.chest+'<br>'+STR.cases_empty+'<br><a href="#" style="color:var(--dim)" onclick="openOdds(event,\'\',\'\');return false">'+esc(STR.cases_odds_link)+'</a></div>'; return; }
+    el.innerHTML = cases.map(caseRow).join('');
   }
   if (curTab === 'talents'){
     if (!talents){ el.innerHTML = ''; return; }
@@ -5103,48 +5196,26 @@ function renderSide(){
         resetTxt = T('ach_reset', {t: h + ':' + String(m).padStart(2,'0')});
       }
     }
-    // К5-и3: сколько осталось до ближайшей дневной — в единицах условия (unit с сервера)
-    const achLeft = pr => {
-      const n = Math.max(0, pr.target - pr.value);
-      return T(pr.unit === 'min' ? 'ach_left_min' : pr.unit === 'hours' ? 'ach_left_h' : 'ach_left_n', {n});
-    };
-    const achRow = (a, near) => {
-      const pr = a.progress, pct = pr && pr.target ? Math.min(100, 100*pr.value/pr.target) : 0;
-      return `
-      <div class="card ach ${a.earned?'got':''}">
-        <div class="st">${a.earned?UI.check:UI.lock}</div>
-        <div style="flex:1; min-width:0"><div class="t">${a.title}</div><div class="d">${a.description||''}</div>
-        ${pr && !a.earned ? `<div class="achbar"><i style="width:${pct}%"></i></div><div class="d cnum">${pr.value} / ${pr.target}${near && pr.target ? ' · <b class="cyan-t">' + esc(achLeft(pr)) + '</b>' : ''}</div>` : ''}
-        <div class="rw">${a.reward_xp ? '+'+a.reward_xp+' XP ' : ''}${a.reward_skillpoints ? '+'+a.reward_skillpoints+' '+UI.sp+' ' : ''}${a.reward_case_tier ? T('ach_reward_case', {t: a.reward_case_tier}) : ''}</div></div>
-      </div>`;
-    };
-    const near = a => { const p = a.progress; return p && p.target ? -(p.value/p.target) : 0; };
     const CATS = [['daily', STR.ach_cat_daily], ['weekly', STR.ach_cat_weekly],
                   ['monthly', STR.ach_cat_monthly], ['lifetime', STR.ach_cat_lifetime]];
     el.innerHTML = streakCard() + `<div class="muted" style="margin-bottom:10px">${T('ach_head', {a: '<b class="green-t">' + achievements.earned_count + '</b>', h: '<b>' + Math.floor(achievements.hours_played||0) + '</b>'})}${resetTxt}</div>`
       + CATS.map(([cat, lbl]) => {
         const items = list.filter(a => a.category === cat);
         if (!items.length) return '';
-        const rest = items.filter(a=>!a.earned).sort((x,y)=>near(x)-near(y)); // ближайшие к закрытию — сверху
+        const rest = items.filter(a=>!a.earned).sort((x,y)=>achNear(x)-achNear(y)); // ближайшие к закрытию — сверху
         const got = items.filter(a=>a.earned);
         // К5-и3: у ближайшей незакрытой ДНЕВНОЙ — подпись «ещё N мин» (прогресс живой, К5-и1);
         // цель уже достигнута (выдача — на ближайшем тике) — подписи «ещё 0» не нужно
-        const nearest = cat === 'daily' ? rest.find(a => a.progress && a.progress.target && a.progress.value < a.progress.target) || null : null;
+        const nearest = cat === 'daily' ? achNearestDaily() : null;
         return `<div class="muted" style="margin:14px 2px 6px; font-weight:800; letter-spacing:.4px">${lbl}</div>`
           + [...rest, ...got].map(a => achRow(a, a === nearest)).join('');
       }).join('');
   }
   if (curTab === 'food'){
     if (!menuData){ el.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0">'+esc(STR.food_loading)+'</div>'; return; }
-    const stName = {new: STR.food_st_new, accepted: STR.food_st_accepted, preparing: STR.food_st_preparing,
-                    delivering: STR.food_st_delivering, done: STR.food_st_done, cancelled: STR.food_st_cancelled};
-    const openO = myOrders.filter(o => o.unpaid || !['done','cancelled'].includes(o.status));
+    const openO = foodOpenOrders();
     const closedO = myOrders.filter(o => !o.unpaid && ['done','cancelled'].includes(o.status));
-    const ordRow = o => `<div class="foodorder st-${o.status}">
-      <span class="fst">${o.pay_method ? esc(STR.food_paid) : (stName[o.status]||o.status)}</span>
-      <span style="flex:1; min-width:0"><b>${esc(o.name)}</b>${o.qty>1?' ×'+o.qty:''} · <span class="cnum">${fmtZl(Math.round(o.total_pln*100))}</span>${o.unpaid?' · <b style="color:var(--acc)">'+esc(STR.food_unpaid)+'</b>':''}</span>
-      ${o.can_cancel?`<button style="border:0; background:transparent; color:var(--dim); cursor:pointer; font-size:15px" title="${esc(STR.food_cancel_title)}" onclick="foodCancel('${o.id}')">✕</button>`:''}
-    </div>`;
+    const ordRow = foodOrdRow;
     const cats = {};
     (menuData.menu||[]).forEach(m => { (cats[m.category||''] = cats[m.category||''] || []).push(m); });
     const ph = c => /напит|drink|кофе|чай|napó|napo|kawa|herbat|coffee|tea/i.test(c) ? '🥤' : '🍔';

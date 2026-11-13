@@ -1,0 +1,267 @@
+// К10-и1 «Вкладка „Сейчас“» (KIOSK.md, этап VII), браузер. Киоск PC-07, гость Guest46, сессия идёт.
+// 1. После входа открыта «Сейчас»; вкладки 5 + 5 в порядке «Сейчас, Кейсы, Таланты, Ачивки, Топ / История, Кухня,
+//    Брони, Пакеты, Койны»; на трёх языках подписи целиком и в одну строку.
+// 2. Наполнение — подстановкой на странице одним синхронным действием (подставить → нарисовать → прочитать →
+//    вернуть): порядок блоков «заказ — кейсы — ачивка — стрик»; в заказах только те, что в работе, и выданный, но не
+//    оплаченный; кейсов не больше трёх, ближе к сгоранию — выше, бессрочный — последним, открытые и сгоревшие не
+//    попадают, остальное — кнопкой «Ещё N»; ачивка — ближайшая незакрытая дневная (закрытая, недельная и «полная, но
+//    не взятая» не подходят), взяли её — показана следующая; пустое состояние со стриком и без него; три языка.
+// 3. Настоящие пути, страницу никто не перезагружает: выдали кейс — счётчик вырос сам; открыли кейс прямо со «Сейчас»,
+//    забрали приз — карточка ушла; заказали на «Кухне» — заказ на «Сейчас» со статусом и крестиком; админ принял —
+//    статус сменился сам; вышли с «Кухни» и вошли снова — открыта «Сейчас», заказ на месте, меню при этом не
+//    запрашивали; админ отменил — блок ушёл; полоса ачивки раз в минуту обновляется и на «Сейчас».
+// Убирает за собой: сессия закрыта, свои заказы отменены (остаток возвращён), кошелёк и надбавка гостя как были.
+// Выданный кейс и открытый кейс дают ноль по числу ждущих; выпавшее из кейса остаётся гостю.
+const z = require('./_z');
+const { chromium } = require('playwright-core');
+const { CHROME } = require('./_env');
+const J = JSON.stringify;
+
+(async () => {
+  const G = 'Guest46', g = z.uid(G), PC = 'PC-07';
+  const pcId = z.sql(`SELECT id FROM computers WHERE name='${PC}'`);
+  const endTails = async () => {
+    for (const s of z.rows(`SELECT id FROM sessions WHERE status='active' AND (user_id='${g}' OR computer_id='${pcId}')`))
+      await z.api('POST', `/admin/sessions/${s}/end`, {}, 'admin1');
+    z.sql("UPDATE computers SET status='available' WHERE status IN ('in_session','reserved') AND id NOT IN "
+      + "(SELECT computer_id FROM sessions WHERE status='active')");
+  };
+  const ordBefore = z.rows(`SELECT id FROM kitchen_orders WHERE user_id='${g}'`);
+  const ordMine = () => z.rows(`SELECT id FROM kitchen_orders WHERE user_id='${g}' AND status NOT IN ('done','cancelled')`)
+    .filter(id => !ordBefore.includes(id));
+  const cancelMine = async () => { for (const id of ordMine()) await z.api('POST', `/admin/kitchen/orders/${id}/cancel`, {}, 'admin1'); };
+  const waitingDb = () => +z.sql(`SELECT count(*) FROM cases WHERE user_id='${g}' AND opened_at IS NULL AND (expires_at IS NULL OR expires_at > now())`);
+  const [w0, pct0] = z.sql(`SELECT wallet_grosz || '|' || payment_increase_pct FROM users WHERE id='${g}'`).split('|');
+  // Кошелёк возвращаем одним запросом вместе со строкой журнала на ту же разницу: стенд трека З держит правило
+  // «кошелёк гостя = сумма его журнала» (e2e_z0_stand); в конце проверка сама сверяет, что расхождение осталось каким было
+  const setWallet = v => z.sql(`WITH o AS (SELECT id, wallet_grosz AS w FROM users WHERE id='${g}' FOR UPDATE),
+      u AS (UPDATE users SET wallet_grosz = ${v} FROM o WHERE users.id = o.id RETURNING o.w)
+    INSERT INTO wallet_transactions (user_id, kind, amount_grosz, balance_after, ref_type, note, created_at)
+    SELECT '${g}', 'adjust', ${v} - u.w, ${v}, 'e2e', 'pw_k10_now: проверка вернула кошелёк', now() FROM u WHERE u.w <> ${v}`);
+  const gap = () => z.sql('SELECT u.wallet_grosz - COALESCE((SELECT sum(amount_grosz) FROM wallet_transactions w WHERE w.user_id = u.id), 0) '
+    + `FROM users u WHERE u.id='${g}'`);
+  const gap0 = gap();
+  z.atEnd(async () => {
+    await endTails(); await cancelMine();
+    setWallet(+w0);
+    z.sql(`UPDATE users SET payment_increase_pct=${pct0} WHERE id='${g}'`); // бустер из открытого кейса — это надбавка
+    z.check('проверка убрала за собой: своих открытых заказов нет, кошелёк гостя сходится со своим журналом так же, как до неё',
+      ordMine().length === 0 && gap() === gap0, `заказов ${ordMine().length}, расхождение ${gap0} → ${gap()}`);
+  });
+  await endTails(); await cancelMine();
+
+  const seat = await z.api('POST', `/admin/computers/${pcId}/session`, { guest: G }, 'admin1');
+  const sid = seat.data && seat.data.session_id;
+  z.check('гость посажен за PC-07, сессия идёт', !!sid, J(seat.data));
+
+  const br = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
+  z.atEnd(() => br.close());
+  const AGENT_OK = { 'Access-Control-Allow-Origin': '*' };
+  const ctx = await br.newContext({ viewport: { width: 1920, height: 1080 } });
+  await ctx.route('http://127.0.0.1:1448/**', rt => {
+    const path = new URL(rt.request().url()).pathname;
+    const body = path === '/ping' ? { computer_id: pcId } : path === '/apps-status' ? { apps: {} } : null;
+    return rt.fulfill(body ? { status: 200, contentType: 'application/json', headers: AGENT_OK, body: J(body) } : { status: 404, headers: AGENT_OK, body: '' });
+  });
+  const p = await ctx.newPage();
+  p.on('pageerror', e => z.jsErrors.push('киоск: ' + e.message));
+  const reqs = []; // что страница просит у сервера: [время, путь] — для «меню не запрашивали» и минутного обновления ачивок
+  p.on('request', r => { const u = new URL(r.url()); if (u.pathname.includes('/me/')) reqs.push([Date.now(), u.pathname.replace(/^.*\/me\//, '')]); });
+  const login = async () => {
+    await p.fill('#nick', G); await p.fill('#pass', z.GUEST_PASS); await p.click('#authBtn');
+    await p.waitForFunction(() => typeof me === 'object' && !!me && !!activeSession && !document.getElementById('shellView').classList.contains('hidden'),
+      null, { timeout: 15000 }).catch(() => {});
+    await p.waitForSelector('#scLeft', { timeout: 8000 }).catch(() => {});
+  };
+  const until = (fn, arg, ms) => p.waitForFunction(fn, arg, { timeout: ms }).then(() => true).catch(() => false);
+  const tabsOn = () => p.evaluate(() => curTab + ' / ' + [...document.querySelectorAll('.sidetabs button.on')].map(b => b.id).join(','));
+  const heads = () => p.evaluate(() => [...document.querySelectorAll('#sideBody .now-h')].map(e => e.textContent.trim()));
+  const shot = async (sel, name) => { try { await p.locator(sel).first().screenshot({ path: `${z.OUT}/k10_${name}.png` }); } catch (e) { console.log('кадр', name, e.message.split('\n')[0]); } };
+  await p.goto(z.BASE + '/shell?pc=' + pcId, { waitUntil: 'load' });
+  await login();
+
+  // ── 1. Вкладка по умолчанию и ряды вкладок
+  z.check('после входа открыта «Сейчас», подсвечена только она', await tabsOn() === 'now / st-now', await tabsOn());
+  const ROWS = ['now cases talents ach top', 'hist food book pack coins'];
+
+  // ── 2. Подстановка: одно синхронное действие на странице — данные подставлены, вкладка нарисована, прочитана, всё возвращено
+  const probe = st => p.evaluate(st => {
+    const keep = { cases, achievements, myOrders, STR, curTab };
+    const txt = e => (e ? e.textContent : '').replace(/\s+/g, ' ').trim();
+    const out = {};
+    try {
+      if (st.lang) { STR = Object.assign({}, SH_RU, st.lang === 'en' ? SH_EN : st.lang === 'pl' ? SH_PL : {}); applyStrings(); }
+      if ('cases' in st) cases = st.cases;
+      if ('ach' in st) achievements = st.ach;
+      if ('orders' in st) myOrders = st.orders;
+      curTab = 'now';
+      renderSide();
+      const body = document.getElementById('sideBody');
+      out.kids = [...body.children].map(e => {
+        const c = e.classList;
+        if (c.contains('now-h')) return 'h:' + txt(e);
+        if (c.contains('foodorder')) return 'o:' + [...c].find(x => x.startsWith('st-')).slice(3) + ':' + txt(e.querySelector('b'))
+          + (e.querySelector('button') ? ':x' : '') + (e.querySelector('b[style]') ? ':u' : '');
+        if (c.contains('case-i')) return 'c:' + ((e.getAttribute('onclick') || '').match(/openCase\('([^']*)'/) || [0, '-'])[1];
+        if (c.contains('now-more')) return 'm:' + txt(e);
+        if (c.contains('ach')) return 'a:' + txt(e.querySelector('.t')) + ':' + txt(e.querySelector('.cyan-t'));
+        if (c.contains('now-empty')) return 'e:' + txt(e.querySelector('.t')) + '|' + txt(e.lastChild);
+        if (c.contains('streakcard')) return 's';
+        return '?:' + e.className;
+      });
+      out.chips = [...body.querySelectorAll('.foodorder .fst')].map(txt);
+      out.wide = body.scrollWidth - body.clientWidth; // вылезло ли что-то вбок
+      out.left12 = T('ach_left_min', { n: 12 }); out.left50 = T('ach_left_min', { n: 50 });
+      out.foodH = STR.food_my_orders; out.stNames = [STR.food_st_new, STR.food_st_done, STR.food_st_preparing];
+      const btns = [...document.querySelectorAll('.sidetabs button')];
+      out.rows = [...document.querySelectorAll('.sidetabs .strow')].map(r => [...r.querySelectorAll('button')].map(b => b.id.slice(3)).join(' '));
+      out.labels = btns.map(b => txt(b.querySelector('[data-str]')));
+      // подпись обрезана или перенесена: шире своей кнопки, в две строки, или ряд шире колонки
+      out.clipped = btns.filter(b => { const s = b.querySelector('[data-str]');
+        return b.scrollWidth > b.clientWidth + 1 || s.getClientRects().length !== 1 || s.getBoundingClientRect().height > 15
+          || b.parentElement.scrollWidth > b.parentElement.clientWidth + 1; }).map(b => b.id.slice(3));
+    } catch (e) { out.err = String((e && e.message) || e); }
+    cases = keep.cases; achievements = keep.achievements; myOrders = keep.myOrders; STR = keep.STR; curTab = keep.curTab;
+    if (st.lang) applyStrings();
+    renderSide();
+    return out;
+  }, st);
+  // то же, но оставить на экране (для кадра); вернуть как было — release()
+  const hold = st => p.evaluate(st => {
+    window.__k10 = { cases, achievements, myOrders, STR, curTab };
+    if (st.lang) { STR = Object.assign({}, SH_RU, st.lang === 'en' ? SH_EN : st.lang === 'pl' ? SH_PL : {}); applyStrings(); }
+    if ('cases' in st) cases = st.cases;
+    if ('ach' in st) achievements = st.ach;
+    if ('orders' in st) myOrders = st.orders;
+    curTab = 'now'; renderSide();
+  }, st);
+  const release = () => p.evaluate(() => { const k = window.__k10; if (!k) return;
+    cases = k.cases; achievements = k.achievements; myOrders = k.myOrders; STR = k.STR; curTab = k.curTab; window.__k10 = null;
+    applyStrings(); renderSide(); });
+
+  const DAY = 86400000, iso = d => new Date(Date.now() + d * DAY).toISOString();
+  const kase = (id, tier, d, more) => Object.assign({ id, tier, source: 'admin_grant', club_id: '', opened_at: null, expires_at: d === null ? null : iso(d) }, more || {});
+  const W20 = kase('w20', 'titan', 20.5), WNO = kase('wNo', 'medium', null), W5 = kase('w5', 'light', 5.5), W2 = kase('w2', 'light', 2.5), W9 = kase('w9', 'medium', 9.5);
+  const OPENED = kase('op', 'light', 9.5, { opened_at: iso(-1), drop_type: 'coins', drop_amount: 30 }), BURNT = kase('ex', 'heavy', -0.5);
+  const CASES = [W20, WNO, W5, OPENED, BURNT, W2, W9];
+  const ach = (id, cat, v, t, more) => Object.assign({ id, category: cat, title: 'Ачивка ' + id, description: 'k10', earned: false,
+    progress: { value: v, target: t, unit: 'min' }, reward_xp: 10 }, more || {});
+  const STREAK = { days: 3, freeze: { enabled: false } };
+  const A = ach('A', 'daily', 10, 60), B = ach('B', 'daily', 48, 60), C = ach('C', 'daily', 60, 60, { earned: true }),
+    D = ach('D', 'daily', 60, 60), W = ach('W', 'weekly', 59, 60);
+  const ACH = { achievements: [A, B, C, D, W], streak: STREAK };
+  const ord = (id, status, more) => Object.assign({ id, status, name: 'Чай ' + id, qty: 1, total_pln: 7, can_cancel: status === 'new', unpaid: false, pay_method: null }, more || {});
+  const ORD = [ord('n1', 'new'), ord('d1', 'done', { unpaid: true }), ord('d2', 'done', { pay_method: 'cash' }), ord('c1', 'cancelled'), ord('p1', 'preparing', { qty: 2 })];
+  const FULL = { cases: CASES, ach: ACH, orders: ORD };
+  const same = (a, b) => J(a) === J(b);
+
+  const s1 = await probe(FULL);
+  z.check('вкладки 5 + 5: Сейчас, Кейсы, Таланты, Ачивки, Топ / История, Кухня, Брони, Пакеты, Койны', same(s1.rows, ROWS), J(s1.rows));
+  const want1 = ['h:' + s1.foodH, 'o:new:Чай n1:x', 'o:done:Чай d1:u', 'o:preparing:Чай p1',
+    'h:Ждут открытия · 5', 'c:w2', 'c:w5', 'c:w9', 'm:Ещё 2 — во вкладке „Кейсы“',
+    'h:Ближайшая дневная ачивка', 'a:Ачивка B:' + s1.left12, 's'];
+  z.check('порядок блоков сверху вниз: заказ кухни, кейсы, ближайшая дневная ачивка, стрик', same(s1.kids, want1) && !s1.err, J(s1.kids) + ' ' + (s1.err || ''));
+  z.check('в заказах — те, что в работе, и выданный, но не оплаченный; оплаченного и отменённого нет; у каждого свой статус',
+    s1.kids.filter(k => k.startsWith('o:')).length === 3 && same(s1.chips, [s1.stNames[0], s1.stNames[1], s1.stNames[2]]), J(s1.chips));
+  z.check('кейсов на «Сейчас» не больше трёх: ближе к сгоранию — выше; открытый и сгоревший не попали; остальные — «Ещё 2»',
+    same(s1.kids.filter(k => /^[cm]:/.test(k)), ['c:w2', 'c:w5', 'c:w9', 'm:Ещё 2 — во вкладке „Кейсы“']), J(s1.kids.filter(k => /^[cm]:/.test(k))));
+  z.check('ачивка — ближайшая незакрытая дневная, с «ещё 12 мин»: закрытая, недельная 59/60 и «60/60, но не взята» не подошли',
+    s1.kids.includes('a:Ачивка B:' + s1.left12) && s1.left12.includes('12') && s1.kids.filter(k => k.startsWith('a:')).length === 1, J(s1.kids.filter(k => k.startsWith('a:'))));
+  z.check('ничего не вылезает вбок из колонки', s1.wide <= 0, 'лишних px: ' + s1.wide);
+
+  const s2 = await probe({ cases: [WNO, W20, W2], ach: ACH, orders: [] });
+  z.check('ровно три кейса: все три, бессрочный — последним, кнопки «Ещё» нет; блока заказов нет',
+    same(s2.kids.slice(0, 4), ['h:Ждут открытия · 3', 'c:w2', 'c:w20', 'c:wNo']) && !s2.kids.some(k => /^[mo]:/.test(k)), J(s2.kids));
+  const s2b = await probe({ cases: [WNO, W20, W2, W5], ach: ACH, orders: [] });
+  z.check('четыре кейса: три карточки и «Ещё 1»', same(s2b.kids.slice(0, 5), ['h:Ждут открытия · 4', 'c:w2', 'c:w5', 'c:w20', 'm:Ещё 1 — во вкладке „Кейсы“']), J(s2b.kids));
+  const s2c = await probe({ cases: CASES, orders: ORD, ach: { achievements: [A, Object.assign({}, B, { earned: true }), C, D, W], streak: STREAK } });
+  z.check('ачивку взяли — на её месте следующая по близости («ещё 50 мин»)', s2c.kids.includes('a:Ачивка A:' + s2c.left50), J(s2c.kids.filter(k => k.startsWith('a:'))));
+  const s2d = await probe({ cases: CASES, orders: ORD, ach: { achievements: [C, D, W], streak: STREAK } });
+  z.check('незакрытых дневных нет — блока ачивки нет, остальное на месте', !s2d.kids.some(k => k.startsWith('a:') || k === 'h:Ближайшая дневная ачивка') && s2d.kids.length === want1.length - 2, J(s2d.kids));
+
+  const EMPTY = 'e:Пока ничего не ждёт|Заказ с кухни, новый кейс и ближайшая дневная ачивка появятся здесь сами';
+  const s3 = await probe({ cases: [OPENED, BURNT], orders: [ORD[2], ORD[3]], ach: { achievements: [C, W], streak: STREAK } });
+  z.check('пусто (кейсы открыты или сгорели, заказы закрыты, дневные взяты): «Пока ничего не ждёт» и стрик под ним', same(s3.kids, [EMPTY, 's']), J(s3.kids));
+  const s4 = await probe({ cases: [], orders: [], ach: { achievements: [] } });
+  z.check('пусто и стрика нет в данных: только пустое состояние', same(s4.kids, [EMPTY]), J(s4.kids));
+  const s5 = await probe({ cases: [], orders: [], ach: null });
+  z.check('ачивки ещё не пришли с сервера: вкладка рисуется, а не падает', same(s5.kids, [EMPTY]) && !s5.err, J(s5.kids) + ' ' + (s5.err || ''));
+
+  // три языка: подписи вкладок и тексты блоков
+  const L = { ru: ['Сейчас', 'Ждут открытия · 5', 'Ещё 2 — во вкладке „Кейсы“', 'Ближайшая дневная ачивка', EMPTY],
+    en: ['Now', 'Waiting to be opened · 5', '2 more — in the Cases tab', 'Nearest daily achievement',
+      'e:Nothing is waiting right now|A kitchen order, a new case and the nearest daily achievement will show up here by themselves'],
+    pl: ['Teraz', 'Czekają na otwarcie · 5', 'Jeszcze 2 — w zakładce Skrzynki', 'Najbliższe dzienne osiągnięcie',
+      'e:Na razie nic nie czeka|Zamówienie z kuchni, nowa skrzynka i najbliższe dzienne osiągnięcie pojawią się tu same'] };
+  for (const lang of ['ru', 'en', 'pl']) {
+    const f = await probe(Object.assign({ lang }, FULL)), e = await probe({ lang, cases: [], orders: [], ach: { achievements: [] } });
+    z.check(`${lang}: десять подписей вкладок целиком и в одну строку, первая — «${L[lang][0]}»`,
+      f.labels.length === 10 && f.labels.every(t => t.length > 0) && f.labels[0] === L[lang][0] && f.clipped.length === 0 && same(f.rows, ROWS),
+      J(f.labels) + ' обрезаны: ' + J(f.clipped));
+    z.check(`${lang}: заголовки блоков, «ещё N» и пустое состояние на своём языке, вбок ничего не вылезает`,
+      f.kids.includes('h:' + f.foodH) && f.kids.includes('h:' + L[lang][1]) && f.kids.includes('m:' + L[lang][2]) && f.kids.includes('h:' + L[lang][3])
+      && same(e.kids, [L[lang][4]]) && f.wide <= 0 && e.wide <= 0, J(f.kids.filter(k => /^[hm]:/.test(k))) + ' ' + J(e.kids));
+    await hold(Object.assign({ lang }, FULL)); await shot('.sidetabs', 'tabs_' + lang);
+    if (lang === 'ru') { await shot('#sideBody', 'now_full'); await release(); await hold({ cases: [], orders: [], ach: { achievements: [], streak: STREAK } }); await shot('#sideBody', 'now_empty'); }
+    await release();
+  }
+  z.check('после подстановок страница вернулась к своим данным и к «Сейчас»', await tabsOn() === 'now / st-now', await tabsOn());
+
+  // ── 3. Настоящие пути: страницу не перезагружаем и сами ничего не перечитываем
+  const n0 = waitingDb();
+  // в заголовке блока кейсов стоит n; если n = 0 — блока кейсов нет совсем
+  const cntIs = n => until(n => (n > 0 ? [...document.querySelectorAll('#sideBody .now-h')].some(e => e.textContent.trim().endsWith('· ' + n))
+    : curTab === 'now' && !document.querySelector('#sideBody .case-i')), n, 25000);
+  if (n0 > 0) z.check(`у гостя на стенде ждут ${n0} кейсов — столько же в заголовке; карточек ${Math.min(3, n0)}`,
+    await cntIs(n0) && await p.locator('#sideBody .case-i').count() === Math.min(3, n0), J(await heads()));
+  const gr = await z.api('POST', `/admin/users/${g}/grant`, { type: 'case', case_tier: 'light', reason: 'pw_k10_now: проверка' }, 'boss');
+  z.check('кейс выдан — счётчик на «Сейчас» вырос сам, без перезагрузки', gr.status < 300 && await cntIs(n0 + 1), gr.status + ' ' + J(await heads()));
+  if (n0 + 1 > 3) {
+    await p.click('#sideBody .now-more');
+    z.check('«Ещё N» ведёт во вкладку «Кейсы»', await tabsOn() === 'cases / st-cases', await tabsOn());
+    await p.evaluate(() => sideTab('now'));
+  }
+  await shot('#sideBody', 'now_real');
+  const cid = await p.evaluate(() => ((document.querySelector('#sideBody .case-i').getAttribute('onclick') || '').match(/openCase\('([^']*)'/) || [0, ''])[1]);
+  await p.click('#sideBody .case-i');
+  const prize = await until(() => !document.getElementById('coResult').classList.contains('hidden'), null, 20000);
+  await p.evaluate(() => goBack()); // «назад» после приза = «Забрать»
+  z.check('кейс открыт прямо со «Сейчас»: приз показан, после «Забрать» карточка ушла и счётчик вернулся — без перезагрузки',
+    prize && await cntIs(n0) && !(await p.evaluate(id => !!document.querySelector(`#sideBody .case-i[onclick*="${id}"]`), cid))
+    && z.sql(`SELECT (opened_at IS NOT NULL)::int FROM cases WHERE id='${cid}'`) === '1', `приз ${prize}, ${J(await heads())}`);
+
+  await p.evaluate(() => sideTab('food'));
+  const canOrder = await until(() => !!document.querySelector('#sideBody button[onclick^="foodOrder("]:not([disabled])'), null, 8000);
+  if (canOrder) await p.click('#sideBody button[onclick^="foodOrder("]:not([disabled])');
+  for (let i = 0; i < 30 && ordMine().length < 1; i++) await z.sleep(300);
+  const oid = ordMine()[0];
+  z.check('заказ с «Кухни» принят сервером', canOrder && !!oid, `кнопка ${canOrder}, заказ ${oid}`);
+  await p.evaluate(() => sideTab('now'));
+  const rowNew = await until(() => { const b = document.getElementById('sideBody'), r = b.querySelector('.foodorder.st-new');
+    return !!r && !!r.querySelector('button') && b.firstElementChild.classList.contains('now-h') && b.children[1] === r; }, null, 5000);
+  z.check('заказ на «Сейчас» первым блоком: статус «новый» и крестик отмены, как на «Кухне»', rowNew, J(await heads()));
+  const st1 = oid ? await z.api('POST', `/admin/kitchen/orders/${oid}/status`, { status: 'accepted' }, 'admin1') : { status: 0 };
+  const rowAcc = await until(() => { const r = document.querySelector('#sideBody .foodorder'); return !!r && r.classList.contains('st-accepted') && !r.querySelector('button'); }, null, 25000);
+  z.check('админ принял заказ — статус на «Сейчас» сменился сам, крестик пропал', st1.status === 200 && rowAcc, 'ответ ' + st1.status);
+
+  await p.evaluate(() => sideTab('food')); await z.sleep(800);
+  await p.evaluate(() => logout());
+  await p.waitForSelector('#nick', { state: 'visible', timeout: 8000 }).catch(() => {});
+  const mark = Date.now();
+  await login();
+  const rowBack = await until(() => !!document.querySelector('#sideBody .foodorder.st-accepted'), null, 8000);
+  const menuAsked = reqs.filter(r => r[0] >= mark && r[1] === 'menu').length;
+  z.check('вышел с «Кухни», вошёл снова — открыта «Сейчас», подсвечена только она', await tabsOn() === 'now / st-now', await tabsOn());
+  z.check('заказ после входа на месте, хотя «Кухню» не открывали (меню не запрашивалось)', rowBack && menuAsked === 0, `строка ${rowBack}, запросов меню ${menuAsked}`);
+  const cn = oid ? await z.api('POST', `/admin/kitchen/orders/${oid}/cancel`, {}, 'admin1') : { status: 0 };
+  const rowGone = await until(() => !document.querySelector('#sideBody .foodorder'), null, 25000);
+  z.check('админ отменил заказ — блок заказа ушёл сам вместе с заголовком', cn.status === 200 && rowGone && !(await heads()).some(h => h === s1.foodH), 'ответ ' + cn.status + ' ' + J(await heads()));
+
+  // полоса ачивки раз в минуту: одиночный запрос ачивок (не вместе с кейсами, как при полной перезагрузке данных)
+  const lone = () => reqs.some(a => a[1] === 'achievements' && !reqs.some(c => c[1] === 'cases' && Math.abs(c[0] - a[0]) < 3000));
+  for (let i = 0; i < 75 && !lone(); i++) await z.sleep(1000);
+  z.check('пока открыта «Сейчас» и идёт сессия, ачивки обновляются раз в минуту (как на вкладке «Ачивки»)', lone() && await tabsOn() === 'now / st-now', await tabsOn());
+
+  z.check('ошибок JS в киоске нет', z.jsErrors.length === 0, z.jsErrors.join(' | '));
+  await z.done();
+})().catch(z.crash);
