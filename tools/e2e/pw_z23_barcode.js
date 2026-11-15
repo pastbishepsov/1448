@@ -79,7 +79,7 @@ const z = require('./_z');
   const f = await boss.evaluate(() => ({ v: document.getElementById('gd_barcode').value, open: document.getElementById('drawer').classList.contains('open'),
     t: (document.getElementById('toast') || {}).textContent || '' }));
   await z.shot(boss, 'z23_scan_card');
-  await boss.click('#drawerBody button[onclick^="saveGood"]'); await z.sleep(1500);
+  await boss.click('#drawerBody button[onclick^="saveGood"]'); await z.idle(boss); // З19-и14: после записи — ждём страницу, а не паузу
   const saved = z.sql(`SELECT COALESCE(barcode, 'нет') FROM goods WHERE id = '${ids['z23k Без кода']}'`);
   z.check(`карточка: «Привязать сканом» — код ${f.v} в поле («${f.t}»), шторка не закрылась; «Сохранить» — в базе ${saved}`,
     f.v === C && f.open && /считан/.test(f.t) && saved === C, JSON.stringify({ f, saved }));

@@ -49,7 +49,7 @@ const fs = require('fs');
   await z.api('DELETE', `/admin/computers/${p2}`, undefined, 'boss');
   await z.api('DELETE', `/admin/zones/${zid}`, undefined, 'boss');
   await boss.click('#hallImpBtn'); await z.sleep(500);
-  await boss.setInputFiles('#hiFile', path); await z.sleep(1500);
+  await boss.setInputFiles('#hiFile', path); await z.idle(boss); // З19-и14: после записи — ждём страницу, а не паузу
   const pv = await boss.evaluate(() => ({ title: document.getElementById('drawerTitle').textContent, sum: (document.getElementById('hiSum') || {}).textContent || '',
     zones: [...document.querySelectorAll('#hiZones .hiRow')].map(r => r.innerText.replace(/\s+/g, ' ').trim()),
     pcs: [...document.querySelectorAll('#hiPCs .hiRow')].map(r => r.innerText.replace(/\s+/g, ' ').trim()), apply: !!document.getElementById('hiApply') }));
@@ -68,7 +68,7 @@ const fs = require('fs');
   await boss.evaluate(() => openHallImport()); await z.sleep(400);
   await boss.fill('#hiText', '{кривой'); await boss.click('#hiLook'); await z.sleep(500);
   const e1 = (await z.text(boss, '#hiErr')) || '';
-  await boss.fill('#hiText', '{"format":"x","version":1}'); await boss.click('#hiLook'); await z.sleep(800);
+  await boss.fill('#hiText', '{"format":"x","version":1}'); await boss.click('#hiLook'); await z.idle(boss);
   const e2 = (await z.text(boss, '#hiErr')) || '';
   z.check('не JSON — «Это не JSON …»; чужой файл — слова сервера «Это не файл зала 14:48 …»',
     /Это не JSON/.test(e1) && /Это не файл зала 14:48/.test(e2), JSON.stringify([e1, e2]));
@@ -98,7 +98,7 @@ const fs = require('fs');
   const ph = await z.openAdmin('boss', { viewport: { width: 360, height: 740 } });
   await z.nav(ph, 'hall'); await z.sleep(600);
   await ph.evaluate(() => openHallImport()); await z.sleep(400);
-  await ph.setInputFiles('#hiFile', path); await z.sleep(1500);
+  await ph.setInputFiles('#hiFile', path); await z.idle(ph);
   const fit = await ph.evaluate(() => ({ sw: document.documentElement.scrollWidth, w: innerWidth, none: !!document.getElementById('hiNone'),
     r: [...document.querySelectorAll('#drawer .uform .input, #drawer .uform .btn, #hiPrev .hiRow, #hiPrev .muted')].map(e => Math.round(e.getBoundingClientRect().right)) }));
   await z.shot(ph, 'z25_hall_phone');

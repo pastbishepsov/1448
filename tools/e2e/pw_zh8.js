@@ -3,7 +3,7 @@
 // (без токена/с чужим — заглушка, с токеном — ПК без ников и очередь с никами), цифры в палитре
 // (ПК по номеру, телефон → гость), звук вызова с переключателем. Скриншоты. Критерий ADMIN.md Ж8.
 const { chromium } = require('playwright-core');
-const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
+const { toastAfter, idle, watch, signIn, reenter } = require('./_z'); // З19-и13: тост этого действия; З19-и14: после записи — idle
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -42,14 +42,13 @@ function agentStart(pcId, name) {
 
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const page = await ctx.newPage();
+  const page = await ctx.newPage(); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   const posted = [];
   page.on('request', r => { if (r.method() === 'POST' && /seat-group$/.test(r.url())) posted.push(JSON.parse(r.postData() || '{}')); });
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'boss'); await page.fill('#pass', 'Boss12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page, 'boss', 'Boss12345'); // З19-и14: вход — когда запас лимитера стенда полный, дальше — когда вход дописан, а не пауза
   await page.evaluate(() => nav('hall')); await sleep(1500);
 
   // ── и1: «Скоро на нуле» ──────────────────────────────────────────────
@@ -256,7 +255,7 @@ function agentStart(pcId, name) {
   check('и5: вызов из шелла → сигнал 1 раз; обычное сообщение — без сигнала; колокол +2', calls.calls === 1 && +calls.bell === bell0 + 2, JSON.stringify(calls) + ' было ' + bell0);
   // после перезагрузки настройка «выкл» переживает
   await page.evaluate(() => localStorage.setItem('1448a_callsound', 'off'));
-  await page.reload({ waitUntil: 'load' }); await sleep(2500);
+  await reenter(page); // перезагрузка — снова вход: тот же залп запросов
   const persisted = await page.evaluate(() => callSoundOn);
   check('и5: «выкл» переживает перезагрузку страницы (настройка этого компьютера)', persisted === false, String(persisted));
   await page.evaluate(() => localStorage.removeItem('1448a_callsound'));

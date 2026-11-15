@@ -7,9 +7,9 @@ const z = require('./_z');
   const form = () => page.evaluate(() => ({ nick: document.getElementById('nick').value, pass: document.getElementById('pass').value,
     chips: [...document.querySelectorAll('#nickChips button')].map(b => b.textContent),
     list: [...document.querySelectorAll('#nickRecent option')].map(o => o.value), focus: document.activeElement && document.activeElement.id }));
-  const logout = async () => { await page.evaluate(() => logout()); await z.sleep(400); };
+  const logout = async () => { await page.evaluate(() => logout()); await z.idle(page); }; // З19-и14: после записи — ждём страницу, а не паузу
   const enter = async (nick, pass) => {
-    await page.fill('#nick', nick); await page.fill('#pass', pass); await page.keyboard.press('Enter'); await z.sleep(1500);
+    await page.fill('#nick', nick); await page.fill('#pass', pass); await page.keyboard.press('Enter'); await z.idle(page);
   };
 
   z.check('после входа пароль в форме стёрт', (await form()).pass === '');
@@ -20,7 +20,7 @@ const z = require('./_z');
   await page.click('#nickChips button:has-text("admin1")');
   f = await form();
   z.check('чип подставляет ник и ставит курсор в пароль', f.nick === 'admin1' && f.focus === 'pass', JSON.stringify(f));
-  await page.fill('#pass', z.STAFF_PASS); await page.keyboard.press('Enter'); await z.sleep(1500);
+  await page.fill('#pass', z.STAFF_PASS); await page.keyboard.press('Enter'); await z.idle(page);
   z.check('вход по чипу проходит', await page.evaluate(() => !!me && me.nickname === 'admin1'));
   await logout();
   await enter('admin2', z.STAFF_PASS);

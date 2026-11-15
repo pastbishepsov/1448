@@ -24,7 +24,8 @@ const z = require('./_z');
   const r = await z.api('POST', '/admin/work/stop', { counted_pln: +(prev.expected_pln - 10).toFixed(2), note: 'сдал смену Ане, касса под замком' }, 'z1cw');
   z.check('z1cw насчитал на 10 меньше, чем должно быть в ящике → 200', r.status === 200, String(r.status));
   await z.sleep(2000);
-  const tb = await boss.evaluate(() => __toasts), ta = await adm.evaluate(() => __toasts);
+  const lim = t => /Слишком много запросов/.test(t); // З19-и14: тост лимитера стенда — не про канал (правило З18-и4ж)
+  const tb = (await boss.evaluate(() => __toasts)).filter(t => !lim(t)), ta = (await adm.evaluate(() => __toasts)).filter(t => !lim(t));
   z.check('владельцу — тост о служебном сообщении', tb.some(t => /Служебное/.test(t)), JSON.stringify(tb));
   z.check('admin2 — тост только о заметке, о служебном ни слова', ta.length === 1 && !ta.some(t => /Служебное/.test(t)), JSON.stringify(ta));
   const fb = await z.text(boss, '#feedList'), fa = await z.text(adm, '#feedList');

@@ -3,7 +3,7 @@
 // «Рассчитать», заказ кухни от стойки, сдача кассы при уходе (ожидаемая сумма, расхождение,
 // без пересчёта), сводка смены и табель владельца с кассой.
 const { chromium } = require('playwright-core');
-const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
+const { toastAfter, idle, watch, signIn, reenter } = require('./_z'); // З19-и13: тост этого действия; З19-и14: после записи — idle
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { spawn, execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -38,12 +38,11 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   if ((await j(API + '/admin/work/closeout', { headers: h })).baseline) await j(API + '/admin/work/stop', { method: 'POST', headers: h, body: JSON.stringify({ counted_pln: 500 }) });
 
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'admin1'); await page.fill('#pass', 'Admin12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page, 'admin1', 'Admin12345'); // З19-и14: вход — когда запас лимитера стенда полный, дальше — когда вход дописан, а не пауза
 
   // ── и2: корзина ──
   await page.evaluate(() => nav('goods'));
@@ -71,13 +70,13 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page.click('#salesTable tr.rcp:has-text("Lay\'s") button');
   await sleep(200);
   await page.click('#salesTable tr.rcp:has-text("Lay\'s") button');
-  await sleep(1400);
+  await idle(page); // З19-и14: после записи — ждём страницу, а не паузу
   const afterPos = await page.evaluate(() => [...document.querySelectorAll('#salesTable tr')].slice(1).map(r => r.textContent.replace(/\s+/g, ' ').trim()));
   check('возврат позиции: Lay\'s на складе +1, чек помечен «часть отменена», Woda на месте', stock(`Lay''s`) === lays0 && stock('Woda 0.5') === woda0 - 2 && afterPos.some(r => /часть отменена/.test(r)), afterPos.slice(0, 3).join(' | '));
   await page.click('#salesTable tr:has-text("Чек · 2 позиции") button:has-text("Вернуть чек")');
   await sleep(200);
   await page.click('#salesTable tr:has-text("Чек · 2 позиции") .rfPick button.danger'); // З11-и2: «Вернуть N zł наличными» — как платили
-  await sleep(1400);
+  await idle(page);
   check('«Вернуть чек» → «Вернуть … наличными»: Woda вернулась на склад', stock('Woda 0.5') === woda0, String(stock('Woda 0.5')));
 
   // ── и1: «При выходе» — в долг гостю за ПК ──
@@ -97,14 +96,14 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page.fill('#kitGuest', 'Guest2'); await page.dispatchEvent('#kitGuest', 'input');
   await page.selectOption('#kitNew select', { label: /Lay's/.test((await page.locator('#kitNew select option').allTextContents()).join()) ? (await page.locator('#kitNew select option').allTextContents()).find(t => /Lay's/.test(t)) : undefined }).catch(() => {});
   await page.click('#kitNew button:has-text("Принять заказ")');
-  await sleep(1400);
+  await idle(page);
   const kCands = await page.evaluate(() => [...document.querySelectorAll('#kitCands .cands button b')].map(b => b.textContent));
   check('заказ кухни «Guest2» → кандидаты под полем', kCands.length >= 2 && kCands.includes('Guest29'), kCands.join(', '));
   await toastAfter(page, () => page.click('#kitCands .cands button:has-text("Guest29")'), 'Guest29');
   const kAfter = await page.evaluate(() => ({ toast: document.getElementById('toast').textContent, board: document.getElementById('kitBoard').textContent.replace(/\s+/g, ' ') }));
   check('выбор Guest29 → заказ принят: тост «🍔 … Guest29 · к PC-09 · при выходе (должен …)», карточка в очереди со статусом «принят»', /Guest29/.test(kAfter.toast) && /к PC-09/.test(kAfter.toast) && /при выходе/.test(kAfter.toast) && /принят/.test(kAfter.board) && /Guest29/.test(kAfter.board), kAfter.toast);
   await page.click('#kitBoard .card:has-text("Guest29") button:has-text("✓ Выдан")');
-  await sleep(1400);
+  await idle(page);
   const kUnpaid = await page.evaluate(() => document.getElementById('kitBoard').textContent.replace(/\s+/g, ' '));
   check('заказ выдан → «Ждут оплаты», ссылка «рассчитать всё в карточке»', /Ждут оплаты/.test(kUnpaid) && /рассчитать всё в карточке/.test(kUnpaid), kUnpaid.slice(0, 200));
   // ── карточка: «Должен …» и «Рассчитать» ──
@@ -152,11 +151,10 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
     && staffAfter[1].kind === 'system' && staffAfter[1].visible_to === 'owner' && /расхождение −20\.00 zł/.test(staffAfter[1].text), JSON.stringify(staffAfter.map(m => m.text)));
   // владелец: сводка смены и табель
   await j(API + '/admin/work/start', { method: 'POST', headers: h, body: '{}' }); // admin1 обратно на смену (стенд)
-  const page2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page2 = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page2);
   page2.on('pageerror', e => errors.push('owner: ' + e.message));
   await page2.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page2.fill('#nick', 'boss'); await page2.fill('#pass', 'Boss12345'); await page2.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page2, 'boss', 'Boss12345');
   await page2.evaluate(() => nav('stats'));
   await sleep(1500);
   const hasShiftTab = await page2.evaluate(() => typeof renderShift === 'function');

@@ -41,24 +41,20 @@ const was = z.sql("SELECT value FROM settings WHERE key = 'alerts_on'");
     for (const n of ['проверочный: ушёл, второй — «уже уходил»', '«Молчать» — не уходит']) z.check(n + ': карточки «Алерты» нет', false);
     return z.done();
   }
-  const toastAfter = async () => {
-    await boss.evaluate(() => { const t = document.getElementById('toast'); if (t) t.textContent = ''; });
-    await boss.click('.setcard:has(#set_alerts) button:has-text("Прислать проверочный")');
-    await boss.waitForFunction(() => { const t = document.getElementById('toast'); return t && t.textContent.trim(); }, null, { timeout: 8000 }).catch(() => {});
-    return boss.evaluate(() => (document.getElementById('toast') || {}).textContent || '');
-  };
-  const t1 = await toastAfter(), n1 = +z.sql(`SELECT COUNT(*) FROM staff_messages WHERE kind = 'system' AND visible_to = 'owner' AND text = '${TEXT}'`);
-  await z.sleep(800);
-  const t2 = await toastAfter(), n2 = +z.sql(`SELECT COUNT(*) FROM staff_messages WHERE kind = 'system' AND text = '${TEXT}'`);
+  // З19-и14: тост проверочного — z.toastAfter с ожидаемым текстом: прежний помощник брал первый любой тост, и тост живого
+  // события канала («Служебное в канале…») приходил раньше ответа на запись
+  const testAlert = want => z.toastAfter(boss, () => boss.click('.setcard:has(#set_alerts) button:has-text("Прислать проверочный")'), want);
+  const t1 = await testAlert('Проверочный алерт ушёл'), n1 = +z.sql(`SELECT COUNT(*) FROM staff_messages WHERE kind = 'system' AND visible_to = 'owner' AND text = '${TEXT}'`);
+  const t2 = await testAlert('уже уходил'), n2 = +z.sql(`SELECT COUNT(*) FROM staff_messages WHERE kind = 'system' AND text = '${TEXT}'`);
   z.check(`проверочный: «${t1.trim()}», второй — «${t2.trim()}»; в канале одно сообщение, только владельцу`,
     /Проверочный алерт ушёл/.test(t1) && /уже уходил/.test(t2) && n1 === 1 && n2 === 1, JSON.stringify({ t1, t2, n1, n2 }));
   // «Молчать» и «Сохранить» — проверочный не уходит
   wipe();
   await boss.selectOption('#set_alerts', '0');
   await boss.evaluate(() => saveSettings());
-  await z.sleep(1500);
+  await z.idle(boss); // З19-и14: после записи — ждём страницу, а не паузу
   const saved = z.sql("SELECT value FROM settings WHERE key = 'alerts_on'");
-  const t3 = await toastAfter(), n3 = +z.sql(`SELECT COUNT(*) FROM staff_messages WHERE kind = 'system' AND text = '${TEXT}'`);
+  const t3 = await testAlert('Алерты выключены'), n3 = +z.sql(`SELECT COUNT(*) FROM staff_messages WHERE kind = 'system' AND text = '${TEXT}'`);
   z.check(`«Молчать» сохранено (alerts_on ${saved}) — «${t3.trim()}», сообщения нет`,
     saved === '0' && /Алерты выключены/.test(t3) && n3 === 0, JSON.stringify({ saved, t3, n3 }));
   await z.shot(boss, 'z22_alerts');

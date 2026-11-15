@@ -17,7 +17,7 @@ const z = require('./_z');
   await z.sleep(800);
   await boss.fill('#shName', NAME); await boss.fill('#shStart', '15:00'); await boss.fill('#shEnd', '23:00');
   await boss.click('#drawer button:has-text("Создать")');
-  await z.sleep(1200);
+  await z.idle(boss); // З19-и14: после записи — ждём страницу, а не паузу
   const w = norm(await z.text(boss, '#shOverlap')), vis = await boss.evaluate(() => !document.getElementById('shOverlap').classList.contains('hidden'));
   z.check('«Создать» 15:00–23:00 — не молча: «⚠ Пересекается со сменами «День» 08:00–20:00, «Ночь» 20:00–08:00.» с пояснением и «Всё равно создать»; смены нет',
     vis && w.startsWith('⚠ Пересекается со сменами «День» 08:00–20:00, «Ночь» 20:00–08:00. Назначенным смену при входе берём из графика')
@@ -32,7 +32,7 @@ const z = require('./_z');
   await z.sleep(800);
   await boss.fill('#shStart', '10:00'); await boss.fill('#shEnd', '12:00');
   await boss.click('#drawer button:has-text("Сохранить")');
-  await z.sleep(1200);
+  await z.idle(boss);
   const w2 = norm(await z.text(boss, '#shOverlap'));
   const time2 = z.sql(`SELECT start_min || '-' || end_min FROM shifts WHERE id = '${id}'`);
   z.check('правка в 10:00–12:00 — тоже предупреждение, кнопка «Всё равно сохранить»; время пока прежнее',
@@ -47,7 +47,7 @@ const z = require('./_z');
   await z.sleep(800);
   await ph.fill('#shStart', '10:00'); await ph.fill('#shEnd', '12:00');
   await ph.click('#drawer button:has-text("Сохранить")');
-  await z.sleep(1200);
+  await z.idle(ph);
   const w3 = norm(await z.text(ph, '#shOverlap'));
   const fit = await ph.evaluate(() => { const b = document.getElementById('shOverlap'), q = b ? b.getBoundingClientRect() : null;
     return { sw: document.documentElement.scrollWidth, box: !!q && q.width > 0 && q.left >= 0 && q.right <= innerWidth }; });

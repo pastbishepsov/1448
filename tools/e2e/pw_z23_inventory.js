@@ -68,7 +68,7 @@ const z = require('./_z');
   await z.shot(adm, 'z23_inv_form');
   // пока считали — продали воду
   await z.api('POST', `/admin/goods/${ids['z23v Вода']}/stock`, { delta: -1, reason: 'adjust', note: 'z23v: продали, пока считали' }, 'boss');
-  await adm.click('#invSave'); await z.sleep(300); await adm.click('#invSave'); await z.sleep(1800);
+  await adm.click('#invSave'); await z.sleep(300); await adm.click('#invSave'); await z.idle(adm); // З19-и14: после записи — ждём страницу, а не паузу
   const wm = await line(adm, 'z23v Вода'), km = await line(adm, 'z23v Кола');
   const mv = await adm.evaluate(() => ({ open: document.getElementById('drawer').classList.contains('open'),
     title: document.getElementById('drawerTitle').textContent, note: (document.getElementById('invMovedNote') || {}).textContent || '',
@@ -79,7 +79,7 @@ const z = require('./_z');
     JSON.stringify({ wm, km, mv, kola: stock('z23v Кола') }));
   await z.shot(adm, 'z23_inv_moved');
   await fill(adm, 'z23v Вода', '4');
-  await adm.click('#invSave'); await z.sleep(300); await adm.click('#invSave'); await z.sleep(2200);
+  await adm.click('#invSave'); await z.sleep(300); await adm.click('#invSave'); await z.idle(adm);
   // строки акта: [имя, в системе, насчитали, разница, себестоимость, партии]
   const actRows = page => page.evaluate(() => [...document.querySelectorAll('#invActLines .invActLine')].map(r => {
     const q = c => { const e = r.querySelector(c); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; };
@@ -122,7 +122,7 @@ const z = require('./_z');
     .find(e => e.querySelector('.invName').textContent.startsWith('z23v Кола')); const s = r.querySelector('.invLot select');
     s.selectedIndex = 2; s.dispatchEvent(new Event('change', { bubbles: true })); });
   await boss.fill('#invNote', 'z23v: из второй партии');
-  await boss.click('#invSave'); await z.sleep(300); await boss.click('#invSave'); await z.sleep(2200);
+  await boss.click('#invSave'); await z.sleep(300); await boss.click('#invSave'); await z.idle(boss);
   const oa = await boss.evaluate(() => ({ title: document.getElementById('drawerTitle').textContent,
     kpi: [...document.querySelectorAll('#invAct .kpi')].map(k => k.textContent.replace(/\s+/g, ' ').trim()),
     file: !!document.getElementById('invXlsx') }));

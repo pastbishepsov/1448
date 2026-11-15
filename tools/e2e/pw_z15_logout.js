@@ -20,17 +20,11 @@ const z = require('./_z');
     drawer: document.getElementById('drawer').classList.contains('open'),
     title: document.getElementById('drawerTitle').textContent }));
   const vis = (p, sel) => p.isVisible(sel).catch(() => false);
-  const tap = async (p, sel, wait = 300) => { if (!await vis(p, sel)) return false; await p.click(sel); await z.sleep(wait); return true; };
-  const out = p => tap(p, '#rail button[aria-label="Выйти"]', 1500);
+  const tap = async (p, sel) => { if (!await vis(p, sel)) return false; await p.click(sel); await z.idle(p); return true; }; // З19-и14: после записи — ждём страницу, а не паузу
+  const out = p => tap(p, '#rail button[aria-label="Выйти"]');
   const btnTexts = p => p.evaluate(() => ['coSubmit', 'coSkip', 'msLeaveOpen'].map(i => {
     const b = document.getElementById(i); return b ? b.textContent.replace(/\s+/g, ' ').trim() : null; }));
-  const relogin = async p => {
-    if (!await vis(p, '#nick')) return;
-    await p.fill('#nick', Q); await p.fill('#pass', z.STAFF_PASS); await p.keyboard.press('Enter');
-    await p.waitForSelector('#rail', { state: 'visible', timeout: 10000 });
-    await z.sleep(1500);
-    await p.evaluate(() => { const t = document.getElementById('tour'); if (t && !t.classList.contains('hidden')) tourSkip(); });
-  };
+  const relogin = async p => { if (await vis(p, '#nick')) await z.signIn(p, Q, z.STAFF_PASS); }; // З19-и14: вход — как в openAdmin
 
   const p = await z.openAdmin(Q); // вход в админку открывает смену
   const chip = norm(await z.text(p, '#shiftTxt'));
@@ -49,7 +43,7 @@ const z = require('./_z');
   await p.keyboard.press('Escape');
   await z.sleep(500);
   const vEsc = await view(p);
-  await tap(p, '#shiftChip', 1500);
+  await tap(p, '#shiftChip');
   v = await view(p);
   const plain = await btnTexts(p);
   const plainWarn = await p.evaluate(() => !!document.getElementById('msLeave'));
@@ -62,7 +56,7 @@ const z = require('./_z');
   await out(p);
   await tap(p, '#msLeaveOpen');
   const armed = norm(await z.text(p, '#msLeaveOpen'));
-  await tap(p, '#msLeaveOpen', 1500);
+  await tap(p, '#msLeaveOpen');
   v = await view(p);
   const leftOpen = armed === 'Ещё раз — выйти, смена останется открытой' && v.login && !v.app && openCnt() === '1';
   z.check('«Выйти, не закрывая смену» — со второго нажатия («Ещё раз — выйти, смена останется открытой»): экран входа, '
@@ -79,7 +73,7 @@ const z = require('./_z');
   await z.sleep(200);
   await tap(p, '#coSubmit');
   const armed2 = norm(await z.text(p, '#coSubmit'));
-  const t = norm(await z.toastAfter(p, () => tap(p, '#coSubmit', 0), 'Смена закрыта')); // З19-и13: тост этого действия, а не #toast через паузу
+  const t = norm(await z.toastAfter(p, () => tap(p, '#coSubmit'), 'Смена закрыта')); // З19-и13: тост этого действия, а не #toast через паузу
   v = await view(p);
   const row = z.sql(`SELECT (ended_at IS NOT NULL)::text || '|' || auto_closed::text FROM work_entries WHERE user_id = '${qid}' AND started_at >= '${since}'`);
   const co = z.sql(`SELECT skipped::text || '|' || COALESCE(diff_grosz::text, '') FROM shift_closeouts WHERE user_id = '${qid}' AND created_at >= '${since}' ORDER BY created_at DESC LIMIT 1`);
@@ -112,7 +106,7 @@ const z = require('./_z');
     return { sw: document.documentElement.scrollWidth, box: !!q && q.width > 0 && q.left >= 0 && q.right <= innerWidth }; });
   await z.shot(ph, 'z15_logout_ask_phone');
   await tap(ph, '#coSkip');
-  await tap(ph, '#coSkip', 2000);
+  await tap(ph, '#coSkip');
   v = await view(ph);
   const skip = z.sql(`SELECT skipped::text FROM shift_closeouts WHERE user_id = '${qid}' AND created_at >= '${since}' ORDER BY created_at DESC LIMIT 1`);
   z.check('телефон 360: шторка выхода без прокрутки вбок; «Уйти без пересчёта и выйти» — смена закрыта без пересчёта, экран входа',

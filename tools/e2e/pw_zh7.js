@@ -3,7 +3,7 @@
 // тост депозита с «хватит ещё на …», «ПК в ремонте» при посадке, виджет даты-времени брони
 // «дд.мм.гггг чч:мм» (пресеты сегодня/завтра, четверти часа, RFC3339 наружу). Скриншоты.
 const { chromium } = require('playwright-core');
-const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
+const { toastAfter, idle, watch, signIn, reenter } = require('./_z'); // З19-и13: тост этого действия; З19-и14: после записи — idle
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -25,12 +25,11 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   check('в разметке нет эмодзи 🍔 у кнопки «Кухня», у канала персонала иконка chat', !/r-kitchen"[^>]*>\s*<span style="font-size:17px[^>]*>🍔/.test(html) && /id="staffBtn"[^]*?data-ic="chat"/.test(html.slice(0, html.indexOf('id="helpBtn"'))), '');
 
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'admin1'); await page.fill('#pass', 'Admin12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page, 'admin1', 'Admin12345'); // З19-и14: вход — когда запас лимитера стенда полный, дальше — когда вход дописан, а не пауза
   await page.evaluate(() => nav('hall')); await sleep(1500);
   // и1: чип смены без фона и рамки
   const chip = await page.evaluate(() => { const c = document.getElementById('shiftChip'), s = getComputedStyle(c); return { bg: s.backgroundColor, border: s.borderStyle + ' ' + s.borderWidth, txt: c.textContent.trim() }; });

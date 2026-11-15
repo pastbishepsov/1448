@@ -2,6 +2,7 @@
 // клик по KPI «Выручка сегодня» у админа открывает журнал с фильтром «Деньги»,
 // журнал: чипы шлют kind на сервер, «Ещё 100» дотягивает страницу, у владельца — выбор дня.
 const { chromium } = require('playwright-core');
+const { idle, watch, signIn, reenter } = require('./_z'); // З19-и14: после записи — ждём страницу, а не паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const out = [];
@@ -14,25 +15,25 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   psql(`DELETE FROM admin_actions WHERE details LIKE 'pw-zh3%'`);
   psql(`INSERT INTO admin_actions(admin_id, action, details, created_at) SELECT '${admin1}', 'pc_unhold', 'pw-zh3 #' || i, now() - (i || ' seconds')::interval FROM generate_series(1, 130) i`);
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'admin1'); await page.fill('#pass', 'Admin12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page, 'admin1', 'Admin12345'); // З19-и14: вход — когда запас лимитера стенда полный, дальше — когда вход дописан, а не пауза
   await page.evaluate(() => nav('hall'));
   await sleep(1200);
   // и4: лента после входа (без единого живого события) не пуста
   const feed1 = await page.evaluate(() => ({ n: feed.length, audit: feed.filter(m => m.type === 'audit').length, ids: new Set(feed.map(m => m.id)).size, html: document.getElementById('feedList').textContent.slice(0, 160) }));
   check('лента зала сразу после входа: 30 строк из журнала, все с id, без дублей', feed1.n === 30 && feed1.audit === 30 && feed1.ids === 30, JSON.stringify(feed1));
   // перезагрузка страницы — лента снова не пуста
-  await page.reload({ waitUntil: 'load' });
-  await sleep(2500);
+  await reenter(page); // перезагрузка — снова вход: тот же залп запросов; лента — бэкфиллом, когда поднялся сокет
   const feed2 = await page.evaluate(() => ({ n: feed.length, text: document.getElementById('feedList').textContent.replace(/\s+/g, ' ').slice(0, 120) }));
   check('после перезагрузки лента не пуста', feed2.n > 0 && !/События появятся здесь/.test(feed2.text), JSON.stringify(feed2));
   // реконнект сокета — бэкфилл не дублирует строки
   await page.evaluate(() => { if (ws) ws.close(); });
-  await sleep(6500);
+  await page.waitForFunction(() => !wsOpen, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => wsOpen, null, { timeout: 30000 }).catch(() => {}); // З19-и14: переподключение (шаг 5 с, новый тикет — запись) — по факту
+  await idle(page); // бэкфилл ленты
   const feed3 = await page.evaluate(() => ({ n: feed.length, ids: new Set(feed.map(m => m.id)).size, wsOpen }));
   check('после реконнекта сокета лента без дублей (id уникальны), сокет живой', feed3.n === feed3.ids && feed3.wsOpen, JSON.stringify(feed3));
   await page.screenshot({ path: OUT + '/zh3_feed.png' });
@@ -64,9 +65,8 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   check('js-ошибок нет (админ)', errors.length === 0, errors.join(' | '));
   // владелец: выбор дня
   await page.evaluate(() => logout());
-  await sleep(800);
-  await page.fill('#nick', 'boss'); await page.fill('#pass', 'Boss12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await idle(page); // З19-и14: после записи — ждём страницу, а не паузу
+  await signIn(page, 'boss', 'Boss12345');
   await page.evaluate(() => nav('grants'));
   await sleep(1200);
   const ownerAll = await page.evaluate(() => ({ n: audData.length, picker: !document.getElementById('audDay').closest('.ownerOnly').classList.contains('hidden') }));

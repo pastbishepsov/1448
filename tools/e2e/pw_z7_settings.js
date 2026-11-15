@@ -49,7 +49,7 @@ const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лим�
     hint: (document.getElementById('setHint') || {}).textContent || '' }));
   z.check('правка подсвечена, у кнопки «Изменено: 1»', st.on && /Изменено: 1\b/.test(st.hint), JSON.stringify(st));
   await save();
-  await z.sleep(1500);
+  await z.idle(page); // З19-и14: после записи — ждём страницу, а не паузу
   z.check(`ушёл один PUT и только с «пропавшими»: {"seg_lost_days":${v + 1}}`, puts.length === 1 && puts[0] === JSON.stringify({ seg_lost_days: v + 1 }), puts.join(' | '));
   z.check(`в журнале одна строка «seg_lost_days: ${v}→${v + 1}»`, audit() === a0 + 1 && last() === `seg_lost_days: ${v}→${v + 1}`, `+${audit() - a0}: ${last()}`);
 
@@ -66,7 +66,7 @@ const CARDS = ['Монеты и XP', 'Сгорание пакетов', 'Лим�
   await page.locator('#set_rhour').scrollIntoViewIfNeeded();
   await z.shot(page, 'z7_settings_rhour');
   await save();
-  await z.sleep(1500);
+  await z.idle(page);
   z.check(`второй клик — сохранено: граница суток ${rh2} в базе, ушёл только report_hour`, z.sql("SELECT value FROM settings WHERE key='report_hour'") === String(rh2)
     && puts.length === 2 && puts[1] === JSON.stringify({ report_hour: rh2 }), puts.join(' | '));
   await z.done();

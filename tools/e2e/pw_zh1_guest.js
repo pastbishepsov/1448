@@ -2,19 +2,20 @@
 // в истории отменённый депозит помечен, в журнале кошелька операция подписана;
 // шелл (/shell) — строка уведомления через свой словарь.
 const { chromium } = require('playwright-core');
+const { idle, watch } = require('./_z'); // З19-и14: после записи — ждём страницу, а не паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const out = [];
 const check = (name, cond, detail) => out.push((cond ? 'ok   ' : 'FAIL ') + name + (detail ? ' — ' + detail : ''));
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 420, height: 860 } });
+  const page = await browser.newPage({ viewport: { width: 420, height: 860 } }); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/app', { waitUntil: 'load' });
   await sleep(800);
   await page.fill('#nick', 'Guest27'); await page.fill('#pass', 'Guest12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await page.waitForFunction(() => typeof me === 'object' && !!me, null, { timeout: 15000 }).catch(() => {}); await idle(page); // З19-и14: вход гостя — по факту, а не паузой
   // депозит + отмена руками админа через API (в этой же странице — просто fetch)
   const ids = await page.evaluate(async () => {
     const lg = await (await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: 'admin1', password: 'Admin12345' }) })).json();

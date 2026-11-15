@@ -28,7 +28,7 @@ const { CHROME } = require('./_env');
   const card = async () => (await z.api('GET', `/clubs/${CLUB}`)).data || {};
   const norm = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   // нового на HEAD нет — проверка упадёт, прогон нет
-  const tap = (p, sel) => p.click(sel, { timeout: 4000 }).catch(() => {});
+  const tap = (p, sel) => p.click(sel, { timeout: 4000 }).catch(() => {}); // З19-и14: после «Сохранить» — z.idle, а не пауза
   const put = (p, sel, v) => p.fill(sel, v, { timeout: 4000 }).catch(() => {});
   const pick = (p, sel, v) => p.selectOption(sel, v, { timeout: 4000 }).catch(() => {});
 
@@ -67,7 +67,7 @@ const { CHROME } = require('./_env');
   z.check('правка: имя, телефон, Telegram, часы по дням (пн–пт 10:00–23:00, сб круглые сутки, вс выходной), тариф 22,5 — подсвечены, '
     + '«Изменено: 5»', f1.hint === 'Изменено: 5' && f1.days && JSON.stringify(f1.changed.sort()) === JSON.stringify(['club_hmode', 'club_name', 'club_phone', 'club_rate', 'club_tg']),
     JSON.stringify(f1));
-  await tap(boss, '#clubSave'); await z.sleep(1500);
+  await tap(boss, '#clubSave'); await z.idle(boss);
   const sent = reqs.map(([m, b]) => [m, Object.keys(JSON.parse(b || '{}')).sort().join(',')]);
   const c1 = await card(), f2 = await form();
   const H = { mon: { open: '10:00', close: '23:00' }, tue: { open: '10:00', close: '23:00' }, wed: { open: '10:00', close: '23:00' },
@@ -86,13 +86,13 @@ const { CHROME } = require('./_env');
 
   await z.nav(boss, 'settings'); await boss.waitForSelector('#club_zonereq', { timeout: 15000 }).catch(() => {}); await z.sleep(800);
   reqs.length = 0;
-  await pick(boss, '#club_zonereq', '1'); await tap(boss, '#clubSave'); await z.sleep(1500);
+  await pick(boss, '#club_zonereq', '1'); await tap(boss, '#clubSave'); await z.idle(boss);
   const f3 = await form(), zr1 = (await z.api('GET', '/admin/settings', undefined, 'boss')).data.settings.pc_zone_required;
   z.check('«ПК без зоны: запрещён», пока z18cp-1 без зоны, — только PUT, тост с его именем; запрет не включён и остаётся правкой («Изменено: 1»)',
     reqs.length === 1 && reqs[0][0] === 'PUT' && /z18cp-1/.test(toasts[toasts.length - 1] || '') && zr1 === 0 && f3.zr === '1' && f3.hint === 'Изменено: 1',
     JSON.stringify({ reqs, t: toasts.slice(-1), zr1, f3: [f3.zr, f3.hint] }));
   await z.api('PATCH', `/admin/computers/${P1}`, { zone_id: STD }, 'boss');
-  await tap(boss, '#clubSave'); await z.sleep(1500);
+  await tap(boss, '#clubSave'); await z.idle(boss);
   const f4 = await form(), zr2 = (await z.api('GET', '/admin/settings', undefined, 'boss')).data.settings.pc_zone_required;
   z.check('z18cp-1 в зоне — «Сохранить карточку»: запрет включён, «Правок нет»; у зон — «ПК без зоны запрещены»',
     zr2 === 1 && f4.zr === '1' && f4.hint === 'Правок нет' && /^ПК без зоны запрещены/.test(f4.zones || ''), JSON.stringify({ zr2, f4: [f4.zr, f4.hint, f4.zones] }));

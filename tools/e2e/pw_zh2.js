@@ -2,6 +2,7 @@
 // умолчанию и пометкой), отчёт «Монеты» («Должны временем»), PWA (блок минут по зонам),
 // шелл (блок запаса словами зоны и прогноз «хватит до» без минут чужой зоны).
 const { chromium } = require('playwright-core');
+const { idle, watch, signIn, reenter } = require('./_z'); // З19-и14: после записи — ждём страницу, а не паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const out = [];
@@ -31,12 +32,11 @@ async function j(url, opt) { const r = await fetch(url, opt); return r.json(); }
   check('подготовка: Guest29 посажен за VIP-02', !!seat.session_id, JSON.stringify(seat));
 
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'admin1'); await page.fill('#pass', 'Admin12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page, 'admin1', 'Admin12345'); // З19-и14: вход — когда запас лимитера стенда полный, дальше — когда вход дописан, а не пауза
   await page.evaluate(id => openUserDrawer(id), g.id);
   await sleep(900);
   const kv = await page.evaluate(() => document.querySelector('#drawerBody .kv').textContent.replace(/\s+/g, ' '));
@@ -54,9 +54,8 @@ async function j(url, opt) { const r = await fetch(url, opt); return r.json(); }
   check('js-ошибок нет (админ)', errors.length === 0, errors.join(' | '));
   // владелец: отчёт «Монеты»
   await page.evaluate(() => logout());
-  await sleep(800);
-  await page.fill('#nick', 'boss'); await page.fill('#pass', 'Boss12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await idle(page); // З19-и14: после записи — ждём страницу, а не паузу
+  await signIn(page, 'boss', 'Boss12345');
   await page.evaluate(() => nav('stats'));
   await sleep(1200);
   await page.evaluate(() => { repTab = 'coins'; renderReports(); });
@@ -67,12 +66,12 @@ async function j(url, opt) { const r = await fetch(url, opt); return r.json(); }
   check('js-ошибок нет (владелец)', errors.length === 0, errors.join(' | '));
 
   // PWA: блок «Минуты за монеты и компенсации» в истории
-  const p2 = await browser.newPage({ viewport: { width: 420, height: 860 } });
+  const p2 = await browser.newPage({ viewport: { width: 420, height: 860 } }); watch(p2);
   const e2 = []; p2.on('pageerror', e => e2.push(e.message));
   await p2.goto(BASE + '/app', { waitUntil: 'load' });
   await sleep(800);
   await p2.fill('#nick', 'Guest29'); await p2.fill('#pass', 'Guest12345'); await p2.keyboard.press('Enter');
-  await sleep(3000);
+  await p2.waitForFunction(() => typeof me === 'object' && !!me, null, { timeout: 15000 }).catch(() => {}); await idle(p2); // З19-и14: вход гостя — по факту, а не паузой
   const pwa = await p2.evaluate(async () => { await loadPacks(); if (typeof renderHist === 'function') renderHist(); const el = document.getElementById('histCard'); return { rows: minutesByZone, html: el ? el.textContent.replace(/\s+/g, ' ') : '' }; });
   check('PWA: minutes_by_zone получен (Standard 40 + пул 7)', JSON.stringify(pwa.rows).includes('"minutes":40') && JSON.stringify(pwa.rows).includes('"from_pool":true'), JSON.stringify(pwa.rows));
   check('PWA: блок «Минуты за монеты и компенсации» с «40 мин · Standard» и «7 мин · везде»', /Минуты за монеты и компенсации/.test(pwa.html) && /Standard 40 мин/.test(pwa.html) && /7 мин · везде/.test(pwa.html), pwa.html.slice(0, 300));

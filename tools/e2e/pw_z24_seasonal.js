@@ -49,7 +49,7 @@ const z = require('./_z');
   await boss.fill('#pk_ss', '00:00'); await boss.fill('#pk_se', '17:00');
   await z.shot(boss, 'z24_pack_form');
   await boss.evaluate(() => [...document.querySelectorAll('#drawer .uform button')].find(b => b.textContent.trim() === 'Сохранить').click());
-  await z.sleep(1500);
+  await z.idle(boss); // З19-и14: после записи — ждём страницу, а не паузу
   const row = () => boss.evaluate(() => { const r = [...document.querySelectorAll('#packsTable tr')].find(t => t.cells[0] && /z24w Будни/.test(t.cells[0].textContent));
     return r ? { marks: [...r.cells[0].querySelectorAll('.pkMark')].map(m => m.textContent), season: (r.cells[0].querySelector('.pkSeason') || {}).textContent || '' } : null; });
   const r1 = await row();
@@ -63,7 +63,7 @@ const z = require('./_z');
     days: [...document.querySelectorAll('.pkDay')].filter(c => c.checked).length, ss: document.getElementById('pk_ss').value, se: document.getElementById('pk_se').value }));
   await boss.fill('#pk_pg', '2');
   await boss.evaluate(() => [...document.querySelectorAll('#drawer .uform button')].find(b => b.textContent.trim() === 'Сохранить').click());
-  await z.sleep(1500);
+  await z.idle(boss);
   const upd = z.sql("SELECT details FROM admin_actions WHERE action = 'package_update' AND details LIKE 'z24w Будни:%' ORDER BY created_at DESC LIMIT 1");
   z.check('«Правка»: поля на месте (по дату, 1, только новым, 6 дней, 00:00–17:00); «на гостя» 2 — журнал «z24w Будни: на гостя: 1 → 2»',
     f.st === ymd(plus(30)) && f.pg === '1' && f.nw && f.days === 6 && f.ss === '00:00' && f.se === '17:00' && upd === 'z24w Будни: на гостя: 1 → 2',

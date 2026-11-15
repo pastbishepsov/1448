@@ -64,7 +64,8 @@ const z = require('./_z');
   await z.sleep(300);
   await boss.fill('#scText', 'черновик z15: не стирать');
   await z.api('POST', '/admin/staff-chat', { text: MARK + ' #131 живое' }, 'z15c');
-  await z.sleep(2500);
+  await boss.waitForFunction(() => /#131 живое/.test(([...document.querySelectorAll('#scWrap .scmsg')].pop() || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  await z.idle(boss); // З19-и14: живое сообщение — по факту, «прочитано» страница пишет сама — ждём её запись, а не паузу
   const live = await boss.evaluate(M => ({ last: /#131 живое/.test([...document.querySelectorAll('#scWrap .scmsg')].pop().textContent),
     draft: document.getElementById('scText').value, badgeHidden: document.getElementById('staffBadge').classList.contains('hidden'), unread: staffUnread }), MARK);
   const srv1 = (await z.api('GET', '/admin/staff-chat', undefined, 'boss')).data.unread;
@@ -79,7 +80,7 @@ const z = require('./_z');
     top: Math.round(document.getElementById('scWrap').scrollTop) }; });
   z.check('пролистал вверх — новое само не «прочитано»: бейдж «1», лента стоит, где была', !up.hidden && up.badge === '1' && up.top <= 2, JSON.stringify(up));
   await boss.evaluate(() => { const w = document.getElementById('scWrap'); w.scrollTop = w.scrollHeight; w.dispatchEvent(new Event('scroll')); });
-  await z.sleep(1500);
+  await z.idle(boss); // «прочитано» — запись
   const down = await boss.evaluate(() => ({ hidden: document.getElementById('staffBadge').classList.contains('hidden'), unread: staffUnread }));
   const srv2 = (await z.api('GET', '/admin/staff-chat', undefined, 'boss')).data.unread;
   z.check('долистал до низа — прочитано: бейдж погас, на сервере 0', down.hidden && down.unread === 0 && srv2 === 0, JSON.stringify({ down, srv2 }));

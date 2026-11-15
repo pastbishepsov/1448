@@ -33,7 +33,7 @@ const { CHROME } = require('./_env');
   const click = async (p, nick, label) => {
     await p.evaluate(([n, l]) => { const tr = [...document.querySelectorAll('#staffTable tr')].find(x => x.cells[0] && (x.cells[0].querySelector('b') || {}).textContent === n);
       const b = tr && [...tr.querySelectorAll('button')].find(x => x.textContent.replace(/\s+/g, ' ').trim() === l); if (b) b.click(); }, [nick, label]);
-    await z.sleep(1200);
+    await z.idle(p); // З19-и14: кнопка строки бывает записью («Точно отменить?») — ждём страницу
   };
   const staff = async p => { await z.nav(p, 'staff'); await p.waitForSelector('#staffTable tr', { timeout: 15000 }).catch(() => {}); };
   const drawer = p => p.evaluate(() => { const g = id => document.getElementById(id);
@@ -96,12 +96,12 @@ const { CHROME } = require('./_env');
   z.sql(`UPDATE staff_profiles SET leave_on = '${YDAY}', leave_by = (SELECT id FROM users WHERE nickname = 'boss') WHERE user_id = '${uk}'`);
   const br = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   z.atEnd(() => br.close());
-  const kp = await (await br.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const kp = await (await br.newContext({ viewport: { width: 1440, height: 900 } })).newPage(); z.watch(kp);
   kp.on('pageerror', e => z.jsErrors.push(`${K}: ${e.message}`));
   await kp.goto(z.BASE + '/admin', { waitUntil: 'load' });
   await kp.fill('#nick', K); await kp.fill('#pass', z.STAFF_PASS);
   await kp.keyboard.press('Enter');
-  await z.sleep(3500);
+  await z.idle(kp); // З19-и14: после записи — ждём страницу, а не паузу
   const le = await z.text(kp, '#loginErr'), inApp = await kp.evaluate(() => !document.getElementById('appView').classList.contains('hidden'));
   const raced = z.sql(`SELECT role FROM users WHERE id = '${uk}'`) === 'player';
   z.check('z14k, последний день — вчера: вход — экран входа «Последний рабочий день прошёл — доступа в админку больше нет. Если это ошибка, напиши владельцу.»',

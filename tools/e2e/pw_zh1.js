@@ -1,19 +1,18 @@
 // Ж1-и3: playwright — тост «Вернуть» после депозита, вкладка «Депозиты» с пометкой и
 // arm-отменой, журнал с deposit_void, отчёт «Деньги» (владелец) — потери по депозитам.
 const { chromium } = require('playwright-core');
-const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
+const { toastAfter, idle, watch, signIn, reenter } = require('./_z'); // З19-и13: тост этого действия; З19-и14: после записи — idle
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const out = [];
 const check = (name, cond, detail) => out.push((cond ? 'ok   ' : 'FAIL ') + name + (detail ? ' — ' + detail : ''));
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'admin1'); await page.fill('#pass', 'Admin12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page, 'admin1', 'Admin12345'); // З19-и14: вход — когда запас лимитера стенда полный, дальше — когда вход дописан, а не пауза
   // карточка Guest28 → форма депозита
   const guestId = await page.evaluate(async () => (await api('/admin/users?q=Guest28')).users.find(u => u.nickname === 'Guest28').id);
   // чистый старт: живые депозиты Guest28 за клубные сутки (их оставляют e2e_zone_minutes/club_day) отменяем —
@@ -37,7 +36,7 @@ const check = (name, cond, detail) => out.push((cond ? 'ok   ' : 'FAIL ') + name
   await sleep(300);
   await page.fill('#d_sum', '25');
   await page.click('text=Оформить депозит');
-  await sleep(900);
+  await idle(page); // З19-и14: после записи — ждём страницу, а не паузу
   await page.evaluate(() => uTabSet('deposits'));
   await sleep(300);
   const tab = await page.evaluate(() => document.querySelector('.drawer .hist, #drawer .hist, .hist').outerHTML);
@@ -51,7 +50,7 @@ const check = (name, cond, detail) => out.push((cond ? 'ok   ' : 'FAIL ') + name
   const armed = await page.evaluate(() => document.querySelector('.hist .rfPick button.danger') && document.querySelector('.hist .rfPick button.danger').textContent);
   check('первый клик раскрывает выбор («Вернуть 25,00 zł наличными» — как платили)', armed === 'Вернуть 25,00 zł наличными', String(armed));
   await page.click('.hist .rfPick button.danger');
-  await sleep(1200);
+  await idle(page);
   const rows2 = await page.evaluate(() => [...document.querySelectorAll('.hist tr')].map(r => r.textContent.replace(/\s+/g, ' ').trim()));
   check('после второго клика оба депозита отменены, кнопок нет', rows2.filter(r => /отменён/.test(r)).length >= 2 && (await page.locator('.hist button:has-text("Отменить")').count()) === 0, rows2.slice(0, 3).join(' | '));
   // журнал: строка «отмена депозита» в фильтре «деньги»
@@ -65,9 +64,8 @@ const check = (name, cond, detail) => out.push((cond ? 'ok   ' : 'FAIL ') + name
   check('js-ошибок нет', errors.length === 0, errors.join(' | '));
   // владелец: отчёт «Деньги» — потери с депозитной строкой
   await page.evaluate(() => logout());
-  await sleep(800);
-  await page.fill('#nick', 'boss'); await page.fill('#pass', 'Boss12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await idle(page); // З19-и14: после записи — ждём страницу, а не паузу
+  await signIn(page, 'boss', 'Boss12345');
   await page.evaluate(() => nav('stats'));
   await sleep(1500);
   const rep = await page.evaluate(() => document.getElementById('repBody') ? document.getElementById('repBody').textContent.replace(/\s+/g, ' ') : '');

@@ -126,7 +126,7 @@ const z = require('./_z');
   await z.sleep(500);
   const armed = await z.text(boss, '#setSave');
   await boss.click('#setSave').catch(() => {});
-  await z.sleep(1800);
+  await z.idle(boss); // З19-и14: после записи — ждём страницу, а не паузу
   z.check('«Да — по себестоимости»: пояснение «Подарки товаров — в VAT по себестоимости», предупреждение про прошлые месяцы; «Сохранить» — '
     + 'взвод «Ещё раз — сменить расчёт VAT», второй клик — PUT {acc_gift_vat: 1}, в базе 1',
     /Подарки товаров — в VAT по себестоимости/.test(gn.note) && gn.warn && /Ещё раз — сменить расчёт VAT/.test(armed || '')

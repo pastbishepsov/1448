@@ -32,7 +32,7 @@ const z = require('./_z');
       warn: !!w && !w.classList.contains('hidden'), hint: (document.getElementById('setHint') || {}).textContent || '' };
   });
   const mode = async v => { if (await page.$('#set_rmode')) await page.selectOption('#set_rmode', v); }; // на HEAD выбора нет
-  const save = async (wait = 1500) => { await page.click('#setSave'); await z.sleep(wait); };
+  const save = async () => { await page.click('#setSave'); await z.idle(page); }; // З19-и14: после записи — ждём страницу, а не паузу
 
   const s0 = await st();
   z.check('«Клубные сутки и сегменты»: «Сутки клуба» — «С полуночи — 00:00–24:00» и «Свой час границы»; '
@@ -48,14 +48,14 @@ const z = require('./_z');
   z.check('«Свой час границы» — поле «Час начала суток (1–23)» открыто, пустое («например, 8»), в фокусе; выбор подсвечен, «Изменено: 1»',
     s1.box && s1.hour === '' && s1.ph === 'например, 8' && s1.focus && s1.hourLabel === 'Час начала суток (1–23)' && s1.changed
     && /Изменено: 1\b/.test(s1.hint), JSON.stringify(s1));
-  const t1 = await z.toastAfter(page, () => save(0), 'Час начала суток'); // З19-и13: тост этого действия, а не #toast через паузу
+  const t1 = await z.toastAfter(page, () => save(), 'Час начала суток'); // З19-и13: тост этого действия, а не #toast через паузу
   z.check('«Сохранить» без часа — тост «⚠ Час начала суток (1–23): целое от 0 до 23», запроса нет',
     puts.length === 0 && /Час начала суток \(1–23\): целое от 0 до 23/.test(t1 || ''), `${t1}; PUT ${puts.length}`);
 
   await page.fill('#set_rhour', '8');
   const s2 = await st();
   z.check('час 8 — предупреждение «… и в прошлых отчётах»', s2.warn && s2.hour === '8', JSON.stringify(s2));
-  await save(400);
+  await save();
   const armed = await z.text(page, '#setSave');
   await z.shot(page, 'z18_day_own');
   await save();
@@ -70,7 +70,7 @@ const z = require('./_z');
   const s4 = await st();
   z.check('обратно «С полуночи» — поле спрятано, в нём 0, выбор подсвечен, «Изменено: 1» и предупреждение',
     !s4.box && s4.hour === '0' && s4.changed && s4.warn && /Изменено: 1\b/.test(s4.hint), JSON.stringify(s4));
-  await save(400);
+  await save();
   await save();
   const s5 = await st();
   z.check('со взводом — PUT {"report_hour":0}, в базе 0, в журнале «report_hour: 8→0»; выбор «С полуночи», правок нет',

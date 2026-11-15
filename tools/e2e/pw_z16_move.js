@@ -37,7 +37,7 @@ const z = require('./_z');
   const tap = async sel => { if (await vis(sel)) { await p.click(sel); return true; } return false; };
   const moveTo = async name => {
     if (!(await vis('#movePCSel'))) return;
-    await p.selectOption('#movePCSel', pc(name)); await p.click('#movePCSel + button'); await z.sleep(900);
+    await p.selectOption('#movePCSel', pc(name)); await p.click('#movePCSel + button'); await z.idle(p); // З19-и14: после записи — ждём страницу, а не паузу
   };
 
   await openPC('PC-04');

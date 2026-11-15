@@ -20,13 +20,13 @@ const { CHROME } = require('./_env');
   // своё окно: openAdmin ждёт админку, а после входа временным её быть не должно
   const br = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   z.atEnd(() => br.close());
-  const p = await (await br.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const p = await (await br.newContext({ viewport: { width: 1440, height: 900 } })).newPage(); z.watch(p);
   p.on('pageerror', e => z.jsErrors.push(`${Y}: ${e.message}`));
   await p.goto(z.BASE + '/admin', { waitUntil: 'load' });
   const screen = () => p.evaluate(() => { const g = id => document.getElementById(id), vis = id => !!g(id) && !g(id).classList.contains('hidden');
     return { app: vis('appView'), login: vis('loginCard'), pw: vis('pwCard'), head: (g('pwHead') || {}).textContent,
       hint: (g('pwHint') || {}).textContent }; });
-  const enter = async pass => { await p.fill('#nick', Y); await p.fill('#pass', pass); await p.keyboard.press('Enter'); await z.sleep(2500); };
+  const enter = async pass => { await p.fill('#nick', Y); await p.fill('#pass', pass); await p.keyboard.press('Enter'); await z.idle(p); }; // вход временным — экран пароля, рейла нет
 
   await enter(z.STAFF_PASS);
   let s = await screen();
@@ -35,7 +35,7 @@ const { CHROME } = require('./_env');
     && norm(s.hint).endsWith('Смена откроется, когда задашь свой пароль.') && openCnt() === '0', JSON.stringify({ s, open: openCnt() }));
   await z.shot(p, 'z15_temp_screen');
   await p.click('#pwCard button:has-text("Выйти")');
-  await z.sleep(800);
+  await z.idle(p); // З19-и14: после записи — ждём страницу, а не паузу
   s = await screen();
   z.check('«Выйти» с экрана пароля — снова вход, открытой записи табеля нет', s.login && !s.pw && !s.app && openCnt() === '0',
     JSON.stringify({ s, open: openCnt() }));

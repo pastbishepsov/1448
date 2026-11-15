@@ -34,7 +34,7 @@ const z = require('./_z');
         dis: r.querySelector('input').disabled })) : [],
       apply: (document.getElementById('bk_apply') || {}).textContent || '', err: e ? e.textContent : '', moved: m ? m.textContent.replace(/\s+/g, ' ') : '',
       kind: (document.querySelector('#bulkBox .segs button.on') || {}).textContent || '' }; });
-  const look = async () => { await boss.click('#bk_look'); await z.sleep(900); };
+  const look = async () => { await boss.click('#bk_look'); await z.idle(boss); }; // З19-и14: после записи — ждём страницу, а не паузу
   const setUp = async (val, round) => {
     await boss.selectOption('#bk_cat', CAT);
     await boss.fill('#bk_val', String(val));
@@ -67,12 +67,12 @@ const z = require('./_z');
   await boss.click('#bulkBox .segs button[data-v="add"]'); await z.sleep(200);
   await setUp(1); await look();
   await z.api('PATCH', `/admin/goods/${G.Cola}`, { price_pln: 9 }, 'boss');
-  await boss.click('#bk_apply'); await z.sleep(200); await boss.click('#bk_apply'); await z.sleep(1200);
+  await boss.click('#bk_apply'); await z.sleep(200); await boss.click('#bk_apply'); await z.idle(boss);
   const p3 = await prev();
   z.check(`Cola стала 9 после просмотра — «Цены изменились …: ${PRE}Cola — было 5,50, сейчас 9,00», Woda — 3,50 (ничего не записано)`,
     p3.moved.includes(`${PRE}Cola — было 5,50, сейчас 9,00`) && price('Woda') === 3.5 && price('Cola') === 9, JSON.stringify(p3));
   await boss.evaluate(() => [...document.querySelectorAll('#bulkPrev button')].find(b => /Посмотреть ещё раз/.test(b.textContent)).click());
-  await z.sleep(900);
+  await z.idle(boss); // просмотр — тоже запрос
   const p4 = await prev();
   z.check('«Посмотреть ещё раз» — свежий просмотр: Cola 9,00 → 10,00', p4.rows.some(r => r.t === `${PRE}Cola · ${CAT} 9,00 → 10,00`) && !p4.moved, JSON.stringify(p4));
   await boss.fill('#bk_val', ''); await look();
@@ -116,7 +116,7 @@ const z = require('./_z');
   await z.sleep(2500);
   const ph = await z.openAdmin('boss', { viewport: { width: 360, height: 740 } });
   await ph.evaluate(() => bulkOpen('goods')); await z.sleep(1500);
-  await ph.selectOption('#bk_cat', CAT); await ph.fill('#bk_val', '10'); await ph.click('#bk_look'); await z.sleep(900);
+  await ph.selectOption('#bk_cat', CAT); await ph.fill('#bk_val', '10'); await ph.click('#bk_look'); await z.idle(ph);
   const fit = await ph.evaluate(() => ({ sw: document.documentElement.scrollWidth, w: innerWidth,
     r: [...document.querySelectorAll('#bulkBox .input, #bulkBox button, #bk_list .bkRow, #bk_apply')].map(e => Math.round(e.getBoundingClientRect().right)),
     rows: document.querySelectorAll('#bk_list .bkRow').length }));

@@ -5,8 +5,7 @@
 const z = require('./_z');
 (async () => {
   await z.hireTemp('z0live');
-  const page = await z.openAdmin('z0live');
-  await z.sleep(1500);
+  const page = await z.openAdmin('z0live'); // З19-и14: openAdmin сам ждёт живой канал — паузы под тикет не нужно
   z.check('админка z0live открыта, live-канал подключён', await page.evaluate(() => wsOpen === true));
   const tickets = [];
   page.on('request', r => { if (/\/admin\/ws-ticket$/.test(r.url())) tickets.push(r.url()); });

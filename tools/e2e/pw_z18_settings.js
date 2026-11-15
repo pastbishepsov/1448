@@ -76,7 +76,7 @@ const z = require('./_z');
 
   // окно [Готов!] = 0: предупреждение у поля, один PUT, подсказки посадки
   const setField = async (id, v) => { if (await page.$('#' + id)) { await page.fill('#' + id, String(v)); await page.dispatchEvent('#' + id, 'input'); } };
-  const save = async () => { if (await page.$('#setSave')) await page.click('#setSave'); await z.sleep(1000); };
+  const save = async () => { if (await page.$('#setSave')) await page.click('#setSave'); await z.idle(page); }; // З19-и14: после записи — ждём страницу, а не паузу
   await setField('set_readywait', 0);
   const warn = await page.evaluate(() => { const w = document.getElementById('setReadyWarn');
     return w && !w.classList.contains('hidden') ? w.textContent : null; });

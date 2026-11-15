@@ -90,7 +90,7 @@ const z = require('./_z');
     && p2.rows.every(x => x.diff.length === 0 && / без изменений$/.test(x.head)), JSON.stringify(p2 && [p2.root, p2.rows]));
   await page.fill('#impText', JSON.stringify({ ...FILE, games_root: 'games' }));
   await page.click('#drawerBody button:has-text("Проверить")');
-  await z.sleep(900);
+  await z.idle(page); // З19-и14: после записи — ждём страницу, а не паузу
   const p3 = await prev();
   z.check('неверный корень в файле — оранжевая плашка «⚠ Корень игр: «G:\\Games», … — а в файле games. Импорт корень не тронет.»',
     !!p3 && p3.warn && p3.root === '⚠ Корень игр: «G:\\Games», «\\\\nas\\games» или «/mnt/games» — а в файле games. Импорт корень не тронет.'
@@ -99,7 +99,7 @@ const z = require('./_z');
   const n0 = sent;
   await page.evaluate(() => { document.getElementById('impText').value = JSON.stringify({ apps: [{ id: 'z18cat_big', name: 'x'.repeat(1153434), category: 'game' }] }); });
   await page.click('#drawerBody button:has-text("Проверить")');
-  await z.sleep(600);
+  await z.idle(page);
   const big = await z.text(page, '#impResult');
   await pick('big.json', Buffer.alloc(5 << 20, 32));
   await z.sleep(600);

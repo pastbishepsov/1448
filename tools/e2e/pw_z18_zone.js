@@ -90,7 +90,7 @@ const { CHROME } = require('./_env');
     !!d3 && d3.text.startsWith('У 1 гостя 20 мин этой зоны') && /Сжечь 20 мин\? Ещё раз/.test(armB)
     && /Сожжено 20 мин у 1 гостя — гостям ушло уведомление/.test(t3 || '') && grants(U2) === `Standard:15,${ZN}:0` && !!d4 && d4.drop,
     JSON.stringify({ d3: d3 && d3.text.slice(0, 60), armB, t3, g: grants(U2) }));
-  await click('#zn_drop'); await z.sleep(300); await click('#zn_drop'); await z.sleep(1500);
+  await click('#zn_drop'); await z.sleep(300); await click('#zn_drop'); await z.idle(page); // З19-и14: после записи — ждём страницу, а не паузу
   await page.evaluate(id => zoneEdit(id), STD);
   await z.sleep(500);
   const d5 = await del();

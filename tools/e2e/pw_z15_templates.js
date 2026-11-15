@@ -32,9 +32,9 @@ const z = require('./_z');
     await page.uncheck(`.shDay[data-b="${wd}"]`);
     await page.fill('#shSort', '0');
     await page.click('#drawer button:has-text("Сохранить")');
-    await z.sleep(1200);
+    await z.idle(page); // З19-и14: после записи — ждём страницу, а не паузу
     const ov = norm(await z.text(page, '#shOverlap'));
-    if (ov.endsWith('Всё равно сохранить')) { await page.click('#shOverlap button:has-text("Всё равно сохранить")'); await z.sleep(1200); }
+    if (ov.endsWith('Всё равно сохранить')) { await page.click('#shOverlap button:has-text("Всё равно сохранить")'); await z.idle(page); }
     return ov;
   };
   const boss = await z.openAdmin('boss');

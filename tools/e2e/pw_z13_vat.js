@@ -101,7 +101,7 @@ const z = require('./_z');
   z.check('первый клик «Сохранить» — взвод «Ещё раз — сменить расчёт VAT», запроса нет', /Ещё раз — сменить расчёт VAT/.test(armed || '') && reqs.length === n0,
     `${armed}; запросов +${reqs.length - n0}`);
   await click(page, '#setSave');
-  await z.sleep(1800);
+  await z.idle(page); // З19-и14: после записи — ждём страницу, а не паузу
   const put1 = last('PUT', /\/admin\/settings$/);
   z.check('второй клик — один PUT {acc_vat_moment: 1, acc_topup_vat: 8}; в базе 1 и 8; в журнале одна строка «acc_topup_vat: 23→8, acc_vat_moment: 0→1»',
     reqs.length === n0 + 1 && !!put1 && JSON.stringify(put1.b) === JSON.stringify({ acc_vat_moment: 1, acc_topup_vat: 8 })
@@ -124,7 +124,7 @@ const z = require('./_z');
   const n1 = reqs.length;
   await pick(page, '#set_topupvat', '5');
   await click(page, '#setSave');
-  await z.sleep(1800);
+  await z.idle(page);
   const put2 = last('PUT', /\/admin\/settings$/);
   z.check('только ставка пополнения (8 % → 5 %) — без взвода: один клик, PUT {acc_topup_vat: 5}, в базе 5',
     reqs.length === n1 + 1 && !!put2 && JSON.stringify(put2.b) === '{"acc_topup_vat":5}' && setting('acc_topup_vat') === '5', JSON.stringify(put2));
@@ -142,7 +142,7 @@ const z = require('./_z');
   await pick(page, '#zn_vat', '8');
   await z.shot(page, 'z13_zone');
   await saveDrawer(page);
-  await z.sleep(1800);
+  await z.idle(page);
   const zp = last('PATCH', /\/admin\/zones\//), zt2 = await vatCell(page, '#zonesTable', ['Standard']);
   z.check('«Сохранить»: PATCH с vat_pct 8, в базе 8, в списке 8 %, в журнале «VAT 23 % → 8 %»',
     !!zp && !!zp.b && zp.b.vat_pct === 8 && vatOf('zones', zone) === '8' && !!zt2 && zt2.vats[0] === '8 %' && /VAT 23 % → 8 %/.test(lastAudit('zone_update')),
@@ -151,7 +151,7 @@ const z = require('./_z');
   await z.sleep(500);
   const zv = await page.evaluate(() => (document.getElementById('zn_vat') || {}).value);
   await saveDrawer(page);
-  await z.sleep(1800);
+  await z.idle(page);
   const zp2 = last('PATCH', /\/admin\/zones\//);
   z.check('снова шторка зоны: стоит 8 %; «Сохранить», не тронув ставку, — vat_pct в запросе нет, в базе 8',
     zv === '8' && !!zp2 && zp2 !== zp && !!zp2.b && !('vat_pct' in zp2.b) && vatOf('zones', zone) === '8', JSON.stringify({ zv, zp2 }));
@@ -177,7 +177,7 @@ const z = require('./_z');
   await z.sleep(300);
   await z.shot(page, 'z13_pack');
   await saveDrawer(page);
-  await z.sleep(1800);
+  await z.idle(page);
   const pp = last('PATCH', /\/admin\/packages\//), pt2 = await vatCell(page, '#packsTable', ['3 часа Standard']);
   z.check('шторка пакета: выбрал 5 %, сменил зону — выбор 5 % на месте; вернул зону, «Сохранить» — PATCH с vat_pct 5 и прежней зоной, в базе 5, в списке 5 %',
     away.v === '5' && away.zone !== packZone && !!pp && !!pp.b && pp.b.vat_pct === 5 && pp.b.zone_id === packZone
@@ -227,7 +227,7 @@ const z = require('./_z');
   await z.sleep(500);
   await pick(page, '#gd_vat', '8');
   await saveDrawer(page);
-  await z.sleep(2500);
+  await z.idle(page);
   const gp = last('PATCH', /\/admin\/goods\//), gt3 = await vatCell(page, '#goodsTable', [A, B]);
   z.check('«Суп»: 8 % и «Сохранить» — PATCH с vat_pct 8; в базе и в списке «Суп» — 8 %, «Салат» — 5 %; в журнале «VAT 5 % → 8 %»',
     !!gp && !!gp.b && gp.b.vat_pct === 8 && vatOf('goods', ga) === '8' && vatOf('goods', gb) === '5' && !!gt3 && gt3.vats.join() === '8 %,5 %'
@@ -236,7 +236,7 @@ const z = require('./_z');
   await z.sleep(500);
   const bv = await page.evaluate(() => (document.getElementById('gd_vat') || {}).value);
   await saveDrawer(page);
-  await z.sleep(2500);
+  await z.idle(page);
   const gp2 = last('PATCH', /\/admin\/goods\//);
   z.check('«Салат»: в шторке 5 %; «Сохранить», не тронув ставку, — vat_pct в запросе нет, в базе 5',
     bv === '5' && !!gp2 && gp2 !== gp && gp2.u.endsWith(gb) && !!gp2.b && !('vat_pct' in gp2.b) && vatOf('goods', gb) === '5', JSON.stringify({ bv, gp2 }));

@@ -99,7 +99,7 @@ const { CHROME } = require('./_env');
     await boss.click('#zr_add'); await z.sleep(300);
     const E = E0 % 1440;
     await fill((E - 30 + 1440) % 1440, (E + 30) % 1440, 30, 'z24u ночь');
-    await boss.click('#zr_save'); await z.sleep(800);
+    await boss.click('#zr_save'); await z.idle(boss); // З19-и14: после записи — ждём страницу, а не паузу
     const b2 = await box();
     z.check(`«Правило» внахлёст (${hm((E - 30 + 1440) % 1440)}–${hm((E + 30) % 1440)}): в форме — «Накладывается на правило «${R1}»…», правило одно`,
       !!b2 && b2.form && /Накладывается на правило «каждый день/.test(b2.err) && b2.err.includes(R1) && rules().length === 1, JSON.stringify([b2, rules()]));
@@ -117,7 +117,7 @@ const { CHROME } = require('./_env');
     const pre = await boss.evaluate(() => ({ rate: document.getElementById('zr_rate').value, start: document.getElementById('zr_start').value,
       days: [...document.querySelectorAll('.zrDay')].filter(c => c.checked).length, save: document.getElementById('zr_save').textContent.trim() }));
     await boss.fill('#zr_rate', '35'); await boss.fill('#zr_note', 'z24u ночь дороже');
-    await boss.click('#zr_save'); await z.sleep(1200);
+    await boss.click('#zr_save'); await z.idle(boss);
     const b4 = await box();
     z.check('«Правка»: форма с цифрами правила (30, начало, 7 дней, «Сохранить правило») — цена 35 и заметка сохранены',
       pre.rate === '30' && pre.start === hm(E) && pre.days === 7 && pre.save === 'Сохранить правило' && !!b4
@@ -131,7 +131,7 @@ const { CHROME } = require('./_env');
     await del(); await z.sleep(200);
     const armed = await boss.evaluate(() => { const r = document.querySelectorAll('#zr_box .zrRow')[1]; return r ? r.querySelector('button.danger').textContent : null; });
     const n1 = rules().length;
-    await del(); await z.sleep(1200);
+    await del(); await z.idle(boss);
     const b5 = await box();
     z.check('«Правка» и ✕ правила — в одну строку; ✕: первое нажатие — «Убрать? Ещё раз» (правило на месте), второе — убрано, осталось одно',
       rowFit.length === 2 && rowFit.every(Boolean) && /Убрать\? Ещё раз/.test(armed || '') && n1 === 2 && !!b5 && b5.rows.length === 1 && rules().length === 1, JSON.stringify([rowFit, armed, n1, b5 && b5.rows]));

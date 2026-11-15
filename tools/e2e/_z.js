@@ -141,13 +141,11 @@ async function openAdmin(nick = 'boss', { password, viewport = { width: 1440, he
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   browsers.push(browser);
   const page = await (await browser.newContext({ viewport, ...(timezoneId ? { timezoneId } : {}) })).newPage();
+  net(page); // З19-и14: сеть страницы — под счёт сразу: idle после первого же действия видит его запросы
   page.on('pageerror', e => jsErrors.push(`${nick}: ${e.message}`));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', nick); await page.fill('#pass', password || passwordOf(nick));
-  await page.keyboard.press('Enter');
-  await page.waitForSelector('#rail', { state: 'visible', timeout: 10000 });
-  await sleep(1500); // тур стартует через 0,9 с после входа — пропускаем, если показан
-  await page.evaluate(() => { const t = document.getElementById('tour'); if (t && !t.classList.contains('hidden')) tourSkip(); });
+  // З19-и14: вход — signIn: когда запас лимитера стенда полный; страница — проверке, когда вход дописан (entered)
+  if (!await signIn(page, nick, password || passwordOf(nick))) throw new Error(`openAdmin(${nick}): рейла нет — вход не прошёл`);
   return page;
 }
 async function nav(page, screen) { await page.evaluate(s => nav(s), screen); await sleep(1500); }
@@ -171,7 +169,9 @@ function net(page) { // запросы страницы в полёте — по
   nets.set(page, n);
   return n;
 }
-// страница дописала своё: quiet мс без запросов в полёте — и от последнего запроса, и от вызова; не затихла за timeout — false
+// страница дописала своё: quiet мс без запросов в полёте — и от последнего запроса, и от вызова; не затихла за timeout — false.
+// З19-и14: после записи (нажатие, которое шлёт запрос) — idle, а не пауза: ответ бывает дольше паузы. Страница, открытая не
+// через openAdmin, — сначала watch(page), до первого действия
 async function idle(page, { quiet = 300, timeout = 10000 } = {}) {
   const n = net(page), t0 = Date.now();
   while (Date.now() - t0 < timeout) {
@@ -179,6 +179,34 @@ async function idle(page, { quiet = 300, timeout = 10000 } = {}) {
     await sleep(50);
   }
   return false;
+}
+// ── вход в админку (З19-и14) ──
+// Вход — около 25 запросов разом («Зал», а когда поднимется живой канал, — он же ещё раз), больше запаса лимитера стенда:
+// 20 запросов на адрес и 10 в секунду, а все проверки ходят с одного адреса. Поэтому входим, когда запас полный (REST
+// без своих запросов: прошлая проверка или своя подготовка могли его потратить), и отдаём страницу, когда вход дописан —
+// entered: рейл, живой канал поднят (тикет сокета — тоже запись), REST без запросов страницы (запас снова полный), тур
+// пропущен (стартует через 0,9 с после входа — к этому времени уже показан). Свой вход — signIn, перезагрузка — reenter.
+const REST = 2000;
+async function entered(page, { timeout = 15000 } = {}) {
+  if (!await page.waitForSelector('#rail', { state: 'visible', timeout }).then(() => true, () => false)) return false;
+  await page.waitForFunction(() => typeof wsOpen === 'undefined' || wsOpen, null, { timeout }).catch(() => {});
+  const n = net(page);
+  for (const t0 = Date.now(); Date.now() - t0 < timeout && (n.open.size || Date.now() - n.at < REST);) await sleep(50);
+  if (await page.evaluate(() => { const t = document.getElementById('tour'); const on = !!t && !t.classList.contains('hidden');
+    if (on) tourSkip(); return on; })) await idle(page);
+  return true;
+}
+async function signIn(page, nick, password) {
+  net(page);
+  await sleep(REST); // лимитер стенда: вход — когда запас адреса полный
+  await page.fill('#nick', nick); await page.fill('#pass', password); await page.keyboard.press('Enter');
+  return entered(page);
+}
+async function reenter(page) {
+  net(page);
+  await sleep(REST); // лимитер стенда: перезагрузка — тот же залп запросов, что вход
+  await page.reload({ waitUntil: 'load' });
+  return entered(page);
 }
 async function toastAfter(page, act, want, { timeout = 15000 } = {}) {
   net(page);
@@ -200,4 +228,4 @@ async function toastAfter(page, act, want, { timeout = 15000 } = {}) {
 
 module.exports = { API, BASE, DB, OUT, WEB_DIR, GUEST_PASS, STAFF_PASS, passwordOf, sleep, rows, sql, uid, dropGood, call, login, tok, api,
   clubDay, hireTemp, dismiss, pinShift, hideOpenings, unhideOpenings, check, atEnd, done, crash, jsErrors, openAdmin,
-  nav, shot, text, toastAfter, idle };
+  nav, shot, text, toastAfter, idle, watch: net, entered, signIn, reenter };

@@ -21,12 +21,12 @@ const { CHROME } = require('./_env');
   const blank = async (nick, viewport = { width: 1440, height: 900 }) => {
     const br = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
     z.atEnd(() => br.close());
-    const p = await (await br.newContext({ viewport })).newPage();
+    const p = await (await br.newContext({ viewport })).newPage(); z.watch(p);
     p.on('pageerror', e => z.jsErrors.push(`${nick}: ${e.message}`));
     await p.goto(z.BASE + '/admin', { waitUntil: 'load' });
     return p;
   };
-  const enterAs = async (p, nick, pass) => { await p.fill('#nick', nick); await p.fill('#pass', pass); await p.keyboard.press('Enter'); await z.sleep(2500); };
+  const enterAs = async (p, nick, pass) => { await p.fill('#nick', nick); await p.fill('#pass', pass); await p.keyboard.press('Enter'); await z.idle(p); }; // З19-и14: после записи — ждём страницу, а не паузу
   // тур знакомства стартует через 0,9 с после входа в админку — пропускаем, как openAdmin
   const skipTour = async p => { await z.sleep(1200); await p.evaluate(() => { const t = document.getElementById('tour'); if (t && !t.classList.contains('hidden')) tourSkip(); }); };
   const screen = p => p.evaluate(() => { const g = id => document.getElementById(id), vis = id => !!g(id) && !g(id).classList.contains('hidden');
@@ -59,7 +59,7 @@ const { CHROME } = require('./_env');
   const temp = tb.tp;
 
   await tp.evaluate(() => api('/admin/work/me').catch(() => {})); // любой запрос открытой админки z14t
-  await z.sleep(2000);
+  await z.idle(tp); // выход после «пароль сменили» — запись
   const s1 = await screen(tp);
   z.check('открытая админка z14t на первом же запросе — экран входа «Пароль менялся — войди новым. Не знаешь его — спроси владельца.»',
     !s1.app && s1.login && s1.err === 'Пароль менялся — войди новым. Не знаешь его — спроси владельца.', JSON.stringify(s1));
@@ -92,7 +92,7 @@ const { CHROME } = require('./_env');
   const s5 = await screen(up);
   await up.fill('#pw_cur', r.data.temp_password); await up.fill('#pw_new', NEWU); await up.fill('#pw_new2', NEWU);
   await up.press('#pw_new2', 'Enter');
-  await z.sleep(2500);
+  await z.idle(up);
   const s6 = await screen(up);
   await skipTour(up);
   z.check('перезагрузка на экране смены — он же, временный спрашивают; Enter — админка', s5.pw && s5.cur && !s5.app && s6.app && flag(uu) === 'f',

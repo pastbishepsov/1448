@@ -3,7 +3,7 @@
 // «Посадить за…» из карточки, таблица гостей без персонала, фильтры/сортировка, очередь по телефону
 // и выбор кандидата, продажа с кандидатами.
 const { chromium } = require('playwright-core');
-const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
+const { toastAfter, idle, watch, signIn, reenter } = require('./_z'); // З19-и13: тост этого действия; З19-и14: после записи — idle
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { spawn, execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -34,12 +34,11 @@ const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinu
   await sleep(800);
 
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'admin1'); await page.fill('#pass', 'Admin12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page, 'admin1', 'Admin12345'); // З19-и14: вход — когда запас лимитера стенда полный, дальше — когда вход дописан, а не пауза
   await page.evaluate(() => nav('hall'));
   await sleep(1500);
 
@@ -74,7 +73,7 @@ const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinu
   const stockBefore = +psql(`SELECT stock FROM goods WHERE name='Woda 0.5'`);
   await page.click('.gtile:has-text("Woda 0.5")'); await sleep(300); // Ж6: плитка кладёт в чек, продаёт кнопка
   await page.click('#cartSellBtn');
-  await sleep(1200);
+  await idle(page); // З19-и14: после записи — ждём страницу, а не паузу
   const saleRow = psql(`SELECT u.nickname FROM sales s JOIN users u ON u.id=s.user_id WHERE s.name='Woda 0.5' ORDER BY s.created_at DESC LIMIT 1`);
   check('плитка «Woda 0.5» → продажа записана на Guest29', saleRow === 'Guest29' && +psql(`SELECT stock FROM goods WHERE name='Woda 0.5'`) === stockBefore - 1, saleRow);
   const lastSale = psql(`SELECT id FROM sales WHERE name='Woda 0.5' ORDER BY created_at DESC LIMIT 1`);
@@ -87,11 +86,11 @@ const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinu
   check('напечатали другое — чип выбранного гостя снят', chipAfterType, '');
   await page.click('.gtile:has-text("Woda 0.5")'); await sleep(300); // Ж6: в чек, затем «Продать»
   await page.click('#cartSellBtn');
-  await sleep(1200);
+  await idle(page); // ник неоднозначный — кандидаты приходят ответом на продажу
   const cands = await page.evaluate(() => [...document.querySelectorAll('#saleCands .cands button b')].map(b => b.textContent));
   check('продажа «Guest2» → кандидаты под тулбаром (2–5)', cands.length >= 2 && cands.length <= 5, cands.join(', '));
   await page.click('#saleCands .cands button:has-text("Guest28")');
-  await sleep(1400);
+  await idle(page);
   const afterPick = await page.evaluate(() => ({ chip: document.getElementById('saleGuestChip').textContent, cands: document.getElementById('saleCands').innerHTML.length, toast: document.getElementById('toast').textContent }));
   const saleRow2 = psql(`SELECT u.nickname FROM sales s JOIN users u ON u.id=s.user_id WHERE s.name='Woda 0.5' AND s.voided_at IS NULL ORDER BY s.created_at DESC LIMIT 1`);
   check('выбор Guest28 → продажа записана на него, чип ✓ Guest28, список кандидатов убран', saleRow2 === 'Guest28' && /Guest28/.test(afterPick.chip) && afterPick.cands === 0, JSON.stringify({ saleRow2, chip: afterPick.chip, toast: afterPick.toast }));
@@ -161,17 +160,17 @@ const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinu
     await page.evaluate(() => { window.__toasts = []; const t = toast; toast = (msg, ...a) => { __toasts.push(String(msg)); return t(msg, ...a); }; });
     await page.fill('#wlNick', '+48 500 120 028');
     await page.press('#wlNick', 'Enter');
-    await sleep(1500);
+    await idle(page);
     const wl1 = await page.evaluate(() => ({ list: document.getElementById('wlList').textContent.replace(/\s+/g, ' '), toast: __toasts.join(' | '), inp: document.getElementById('wlNick').value }));
     check('очередь по телефону: Guest28 в списке, тост «⏳ Guest28 в очереди — №1», поле очищено', /Guest28/.test(wl1.list) && /Guest28 в очереди — №1/.test(wl1.toast) && wl1.inp === '', JSON.stringify(wl1));
     await page.fill('#wlNick', 'Guest2');
     await page.press('#wlNick', 'Enter');
-    await sleep(1500);
+    await idle(page);
     const wlCands = await page.evaluate(() => [...document.querySelectorAll('#wlCands .cands button b')].map(b => b.textContent));
     check('очередь «Guest2» → выбор кандидатов под полем (2–5)', wlCands.length >= 2 && wlCands.length <= 5, wlCands.join(', '));
     await page.evaluate(() => { __toasts = []; });
     await page.click('#wlCands .cands button:has-text("Guest27")');
-    await sleep(1500);
+    await idle(page);
     const wl2 = await page.evaluate(() => ({ list: document.getElementById('wlList').textContent.replace(/\s+/g, ' '), cands: document.getElementById('wlCands').innerHTML.length, toast: __toasts.join(' | ') }));
     check('выбор Guest27 → в очереди №2, кандидаты убраны', /Guest27/.test(wl2.list) && wl2.cands === 0 && /Guest27 в очереди — №2/.test(wl2.toast), JSON.stringify(wl2));
   } finally {

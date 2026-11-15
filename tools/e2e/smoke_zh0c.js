@@ -1,16 +1,16 @@
 const { chromium } = require('playwright-core');
+const { idle, watch, signIn, reenter } = require('./_z'); // З19-и14: после записи — ждём страницу, а не паузу
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page);
   const errors = [], refreshes = [], wsUrls = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('response', r => { if (r.url().endsWith('/auth/refresh')) refreshes.push(r.status()); });
   page.on('websocket', ws => wsUrls.push(ws.url()));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'admin1'); await page.fill('#pass', 'Admin12345'); await page.keyboard.press('Enter');
-  await sleep(3500);
+  await signIn(page, 'admin1', 'Admin12345'); // З19-и14: вход дописан — и сокет поднят (тикет — запись), а не пауза
   const live = await page.evaluate(() => ({ wsOpen, liveTxt: document.getElementById('liveTxt').textContent }));
   console.log('WS:', JSON.stringify(live), 'urls:', wsUrls.map(u => u.replace(/ticket=.*/, 'ticket=…')).join(' '));
   console.log('в URL сокета нет eyJ:', wsUrls.every(u => !u.includes('eyJ')), '| есть ticket=:', wsUrls.every(u => u.includes('ticket=')));
@@ -33,7 +33,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   console.log(results.join('\n'));
   // живой канал переживает реконнект: рвём сокет — админка берёт новый тикет
   await page.evaluate(() => ws.close());
-  await sleep(6500);
+  await page.waitForFunction(() => !wsOpen, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => wsOpen, null, { timeout: 30000 }).catch(() => {}); // З19-и14: переподключение (новый тикет — запись) — по факту
   const live2 = await page.evaluate(() => ({ wsOpen, liveTxt: document.getElementById('liveTxt').textContent }));
   console.log('после обрыва:', JSON.stringify(live2), 'сокетов всего:', wsUrls.length);
   const loginShown = await page.locator('#loginView').isVisible();

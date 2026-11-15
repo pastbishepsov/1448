@@ -94,6 +94,9 @@ const z = require('./_z');
   await z.shot(boss, 'z21_pulse_desktop');
 
   // раз в 5 минут — сам (счётчик секундного таймера подвинут к 300)
+  // З19-и14: секундный таймер админки стоит, пока последний обмен не удался («нет связи» ставит и один 429 лимитера стенда
+  // в залпе входа — «Найдено по дороге», З19-и14): сначала — связь есть, потом счётчик к 300
+  await boss.waitForFunction(() => lastSync > 0, null, { timeout: 40000 }).catch(() => {});
   const before = calls;
   await boss.evaluate(() => { pulseTick = 297; });
   await z.sleep(4500);

@@ -2,7 +2,7 @@
 // второй строкой, шторка ожидания шелла, «⚠ занят без сессии» + «Освободить ПК» arm-паттерном,
 // «Продлить» у придержания, рамка «зовёт» по ПК гостя, легенда, схема ужимается при шторке.
 const { chromium } = require('playwright-core');
-const { toastAfter } = require('./_z'); // З19-и13: тост этого действия, а не #toast через паузу
+const { toastAfter, idle, watch, signIn, reenter } = require('./_z'); // З19-и13: тост этого действия; З19-и14: после записи — idle
 const { API, BASE, DB, CHROME, OUT, MOCK_AGENT, agentLog, WEB_DIR } = require('./_env'); // стенд задаётся окружением, см. README
 const { spawn, execSync } = require('child_process');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -27,12 +27,11 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   psql(`UPDATE computers SET status='in_session' WHERE name='PC-07'`); // залипший
 
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); watch(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/admin', { waitUntil: 'load' });
-  await page.fill('#nick', 'admin1'); await page.fill('#pass', 'Admin12345'); await page.keyboard.press('Enter');
-  await sleep(2500);
+  await signIn(page, 'admin1', 'Admin12345'); // З19-и14: вход — когда запас лимитера стенда полный, дальше — когда вход дописан, а не пауза
   await page.evaluate(() => nav('hall'));
   await sleep(1500);
   // легенда
@@ -82,7 +81,7 @@ const psql = q => execSync(`psql "${DB}" -tAc "${q.replace(/"/g, '\\"')}"`).toSt
   await page.evaluate(id => openPCDrawer(id), P('PC-06').id);
   await sleep(400);
   await page.click('#drawerBody button:has-text("Занять под регистрацию")');
-  await sleep(1200);
+  await idle(page); // З19-и14: после записи — ждём страницу, а не паузу
   await page.evaluate(id => openPCDrawer(id), P('PC-06').id);
   await sleep(500);
   const holdBtns = await page.evaluate(() => [...document.querySelectorAll('#drawerBody button')].map(b => b.textContent.trim()));

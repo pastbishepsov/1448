@@ -107,10 +107,7 @@ const { execFileSync } = require('child_process');
   z.check(`месяц целиком, CSV по-русски: у листа — файл в архиве («01_o_vygruzke.csv», «02_zapisi_kpir.csv»…), архив «1448-vygruzka-${PREV}.zip», листы — как у сервера`,
     s4.monthOn && s4.fmt === 'csv' && s4.lang === 'ru' && s4.name === `1448-vygruzka-${PREV}.zip` && s4.head === '№|Лист и файл в архиве|Данных' && same(s4, P4, true)
     && s4.sheets.slice(0, 2).map(r => r[1]).join('|') === 'О выгрузке01_o_vygruzke.csv|Записи для KPiR02_zapisi_kpir.csv', JSON.stringify(s4.sheets.slice(0, 3)));
-  await boss.reload({ waitUntil: 'load' });
-  await boss.waitForSelector('#rail', { state: 'visible', timeout: 15000 });
-  await z.sleep(1500);
-  await boss.evaluate(() => { const t = document.getElementById('tour'); if (t && !t.classList.contains('hidden')) tourSkip(); });
+  await z.reenter(boss); // З19-и14: перезагрузка — снова вход, как openAdmin: тур пропущен, живой канал поднят
   await outWait(boss, () => boss.evaluate(() => accGo('out')));
   const s5 = await screen(boss);
   z.check('после перезагрузки формат и язык — как выбрали (CSV, по-русски), месяц — снова прошлый', s5.fmt === 'csv' && s5.lang === 'ru' && s5.month === mname(PREV)
