@@ -1718,6 +1718,7 @@ function enter(){
   nav(OWNER_SECTIONS.includes(saved) && me.role !== 'owner' ? 'hall' : saved);
   if (curTab === 'catalog' || OWNER_SECTIONS.includes(curTab)) refresh(); // KPI в шапке
   setPolling(7000);
+  enteredAt = Date.now(); wsFirst = true; // З19-и15: первый живой канал после входа — без второй загрузки (ws.onopen)
   connectWS();
   loadFeedBackfill(); // Ж3-и4: лента зала не пустая после перезагрузки
   loadMyShift(); // Е3-и2: состояние смены — с первого экрана, а не по заходу в «Персонал»
@@ -1949,8 +1950,7 @@ function setHTML(id, html){
 }
 
 /* live-индикатор в топбаре (Б1: точка серая до первого синка, зелёная — при живом обмене) */
-setInterval(() => {
-  if (!me) return;
+function paintLive(){
   const live = document.getElementById('live'), txt = document.getElementById('liveTxt');
   if (lastSync === -1){ live.classList.add('bad'); live.classList.remove('ok'); txt.textContent = 'нет связи'; return; }
   if (!lastSync){ live.classList.remove('ok','bad'); txt.textContent = 'подключение…'; return; }
@@ -1959,6 +1959,13 @@ setInterval(() => {
   live.classList.toggle('bad', bad);
   live.classList.toggle('ok', !bad);
   txt.textContent = wsOpen ? 'live' : ('обновлено ' + s + ' с назад');
+}
+setInterval(() => {
+  if (!me) return;
+  // З19-и15: индикатор — своей функцией. Раньше «нет связи» и «подключение…» выходили из таймера раньше времени, и пока
+  // не пройдёт удачный обмен (при живом канале — до 30 с; «нет связи» ставит и один 429 лимитера), стояли смена и канал
+  // раз в минуту, пульс «Отчётов» и живой таймер сессии в шторке ПК
+  paintLive();
   // Е3-и2: чип показывает ВРЕМЯ НАЧАЛА, а не счётчик, — раз в минуту хватает,
   // чтобы поймать чужое действие (владелец закрыл смену из табеля). Считаем
   // своим счётчиком: «секунды с последнего синка» сбрасываются каждый обмен,
@@ -1977,6 +1984,9 @@ setInterval(() => {
    событиями, поллинг замедляется до страховочных 30с; при разрыве —
    реконнект каждые 5с и fallback на прежний 7с-поллинг ── */
 let ws = null, wsOpen = false, wsRetry = null, refDeb = null;
+// З19-и15: первый канал сразу после входа (за WS_FRESH_MS от enter) «Зал» и ленту второй раз не грузит
+const WS_FRESH_MS = 2000;
+let wsFirst = false, enteredAt = 0;
 let feed = []; // последние события для ленты Зала (кап 30)
 const FEED_ICON = {session_start:'clock', session_end:'power', shell_online:'monitor',
                    shell_offline:'monitor', deposit:'coins', booking:'cal', ban:'ban', chat:'bell',
@@ -1996,7 +2006,15 @@ async function connectWS(){
   if (!me) return;
   try{ ws = new WebSocket(API.replace(/^http/, 'ws') + '/ws/admin?ticket=' + encodeURIComponent(ticket)); }
   catch(e){ scheduleWSRetry(); return; }
-  ws.onopen = () => { wsOpen = true; setPolling(30000); refresh(); loadFeedBackfill(); }; // Ж3-и4: что было, пока сокет молчал
+  ws.onopen = () => {
+    wsOpen = true; setPolling(30000);
+    // Ж3-и4: что было, пока сокет молчал, — догоняем. З19-и15: кроме первого канала сразу после входа — «Зал» и ленту вход
+    // только что загрузил, а второй раз — это 25 запросов разом при запасе лимитера 20 на адрес, и нажатое в первые
+    // секунды получало 429. Канал поднялся позже WS_FRESH_MS (медленная связь) или после обрыва — догоняем
+    const fresh = wsFirst && Date.now() - enteredAt < WS_FRESH_MS;
+    wsFirst = false;
+    if (!fresh){ refresh(); loadFeedBackfill(); }
+  };
   ws.onclose = ev => {
     wsOpen = false; ws = null;
     if (!me) return;
