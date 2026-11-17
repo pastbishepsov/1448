@@ -3,7 +3,7 @@
 // 1. Главный экран: в ряду «Приложения» папки «Другие» нет; «Войсчат» и «Системные» — папки; Google Chrome —
 //    плитка в том же ряду, того же размера и в одну линию с папками; ряд платформ не тронут («Другие игры» — папка).
 // 2. Одно нажатие по плитке: агент получил одну команду запуска Chrome, папка не открылась; плитка «запускается…» →
-//    «запущена»; второе нажатие второй раз не запускает; если Chrome на ПК нет — плитка погашена и говорит почему.
+//    «работает»; второе нажатие второй раз не запускает; если Chrome на ПК нет — плитка погашена и говорит почему.
 // 3. Папки: «Войсчат» (внутри Discord) — выход по Esc и боковой кнопкой мыши; «Системные» (4 приложения) — «← Назад».
 // 4. Вкладка «Приложения» и поиск — как были: раздел «Другие» с Chrome на месте, поиск находит Chrome.
 // 5. EN и PL; экраны 1920, 1440, 1366 и 1280; правило: без группы ни одного приложения и сразу четыре.
@@ -169,17 +169,17 @@ const NO = 'плитки Chrome на главном экране нет';
   ag.running = { app_id: 'browser', pid: 4242 };
   await poll();
   const l2 = await look(), t2 = tiles(l2).find(k => k.id === 'browser') || {};
-  z.check('агент сообщил, что Chrome работает, — плитка пишет «запущена»', hasTile && t2.cls === 'st-running' && t2.st === cat.t.stR, hasTile ? J([t2.cls, t2.st]) : NO);
+  z.check('агент сообщил, что Chrome работает, — плитка пишет «работает»', hasTile && t2.cls === 'st-running' && t2.st === cat.t.stR, hasTile ? J([t2.cls, t2.st]) : NO);
   if (hasTile) { await p.click(TILE); await p.waitForTimeout(500); }
   const l3 = await look();
-  z.check('второе нажатие второй раз не запускает: «уже запущена», команда агенту по-прежнему одна',
+  z.check('второе нажатие второй раз не запускает: «уже работает», команда агенту по-прежнему одна',
     hasTile && same(ag.launches, ['browser']) && l3.toast === cat.t.again, hasTile ? J([ag.launches, l3.toast]) : NO);
   ag.running = null; ag.apps = { browser: { available: false, reason: 'target_missing' } };
   await poll();
   const l4 = await look(), t4 = tiles(l4).find(k => k.id === 'browser') || {};
   if (hasTile) { await p.click(TILE); await p.waitForTimeout(500); }
   const l5 = await look();
-  z.check('если Chrome на этом ПК не установлен — плитка погашена («недоступна»), нажатие объясняет почему и ничего не запускает',
+  z.check('если Chrome на этом ПК не установлен — плитка погашена («недоступно»), нажатие объясняет почему и ничего не запускает',
     hasTile && t4.cls === 'st-off' && t4.st === cat.t.stOff && l5.toast === cat.t.missing && l5.toast.includes(CH) && same(ag.launches, ['browser']),
     hasTile ? J([t4.cls, t4.st, l5.toast, ag.launches]) : NO);
   ag.apps = {};
