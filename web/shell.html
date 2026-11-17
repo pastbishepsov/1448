@@ -146,6 +146,11 @@
   .folder .f-prev svg{width:15px; height:15px; display:block} .folder .f-prev b{font-size:10px; letter-spacing:.04em}
   .folder .f-name{font-weight:800; font-size:14.5px}
   .folder .f-cnt{color:var(--dim); font-size:12px}
+  /* К11-и2: приложение без группы лежит в ряду папок плиткой того же размера — запуск одним нажатием */
+  .folders .app{border-radius:15px; padding:18px 14px 14px; justify-content:center}
+  .folders .app .aicon{height:40px} .folders .app .aicon svg{width:40px; height:40px} .folders .app .aicon .em{font-size:36px}
+  .folders .app .n{font-size:14.5px; font-weight:800}
+  .folders.apps-row{grid-auto-rows:1fr} /* ряд перенёсся — строки одной высоты: плитки без папок не ниже папок */
   /* шапка внутри папки + подзаголовки групп приложений */
   .folder-top{display:flex; align-items:center; gap:11px; margin:4px 2px 16px}
   .folder-top>svg{width:22px; height:22px; color:var(--txt); flex:none}
@@ -2971,7 +2976,7 @@ const DEMO_CATALOG = {
     {id:'valorant', name:'Valorant',         sub:'Riot Games', tag:'VAL',  launch:{type:'agent'}},
     {id:'fortnite', name:'Fortnite',         sub:'Epic Games', tag:'FN',   launch:{type:'proto', uri:'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true'}},
   ],
-  apps: [ // sub — папка приложения (пусто = «Другие»)
+  apps: [ // sub — папка приложения (пусто = без папки: плитка в ряду папок; во вкладке «Приложения» — раздел «Другие»)
     {id:'discord', name:'Discord',       sub:'Коммуникация', em:'💬', launch:{type:'proto', uri:'discord://'}},
     {id:'browser', name:'Google Chrome', em:'🌐', launch:{type:'url',   uri:'https://www.google.com'}},
     {id:'spotify', name:'Spotify',       em:'🎵', launch:{type:'proto', uri:'spotify:'}},
@@ -3792,7 +3797,8 @@ function rankName(n){ return RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
 function appName(n){ return APP_KEYS[n] ? STR[APP_KEYS[n]] : n; }
 /* Каталог в три ряда: (1) популярные игры плитками — сразу запускаются,
    (2) платформы-папки (Steam, Riot...) — внутри игры платформы и её клиент,
-   (3) папки приложений: Коммуникация / Системные / Другие (группа = subtitle).
+   (3) приложения: папки по группам (группа = subtitle; «Коммуникация» на экране — «Войсчат») и «Системные»,
+   а приложения без группы («Другие») — плитками в том же ряду, без папки (К11-и2).
    catFolder: null = главный экран | {t:'plat', name} | {t:'appgrp', name, sys} */
 let catFolder = null, catGroups = [], catAppGroups = [];
 const TOP_GAMES = 6; // запас: сколько популярных игр в верхнем ряду, если ширина неизвестна
@@ -4036,7 +4042,7 @@ function renderCatalog(bodyOnly){
       <div class="games">${gr.p ? clientTile(gr.p, gr.pi) : ''}${shown.map(gameTile).join('')}</div>
       ${rest > 0 ? `<button class="plat-btn cat-more" onclick="catMore()">${esc(T('cat_more', {n: rest}))}</button>` : ''}`;
   }
-  // ── внутри папки приложений (Коммуникация / Системные / Другие / свои) ──
+  // ── внутри папки приложений (Коммуникация / Системные / свои) ──
   else if (ag){
     body = `
       <div class="folder-top">${backBtn}${APPGRP_ICONS[ag.name] || FOLDER_ICON}<h2>${esc(grpName(ag.name))}</h2>
@@ -4047,7 +4053,7 @@ function renderCatalog(bodyOnly){
   else if (catFolder && catFolder.t === 'apps'){
     body = `<div class="folder-top">${backBtn}${UI.apps}<h2>${esc(STR.cat_apps)}</h2></div>` + catAppGroups.map(appGroupHtml).join('');
   }
-  // ── главный экран: (1) популярные игры, (2) платформы, (3) папки приложений ──
+  // ── главный экран: (1) популярные игры, (2) платформы, (3) приложения: папки и плитки без группы ──
   else {
     catFolder = null;
     const folderTile = (onclick, iconHtml, name, cnt, preview) => `
@@ -4068,7 +4074,10 @@ function renderCatalog(bodyOnly){
       g.items.length ? T('n_games', {n: g.items.length, w: plGame(g.items.length)}) : STR.client,
       g.items.slice(0,3).map(({g}) => icon(g)).join('') + (g.items.length > 3 ? '<b>+' + (g.items.length-3) + '</b>' : '')
     )).join('');
-    const appFolders = catAppGroups.map((s,i) => folderTile(
+    // К11-и2: приложения без группы («Другие») — не папка, а плитки в этом же ряду: запуск одним нажатием
+    const appRow = catAppGroups.map((s,i) => (!s.sys && s.name === 'Другие')
+      ? s.items.map(x => appTile('apps', x.a, x.i)).join('')
+      : folderTile(
       `openAppGroup(${i})`,
       APPGRP_ICONS[s.name] || FOLDER_ICON,
       s.name,
@@ -4082,7 +4091,7 @@ function renderCatalog(bodyOnly){
       <div class="sec-h"><h2>${UI.rocket} ${esc(STR.cat_platforms)}</h2><span class="cnt">${esc(STR.cat_plat_hint)}</span></div>
       <div class="folders">${platFolders}</div>
       <div class="sec-h"><h2>${UI.apps} ${esc(STR.cat_apps)}</h2><span class="cnt">${esc(STR.cat_apps_hint)}</span></div>
-      <div class="folders">${appFolders}</div>`;
+      <div class="folders apps-row">${appRow}</div>`;
   }
   const bodyEl = document.getElementById('catBody');
   if (bodyOnly && bodyEl) bodyEl.innerHTML = body;
