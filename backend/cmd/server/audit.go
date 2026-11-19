@@ -60,11 +60,59 @@ func logLoginFailed(u *models.User, n int, ip string) {
 // З15-и3 (№29): правки табеля владельцем (work_edit — кому, сколько было и
 // стало); приход и уход (work_start, work_stop) видят все.
 func auditOwnerOnly(action string) bool {
-	return action == "settings_update" || action == "login_failed" ||
-		action == "shift_close" || action == "work_edit" || action == "cash_correct" || action == "cash_event_void" ||
-		strings.HasPrefix(action, "staff_") || strings.HasPrefix(action, "expense_") || strings.HasPrefix(action, "counterparty_") ||
-		strings.HasPrefix(action, "owner_repay") || action == "supply_price" || action == "lot_price" ||
-		action == "export" || action == "requisites"
+	for _, a := range auditOwnerOnlyActions {
+		if action == a {
+			return true
+		}
+	}
+	for _, p := range auditOwnerOnlyPrefixes {
+		if strings.HasPrefix(action, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// auditOwnerOnlyActions и auditOwnerOnlyPrefixes — те же виды списком: целиком и по началу имени. По ним и
+// auditOwnerOnly, и запрос журнала админа (auditHideOwnerOnly, З19-и17).
+var (
+	auditOwnerOnlyActions = []string{"settings_update", "login_failed", "shift_close", "work_edit", "cash_correct",
+		"cash_event_void", "supply_price", "lot_price", "export", "requisites"}
+	auditOwnerOnlyPrefixes = []string{"staff_", "expense_", "counterparty_", "owner_repay"}
+)
+
+// auditHideOwnerOnly — владельческие виды прочь из запроса admin_actions (З19-и17): админу они отсеиваются до LIMIT, а
+// не после выборки. Раньше страница выходила короче лимита, а действие, не попавшее в выборку источника, но новее
+// последней строки страницы, не показывалось ни на этой странице, ни на следующей.
+func auditHideOwnerOnly(q *gorm.DB) *gorm.DB {
+	q = q.Where("action NOT IN ?", auditOwnerOnlyActions)
+	for _, p := range auditOwnerOnlyPrefixes {
+		q = q.Where("action NOT LIKE ?", likePrefix(p))
+	}
+	return q
+}
+
+// likePrefix — образец LIKE «начинается с p»: «_», «%» и «\» в p — буквально (staff_ — не «staff и любой знак»).
+func likePrefix(p string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(p) + "%"
+}
+
+// auditCut — сколько строк отдать страницей (строки — по времени, новее раньше) и есть ли ещё (З19-и17). Больше limit
+// — режем по limit, но не посреди одного момента: курсор before строгий («раньше момента»), и строки с тем же временем,
+// что первая отрезанная, иначе не попали бы ни на эту страницу, ни на следующую, — они целиком уходят на следующую
+// (так бывают одним моментом оплата долга за несколько товаров и отмена чека). Вся страница — один момент: по limit.
+func auditCut(at []time.Time, limit int) (int, bool) {
+	if len(at) <= limit {
+		return len(at), false
+	}
+	n := limit
+	for n > 0 && at[n-1].Equal(at[limit]) {
+		n--
+	}
+	if n == 0 {
+		n = limit
+	}
+	return n, true
 }
 
 // GET /admin/audit — лента событий: источники (начисления, депозиты и их
@@ -85,12 +133,17 @@ func auditOwnerOnly(action string) bool {
 //
 // Раньше бралось «по 100 свежих с каждого источника» и резалось до 100:
 // в бойкий день депозит со 150-й позиции пропадал, хотя формально был
-// «сегодня». Теперь каждый источник режется в ОДНОМ окне [from, before) тем
-// же лимитом, что и итог: любой элемент из настоящего топ-limit объединения
-// входит и в топ-limit своего источника, так что страница точная, а
-// следующая начинается с next_before. Отмены (deposit_void, sale_void)
-// живут в окне по моменту отмены, а не создания — иначе вчерашний депозит,
-// отменённый сегодня, не попадал бы в сегодняшний журнал.
+// «сегодня». Теперь каждый источник режется в ОДНОМ окне [from, before) —
+// на строку журнала больше, чем итог (З19-и17): любой элемент из настоящего
+// топ-limit объединения входит и в выборку своего источника, так что
+// страница точная, следующая начинается с next_before, а «есть ещё»
+// (слитых больше limit) честное и тогда, когда строк больше страницы только
+// у одного источника. Строка журнала — то, что видно: продажи одного чека —
+// одна строка, поэтому лимит у продаж — на чеки; владельческие действия
+// админу отсеиваются в самом запросе (auditHideOwnerOnly). Отмены
+// (deposit_void, sale_void) живут в окне по моменту отмены, а не создания —
+// иначе вчерашний депозит, отменённый сегодня, не попадал бы в сегодняшний
+// журнал.
 func handleAdminAudit(c *gin.Context) {
 	ownerView := c.GetString("user_role") == string(models.UserRoleOwner)
 	now := time.Now()
@@ -133,16 +186,19 @@ func handleAdminAudit(c *gin.Context) {
 		}
 	}
 	want := func(k string) bool { return len(kinds) == 0 || kinds[k] }
-	// scope — одно окно для всех источников по нужной колонке времени
-	scope := func(q *gorm.DB, col string) *gorm.DB {
+	// window — одно окно для всех источников по нужной колонке времени
+	window := func(q *gorm.DB, col string) *gorm.DB {
 		if windowed {
 			q = q.Where(col+" >= ? AND "+col+" < ?", from, to)
 		}
 		if !before.IsZero() {
 			q = q.Where(col+" < ?", before)
 		}
-		return q.Order(col + " DESC").Limit(limit)
+		return q
 	}
+	// scope — окно, свежие сверху и на строку больше страницы (З19-и17): по лишней строке видно, что у источника есть
+	// ещё, — раньше при строках больше страницы только у одного источника «Ещё 100» не было
+	scope := func(q *gorm.DB, col string) *gorm.DB { return window(q, col).Order(col + " DESC").Limit(limit + 1) }
 	hiddenFromAdmin := func(action string) bool { return !ownerView && auditOwnerOnly(action) }
 
 	type item struct {
@@ -244,8 +300,17 @@ func handleAdminAudit(c *gin.Context) {
 		return fmt.Sprintf("чек: %s — %.2f zł (%s)", strings.Join(names, ", "), roundPLN(total), saleMethod(group[0]))
 	}
 	if want("sale") {
+		// З19-и17: лимит — на строки журнала, а строка продаж — чек целиком (продажа без чека — сама себе чек): limit+1
+		// свежих чеков и все их продажи в окне. Раньше лимит резал строки продаж — чек на границе выборки выходил
+		// неполным, а чеки старше него, но новее последней строки страницы, не показывались нигде.
+		var keys []uuid.UUID
+		window(db.Model(&models.Sale{}), "created_at").Group("COALESCE(receipt_id, id)").
+			Order("MAX(created_at) DESC").Limit(limit+1).Pluck("COALESCE(receipt_id, id)", &keys)
 		var sales []models.Sale
-		scope(db.Model(&models.Sale{}), "created_at").Order("created_at").Find(&sales)
+		if len(keys) > 0 {
+			window(db.Model(&models.Sale{}), "created_at").Where("COALESCE(receipt_id, id) IN ?", keys).
+				Order("created_at DESC").Find(&sales)
+		}
 		byReceipt := map[string][]*models.Sale{}
 		order := []string{}
 		for i := range sales {
@@ -312,6 +377,9 @@ func handleAdminAudit(c *gin.Context) {
 	// admin_actions — всё остальное; при фильтре по видам — только они
 	// (виды, которых в admin_actions нет, просто не дадут строк).
 	actQ := db.Model(&models.AdminAction{})
+	if !ownerView {
+		actQ = auditHideOwnerOnly(actQ) // З19-и17: в самом запросе, а не после выборки
+	}
 	if len(kinds) > 0 {
 		list := make([]string, 0, len(kinds))
 		for k := range kinds {
@@ -322,7 +390,7 @@ func handleAdminAudit(c *gin.Context) {
 	var actions []models.AdminAction
 	scope(actQ, "created_at").Find(&actions)
 	for _, a := range actions {
-		if hiddenFromAdmin(a.Action) {
+		if hiddenFromAdmin(a.Action) { // страховка: запрос админа их уже не отдаёт (auditHideOwnerOnly)
 			continue
 		}
 		by := a.AdminID
@@ -333,10 +401,12 @@ func handleAdminAudit(c *gin.Context) {
 	}
 
 	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
-	hasMore := len(items) > limit
-	if hasMore {
-		items = items[:limit]
+	at := make([]time.Time, len(items))
+	for i, it := range items {
+		at[i] = it.CreatedAt
 	}
+	n, hasMore := auditCut(at, limit) // З19-и17: не посреди одного момента
+	items = items[:n]
 
 	idSet := map[string]bool{}
 	for _, it := range items {

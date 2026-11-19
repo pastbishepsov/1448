@@ -1,6 +1,8 @@
 package main
 
 import (
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -177,6 +179,92 @@ func TestAuditOwnerOnly(t *testing.T) {
 	} {
 		if got := auditOwnerOnly(action); got != want {
 			t.Errorf("auditOwnerOnly(%q) = %v, want %v", action, got, want)
+		}
+	}
+}
+
+// З19-и17: страница журнала не режется посреди одного момента — курсор before строгий.
+func TestAuditCut(t *testing.T) {
+	base := time.Date(2026, 11, 17, 20, 0, 0, 0, time.UTC)
+	ago := func(secs ...int) []time.Time {
+		out := make([]time.Time, 0, len(secs))
+		for _, x := range secs {
+			out = append(out, base.Add(-time.Duration(x)*time.Second))
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name  string
+		at    []time.Time
+		limit int
+		n     int
+		more  bool
+	}{
+		{"меньше страницы", ago(1, 2, 3), 5, 3, false},
+		{"ровно страница", ago(1, 2, 3, 4, 5), 5, 5, false},
+		{"больше, граница между моментами", ago(1, 2, 3, 4, 5, 6), 5, 5, true},
+		{"граница посреди момента — он целиком на следующей", ago(1, 2, 3, 4, 4, 4, 5), 5, 3, true},
+		{"первая отрезанная — в моменте последней", ago(1, 2, 3, 4, 5, 5), 5, 4, true},
+		{"вся страница — один момент: по лимиту", ago(1, 1, 1, 1, 1, 1), 5, 5, true},
+	} {
+		if n, more := auditCut(c.at, c.limit); n != c.n || more != c.more {
+			t.Errorf("%s: auditCut = %d, %v; want %d, %v", c.name, n, more, c.n, c.more)
+		}
+	}
+}
+
+// З19-и17: образец LIKE «начинается с» — «_», «%» и «\» буквально.
+func TestLikePrefix(t *testing.T) {
+	for p, want := range map[string]string{
+		"staff_": `staff\_%`, "owner_repay": `owner\_repay%`, "expense": "expense%", `a%b\`: `a\%b\\%`,
+	} {
+		if got := likePrefix(p); got != want {
+			t.Errorf("likePrefix(%q) = %q, want %q", p, got, want)
+		}
+	}
+}
+
+// З19-и17: запрос журнала админа (auditHideOwnerOnly: NOT IN и NOT LIKE) прячет ровно то, что auditOwnerOnly, — LIKE
+// здесь разбирается так же, как в Postgres (экранирование «\», «_» — любой знак, «%» — любые знаки).
+func TestAuditHideOwnerOnlyMatches(t *testing.T) {
+	like := func(s, pat string) bool {
+		var re strings.Builder
+		re.WriteString("^")
+		for i := 0; i < len(pat); i++ {
+			switch c := pat[i]; {
+			case c == '\\' && i+1 < len(pat):
+				i++
+				re.WriteString(regexp.QuoteMeta(string(pat[i])))
+			case c == '%':
+				re.WriteString(".*")
+			case c == '_':
+				re.WriteString(".")
+			default:
+				re.WriteString(regexp.QuoteMeta(string(c)))
+			}
+		}
+		return regexp.MustCompile(re.String() + "$").MatchString(s)
+	}
+	hides := func(a string) bool {
+		for _, x := range auditOwnerOnlyActions {
+			if a == x {
+				return true
+			}
+		}
+		for _, p := range auditOwnerOnlyPrefixes {
+			if like(a, likePrefix(p)) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, a := range []string{"settings_update", "login_failed", "shift_close", "work_edit", "cash_correct",
+		"cash_event_void", "supply_price", "lot_price", "export", "requisites", "staff_dismiss", "staff_", "expense_create",
+		"counterparty_update", "owner_repay", "owner_repay_void", "staffXdismiss", "expenseXcreate", "counterpartyX",
+		"owner_repaid", "work_start", "work_stop", "pc_unhold", "session_start", "deposit", "grant", "export_x", "exports",
+		"cash_collect", "shift_assign", ""} {
+		if got, want := hides(a), auditOwnerOnly(a); got != want {
+			t.Errorf("%q: запрос прячет %v, auditOwnerOnly — %v", a, got, want)
 		}
 	}
 }
