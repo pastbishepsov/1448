@@ -240,7 +240,10 @@ const J = JSON.stringify;
 
   await p.evaluate(() => sideTab('food'));
   const canOrder = await until(() => !!document.querySelector('#sideBody button[onclick^="foodOrder("]:not([disabled])'), null, 8000);
-  if (canOrder) await p.click('#sideBody button[onclick^="foodOrder("]:not([disabled])');
+  if (canOrder) { // К11-и4: «Заказать» у блюда спрашивает — заказ создаёт кнопка «Заказать» в окне вопроса
+    await p.click('#sideBody button[onclick^="foodOrder("]:not([disabled])');
+    if (await until(() => document.getElementById('confirmOverlay').classList.contains('show'), null, 3000)) await p.click('#cfYes');
+  }
   for (let i = 0; i < 30 && ordMine().length < 1; i++) await z.sleep(300);
   const oid = ordMine()[0];
   z.check('заказ с «Кухни» принят сервером', canOrder && !!oid, `кнопка ${canOrder}, заказ ${oid}`);

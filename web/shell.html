@@ -1464,6 +1464,9 @@ const SH_RU = {
   food_recent: "Недавние",
   food_out: "закончилось — загляни позже",
   food_order: "🍽 Заказать",
+  food_confirm_title: "Заказать «{n}» за {p}?",
+  food_confirm_sub: "Принесём к твоему ПК. Расчёт у стойки после игры",
+  food_confirm_yes: "Заказать",
   food_cancel_title: "отменить",
   food_empty: "Меню пока пустое.<br>Кухня появится, когда владелец заполнит ценник.",
   toast_order_ok: "🍔 Заказ принят: {n}",
@@ -2029,6 +2032,9 @@ const SH_EN = {
   food_recent: "Recent",
   food_out: "sold out — check back later",
   food_order: "🍽 Order",
+  food_confirm_title: "Order “{n}” for {p}?",
+  food_confirm_sub: "We’ll bring it to your PC. Pay at the desk after your game",
+  food_confirm_yes: "Order",
   food_cancel_title: "cancel",
   food_empty: "The menu is empty for now.<br>The kitchen appears once the owner fills the price list.",
   toast_order_ok: "🍔 Order placed: {n}",
@@ -2594,6 +2600,9 @@ const SH_PL = {
   food_recent: "Ostatnie",
   food_out: "wyprzedane — zajrzyj później",
   food_order: "🍽 Zamów",
+  food_confirm_title: "Zamówić „{n}” za {p}?",
+  food_confirm_sub: "Przyniesiemy do twojego PC. Płatność przy ladzie po grze",
+  food_confirm_yes: "Zamów",
   food_cancel_title: "anuluj",
   food_empty: "Menu jest na razie puste.<br>Kuchnia pojawi się, gdy właściciel uzupełni cennik.",
   toast_order_ok: "🍔 Zamówienie przyjęte: {n}",
@@ -4271,9 +4280,15 @@ function foodQ(id, d){
 }
 async function foodOrder(id){
   if (foodBusy) return;
+  // К11-и4: один клик — и кухня уже готовит, а гость должен клубу у стойки (заказ идёт с расчётом после игры,
+  // кошелёк при заказе не трогается). Сначала спрашиваем, как buyPack: что, сколько и за сколько. Количество
+  // берём до вопроса — в заказ уйдёт ровно то, что гость видел в окне
+  const m = ((menuData && menuData.menu) || []).find(x => x.id === id), q = foodQty[id] || 1;
+  if (m && !await askConfirm(T('food_confirm_title', {n: m.name + (q>1 ? ' ×'+q : ''), p: fmtZl(Math.round(m.price_pln*q*100))}),
+      STR.food_confirm_sub, STR.food_confirm_yes)) return;
   foodBusy = true;
   try{
-    const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:foodQty[id]||1})});
+    const d = await api('/me/kitchen/orders', {method:'POST', body:JSON.stringify({good_id:id, qty:q})});
     const o = d.order;
     toast(T('toast_order_ok', {n: o.name + (o.qty>1 ? ' ×'+o.qty : '')})
       + (o.computer ? T('toast_order_to_pc', {c: o.computer}) : '')
