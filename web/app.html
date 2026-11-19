@@ -2086,6 +2086,19 @@ function renderLive(){
   renderWaitlist();
   updateCallBtn();
 }
+// К11-и8: опыт за m минут игры — шаг в шаг как sessionRewards на сервере: минуты × ставка, × (1 + талант
+// «Разгон опыта») и округлить до целого, × множитель ранга и округлить, затем до кратного 5. Порядок
+// округлений важен: «перемножить всё и округлить один раз» расходится с сервером на 5 XP. Ставка, ранг и
+// талант — из /me/economy (гостю за ПК сервер отдаёт ставки его сессии — снимок на её начало).
+function sessionXp(m){
+  const e = economy || {};
+  const rate = (e.rates && e.rates.xp_per_min) || 10;
+  const mult = (e.rank && e.rank.xp_mult) || 1;
+  const boost = (e.talents && e.talents.xp_boost) || 0;
+  const base = m * rate;
+  const boosted = boost > 0 ? Math.round(base * (1 + boost)) : base;
+  return Math.floor((Math.round(boosted * mult) + 2) / 5) * 5;
+}
 function tickLive(){
   if (!activeSession) return;
   // Е1-и6: пока ждём подтверждения, started_at смысла не имеет — он сдвинется
@@ -2114,10 +2127,7 @@ function tickLive(){
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
   const elT = document.getElementById('liveTime');
   if (elT) elT.textContent = (h ? h + ':' + pad2(m) : pad2(m)) + ':' + pad2(sec % 60);
-  /* ≈XP: мин × ставка × множитель ранга, кратно 5 — как finishSession (правило цифр) */
-  const rate = (economy && economy.rates && economy.rates.xp_per_min) || 10;
-  const mult = (economy && economy.rank && economy.rank.xp_mult) || 1;
-  const xp = Math.round(Math.floor(sec / 60) * rate * mult / 5) * 5;
+  const xp = sessionXp(Math.floor(sec / 60)); // ≈XP: столько начислит сервер, если завершить сейчас
   const elX = document.getElementById('liveXP');
   if (elX && Number(elX.dataset.v || 0) !== xp) FX.countUp(elX, xp);
 }
@@ -3331,7 +3341,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-19.1';
+const APP_VER = '2026-11-19.2';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
