@@ -3,6 +3,8 @@
 // среднедневных», «7 дней» — до того же часа (З19-и8), без поправки. «Гости»: «Пропали» — за период (подсказка плитки и
 // заголовок списка). «Бухгалтерия» → «Обзор»: этот месяц — без поправки, ‹ прошлый месяц (к позапрошлому разной длины)
 // — «рост на среднедневных», подпись по-прежнему кончается «клубные сутки». Данных не заводит.
+// З19-и16: подпись сверяется с ответом, который нарисовала страница, а не с запросом проверки после экрана — иначе на смене
+// минуты «до ЧЧ:ММ» расходились (полный прогон З19-и15: «до 12:37» на экране, «до 12:38» в ответе).
 const z = require('./_z');
 (async () => {
   const norm = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
@@ -10,19 +12,23 @@ const z = require('./_z');
   await z.nav(boss, 'stats');
   const settle = () => boss.waitForFunction(() => { const b = document.getElementById('repBody'); return b && !b.querySelector('.skel'); }, null,
     { timeout: 20000 }).catch(() => {}).then(() => z.sleep(600));
-  const preset = async p => { await boss.evaluate(p => repPreset(p, document.querySelector(`#repPresets button[data-p="${p}"]`)), p); await settle();
-    return norm(await z.text(boss, '#repLabel')); };
-  const srv = async q => (await z.api('GET', '/admin/reports/money?' + q, undefined, 'boss')).data || {};
+  // период нажат — подпись экрана и ответ, по которому страница её нарисовала (её запрос «Денег» с этим периодом)
+  const preset = async p => {
+    const got = boss.waitForResponse(r => /\/admin\/reports\/money\?/.test(r.url()) && r.url().includes('preset=' + p), { timeout: 20000 })
+      .then(r => r.json()).catch(() => ({}));
+    await boss.evaluate(p => repPreset(p, document.querySelector(`#repPresets button[data-p="${p}"]`)), p);
+    const data = await got; await settle();
+    return [norm(await z.text(boss, '#repLabel')), data || {}];
+  };
 
-  const lt = await preset('today'), st = await srv('preset=today');
+  const [lt, st] = await preset('today');
   const until = (st.prev_period || {}).until;
   z.check(`«Сегодня»: «… сравнение с … до ${until}» — вчера до того же часа`, !!until && lt.endsWith(' до ' + until), lt);
-  const lm = await preset('prev_month'), sm = await srv('preset=prev_month');
+  const [lm, sm] = await preset('prev_month');
   const diff = (sm.period || {}).days !== (sm.prev_period || {}).days;
   z.check(`«Прошлый месяц» (${(sm.period || {}).days} дн к ${(sm.prev_period || {}).days}): ${diff ? '«· рост на среднедневных»' : 'длины равны — без поправки'}`,
     diff ? lm.endsWith(' · рост на среднедневных') : !/среднедневных/.test(lm), lm);
-  const lw = await preset('d7');
-  const sw = await srv('preset=d7'), wu = (sw.prev_period || {}).until; // З19-и8: и «7 дней» — до того же часа
+  const [lw, sw] = await preset('d7'), wu = (sw.prev_period || {}).until; // З19-и8: и «7 дней» — до того же часа
   z.check(`«7 дней» — «… до ${wu}» (прошлые 7 дней до того же часа их последнего дня), без «на среднедневных»`,
     !!wu && lw.endsWith(' до ' + wu) && !/среднедневных/.test(lw), lw);
 
