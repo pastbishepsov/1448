@@ -6505,8 +6505,19 @@ function askConfirm(title, sub, yes, no){
     document.getElementById('confirmOverlay').classList.add('show');
   });
 }
+// К11-и9: окно закрывается сразу по первому клику, и второй клик двойного пришёл бы в то, что лежит под кнопкой
+// окна (плитка игры, папка платформы). Полсекунды после ответа гасим только второй клик двойного (detail 2 и
+// dblclick) мимо окна: обычный новый клик гостя проходит сразу
+let confirmShieldUntil = 0;
+['click', 'dblclick'].forEach(t => window.addEventListener(t, e => {
+  if (Date.now() < confirmShieldUntil && (e.type === 'dblclick' || e.detail >= 2)
+      && !(e.target.closest && e.target.closest('#confirmOverlay.show'))){
+    e.stopPropagation(); e.preventDefault();
+  }
+}, true));
 function confirmAnswer(v){
   document.getElementById('confirmOverlay').classList.remove('show');
+  confirmShieldUntil = Date.now() + 500;
   const r = confirmResolve; confirmResolve = null;
   if (r) r(!!v);
 }
