@@ -74,7 +74,7 @@ async function j(url, opt) { const r = await fetch(url, opt); return r.json(); }
   await p2.waitForFunction(() => typeof me === 'object' && !!me, null, { timeout: 15000 }).catch(() => {}); await idle(p2); // З19-и14: вход гостя — по факту, а не паузой
   const pwa = await p2.evaluate(async () => { await loadPacks(); if (typeof renderHist === 'function') renderHist(); const el = document.getElementById('histCard'); return { rows: minutesByZone, html: el ? el.textContent.replace(/\s+/g, ' ') : '' }; });
   check('PWA: minutes_by_zone получен (Standard 40 + пул 7)', JSON.stringify(pwa.rows).includes('"minutes":40') && JSON.stringify(pwa.rows).includes('"from_pool":true'), JSON.stringify(pwa.rows));
-  check('PWA: блок «Минуты за монеты и компенсации» с «40 мин · Standard» и «7 мин · везде»', /Минуты за монеты и компенсации/.test(pwa.html) && /Standard 40 мин/.test(pwa.html) && /7 мин · везде/.test(pwa.html), pwa.html.slice(0, 300));
+  check('PWA: блок «Минуты за монетки и компенсации» с «40 мин · Standard» и «7 мин · везде»', /Минуты за монетки и компенсации/.test(pwa.html) && /Standard 40 мин/.test(pwa.html) && /7 мин · везде/.test(pwa.html), pwa.html.slice(0, 300));
   const pwaLang = await p2.evaluate(() => { const o = {}; for (const l of ['en', 'pl']) { STR = Object.assign({}, STR_RU, LANGS[l]); o[l] = reserveBlockHtml().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); } STR = Object.assign({}, STR_RU, LANGS.ru); return o; });
   check('PWA en/pl: «40 min · Standard», «7 min · anywhere / wszędzie»', /Standard 40 min/.test(pwaLang.en) && /7 min · anywhere/.test(pwaLang.en) && /7 min · wszędzie/.test(pwaLang.pl), JSON.stringify(pwaLang).slice(0, 300));
   await p2.screenshot({ path: OUT + '/zh2_pwa.png', fullPage: false });

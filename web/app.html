@@ -757,9 +757,9 @@ const STR_RU = {
   eff_xp_multiplier: '+{n}% XP',
   eff_night_discount: '−{n}% ночной тариф',
   eff_free_booking: 'бронь без предоплаты',
-  eff_deposit_bonus: '+{n}% койнов при депозите',
+  eff_deposit_bonus: '+{n}% монеток при депозите',
   eff_cashback_pct: '+{n}% кэшбек',
-  eff_coins_ttl_bonus: '+{n} дн жизни койнов',
+  eff_coins_ttl_bonus: '+{n} дн жизни монеток',
   ach_title: 'Ачивки',
   ach_got: '{a} из {b}',
   ach_reward_sp: '+{n} ✦',
@@ -816,7 +816,8 @@ const STR_RU = {
   aim_rating: 'Аим-рейтинг клуба · бит/с',
   aim_hint: 'Калибровать сенсу — на клубном ПК: «⌖ Сенса» → «Подобрать стреляя».',
   hist_title: 'История',
-  hist_balance: 'койнов на балансе',
+  hist_balance: '{w} на балансе',
+  pl_coin_1: 'монетка', pl_coin_2: 'монетки', pl_coin_5: 'монеток', // К11-и3: формы слова по числу
   hist_empty: 'Пока пусто — сыграй первую сессию',
   hist_session: 'Сессия',
   hist_deposit: 'Пополнение {a} zł',
@@ -830,7 +831,7 @@ const STR_RU = {
   case_expires: 'сгорит через {n} дн',
   case_expired: 'сгорел',
   case_expired_t: 'Этот кейс уже сгорел',
-  case_opened_coins: 'открыт: +{n} монет',
+  case_opened_coins: 'открыт: +{n} {w}',
   case_opened_buster: 'открыт: +{n}% кэшбек',
   case_src_achievement: 'за ачивку',
   case_src_daily_visit: 'за визит',
@@ -838,7 +839,7 @@ const STR_RU = {
   case_src_level_up: 'за уровень',
   case_src_admin_grant: 'подарок клуба',
   co_title: 'Кейс {t}',
-  co_coins: 'монет · кейс {t}',
+  co_coins: '{w} · кейс {t}',
   co_buster: 'кэшбек навсегда · кейс {t}',
   co_jackpot: 'ДЖЕКПОТ',
   co_take: 'Забрать',
@@ -854,7 +855,7 @@ const STR_RU = {
   ntf_empty: 'Пока тихо — уведомления появятся здесь',
   ntf_bk_cancel: '📅 Админ отменил твою бронь',
   ntf_bk_restore: '📅 Твоя бронь возвращена',
-  ntf_deposit: '💰 +{c} монет — депозит {a} zł',
+  ntf_deposit: '💰 +{c} {w} — депозит {a} zł',
   ntf_deposit_void: '↩ Депозит {a} zł отменён у стойки — с кошелька снято {r} zł, в кошельке {w} zł',
   ntf_grant_xp: '⚡ Начислено +{n} XP',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
@@ -906,7 +907,7 @@ const STR_RU = {
   book_locked: '🔒 Бронь откроется на LVL {l} — сейчас {n}. XP капает за игру!',
   btn_pause: '⏸ Пауза',
   btn_resume: '▶ Продолжить',
-  rate_line: '1 zł → {c} койнов · игра: +{m} койнов/мин',
+  rate_line: '1 zł → {c} {w} · игра: +{m} {w2}/мин',
   btn_topup: 'Пополнить',
   pack_title: 'Пакеты времени',
   pack_live: '{n} мин · {z}',
@@ -925,7 +926,7 @@ const STR_RU = {
   pack_bought: '▶ {n} — время на счету',
   pack_poor: 'На кошельке не хватает — пополни у стойки',
   pack_zone_note: 'Минуты пакета тратятся только в своей зоне и раньше кошелька',
-  res_head: 'Минуты за монеты и компенсации',
+  res_head: 'Минуты за монетки и компенсации',
   res_zone: '{n} мин · {z}',
   res_min: '{n} мин',
   res_any: '{n} мин · везде',
@@ -938,7 +939,7 @@ const STR_RU = {
   ntf_zone_moved: '⏱ {m} мин зоны «{f}» теперь в зоне «{t}»', // З18-и1: минуты удаляемой зоны — перенесли или сожгли
   ntf_zone_burned: '🔥 Зону «{z}» закрыли — сгорело {m} мин этой зоны',
   topup_title: 'Пополнение баланса',
-  topup_body: 'Пока пополнить можно у стойки клуба — админ зачислит койны сразу. Онлайн-оплата (BLIK/карта) приедет вместе со Stripe в спринте 6.',
+  topup_body: 'Пока пополнить можно у стойки клуба — админ зачислит монетки сразу. Онлайн-оплата (BLIK/карта) приедет вместе со Stripe в спринте 6.',
   topup_ok: 'Понял',
   /* М5 — установка и полировка */
   inst_btn: '📲 Приложение на экран телефона',
@@ -1102,7 +1103,8 @@ const STR_EN = {
   aim_rating: 'Club aim rating · bit/s',
   aim_hint: 'Calibrate your sens on a club PC: “⌖ Sens” → “Find it by shooting”.',
   hist_title: 'History',
-  hist_balance: 'coins in balance',
+  hist_balance: '{w} in balance',
+  pl_coin_1: 'coin', pl_coin_2: 'coins', pl_coin_5: 'coins',
   hist_empty: 'Nothing yet — play your first session',
   hist_session: 'Session',
   hist_deposit: 'Top-up {a} zł',
@@ -1115,7 +1117,7 @@ const STR_EN = {
   case_expires: 'expires in {n} d',
   case_expired: 'expired',
   case_expired_t: 'This case has already expired',
-  case_opened_coins: 'opened: +{n} coins',
+  case_opened_coins: 'opened: +{n} {w}',
   case_opened_buster: 'opened: +{n}% cashback',
   case_src_achievement: 'for an achievement',
   case_src_daily_visit: 'for a visit',
@@ -1123,7 +1125,7 @@ const STR_EN = {
   case_src_level_up: 'for a level',
   case_src_admin_grant: 'club gift',
   co_title: '{t} case',
-  co_coins: 'coins · {t} case',
+  co_coins: '{w} · {t} case',
   co_buster: 'cashback forever · {t} case',
   co_jackpot: 'JACKPOT',
   co_take: 'Claim',
@@ -1138,7 +1140,7 @@ const STR_EN = {
   ntf_empty: 'Quiet for now — alerts will appear here',
   ntf_bk_cancel: '📅 The admin cancelled your booking',
   ntf_bk_restore: '📅 Your booking is restored',
-  ntf_deposit: '💰 +{c} coins — top-up {a} zł',
+  ntf_deposit: '💰 +{c} {w} — top-up {a} zł',
   ntf_deposit_void: '↩ Top-up {a} zł voided at the desk — {r} zł taken from your wallet, {w} zł left',
   ntf_grant_xp: '⚡ +{n} XP granted',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
@@ -1190,7 +1192,7 @@ const STR_EN = {
   book_locked: '🔒 Booking unlocks at LVL {l} — you are {n}. XP drips for every minute!',
   btn_pause: '⏸ Pause',
   btn_resume: '▶ Resume',
-  rate_line: '1 zł → {c} coins · play: +{m} coins/min',
+  rate_line: '1 zł → {c} {w} · play: +{m} {w2}/min',
   btn_topup: 'Top up',
   pack_title: 'Time packages',
   pack_live: '{n} min · {z}',
@@ -1324,9 +1326,9 @@ const STR_PL = {
   eff_xp_multiplier: '+{n}% XP',
   eff_night_discount: '−{n}% taryfa nocna',
   eff_free_booking: 'rezerwacja bez przedpłaty',
-  eff_deposit_bonus: '+{n}% monet przy wpłacie',
+  eff_deposit_bonus: '+{n}% monetek przy wpłacie',
   eff_cashback_pct: '+{n}% cashbacku',
-  eff_coins_ttl_bonus: '+{n} dni życia monet',
+  eff_coins_ttl_bonus: '+{n} dni życia monetek',
   ach_title: 'Osiągnięcia',
   ach_got: '{a} z {b}',
   ach_reward_sp: '+{n} ✦',
@@ -1383,7 +1385,8 @@ const STR_PL = {
   aim_rating: 'Aim-ranking klubu · bit/s',
   aim_hint: 'Kalibrację czułości robi się na PC klubu: „⌖ Czułość” → „Dobierz strzelając”.',
   hist_title: 'Historia',
-  hist_balance: 'monet na koncie',
+  hist_balance: '{w} na koncie',
+  pl_coin_1: 'monetka', pl_coin_2: 'monetki', pl_coin_5: 'monetek',
   hist_empty: 'Na razie pusto — zagraj pierwszą sesję',
   hist_session: 'Sesja',
   hist_deposit: 'Wpłata {a} zł',
@@ -1396,7 +1399,7 @@ const STR_PL = {
   case_expires: 'wygaśnie za {n} dni',
   case_expired: 'wygasła',
   case_expired_t: 'Ta skrzynka już wygasła',
-  case_opened_coins: 'otwarta: +{n} monet',
+  case_opened_coins: 'otwarta: +{n} {w}',
   case_opened_buster: 'otwarta: +{n}% cashbacku',
   case_src_achievement: 'za osiągnięcie',
   case_src_daily_visit: 'za wizytę',
@@ -1404,7 +1407,7 @@ const STR_PL = {
   case_src_level_up: 'za poziom',
   case_src_admin_grant: 'prezent klubu',
   co_title: 'Skrzynka {t}',
-  co_coins: 'monet · skrzynka {t}',
+  co_coins: '{w} · skrzynka {t}',
   co_buster: 'cashback na zawsze · skrzynka {t}',
   co_jackpot: 'JACKPOT',
   co_take: 'Odbierz',
@@ -1419,7 +1422,7 @@ const STR_PL = {
   ntf_empty: 'Na razie cisza — powiadomienia pojawią się tutaj',
   ntf_bk_cancel: '📅 Admin anulował twoją rezerwację',
   ntf_bk_restore: '📅 Twoja rezerwacja wróciła',
-  ntf_deposit: '💰 +{c} monet — wpłata {a} zł',
+  ntf_deposit: '💰 +{c} {w} — wpłata {a} zł',
   ntf_deposit_void: '↩ Wpłata {a} zł anulowana przy ladzie — z portfela zdjęto {r} zł, w portfelu {w} zł',
   ntf_grant_xp: '⚡ Przyznano +{n} XP',
   ntf_grant_xp_lvl: ' → LVL {l} 🎉',
@@ -1471,7 +1474,7 @@ const STR_PL = {
   book_locked: '🔒 Rezerwacje od LVL {l} — masz {n}. XP kapie za każdą minutę gry!',
   btn_pause: '⏸ Pauza',
   btn_resume: '▶ Wznów',
-  rate_line: '1 zł → {c} monet · gra: +{m} monet/min',
+  rate_line: '1 zł → {c} {w} · gra: +{m} {w2}/min',
   btn_topup: 'Doładuj',
   pack_title: 'Pakiety czasu',
   pack_live: '{n} min · {z}',
@@ -1490,7 +1493,7 @@ const STR_PL = {
   pack_bought: '▶ {n} — czas na koncie',
   pack_poor: 'W portfelu za mało — doładuj przy ladzie',
   pack_zone_note: 'Minuty pakietu działają tylko w swojej strefie i idą przed portfelem',
-  res_head: 'Minuty za monety i rekompensaty',
+  res_head: 'Minuty za monetki i rekompensaty',
   res_zone: '{n} min · {z}',
   res_min: '{n} min',
   res_any: '{n} min · wszędzie',
@@ -1503,7 +1506,7 @@ const STR_PL = {
   ntf_zone_moved: '⏱ {m} min ze strefy „{f}” jest teraz w strefie „{t}”',
   ntf_zone_burned: '🔥 Strefę „{z}” zamknięto — przepadło {m} min z tej strefy',
   topup_title: 'Doładowanie konta',
-  topup_body: 'Na razie doładujesz przy ladzie klubu — admin doda monety od ręki. Płatność online (BLIK/karta) przyjedzie ze Stripe.',
+  topup_body: 'Na razie doładujesz przy ladzie klubu — admin doda monetki od ręki. Płatność online (BLIK/karta) przyjedzie ze Stripe.',
   topup_ok: 'Jasne',
   inst_btn: '📲 Aplikacja na ekranie telefonu',
   inst_title: 'Instalacja na telefonie',
@@ -1541,6 +1544,18 @@ if (!LANGS[LANG]) LANG = 'ru';
 let STR = Object.assign({}, STR_RU, LANGS[LANG]); // ru — фолбэк на случай дыр в словаре
 
 function T(key, vars){ return (STR[key] || '').replace(/\{(\w+)\}/g, (_, n) => vars && vars[n] != null ? vars[n] : ''); }
+// К11-и3: слово рядом с числом — в форме по числу, тем же правилом, что на киоске (shell.html): формы [1, 2–4, 5+];
+// по-английски единственное число только для 1, по-польски forms[0] только для 1 («1 monetka», «22 monetki», «21 monetek»)
+function plural(n, forms){
+  n = Math.abs(+n) || 0;
+  if (LANG === 'en') return n === 1 ? forms[0] : forms[2];
+  if (!Number.isInteger(n)) return forms[1];
+  const m10 = n % 10, m100 = n % 100;
+  if (LANG === 'pl' ? n === 1 : (m10 === 1 && m100 !== 11)) return forms[0];
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
+  return forms[2];
+}
+function plCoin(n){ return plural(n, [STR.pl_coin_1, STR.pl_coin_2, STR.pl_coin_5]); }
 function applyStrings(){
   document.documentElement.lang = LANG; // Г9
   document.querySelectorAll('[data-str]').forEach(el => { el.textContent = STR[el.dataset.str] || ''; });
@@ -1765,7 +1780,7 @@ async function loadMe(){
   }catch(e){ if (e.message !== 'unauthorized') toast(T('toast_err', {m: e.message})); }
 }
 
-function xpNext(level){ return Math.floor(1000 * Math.pow(level, 1.4)); }
+function xpNext(level){ return Math.round(1000 * Math.pow(level, 1.4) / 100) * 100; } // как сервер (XPForNextLevel) и киоск: до сотни
 const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
 
 function renderTop(){
@@ -2486,9 +2501,9 @@ function renderHist(){
     </div>
     <div style="display:flex; align-items:baseline; gap:8px; margin:0 0 6px">
       <span class="balbig gold-t cnum" id="histBal" data-v="0">0</span>
-      <span class="muted">${esc(STR.hist_balance)}</span>
+      <span class="muted">${esc(T('hist_balance', {w: plCoin(me ? me.coins_balance : 0)}))}</span>
     </div>
-    ${economy && economy.rates ? `<div class="muted cnum" style="margin:0 0 10px">${T('rate_line', {c: economy.rates.deposit_coins_per_pln, m: economy.rates.coins_per_min})}</div>` : ''}
+    ${economy && economy.rates ? `<div class="muted cnum" style="margin:0 0 10px">${T('rate_line', {c: economy.rates.deposit_coins_per_pln, w: plCoin(economy.rates.deposit_coins_per_pln), m: economy.rates.coins_per_min, w2: plCoin(economy.rates.coins_per_min)})}</div>` : ''}
     <button class="btn ghost slim" style="margin:0 0 12px" onclick="openTopup()">${esc(STR.btn_topup)}</button>
     ${packBlockHtml()}
     ${walletTx.length ? `<div class="sect" style="margin-top:2px">${esc(STR.wal_ops)}</div>` +
@@ -2675,7 +2690,7 @@ function renderCases(){
     let sub;
     if (opened) sub = esc(c.drop_type === 'buster'
       ? T('case_opened_buster', {n: (c.drop_amount || 0) / 100})
-      : T('case_opened_coins', {n: fmt(c.drop_amount)}));
+      : T('case_opened_coins', {n: fmt(c.drop_amount), w: plCoin(c.drop_amount)}));
     else if (expired) sub = esc(STR.case_expired);
     else sub = esc(STR['case_src_' + c.source] || c.source) +
       ` · <span style="color:${days <= 3 ? 'var(--red)' : 'var(--dim)'}">${esc(T('case_expires', {n: days}))}</span>`;
@@ -2815,7 +2830,7 @@ function showPrize(d){
   } else {
     amt.dataset.v = '0'; amt.textContent = '0';
     document.getElementById('coWhat').textContent =
-      (d.drop_amount >= JACKPOT ? STR.co_jackpot + ' · ' : '') + T('co_coins', {t: tierName(d.tier)});
+      (d.drop_amount >= JACKPOT ? STR.co_jackpot + ' · ' : '') + T('co_coins', {t: tierName(d.tier), w: plCoin(d.drop_amount)});
     FX.countUp(amt, d.drop_amount);
   }
   document.getElementById('coPrize').classList.remove('hidden');
@@ -3131,7 +3146,7 @@ function ntfText(n){
     case 'booking_restore':
       return STR.ntf_bk_restore + (p.start_time ? ' · ' + hm(p.start_time) : '');
     case 'deposit': // З16-и1е: суммы — как ценники («0,34», «12,50», «30»), а не как пришли с сервера («0.34», «12.5»)
-      return T('ntf_deposit', {c: fmt(p.coins || 0), a: fmtPln(p.amount_pln)});
+      return T('ntf_deposit', {c: fmt(p.coins || 0), w: plCoin(p.coins || 0), a: fmtPln(p.amount_pln)});
     case 'deposit_void': // Ж1: отмена у стойки — сколько снято и что осталось
       return T('ntf_deposit_void', {a: fmtPln(p.amount_pln), r: fmtPln(p.refund_pln), w: fmtPln(p.wallet_pln)});
     case 'grant_xp':
@@ -3316,7 +3331,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-11.1';
+const APP_VER = '2026-11-19.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{
