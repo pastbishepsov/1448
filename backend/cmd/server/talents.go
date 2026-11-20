@@ -69,8 +69,8 @@ func handleGetMyTalents(c *gin.Context) {
 		out = append(out, gin.H{
 			"id":             d.ID,
 			"branch":         d.Branch,
-			"name":           d.Name,
-			"description":    d.Description,
+			"name":           guestText(user.Language, d.Name, d.NamePL, d.NameEN), // К12-и1
+			"description":    guestText(user.Language, d.Description, d.DescriptionPL, d.DescriptionEN),
 			"effect_type":    d.EffectType,
 			"current_level":  cur,
 			"max_level":      d.MaxLevel,

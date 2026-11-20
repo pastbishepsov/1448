@@ -19,6 +19,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -212,6 +213,7 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 	var defs []models.Achievement
 	db.Where("is_active = ?", true).Find(&defs)
 
+	lang := "" // К12-и1: язык гостя для названия в уведомлении — читаем при первой выдаче
 	for _, a := range defs {
 		pk := periodKeyFor(a.Category, now)
 		key := a.ID + "|"
@@ -254,8 +256,11 @@ func checkAchievements(userID uuid.UUID, stats playerStats) {
 			continue // unique(user, ach, period_key) — параллельная выдача или сбой: без уведомления
 		}
 		// К5-и2: гость узнаёт сразу — тост на киоске и поверх игры, в PWA
+		if lang == "" {
+			lang = guestLang(userID)
+		}
 		notifyUser(userID, "achievement_earned", map[string]any{
-			"id": a.ID, "title": a.Title, "category": a.Category,
+			"id": a.ID, "title": guestText(lang, a.Title, a.TitlePL, a.TitleEN), "category": a.Category,
 			"reward_xp": xp, "reward_skillpoints": sp, "reward_case_tier": tier,
 		})
 	}
@@ -284,6 +289,32 @@ func awardAchievementXP(tx *gorm.DB, userID uuid.UUID, amount int64) error {
 		}
 	}
 	return nil
+}
+
+// guestText — текст ачивки или таланта на языке гостя (К12-и1, 103): pl и en — свои поля,
+// пустой перевод или одни пробелы — русский. Админка и владелец читают русские поля напрямую.
+func guestText(lang, ru, pl, en string) string {
+	tr := ""
+	switch lang {
+	case "pl":
+		tr = pl
+	case "en":
+		tr = en
+	}
+	if strings.TrimSpace(tr) == "" {
+		return ru
+	}
+	return tr
+}
+
+// guestLang — язык гостевых экранов из профиля (users.language, Г9); не прочитался — русский.
+func guestLang(userID uuid.UUID) string {
+	var langs []string
+	db.Model(&models.User{}).Where("id = ?", userID).Pluck("language", &langs)
+	if len(langs) == 0 {
+		return "ru"
+	}
+	return langs[0]
 }
 
 // GET /me/achievements — достижения с прогрессом и временем до резета (Г5).
@@ -324,8 +355,8 @@ func handleGetMyAchievements(c *gin.Context) {
 		}
 		item := gin.H{
 			"id":                 a.ID,
-			"title":              a.Title,
-			"description":        a.Description,
+			"title":              guestText(me.Language, a.Title, a.TitlePL, a.TitleEN), // К12-и1
+			"description":        guestText(me.Language, a.Description, a.DescriptionPL, a.DescriptionEN),
 			"category":           a.Category,
 			"reward_skillpoints": a.RewardSkillpoints,
 			"reward_case_tier":   a.RewardCaseTier,

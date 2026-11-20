@@ -20,6 +20,10 @@ type TalentDefinition struct {
 	Branch         TalentBranch `json:"branch"           gorm:"type:talent_branch;not null"`
 	Name           string       `json:"name"             gorm:"size:128;not null"`
 	Description    string       `json:"description"      gorm:"not null"`
+	NamePL         string       `json:"-"                gorm:"column:name_pl;size:128;not null"` // К12-и1 (103): переводы для гостя, пусто — русский
+	NameEN         string       `json:"-"                gorm:"column:name_en;size:128;not null"`
+	DescriptionPL  string       `json:"-"                gorm:"column:description_pl;not null"`
+	DescriptionEN  string       `json:"-"                gorm:"column:description_en;not null"`
 	MaxLevel       int          `json:"max_level"        gorm:"not null;default:5"`
 	EffectType     string       `json:"effect_type"      gorm:"size:64;not null"`
 	EffectPerLevel float64      `json:"effect_per_level" gorm:"type:decimal(8,4);not null"`

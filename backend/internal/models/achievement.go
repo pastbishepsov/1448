@@ -12,6 +12,10 @@ type Achievement struct {
 	Category          string    `json:"category"           gorm:"type:achievement_category;not null"`
 	Title             string    `json:"title"              gorm:"size:128;not null"`
 	Description       string    `json:"description"`
+	TitlePL           string    `json:"-"                  gorm:"column:title_pl;size:128;not null"` // К12-и1 (103): переводы для гостя, пусто — русский
+	TitleEN           string    `json:"-"                  gorm:"column:title_en;size:128;not null"`
+	DescriptionPL     string    `json:"-"                  gorm:"column:description_pl;not null"`
+	DescriptionEN     string    `json:"-"                  gorm:"column:description_en;not null"`
 	ConditionType     string    `json:"condition_type"     gorm:"size:64;not null"`
 	ConditionValue    string    `json:"-"                  gorm:"type:jsonb;not null"` // сырой JSON, напр. {"min":10}
 	RewardSkillpoints int       `json:"reward_skillpoints" gorm:"not null;default:0"`
