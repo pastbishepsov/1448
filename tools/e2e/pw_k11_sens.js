@@ -5,7 +5,8 @@
 // строит текст и показывает всплывающую строку. По-русски строка не зависит ни от рода, ни от числа игр:
 // «… · уже работает: CS2, Apex Legends — сенса подхватится при перезапуске (CS2: exec 1448 в консоли)».
 // Подсказка под кнопкой «Сохранить» в настройке сенсы: «CS2 при запуске (уже работает — в консоли exec 1448)».
-// По-английски и по-польски строки прежние — проверяем, что они на месте (рода в них нет).
+// По-английски и по-польски с К12-и3 строка тоже начинается со сказуемого — «already running: CS2, Apex Legends — …»,
+// «już działa: …» — и не зависит от числа игр; проверяем, что строки на месте.
 // В базе ничего не меняет: гостя сажает и сессию закрывает сама, кошелёк возвращает.
 const z = require('./_z');
 const { chromium } = require('playwright-core');
@@ -17,9 +18,9 @@ const WANT = {
     tail: n => ` · уже работает: ${n} — сенса подхватится при перезапуске (CS2: exec 1448 в консоли)`,
     hint: n => `Сохранишь — и ${n} на этом ПК подхватят твою сенсу сразу: CS2 при запуске (уже работает — в консоли `
       + 'exec 1448), Apex при следующем старте. Valorant хранит настройки в облаке Riot — там введи значение руками.' },
-  en: { tail: n => ` · ${n} is already running — picks it up on restart (CS2: exec 1448 in the console)`,
+  en: { tail: n => ` · already running: ${n} — sens applies after a restart (CS2: exec 1448 in the console)`,
     hintPart: '(already running — type exec 1448 in the console)' },
-  pl: { tail: n => ` · ${n} już działa — przejmie po restarcie (CS2: exec 1448 w konsoli)`,
+  pl: { tail: n => ` · już działa: ${n} — czułość wczyta się po restarcie (CS2: exec 1448 w konsoli)`,
     hintPart: '(już działa — wpisz exec 1448 w konsoli)' },
 };
 const ONE = { applied: ['cs2', 'apex'], running: ['cs2'] }, TWO = { applied: ['cs2', 'apex'], running: ['cs2', 'apex'] };
@@ -151,7 +152,7 @@ const ONE = { applied: ['cs2', 'apex'], running: ['cs2'] }, TWO = { applied: ['c
   z.check(`RU: игры и так не работали — хвоста нет: «${WANT.ru.head(N2)}»`, L.ru.none === WANT.ru.head(N2), J(L.ru.none));
   for (const l of ['en', 'pl']) {
     const W = WANT[l], o = L[l];
-    z.check(`${l.toUpperCase()}: строки прежние — «${W.tail('…').slice(3)}», «${W.hintPart}»`,
+    z.check(`${l.toUpperCase()}: строки на месте — «${W.tail('…').slice(3)}», «${W.hintPart}»`,
       o.one.endsWith(W.tail(N1)) && o.two.endsWith(W.tail(N2)) && o.none.endsWith(N2) && o.hint.includes(W.hintPart),
       J([o.one, o.two, o.none, o.hint.slice(0, 150)]));
   }

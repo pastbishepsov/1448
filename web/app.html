@@ -746,6 +746,8 @@ const STR_RU = {
   prog_rank: 'Ранг {a}/7 · наиграно {h} ч',
   prog_hours_next: 'Ещё {n} ч до «{r}»',
   prog_rank_max: 'Максимальный ранг — выше некуда',
+  /* имена рангов — как в киоске: сервер присылает русское имя, rankLabel берёт перевод */
+  rk_1: 'Новичок', rk_2: 'Завсегдатай', rk_3: 'Ветеран', rk_4: 'Мастер', rk_5: 'Элита', rk_6: 'Легенда', rk_7: 'Бессмертный',
   prog_sessions: 'Сессий сыграно: {n}',
   tal_title: 'Таланты',
   branch_strength: 'Strength', branch_agility: 'Agility', branch_intellect: 'Intellect',
@@ -939,7 +941,7 @@ const STR_RU = {
   ntf_zone_moved: '⏱ {m} мин зоны «{f}» теперь в зоне «{t}»', // З18-и1: минуты удаляемой зоны — перенесли или сожгли
   ntf_zone_burned: '🔥 Зону «{z}» закрыли — сгорело {m} мин этой зоны',
   topup_title: 'Пополнение баланса',
-  topup_body: 'Пока пополнить можно у стойки клуба — админ зачислит монетки сразу. Онлайн-оплата (BLIK/карта) приедет вместе со Stripe в спринте 6.',
+  topup_body: 'Пока пополнить можно у стойки клуба — админ зачислит монетки сразу. Онлайн-оплата (BLIK/карта) приедет вместе со Stripe.',
   topup_ok: 'Понял',
   /* М5 — установка и полировка */
   inst_btn: '📲 Приложение на экран телефона',
@@ -1033,6 +1035,7 @@ const STR_EN = {
   prog_rank: 'Rank {a}/7 · {h} h played',
   prog_hours_next: '{n} h more to “{r}”',
   prog_rank_max: 'Top rank — nowhere higher',
+  rk_1: 'Rookie', rk_2: 'Regular', rk_3: 'Veteran', rk_4: 'Master', rk_5: 'Elite', rk_6: 'Legend', rk_7: 'Immortal',
   prog_sessions: 'Sessions played: {n}',
   tal_title: 'Talents',
   branch_strength: 'Strength', branch_agility: 'Agility', branch_intellect: 'Intellect',
@@ -1315,6 +1318,7 @@ const STR_PL = {
   prog_rank: 'Ranga {a}/7 · rozegrane {h} godz.',
   prog_hours_next: 'Jeszcze {n} godz. do „{r}”',
   prog_rank_max: 'Najwyższa ranga — wyżej się nie da',
+  rk_1: 'Nowicjusz', rk_2: 'Bywalec', rk_3: 'Weteran', rk_4: 'Mistrz', rk_5: 'Elita', rk_6: 'Legenda', rk_7: 'Nieśmiertelny',
   prog_sessions: 'Rozegranych sesji: {n}',
   tal_title: 'Talenty',
   branch_strength: 'Strength', branch_agility: 'Agility', branch_intellect: 'Intellect',
@@ -1782,6 +1786,10 @@ async function loadMe(){
 
 function xpNext(level){ return Math.round(1000 * Math.pow(level, 1.4) / 100) * 100; } // как сервер (XPForNextLevel) и киоск: до сотни
 const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
+/* К12-и3: имя ранга на языке гостя, как в киоске (RANK_KEYS → rk_N); имя не из семи стандартных — как прислал сервер */
+const RANK_KEYS = {'Новичок':'rk_1', 'Завсегдатай':'rk_2', 'Ветеран':'rk_3', 'Мастер':'rk_4',
+                   'Элита':'rk_5', 'Легенда':'rk_6', 'Бессмертный':'rk_7'};
+function rankLabel(n){ return RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
 
 function renderTop(){
   const need = xpNext(me.level);
@@ -1793,7 +1801,7 @@ function renderTop(){
   document.getElementById('xpLeft').textContent = T('xp_left', {n: fmt(Math.max(0, need - me.xp_current))});
   document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
   if (economy && economy.rank){
-    document.getElementById('rankName').textContent = economy.rank.name;
+    document.getElementById('rankName').textContent = rankLabel(economy.rank.name);
     document.getElementById('rankEm').textContent = RANK_EM[economy.rank.level] || '✦';
   }
 }
@@ -2330,13 +2338,13 @@ function renderRank(){
   if (economy.next_rank){
     const span = (economy.next_rank.min_hours - rk.min_hours) || 1;
     prog = Math.max(0, Math.min(100, Math.round(100 * ((economy.hours_played || 0) - rk.min_hours) / span)));
-    progText = T('prog_hours_next', {n: economy.next_rank.hours_left, r: economy.next_rank.name});
+    progText = T('prog_hours_next', {n: economy.next_rank.hours_left, r: rankLabel(economy.next_rank.name)});
   }
   const done = sessionsArr.filter(s => s.status === 'completed').length;
   el.innerHTML = `<div style="display:flex; align-items:center; gap:12px">
       <span class="rk-laur" data-ic="laurels"></span>
       <div style="flex:1; min-width:0">
-        <div style="font-weight:900; font-size:19px">${esc(rk.name)}</div>
+        <div style="font-weight:900; font-size:19px">${esc(rankLabel(rk.name))}</div>
         <div class="muted cnum">${T('prog_rank', {a: rk.level, h: fmt(hours)})}</div>
       </div>
       <span class="lvlpill">LVL <b class="cnum">${me ? me.level : 1}</b></span>
@@ -3341,7 +3349,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-19.2';
+const APP_VER = '2026-11-20.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

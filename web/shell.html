@@ -2125,7 +2125,7 @@ const SH_EN = {
   toast_sens_applied: "🎮 Sens on this PC: {g}",
   toast_sens_dry: " · dry run — the agent only logged it",
   toast_sens_cloud: " · {g}: Riot cloud, enter by hand",
-  toast_sens_running: " · {g} is already running — picks it up on restart (CS2: exec 1448 in the console)",
+  toast_sens_running: " · already running: {g} — sens applies after a restart (CS2: exec 1448 in the console)",
   toast_sens_none: "🎮 Nothing to apply: no CS2/Apex configs on this PC or no sens set for them",
   sens_calib: "<br><b style=\"color:var(--acc)\">The calibrator found {s}</b> (CS2 · {cm} cm/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">apply</a>",
   sens_calib_unverified: "<br><b style=\"color:var(--acc)\">The calibrator found {s}</b> (CS2 · {cm} cm/360, no blind check) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">apply</a>",
@@ -2693,7 +2693,7 @@ const SH_PL = {
   toast_sens_applied: "🎮 Czułość na tym PC: {g}",
   toast_sens_dry: " · tryb próbny — agent tylko zapisał do logu",
   toast_sens_cloud: " · {g}: chmura Riot, wpisz ręcznie",
-  toast_sens_running: " · {g} już działa — przejmie po restarcie (CS2: exec 1448 w konsoli)",
+  toast_sens_running: " · już działa: {g} — czułość wczyta się po restarcie (CS2: exec 1448 w konsoli)",
   toast_sens_none: "🎮 Nie ma czego podstawić: brak configów CS2/Apex na tym PC albo czułość dla nich nie jest ustawiona",
   sens_calib: "<br><b style=\"color:var(--acc)\">Kalibrator znalazł {s}</b> (CS2 · {cm} cm/360) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">zastosuj</a>",
   sens_calib_unverified: "<br><b style=\"color:var(--acc)\">Kalibrator znalazł {s}</b> (CS2 · {cm} cm/360, bez ślepego testu) — <a href=\"#\" onclick=\"aimApply();return false\" style=\"color:var(--txt)\">zastosuj</a>",
@@ -3103,7 +3103,7 @@ function branchName(br){
 }
 function caseSourceName(s){ return STR['src_' + s] || s; }
 function bkStatusName(s){ return STR['bk_st_' + s] || s; }
-/* Эффект таланта по его типу: доли → проценты, буст тира → множитель, дни →
+/* Эффект таланта по его типу: доли → проценты, буст тира → множитель (×1,1, по-английски ×1.1), дни →
    дни. Сырое число вроде 0.44999999999999996 (сумма float на сервере) гостю
    ничего не говорило. */
 const TAL_FMT = {
@@ -3113,7 +3113,7 @@ const TAL_FMT = {
   deposit_bonus:     v => '+' + Math.round(v * 100) + '%',
   cashback_pct:      v => '+' + Math.round(v * 100) + '%',
   night_discount:    v => '−' + Math.round(v * 100) + '%',
-  case_tier_boost:   v => '×' + String(Math.round((1 + v) * 100) / 100).replace('.', ','),
+  case_tier_boost:   v => '×' + String(Math.round((1 + v) * 100) / 100).replace('.', LANG === 'en' ? '.' : ','),
   free_booking:      v => v > 0 ? STR.tal_on : '—',
   coins_ttl_bonus:   v => '+' + T('tal_days', {n: Math.round(v)}),
 };
