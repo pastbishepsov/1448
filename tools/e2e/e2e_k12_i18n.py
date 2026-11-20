@@ -6,7 +6,9 @@
 На время проверки пишет: переводы ачивки hour_10 и таланта xp_boost, язык Guest46, две временные ачивки
 e2e_k12_n1 (с переводами) и e2e_k12_n2 (без) — их выдаёт правка профиля; на миг выдачи прочие ачивки
 выключены, чтобы не выдалась настоящая. В конце всё возвращает, в том числе при падении.
-На HEAD (без 103) падают пункты 1, 1а, 3а, 3б, 4а, 4б; уведомления не проверяются — полей нет."""
+На HEAD (без 103) падают пункты 1, 1а, 3а, 3б, 4а, 4б; уведомления не проверяются — полей нет.
+К12-и2 (миграция 104), пункты 7–7в: PL и EN у всех включённых, без кириллицы; русский без мужского рода, «монетки»,
+luck_grade +10% за уровень. На 2d89473 (без 104) падают 7, 7б, 7в."""
 import json
 import time
 from _z import *
@@ -85,6 +87,17 @@ has103 = all(ca.values()) and all(ct.values())
 
 lang0 = sql(f"SELECT language FROM users WHERE id = '{U}'")
 at_end(lambda: sql(f"UPDATE users SET language = {q(lang0)} WHERE id = '{U}'"))
+# К12-и2 (миграция 104): снимок настоящих текстов — до подмен e2e ниже
+EMPTY = "btrim({0}_pl) = '' OR btrim({0}_en) = '' OR btrim(description_pl) = '' OR btrim(description_en) = ''"
+CYR = "({0}_pl || {0}_en || description_pl || description_en) ~ '[А-Яа-яЁё]'"
+miss104 = rows(f"SELECT id FROM achievements WHERE is_active AND ({EMPTY.format('title')}) UNION ALL "
+               f"SELECT id FROM talent_definitions WHERE is_active AND ({EMPTY.format('name')}) ORDER BY 1") if has103 else ["нет полей 103"]
+cyr104 = rows(f"SELECT id FROM achievements WHERE is_active AND {CYR.format('title')} UNION ALL "
+              f"SELECT id FROM talent_definitions WHERE is_active AND {CYR.format('name')} ORDER BY 1") if has103 else ["нет полей 103"]
+male104 = rows("SELECT id FROM achievements WHERE title || ' ' || description ~ '(Провёл|Указал|Посетил|Посещал|Заказал|"
+               "Начал|Выиграл|Привязал|Заполнил|Выбрал|Рассказал|Забронировал|Представился|Подкрепился)' ORDER BY 1")
+ru104 = dict(r.split("|", 1) for r in rows("SELECT id || '|' || description FROM talent_definitions "
+                                            "WHERE id IN ('coin_mint', 'investor', 'luck_grade')"))
 if has103:
     sa, st = table("achievements", f"id = '{A}'")[0], table("talent_definitions", f"id = '{T}'")[0]
     at_end(lambda: sql(f"UPDATE achievements SET {', '.join(f'{k} = {q(sa[k])}' for k in AF)} WHERE id = '{A}'"))
@@ -185,4 +198,12 @@ check("6а. en: у n1 название английское, у n2 — русс�
 s, got, new = grant("ru")
 check("6б. ru: у n1 и n2 названия русские, хотя у n1 переводы есть",
       s == 200 and got == {N1: "e2e RU n1", N2: "e2e RU n2"} and new == 2, J([s, got, new]))
+
+section("К12-и2: тексты PL и EN (миграция 104)")
+check("7. у всех включённых ачивок и талантов есть PL и EN", has103 and not miss104, J(miss104))
+check("7а. в PL и EN нет кириллицы", has103 and not cyr104, J(cyr104))
+check("7б. в русских названиях и описаниях ачивок нет мужского рода («Провёл…», «Указал…»)", not male104, J(male104))
+check("7в. по-русски у coin_mint и investor — «монетки», у luck_grade — +10% за уровень",
+      "монеток" in ru104.get("coin_mint", "") and ru104.get("investor", "").startswith("Монетки") and
+      ru104.get("luck_grade", "").startswith("+10%"), J(ru104))
 done()
