@@ -3437,7 +3437,7 @@ async function loadAll(){
     const [m, cs, tl, ac, lb, ss, bk, ec, sp, ar, ko] = await Promise.all([
       api('/me'), api('/me/cases'), api('/me/talents'),
       api('/me/achievements'), api('/leaderboard'), api('/me/sessions'),
-      api('/me/bookings'), api('/me/economy'), api('/me/sensitivity'),
+      api('/me/bookings'), api('/me/economy?client=kiosk'), api('/me/sensitivity'),
       api('/aim-rating').catch(() => null), // С4-и4: аим-рейтинг; старый сервер без ручки — не беда
       api('/me/kitchen/orders').catch(() => null), // К10-и1: заказы кухни — для «Сейчас», не дожидаясь открытия «Кухни»
     ]);
@@ -3802,21 +3802,30 @@ const RANK_KEYS = {'Новичок':'rk_1', 'Завсегдатай':'rk_2', 'В
                    'Элита':'rk_5', 'Легенда':'rk_6'};
 function rankName(n, r){ return r && r.names ? (r.names[LANG] || r.names.ru) : RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
 // К12-и4: последний ранг тайный — имя и перевод приходят с сервера (r.names), только когда гость его взял.
-// Первый показ на этом устройстве открывает имя по буквам из «***» (~2 с); дальше — сразу.
-const RK_SHOWN = {};
-function rankSeen(place){ // открытие по буквам уже было на этом устройстве — у этого гостя, в этом месте
-  const key = '1448_rk_reveal_' + (me && me.id) + '_' + place;
-  if (RK_SHOWN[key]) return true;
-  try { return localStorage.getItem(key) === '1'; } catch(e){ return false; }
+// К12-и5: открытие тайного имени по буквам из «***» (~2 с) — один раз на гостя, в киоске и в PWA отдельно; помнит
+// сервер (?client=kiosk → r.reveal, POST /me/rank-reveal). В странице: RK_PENDING — сервер просил открытие (оно остаётся
+// в силе до конца захода, даже когда отметка уже стоит), RK_SHOWN — это место уже сыграло. Дальше — сразу имя.
+// К12-и5: шапку видно, только когда оболочка открыта и идёт сессия этого ПК: без сессии её накрывает лок-экран
+// (конец сессии — итоги и выход или лок с отсчётом), ещё — «Готов?» и смена пароля. Пока не видно — «***» и без
+// отметки; открытие сыграет при первом renderTop, когда шапка откроется (начало сессии → loadAll).
+function rankHeadSeen(){
+  return !document.getElementById('shellView').classList.contains('hidden') && !!activeSession
+    && !waitingReady() && !(me && me.must_change_password);
+}
+const RK_SHOWN = {}, RK_PENDING = {};
+function rankSeen(place, r){ // открывать по буквам не надо: сервер не просил или это место уже сыграло
+  const id = me && me.id;
+  if (r && r.reveal && id) RK_PENDING[id] = 1;
+  return !RK_PENDING[id] || !!RK_SHOWN[id + '_' + place];
 }
 function rankHead(el, r, place){
   const name = rankName(r.name, r);
   if (!r.names || !me || !me.id){ if (!el.dataset.revealing) el.textContent = name; return; }
   if (el.dataset.revealing) return;
-  if (rankSeen(place)){ el.textContent = name; return; }
-  const key = '1448_rk_reveal_' + me.id + '_' + place;
-  RK_SHOWN[key] = 1;
-  try { localStorage.setItem(key, '1'); } catch(e){}
+  if (rankSeen(place, r)){ el.textContent = name; return; }
+  if (!rankHeadSeen()){ el.textContent = '***'; return; }
+  RK_SHOWN[me.id + '_' + place] = 1;
+  api('/me/rank-reveal?client=kiosk', {method:'POST'}).catch(() => {}); // повтор безвреден: отметка ставится один раз
   const ch = Array.from(name); let i = 0;
   el.dataset.revealing = '1';
   (function step(){

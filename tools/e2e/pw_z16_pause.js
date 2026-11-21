@@ -33,12 +33,12 @@ const { CHROME } = require('./_env');
   const br = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   z.atEnd(() => br.close());
   const BTN = '#liveCard [onclick="appPause()"]', RESUME = '#liveCard [onclick="appResume()"]';
-  // вход в PWA гостем; slow — ответ /me/economy на 1,5 с позже: сессии приходят раньше настроек клуба
+  // вход в PWA гостем; slow — ответ /me/economy (с любым ?client=) на 1,5 с позже: сессии приходят раньше настроек клуба
   const open = async slow => {
     const ctx = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const p = await ctx.newPage();
     p.on('pageerror', e => z.jsErrors.push('PWA: ' + e.message));
-    if (slow) await p.route('**/me/economy', async r => { await new Promise(f => setTimeout(f, 1500)); await r.continue(); });
+    if (slow) await p.route(u => u.pathname.endsWith('/me/economy'), async r => { await new Promise(f => setTimeout(f, 1500)); await r.continue(); });
     await p.goto(z.BASE + '/app', { waitUntil: 'load' });
     await p.fill('#nick', G); await p.fill('#pass', z.GUEST_PASS); await p.click('#authBtn');
     await p.waitForFunction(() => { const c = document.getElementById('liveCard');

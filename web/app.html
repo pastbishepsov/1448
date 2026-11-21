@@ -1777,7 +1777,7 @@ function enterApp(){
 
 async function loadMe(){
   try{
-    const [m, ec] = await Promise.all([api('/me'), api('/me/economy')]);
+    const [m, ec] = await Promise.all([api('/me'), api('/me/economy?client=app')]);
     me = m.user || m; economy = ec;
     if (me.language && LANGS[me.language] && me.language !== LANG){
       try{ localStorage.setItem('1448_lang', me.language); }catch(e){}
@@ -1797,21 +1797,23 @@ const RANK_KEYS = {'Новичок':'rk_1', 'Завсегдатай':'rk_2', 'В
                    'Элита':'rk_5', 'Легенда':'rk_6'};
 function rankLabel(n, r){ return r && r.names ? (r.names[LANG] || r.names.ru) : RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
 // К12-и4: последний ранг тайный — имя и перевод приходят с сервера (r.names), только когда гость его взял.
-// Первый показ на этом устройстве открывает имя по буквам из «***» (~2 с); дальше — сразу.
-const RK_SHOWN = {};
-function rankSeen(place){ // открытие по буквам уже было на этом устройстве — у этого гостя, в этом месте
-  const key = '1448_rk_reveal_' + (me && me.id) + '_' + place;
-  if (RK_SHOWN[key]) return true;
-  try { return localStorage.getItem(key) === '1'; } catch(e){ return false; }
+// К12-и5: открытие тайного имени по буквам из «***» (~2 с) — один раз на гостя, в киоске и в PWA отдельно; помнит
+// сервер (?client=app → r.reveal, POST /me/rank-reveal). В странице: RK_PENDING — сервер просил открытие (оно остаётся
+// в силе до конца захода, даже когда отметка уже стоит), RK_SHOWN — это место уже сыграло. Дальше — сразу имя.
+const RK_SHOWN = {}, RK_PENDING = {};
+function rankSeen(place, r){ // открывать по буквам не надо: сервер не просил или это место уже сыграло
+  const id = me && me.id;
+  if (r && r.reveal && id) RK_PENDING[id] = 1;
+  return !RK_PENDING[id] || !!RK_SHOWN[id + '_' + place];
 }
 function rankHead(el, r, place){
   const name = rankLabel(r.name, r);
   if (!r.names || !me || !me.id){ if (!el.dataset.revealing) el.textContent = name; return; }
   if (el.dataset.revealing) return;
-  if (rankSeen(place)){ el.textContent = name; return; }
-  const key = '1448_rk_reveal_' + me.id + '_' + place;
-  RK_SHOWN[key] = 1;
-  try { localStorage.setItem(key, '1'); } catch(e){}
+  if (rankSeen(place, r)){ el.textContent = name; return; }
+  if (me.must_change_password){ el.textContent = '***'; return; } // К12-и5: под экраном смены пароля шапку не видно — открытие ждёт
+  RK_SHOWN[me.id + '_' + place] = 1;
+  api('/me/rank-reveal?client=app', {method:'POST'}).catch(() => {}); // повтор безвреден: отметка ставится один раз
   const ch = Array.from(name); let i = 0;
   el.dataset.revealing = '1';
   (function step(){
@@ -2374,7 +2376,7 @@ function renderRank(){
   el.innerHTML = `<div style="display:flex; align-items:center; gap:12px">
       <span class="rk-laur" data-ic="laurels"></span>
       <div style="flex:1; min-width:0">
-        <div id="rankCardName" style="font-weight:900; font-size:19px">${esc(rk.names && !rankSeen('card') ? '***' : rankLabel(rk.name, rk))}</div>
+        <div id="rankCardName" style="font-weight:900; font-size:19px">${esc(rk.names && !rankSeen('card', rk) ? '***' : rankLabel(rk.name, rk))}</div>
         <div class="muted cnum">${T('prog_rank', {a: rk.level, h: fmt(hours)})}</div>
       </div>
       <span class="lvlpill">LVL <b class="cnum">${me ? me.level : 1}</b></span>
@@ -3379,7 +3381,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-21.1';
+const APP_VER = '2026-11-21.2';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

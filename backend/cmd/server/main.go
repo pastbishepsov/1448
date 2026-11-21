@@ -181,6 +181,7 @@ func main() {
 		me.GET("/deposits", handleGetMyDeposits)                          // ← настоящий
 		me.GET("/wallet", handleGetMyWallet)                              // кошелёк: баланс + журнал (трек Г, Г0)
 		me.GET("/economy", handleGetEconomy)                              // ← настоящий (калькулятор + ранг)
+		me.POST("/rank-reveal", handleRankReveal)                         // К12-и5: открытие тайного ранга — один раз на гостя
 		me.GET("/sensitivity", handleGetSensitivity)                      // ← настоящий (профиль сенсы)
 		me.PUT("/sensitivity", handlePutSensitivity)                      // ← настоящий
 		me.GET("/aim-sessions", handleGetAimSessions)                     // история калибровок + тёплый старт (С4-и1)

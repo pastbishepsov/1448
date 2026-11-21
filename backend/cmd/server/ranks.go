@@ -131,12 +131,12 @@ func handleGetEconomy(c *gin.Context) {
 		"mouse_dpi":    settingInt64("mouse_dpi", mouseDPIDef),
 		"mousepad_cm":  settingInt64("mousepad_cm", mousepadCmDef), // С4-и3: ширина коврика клуба — эталон для замера DPI свайпом; 0 = не задана
 		"hours_played": hours,
-		"rank": rankShown(rank, rank.Level, gin.H{
+		"rank": rankRevealMark(userID, c.Query("client"), rankShown(rank, rank.Level, gin.H{
 			"level": rank.Level, "min_hours": rank.MinHours,
 			"xp_mult": rank.XPMult, "coin_mult": rank.CoinMult,
 			"case_chance_bonus": rank.CaseChanceBonus, "tier_boost": rank.TierBoost,
 			"max": next == nil,
-		}),
+		})),
 		// К3-и1 (№15): ставки — из настроек клуба, а не константы: калькулятор
 		// на киоске обязан сходиться с тем, что начислит finishSession (в сессии —
 		// её снимок, З16-и1).
@@ -170,4 +170,42 @@ func handleGetEconomy(c *gin.Context) {
 	}
 	resp["ranks"] = all
 	c.JSON(http.StatusOK, resp)
+}
+
+// К12-и5: открытие тайного имени по буквам — один раз на гостя, отдельно в киоске и в PWA (основатель 21.11:
+// «он видит эту анимацию один раз, когда ее получает. один раз за компьютером и соответственно получения - на
+// телефоне»). Отметки — в users (миграция 105); NULL — ещё не видел. Клиент — ?client=kiosk|app, как у уведомлений.
+var rankRevealCol = map[string]string{"kiosk": "rank_reveal_kiosk_at", "app": "rank_reveal_app_at"}
+
+// rankRevealMark — к текущему рангу гостя, если это взятый тайный (в ответе есть names) и этот клиент открытия ещё
+// не показывал, добавляет reveal: true. Без client или с чужим — ничего не добавляет.
+func rankRevealMark(userID, client string, h gin.H) gin.H {
+	col, ok := rankRevealCol[client]
+	if _, taken := h["names"]; !ok || !taken {
+		return h
+	}
+	var n int64
+	db.Raw("SELECT COUNT(*) FROM users WHERE id = ? AND "+col+" IS NULL", userID).Scan(&n)
+	if n == 1 {
+		h["reveal"] = true
+	}
+	return h
+}
+
+// POST /me/rank-reveal?client=kiosk|app — клиент показал гостю открытие тайного имени: отметка ставится один раз
+// и только гостю, который этот ранг взял (иначе ok: false и отметки нет — открытие ещё впереди).
+func handleRankReveal(c *gin.Context) {
+	col, known := rankRevealCol[c.Query("client")]
+	if !known {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "client: kiosk или app"})
+		return
+	}
+	userID := c.GetString("user_id")
+	rank, _ := accountRankFor(userHoursPlayed(userID))
+	if _, taken := rankShown(rank, rank.Level, gin.H{})["names"]; !taken {
+		c.JSON(http.StatusOK, gin.H{"ok": false})
+		return
+	}
+	db.Exec("UPDATE users SET "+col+" = NOW() WHERE id = ? AND "+col+" IS NULL", userID)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
