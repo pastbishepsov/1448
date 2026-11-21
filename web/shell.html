@@ -1683,7 +1683,6 @@ const SH_RU = {
   rk_4: "Мастер",
   rk_5: "Элита",
   rk_6: "Легенда",
-  rk_7: "Бессмертный",
   streak_title: "Стрик визитов",
   streak_days: "{n} дн подряд",
   streak_none: "Приходи два дня подряд — начнётся стрик",
@@ -2251,7 +2250,6 @@ const SH_EN = {
   rk_4: "Master",
   rk_5: "Elite",
   rk_6: "Legend",
-  rk_7: "Immortal",
   streak_title: "Visit streak",
   streak_days: "{n} days in a row",
   streak_none: "Come two days in a row — the streak starts",
@@ -2819,7 +2817,6 @@ const SH_PL = {
   rk_4: "Mistrz",
   rk_5: "Elita",
   rk_6: "Legenda",
-  rk_7: "Nieśmiertelny",
   streak_title: "Seria wizyt",
   streak_days: "{n} dni z rzędu",
   streak_none: "Przyjdź dwa dni z rzędu — zacznie się seria",
@@ -3504,7 +3501,7 @@ function renderTop(){
   document.getElementById('xpLeft').textContent = T('xp_left', {n: fmt(Math.max(0, need - me.xp_current))});
   document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
   if (economy && economy.rank){
-    document.getElementById('rankName').textContent = rankName(economy.rank.name);
+    rankHead(document.getElementById('rankName'), economy.rank, 'head');
     document.getElementById('rankEm').textContent = RANK_EM[economy.rank.level] || '✦';
   }
 }
@@ -3802,8 +3799,31 @@ const GRP_KEYS = {'Коммуникация':'grp_comm', 'Системные':'g
 const APP_KEYS = {'Звук':'app_sound', 'Мышь':'app_mouse', 'Дисплей':'app_display'};
 function grpName(n){ return GRP_KEYS[n] ? STR[GRP_KEYS[n]] : n; }
 const RANK_KEYS = {'Новичок':'rk_1', 'Завсегдатай':'rk_2', 'Ветеран':'rk_3', 'Мастер':'rk_4',
-                   'Элита':'rk_5', 'Легенда':'rk_6', 'Бессмертный':'rk_7'};
-function rankName(n){ return RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
+                   'Элита':'rk_5', 'Легенда':'rk_6'};
+function rankName(n, r){ return r && r.names ? (r.names[LANG] || r.names.ru) : RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
+// К12-и4: последний ранг тайный — имя и перевод приходят с сервера (r.names), только когда гость его взял.
+// Первый показ на этом устройстве открывает имя по буквам из «***» (~2 с); дальше — сразу.
+const RK_SHOWN = {};
+function rankSeen(place){ // открытие по буквам уже было на этом устройстве — у этого гостя, в этом месте
+  const key = '1448_rk_reveal_' + (me && me.id) + '_' + place;
+  if (RK_SHOWN[key]) return true;
+  try { return localStorage.getItem(key) === '1'; } catch(e){ return false; }
+}
+function rankHead(el, r, place){
+  const name = rankName(r.name, r);
+  if (!r.names || !me || !me.id){ if (!el.dataset.revealing) el.textContent = name; return; }
+  if (el.dataset.revealing) return;
+  if (rankSeen(place)){ el.textContent = name; return; }
+  const key = '1448_rk_reveal_' + me.id + '_' + place;
+  RK_SHOWN[key] = 1;
+  try { localStorage.setItem(key, '1'); } catch(e){}
+  const ch = Array.from(name); let i = 0;
+  el.dataset.revealing = '1';
+  (function step(){
+    el.textContent = ch.slice(0, i).join('') + '*'.repeat(Math.min(3, ch.length - i));
+    if (i++ < ch.length) setTimeout(step, Math.round(2000 / ch.length)); else delete el.dataset.revealing;
+  })();
+}
 function appName(n){ return APP_KEYS[n] ? STR[APP_KEYS[n]] : n; }
 /* Каталог в три ряда: (1) популярные игры плитками — сразу запускаются,
    (2) платформы-папки (Steam, Riot...) — внутри игры платформы и её клиент,
@@ -5479,7 +5499,7 @@ function renderCalc(){
   <div class="card">
     <div class="calc-rank">
       <div class="badge-em">${RANK_EM[rk.level]||'✦'}</div>
-      <div><div class="rn">${esc(rankName(rk.name))}</div>
+      <div><div class="rn">${esc(rankName(rk.name, rk))}</div>
       <div class="muted" style="font-size:12px">${T('rank_line', {n: rk.level, h: e.hours_played})}</div></div>
     </div>
     <div class="rank-prog"><i style="width:${prog}%"></i></div>
@@ -5504,7 +5524,7 @@ function renderCalc(){
     <div style="font-weight:800; margin-bottom:6px">${esc(STR.how_title)}</div>
     <div class="muted" style="font-size:12.5px; line-height:1.7">
       ${T('how_base', {n: e.rates.coins_per_min, w: plCoin(e.rates.coins_per_min)})}
-      ${T('how_rank', {r: esc(rankName(rk.name)), c: rk.coin_mult, x: rk.xp_mult})}
+      ${T('how_rank', {r: esc(rankName(rk.name, rk)), c: rk.coin_mult, x: rk.xp_mult})}
       ${e.talents.coin_mint>0?T('how_mint', {n: Math.round(e.talents.coin_mint*100), r: e.rates.deposit_coins_per_pln, w: plCoin(e.rates.deposit_coins_per_pln)}):''}
       ${T('how_tail', {n: Math.round(e.session_case_chance*100)})}
     </div>
@@ -5538,7 +5558,7 @@ function openRanks(){
     return `<div class="rank-row ${state}">
       <div class="rk-em">${RANK_EM[r.level]||'✦'}</div>
       <div class="rk-body">
-        <div class="rk-name">${esc(rankName(r.name))}</div>
+        <div class="rk-name">${esc(rankName(r.name, r))}</div>
         <div class="rk-hours">${r.min_hours === 0 ? esc(STR.rank_from_start) : T('rank_from_hours', {n: r.min_hours})}</div>
         <div class="rk-perks">${perksHtml}</div>
       </div>

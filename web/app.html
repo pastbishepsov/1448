@@ -118,11 +118,17 @@
   /* шапка: фирменный знак .logo1448 высотой 22px */
   .ava{width:38px; height:38px; border-radius:12px; background:linear-gradient(135deg,var(--acc),#7a1020); flex:none;
        display:flex; align-items:center; justify-content:center; font-size:21px; user-select:none; -webkit-user-select:none}
-  .tb-user{flex:1; min-width:0; line-height:1.25}
+  .tb-user{flex:1; min-width:0; line-height:1.25; container-type:inline-size}
   .tb-user .nick{font-weight:800; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .tb-user .sub{font-size:11.5px; color:var(--dim); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .tb-user .sub{font-size:11.5px; color:var(--dim); font-weight:700; overflow:hidden}
+  /* К12-и4: имя ранга не режется. Не влезло в строку с LVL — уходит на вторую строку целиком; точка-разделитель
+     в начале строки прячется за левый край (.sub-in сдвинут на её ширину). Совсем узко (6-значные монеты на 360 px) —
+     буквы ранга чуть мельче (cqi от ширины .tb-user), чтобы самое длинное имя влезло. */
+  .tb-user .sub-in{display:block; margin-left:-10px}
+  .tb-user .sub .lv, .tb-user .sub .rk{display:inline-block; white-space:nowrap}
+  .tb-user .sub .lv::before, .tb-user .sub .rk::before{content:'·'; display:inline-block; width:10px; text-align:center; color:var(--dim)}
   .tb-user .sub b{color:var(--gold)}
-  .tb-user .sub .rk{color:var(--acc)}
+  .tb-user .sub .rk{color:var(--acc); font-size:clamp(9px, 11.4cqi, 11.5px)}
   .res{display:flex; gap:7px; align-items:center; background:var(--glass-2); border:1px solid var(--glass-brd);
        border-radius:11px; padding:7px 12px; font-weight:800; font-size:14px; white-space:nowrap; flex:none}
   .res .ic{font-size:15px; display:flex}
@@ -471,7 +477,7 @@
       <div class="ava" id="ava">😎</div>
       <div class="tb-user">
         <div class="nick" id="hNick">—</div>
-        <div class="sub">LVL <b id="hLvl">1</b> · <span class="rk"><span id="rankEm">✦</span> <b id="rankName">—</b></span></div>
+        <div class="sub"><span class="sub-in"><span class="lv">LVL <b id="hLvl">1</b></span><span class="rk"><span id="rankEm">✦</span> <b id="rankName">—</b></span></span></div>
       </div>
       <div class="res"><span class="ic" data-ic="coins"></span><span class="gold-t cnum" id="coins">0</span></div>
     </div>
@@ -747,7 +753,7 @@ const STR_RU = {
   prog_hours_next: 'Ещё {n} ч до «{r}»',
   prog_rank_max: 'Максимальный ранг — выше некуда',
   /* имена рангов — как в киоске: сервер присылает русское имя, rankLabel берёт перевод */
-  rk_1: 'Новичок', rk_2: 'Завсегдатай', rk_3: 'Ветеран', rk_4: 'Мастер', rk_5: 'Элита', rk_6: 'Легенда', rk_7: 'Бессмертный',
+  rk_1: 'Новичок', rk_2: 'Завсегдатай', rk_3: 'Ветеран', rk_4: 'Мастер', rk_5: 'Элита', rk_6: 'Легенда',
   prog_sessions: 'Сессий сыграно: {n}',
   tal_title: 'Таланты',
   branch_strength: 'Strength', branch_agility: 'Agility', branch_intellect: 'Intellect',
@@ -1035,7 +1041,7 @@ const STR_EN = {
   prog_rank: 'Rank {a}/7 · {h} h played',
   prog_hours_next: '{n} h more to “{r}”',
   prog_rank_max: 'Top rank — nowhere higher',
-  rk_1: 'Rookie', rk_2: 'Regular', rk_3: 'Veteran', rk_4: 'Master', rk_5: 'Elite', rk_6: 'Legend', rk_7: 'Immortal',
+  rk_1: 'Rookie', rk_2: 'Regular', rk_3: 'Veteran', rk_4: 'Master', rk_5: 'Elite', rk_6: 'Legend',
   prog_sessions: 'Sessions played: {n}',
   tal_title: 'Talents',
   branch_strength: 'Strength', branch_agility: 'Agility', branch_intellect: 'Intellect',
@@ -1318,7 +1324,7 @@ const STR_PL = {
   prog_rank: 'Ranga {a}/7 · rozegrane {h} godz.',
   prog_hours_next: 'Jeszcze {n} godz. do „{r}”',
   prog_rank_max: 'Najwyższa ranga — wyżej się nie da',
-  rk_1: 'Nowicjusz', rk_2: 'Bywalec', rk_3: 'Weteran', rk_4: 'Mistrz', rk_5: 'Elita', rk_6: 'Legenda', rk_7: 'Nieśmiertelny',
+  rk_1: 'Nowicjusz', rk_2: 'Bywalec', rk_3: 'Weteran', rk_4: 'Mistrz', rk_5: 'Elita', rk_6: 'Legenda',
   prog_sessions: 'Rozegranych sesji: {n}',
   tal_title: 'Talenty',
   branch_strength: 'Strength', branch_agility: 'Agility', branch_intellect: 'Intellect',
@@ -1788,8 +1794,31 @@ function xpNext(level){ return Math.round(1000 * Math.pow(level, 1.4) / 100) * 1
 const RANK_EM = {1:'○', 2:'◇', 3:'◈', 4:'◆', 5:'✦', 6:'★', 7:'⬢'};
 /* К12-и3: имя ранга на языке гостя, как в киоске (RANK_KEYS → rk_N); имя не из семи стандартных — как прислал сервер */
 const RANK_KEYS = {'Новичок':'rk_1', 'Завсегдатай':'rk_2', 'Ветеран':'rk_3', 'Мастер':'rk_4',
-                   'Элита':'rk_5', 'Легенда':'rk_6', 'Бессмертный':'rk_7'};
-function rankLabel(n){ return RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
+                   'Элита':'rk_5', 'Легенда':'rk_6'};
+function rankLabel(n, r){ return r && r.names ? (r.names[LANG] || r.names.ru) : RANK_KEYS[n] ? STR[RANK_KEYS[n]] : n; }
+// К12-и4: последний ранг тайный — имя и перевод приходят с сервера (r.names), только когда гость его взял.
+// Первый показ на этом устройстве открывает имя по буквам из «***» (~2 с); дальше — сразу.
+const RK_SHOWN = {};
+function rankSeen(place){ // открытие по буквам уже было на этом устройстве — у этого гостя, в этом месте
+  const key = '1448_rk_reveal_' + (me && me.id) + '_' + place;
+  if (RK_SHOWN[key]) return true;
+  try { return localStorage.getItem(key) === '1'; } catch(e){ return false; }
+}
+function rankHead(el, r, place){
+  const name = rankLabel(r.name, r);
+  if (!r.names || !me || !me.id){ if (!el.dataset.revealing) el.textContent = name; return; }
+  if (el.dataset.revealing) return;
+  if (rankSeen(place)){ el.textContent = name; return; }
+  const key = '1448_rk_reveal_' + me.id + '_' + place;
+  RK_SHOWN[key] = 1;
+  try { localStorage.setItem(key, '1'); } catch(e){}
+  const ch = Array.from(name); let i = 0;
+  el.dataset.revealing = '1';
+  (function step(){
+    el.textContent = ch.slice(0, i).join('') + '*'.repeat(Math.min(3, ch.length - i));
+    if (i++ < ch.length) setTimeout(step, Math.round(2000 / ch.length)); else delete el.dataset.revealing;
+  })();
+}
 
 function renderTop(){
   const need = xpNext(me.level);
@@ -1801,7 +1830,7 @@ function renderTop(){
   document.getElementById('xpLeft').textContent = T('xp_left', {n: fmt(Math.max(0, need - me.xp_current))});
   document.getElementById('xpBar').style.width = Math.min(100, 100*me.xp_current/need) + '%';
   if (economy && economy.rank){
-    document.getElementById('rankName').textContent = rankLabel(economy.rank.name);
+    rankHead(document.getElementById('rankName'), economy.rank, 'head');
     document.getElementById('rankEm').textContent = RANK_EM[economy.rank.level] || '✦';
   }
 }
@@ -2341,10 +2370,11 @@ function renderRank(){
     progText = T('prog_hours_next', {n: economy.next_rank.hours_left, r: rankLabel(economy.next_rank.name)});
   }
   const done = sessionsArr.filter(s => s.status === 'completed').length;
+  setTimeout(() => { const nm = document.getElementById('rankCardName'); if (nm) rankHead(nm, rk, 'card'); }, 0); // К12-и4
   el.innerHTML = `<div style="display:flex; align-items:center; gap:12px">
       <span class="rk-laur" data-ic="laurels"></span>
       <div style="flex:1; min-width:0">
-        <div style="font-weight:900; font-size:19px">${esc(rankLabel(rk.name))}</div>
+        <div id="rankCardName" style="font-weight:900; font-size:19px">${esc(rk.names && !rankSeen('card') ? '***' : rankLabel(rk.name, rk))}</div>
         <div class="muted cnum">${T('prog_rank', {a: rk.level, h: fmt(hours)})}</div>
       </div>
       <span class="lvlpill">LVL <b class="cnum">${me ? me.level : 1}</b></span>
@@ -3349,7 +3379,7 @@ function pfBackClose(){
    registration.update() + одна перезагрузка (sessionStorage-предохранитель).
    ПРАВИЛО: при каждой правке app.html поднимать APP_VER здесь и
    app_version в web/app.webmanifest — парой. */
-const APP_VER = '2026-11-20.1';
+const APP_VER = '2026-11-21.1';
 async function checkVersion(){
   if (!location.protocol.startsWith('http')) return;
   try{

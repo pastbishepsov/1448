@@ -44,6 +44,30 @@ var accountRanks = []AccountRank{
 	{7, "Бессмертный", 400, 1.55, 1.40, 0.25, 0.55},
 }
 
+// К12-и4 (решение основателя 21.11): последний ранг — тайный. Пока гость его не взял, сервер не отдаёт его имя
+// ни в next_rank, ни в списке ranks: там «***» и secret: true, часы и бонусы видны. Перевод имени живёт только
+// здесь — в словарях киоска и PWA его нет; взявшему ранг сервер отдаёт names на трёх языках, клиент берёт свой.
+const secretRankMask = "***"
+
+var secretRankNames = map[string]string{"ru": "Бессмертный", "en": "Immortal", "pl": "Nieśmiertelny"}
+
+func rankIsSecret(r AccountRank) bool { return r.Level == accountRanks[len(accountRanks)-1].Level }
+
+// rankShown — дописывает в h имя ранга r так, как его видит гость на ранге curLevel.
+func rankShown(r AccountRank, curLevel int, h gin.H) gin.H {
+	switch {
+	case !rankIsSecret(r):
+		h["name"] = r.Name
+	case curLevel >= r.Level:
+		h["name"] = r.Name
+		h["names"] = secretRankNames
+	default:
+		h["name"] = secretRankMask
+		h["secret"] = true
+	}
+	return h
+}
+
 // accountRankFor — текущий ранг по наигранным часам и следующий (nil на максимуме).
 // Чистая функция (тестируется).
 func accountRankFor(hours int) (current AccountRank, next *AccountRank) {
@@ -107,12 +131,12 @@ func handleGetEconomy(c *gin.Context) {
 		"mouse_dpi":    settingInt64("mouse_dpi", mouseDPIDef),
 		"mousepad_cm":  settingInt64("mousepad_cm", mousepadCmDef), // С4-и3: ширина коврика клуба — эталон для замера DPI свайпом; 0 = не задана
 		"hours_played": hours,
-		"rank": gin.H{
-			"level": rank.Level, "name": rank.Name, "min_hours": rank.MinHours,
+		"rank": rankShown(rank, rank.Level, gin.H{
+			"level": rank.Level, "min_hours": rank.MinHours,
 			"xp_mult": rank.XPMult, "coin_mult": rank.CoinMult,
 			"case_chance_bonus": rank.CaseChanceBonus, "tier_boost": rank.TierBoost,
 			"max": next == nil,
-		},
+		}),
 		// К3-и1 (№15): ставки — из настроек клуба, а не константы: калькулятор
 		// на киоске обязан сходиться с тем, что начислит finishSession (в сессии —
 		// её снимок, З16-и1).
@@ -130,19 +154,19 @@ func handleGetEconomy(c *gin.Context) {
 		"session_case_chance": math.Round(sessionCaseChance(caseHunter, rank.CaseChanceBonus)*1000) / 1000,
 	}
 	if next != nil {
-		resp["next_rank"] = gin.H{
-			"level": next.Level, "name": next.Name, "min_hours": next.MinHours,
+		resp["next_rank"] = rankShown(*next, rank.Level, gin.H{
+			"level": next.Level, "min_hours": next.MinHours,
 			"hours_left": next.MinHours - hours,
-		}
+		})
 	}
-	// Все 7 рангов — чтобы игрок видел, что даёт каждый (карточка рангов в UI).
+	// Все 7 рангов — чтобы игрок видел, что даёт каждый (карточка рангов в UI). Тайный — без имени, пока не взят (К12-и4).
 	all := make([]gin.H, len(accountRanks))
 	for i, r := range accountRanks {
-		all[i] = gin.H{
-			"level": r.Level, "name": r.Name, "min_hours": r.MinHours,
+		all[i] = rankShown(r, rank.Level, gin.H{
+			"level": r.Level, "min_hours": r.MinHours,
 			"xp_mult": r.XPMult, "coin_mult": r.CoinMult,
 			"case_chance_bonus": r.CaseChanceBonus, "tier_boost": r.TierBoost,
-		}
+		})
 	}
 	resp["ranks"] = all
 	c.JSON(http.StatusOK, resp)

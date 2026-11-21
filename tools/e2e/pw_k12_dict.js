@@ -6,6 +6,7 @@
 // 3) PWA, окно пополнения по-русски — без «в спринте 6»;
 // 4) PWA показывает имя ранга на языке гостя, как киоск (RANK_KEYS → rk_N): шапка, карточка ранга, «… до «…»».
 //    Имя, которого нет среди семи стандартных, остаётся как прислал сервер.
+//    С К12-и4 в словарях шесть имён: седьмое — тайное, его имя и перевод присылает сервер (проверка — pw_k12_rank.js).
 // Киоск открывается без гостя (/shell): строки строит сам киоск из своих словарей, эталон имён рангов — тоже киоск.
 // PWA — вход Guest46 на телефоне 390×844 на трёх языках (язык гостя в базе и в телефоне): сначала шапка с тем
 // рангом, что прислал сервер, потом подстановка в памяти страницы «Ветеран, дальше Мастер», чтобы строка «до …»
@@ -43,7 +44,7 @@ const WANT = {
       LANG = l; STR = Object.assign({}, SH_RU, SH_LANGS[l]);
       out[l] = { sens: T('toast_sens_running', { g: games }),
         boost: [TAL_FMT.case_tier_boost(0.1), TAL_FMT.case_tier_boost(0.25)],
-        rk: [1, 2, 3, 4, 5, 6, 7].map(n => STR['rk_' + n]),
+        rk: [1, 2, 3, 4, 5, 6].map(n => STR['rk_' + n]),
         byRu: Object.fromEntries(Object.entries(RANK_KEYS).map(([ru, key]) => [ru, STR[key]])) };
     }
     LANG = keep.LANG; STR = keep.STR;
@@ -60,6 +61,7 @@ const WANT = {
   for (const l of ['ru', 'en', 'pl']) {
     const L = l.toUpperCase();
     z.sql(`UPDATE users SET language='${l}' WHERE id='${g}'`);
+    await z.sleep(2500); // лимитер стенда: вход PWA — залп запросов; без паузы второй вход подряд может не пройти
     const ctx = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await ctx.addInitScript(v => { try { localStorage.setItem('1448_lang', v); } catch (e) {} }, l);
     const a = await ctx.newPage();
@@ -76,7 +78,7 @@ const WANT = {
     const P = await a.evaluate(async () => {
       const head = () => document.getElementById('rankName').textContent;
       const out = { lang: LANG, server: economy.rank.name, head: head(), topup: STR.topup_body,
-        rk: [1, 2, 3, 4, 5, 6, 7].map(n => STR['rk_' + n]),
+        rk: [1, 2, 3, 4, 5, 6].map(n => STR['rk_' + n]),
         other: typeof rankLabel === 'function' ? rankLabel('Чемпион клуба') : null };
       const keep = { rank: economy.rank, next: economy.next_rank };
       economy.rank = Object.assign({}, keep.rank, { name: 'Ветеран', level: 3, min_hours: 50 });
