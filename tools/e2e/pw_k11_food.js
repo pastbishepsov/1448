@@ -18,7 +18,7 @@ const WANT = { // вопрос на трёх языках: заголовок (n
   en: [(n, p) => `Order “${n}” for ${p}?`, 'We’ll bring it to your PC. Pay at the desk after your game', 'Order'],
   pl: [(n, p) => `Zamówić „${n}” za ${p}?`, 'Przyniesiemy do twojego PC. Płatność przy ladzie po grze', 'Zamów'],
 };
-const zl = v => v.toFixed(2).replace('.', ',') + ' zł'; // как fmtZl киоска
+const zl = (v, l) => v.toFixed(2).replace('.', l === 'en' ? '.' : ',') + ' zł'; // как fmtZl киоска; К12-и6: по-английски — точка
 const OPEN = "('new','accepted','preparing','delivering')";
 
 (async () => {
@@ -186,7 +186,7 @@ const OPEN = "('new','accepted','preparing','delivering')";
     return out;
   }, [item.name + ' ×2', Math.round(item.price * 200)]);
   for (const l of ['ru', 'en', 'pl']) {
-    const W = WANT[l], t = W[0](item.name + ' ×2', zl(item.price * 2));
+    const W = WANT[l], t = W[0](item.name + ' ×2', zl(item.price * 2, l));
     z.check(`${l.toUpperCase()}: «${t}» · «${W[1]}» · «${W[2]}»`, L[l][0] === t && L[l][1] === W[1] && L[l][2] === W[2], J(L[l]));
   }
 

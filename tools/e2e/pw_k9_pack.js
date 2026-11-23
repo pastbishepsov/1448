@@ -185,10 +185,11 @@ const J = JSON.stringify;
 
   // 4. Длинное имя и большая цена: три ширины × три языка, и самый тесный случай — с кнопкой паузы на 1440
   const LONG = [{ id: 'k93-long', name: ('Ночной марафон выходного дня для своих — ' + 'W'.repeat(64)).slice(0, 64), minutes: 6000, price_pln: 1439.99, hour_pln: 14.4 }];
-  const HOUR = { ru: 'час по 14,40 zł вместо 20', en: '14,40 zł per hour instead of 20', pl: '14,40 zł za godzinę zamiast 20' };
+  const HOUR = { ru: 'час по 14,40 zł вместо 20', en: '14.40 zł per hour instead of 20', pl: '14,40 zł za godzinę zamiast 20' }; // К12-и6: по-английски — точка
+  const PRICE = { ru: ' — 1439,99 zł', en: ' — 1439.99 zł', pl: ' — 1439,99 zł' };
   const plain = await probe({ w: 4999 });
   const bad = [], heights = [];
-  const geoOk = (c, lang, tight) => { const q = c.geo; return c.shown && !!q && c.price === ' — 1439,99 zł' && c.hour === HOUR[lang]
+  const geoOk = (c, lang, tight) => { const q = c.geo; return c.shown && !!q && c.price === PRICE[lang] && c.hour === HOUR[lang]
     && q.price.r <= q.pack.r - 4 && q.price.w >= 60 && q.name.r <= q.price.l + 0.5 && q.name.w >= 30 && q.nameClip
     && q.pack.l >= q.btns.l - 0.5 && q.pack.r <= q.end.l - 4 && q.end.r <= q.card.r && !q.over
     && Math.abs(q.name.t - q.price.t) < 2 && q.hour.b <= q.pack.b && q.hour.r <= q.pack.r && (tight || !q.hourClip) && c.rowH - plain.rowH <= 8; };

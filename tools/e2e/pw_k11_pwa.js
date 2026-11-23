@@ -26,7 +26,7 @@ const WORD = {
   en: ['coin', 'coins', 'coins', 'coins', 'coins', 'coins', 'coins', 'coins'],
   pl: ['monetka', 'monetki', 'monetek', 'monetek', 'monetek', 'monetki', 'monetki', 'monetek'],
 };
-const NTF = { ru: (n, w) => `💰 +${n} ${w} — депозит 12,50 zł`, en: (n, w) => `💰 +${n} ${w} — top-up 12,50 zł`,
+const NTF = { ru: (n, w) => `💰 +${n} ${w} — депозит 12,50 zł`, en: (n, w) => `💰 +${n} ${w} — top-up 12.50 zł`,
   pl: (n, w) => `💰 +${n} ${w} — wpłata 12,50 zł` };
 // кошелёк на вкладке «Прогресс»: [баланс, монеток за 1 zł, монеток за минуту игры] → подпись баланса и строка курса
 const WAL = [[1, 100, 1], [3, 22, 5], [1250, 1, 0.5]];

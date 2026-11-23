@@ -219,7 +219,7 @@ const ru = n => n.toLocaleString('ru-RU').replace(/\s/g, ' ');
       soon: tx('coins_burn_soon', { days: 3, pct: 5, coins: 200 }),
       ach: [1, 2, 5].map(n => tx('achievement_earned', { title: 'Проба', reward_skillpoints: n })) }))]));
   });
-  const DEP = { ru: (c, w) => `💰 +${c} ${w} — депозит 12,50 zł`, en: (c, w) => `💰 +${c} ${w} — top-up 12,50 zł`, pl: (c, w) => `💰 +${c} ${w} — wpłata 12,50 zł` };
+  const DEP = { ru: (c, w) => `💰 +${c} ${w} — депозит 12,50 zł`, en: (c, w) => `💰 +${c} ${w} — top-up 12.50 zł`, pl: (c, w) => `💰 +${c} ${w} — wpłata 12,50 zł` };
   const BRN = { ru: c => `🔥 Сгорело монеток: ${c} за 30 дн простоя — осталось 40`, en: c => `🔥 ${c} ${coin('en', c)} burned after 30 idle days — 40 left`,
     pl: c => `🔥 Spłonęło monetek: ${c} po 30 dniach przerwy — zostało 40` };
   const SOON = { ru: 'монетки начнут таять', en: 'your coins start melting', pl: 'monetki zaczną topnieć' };

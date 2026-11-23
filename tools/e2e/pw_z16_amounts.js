@@ -63,10 +63,10 @@ const { CHROME } = require('./_env');
     STR = save;
     return out;
   });
-  z.check('киоск: «+1 500 монеток — депозит 12,50 zł», отмена «0,34 … 30 zł», долг «7,50 zł» (и с баром); EN «top-up 0,34 zł», PL «wpłata 0,34 zł»',
+  z.check('киоск: «+1 500 монеток — депозит 12,50 zł», отмена «0,34 … 30 zł», долг «7,50 zł» (и с баром); EN «top-up 0.34 zł», PL «wpłata 0,34 zł»',
     ks.dep === ks.want && ks.void === '↩ Депозит 0,34 zł отменён у стойки — с кошелька снято 0,34 zł, в кошельке 30 zł'
     && ks.kt === '🧾 Не забудь рассчитаться за кухню у стойки: 7,50 zł' && ks.bar === '🧾 Не забудь рассчитаться у стойки: 7,50 zł (кухня и бар)'
-    && ks.en === '💰 +5 coins — top-up 0,34 zł' && ks.pl === '💰 +5 monetek — wpłata 0,34 zł', JSON.stringify(ks));
+    && ks.en === '💰 +5 coins — top-up 0.34 zł' && ks.pl === '💰 +5 monetek — wpłata 0,34 zł', JSON.stringify(ks));
 
   // PWA: оба уведомления не прочитаны «вообще» (киоск ставит свою отметку) — приходят при входе, в ленте — обе строки
   const a = await (await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage();
@@ -88,10 +88,10 @@ const { CHROME } = require('./_env');
     STR = save;
     return out;
   });
-  z.check('PWA: «+1 500 монеток — депозит 12,50 zł», отмена «0,34 … 30 zł», долг «7,50 zł» (и с баром); EN «top-up 0,34 zł», PL «wpłata 0,34 zł»',
+  z.check('PWA: «+1 500 монеток — депозит 12,50 zł», отмена «0,34 … 30 zł», долг «7,50 zł» (и с баром); EN «top-up 0.34 zł», PL «wpłata 0,34 zł»',
     as.dep === as.want && as.void === '↩ Депозит 0,34 zł отменён у стойки — с кошелька снято 0,34 zł, в кошельке 30 zł'
     && as.kt === '🧾 Не забудь рассчитаться за кухню у стойки: 7,50 zł' && as.bar === '🧾 Не забудь рассчитаться у стойки: 7,50 zł (кухня и бар)'
-    && as.en === '💰 +5 coins — top-up 0,34 zł' && as.pl === '💰 +5 monetek — wpłata 0,34 zł', JSON.stringify(as));
+    && as.en === '💰 +5 coins — top-up 0.34 zł' && as.pl === '💰 +5 monetek — wpłata 0,34 zł', JSON.stringify(as));
   const ver = await a.evaluate(async () => ({ app: APP_VER,
     mf: (await (await fetch('/app.webmanifest?v=' + Date.now(), { cache: 'no-store' })).json()).app_version }));
   z.check('APP_VER в app.html поднят и равен app_version манифеста (иначе телефоны залипнут на старой версии)',

@@ -219,7 +219,8 @@ const { CHROME } = require('./_env');
     renderSession(); renderWallet();
     return m;
   }, [lang, o]);
-  const LEFT = { ru: '23 ч 59 мин', en: '23 h 59 min', pl: '23 h 59 min' }, RATE = { ru: '22,50 zł/ч', en: '22,50 zł/h', pl: '22,50 zł/h' };
+  const LEFT = { ru: '23 ч 59 мин', en: '23 h 59 min', pl: '23 h 59 min' }, RATE = { ru: '22,50 zł/ч', en: '22.50 zł/h', pl: '22,50 zł/h' },
+    SPENT = { ru: ' 1439,00 zł', en: ' 1439.00 zł', pl: ' 1439,00 zł' }; // К12-и6: по-английски — точка
   for (const [wd, ht] of [[1440, 900], [1920, 1080], [2560, 1440]]) {
     await p.setViewportSize({ width: wd, height: ht });
     await p.waitForTimeout(250);
@@ -229,7 +230,7 @@ const { CHROME } = require('./_env');
       if (lang === 'pl' && !o.bk && !o.long) sample = m.row;
       const ok = !m.wide.length && !m.wrap.length && !m.out.length && !m.raw && m.cut === !!o.long && m.left === LEFT[lang] && m.rate === RATE[lang]
         && m.off === '−10%' && m.lbl === (o.bk ? L.sc_lbl_bk : L.sc_lbl)[lang] && m.row.startsWith(L.sc_play[lang] + ' 23:59:')
-        && m.row.includes(L.sc_spent[lang] + ' 1439,00 zł') && /≈ \+\d[\d\s\u00a0\u202f]* XP$/.test(m.row);
+        && m.row.includes(L.sc_spent[lang] + SPENT[lang]) && /≈ \+\d[\d\s\u00a0\u202f]* XP$/.test(m.row);
       if (!ok) bad.push({ lang, o, m });
     }
     z.check(`${wd}×${ht}, карточка ${w} px: RU/EN/PL с предельными числами, с бронью и с длинной зоной — строки в одну строку, `

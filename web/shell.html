@@ -1196,6 +1196,7 @@ document.getElementById('srv').textContent = API;
    а Object.assign поверх RU страхует от дыр в переводе. */
 /* русский — источник истины */
 const SH_RU = {
+  dec_sep: ',', // К12-и6: дробь в деньгах — «12,50 zł»
   page_title: "14:48 — Гостевой экран",
   slogan: "Твой клуб — это игра",
   tab_login: "Вход",
@@ -1764,6 +1765,7 @@ const SH_RU = {
 
 /* english */
 const SH_EN = {
+  dec_sep: '.', // К12-и6: дробь в деньгах — «12.50 zł»
   page_title: "14:48 — Guest screen",
   slogan: "Your club is a game",
   tab_login: "Sign in",
@@ -2331,6 +2333,7 @@ const SH_EN = {
 
 /* polski */
 const SH_PL = {
+  dec_sep: ',', // К12-и6: дробь в деньгах — «12,50 zł»
   page_title: "14:48 — Ekran gościa",
   slogan: "Twój klub to gra",
   tab_login: "Logowanie",
@@ -3514,7 +3517,8 @@ let minutesByZone = [];                 // Ж2: запас по зонам (се
 /* ── Кошелёк (Г1): баланс в шапке + прогноз «хватит до HH:MM».
    Клиент только показывает: баланс и ставка приходят с сервера (Р2),
    списание и решения — целиком серверные (billing.go). ── */
-function fmtZl(gr){ return ((gr||0)/100).toFixed(2).replace('.', ',') + ' zł'; }
+// К12-и6: по-английски дробь через точку («12.50 zł»), по-русски и по-польски — через запятую (dec_sep словаря)
+function fmtZl(gr){ return ((gr||0)/100).toFixed(2).replace('.', STR.dec_sep) + ' zł'; }
 /* К9-и1: один расчёт «на сколько хватит» — и чипу кошелька, и карточке сессии; второй формулы нет.
    Слагаемые — как у сервера (forecast.go): минуты счёта + зонные + пакет + деньги по тарифу сессии.
    null — сессии нет или тариф 0; {paused} — пауза; иначе {left, till, byBooking, low, mixed}:
@@ -3714,7 +3718,7 @@ function renderPacks(){
 /* Число цены — как везде в проекте: запятая, два знака только если нужны. */
 function fmtNum(v){
   const n = Math.round((+v || 0) * 100) / 100;
-  return (Number.isInteger(n) ? String(n) : n.toFixed(2)).replace('.', ',');
+  return (Number.isInteger(n) ? String(n) : n.toFixed(2)).replace('.', STR.dec_sep); // К12-и6: EN — точка
 }
 
 /* Витрина поверх лок-экрана: до старта сессии панель недоступна, а именно

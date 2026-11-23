@@ -59,8 +59,8 @@ const { CHROME } = require('./_env');
   z.check('киоск: с прежним тарифом, в той же зоне и от прежней версии сервера — без тарифа; без зоны — «· тариф 23 zł/ч»',
     ks.keep === '🖥 Тебя пересадили за VIP-02 — сессия продолжается' && ks.same === '🖥 Тебя пересадили за PC-05 — сессия продолжается'
     && ks.old === ks.same && ks.nozone === '🖥 Тебя пересадили за PC-01 — сессия продолжается · тариф 23 zł/ч', JSON.stringify(ks));
-  z.check('киоск, EN и PL: «… · VIP rate 27,50 zł/h», «… · stawka VIP 27,50 zł/h»',
-    ks.en === '🖥 You were moved to VIP-01 — the session continues · VIP rate 27,50 zł/h'
+  z.check('киоск, EN и PL: «… · VIP rate 27.50 zł/h», «… · stawka VIP 27,50 zł/h»',
+    ks.en === '🖥 You were moved to VIP-01 — the session continues · VIP rate 27.50 zł/h'
     && ks.pl === '🖥 Przesadzono cię na VIP-01 — sesja trwa dalej · stawka VIP 27,50 zł/h', `${ks.en} | ${ks.pl}`);
 
   // PWA: уведомление ещё не прочитано «вообще» (киоск ставит свою отметку) — приходит при входе
@@ -81,10 +81,10 @@ const { CHROME } = require('./_env');
     STR = save;
     return out;
   });
-  z.check('PWA: с прежним тарифом — без тарифа; без зоны — «· тариф 23 zł/ч»; EN и PL — «· VIP rate 27,50 zł/h», «· stawka VIP '
+  z.check('PWA: с прежним тарифом — без тарифа; без зоны — «· тариф 23 zł/ч»; EN и PL — «· VIP rate 27.50 zł/h», «· stawka VIP '
     + '27,50 zł/h»', as.keep === '🖥 Тебя пересадили за VIP-02 — сессия продолжается'
     && as.nozone === '🖥 Тебя пересадили за PC-01 — сессия продолжается · тариф 23 zł/ч'
-    && as.en === '🖥 You were moved to VIP-01 — the session continues · VIP rate 27,50 zł/h'
+    && as.en === '🖥 You were moved to VIP-01 — the session continues · VIP rate 27.50 zł/h'
     && as.pl === '🖥 Przesadzono cię na VIP-01 — sesja trwa dalej · stawka VIP 27,50 zł/h', JSON.stringify(as));
   const ver = await a.evaluate(async () => ({ app: APP_VER,
     mf: (await (await fetch('/app.webmanifest?v=' + Date.now(), { cache: 'no-store' })).json()).app_version }));
